@@ -28,7 +28,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 )
 
                 if (passwordsMatch) {
-                    return { id: user.id, name: user.username }
+                    // Update the last login timestamp
+                    const timestamp = new Date()
+                    await prisma.user.update({
+                        where: { id: user.id },
+                        data: { lastLogin: timestamp }
+                    })
+                    console.log(`User ${user.username} logged in at: ${timestamp}`)
+                    return { id: user.id, name: user.username, role: user.role }
                 }
 
                 return null

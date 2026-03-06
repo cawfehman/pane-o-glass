@@ -1,7 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import { createUser, deleteUser } from "@/app/actions/users";
+import { auth } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export default async function UsersPage() {
+    const session = await auth();
+    const isAdmin = (session?.user as any)?.role === 'ADMIN';
+
+    if (!isAdmin) {
+        redirect('/');
+    }
+
     const users = await prisma.user.findMany({
         orderBy: { createdAt: 'desc' }
     });
@@ -10,7 +19,6 @@ export default async function UsersPage() {
         <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
                 <h1>Local Accounts</h1>
-                {/* Simple inline modal-like form trick (using HTML5 dialog or details, but let's keep it direct for now) */}
             </div>
 
             <div className="glass-card" style={{ marginBottom: '32px' }}>
@@ -26,7 +34,10 @@ export default async function UsersPage() {
                     </div>
                     <div className="input-group">
                         <label htmlFor="role">Role</label>
-                        <input type="text" name="role" id="role" defaultValue="USER" />
+                        <select name="role" id="role" style={{ background: 'var(--bg-dark)', border: '1px solid var(--border-color)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit' }}>
+                            <option value="USER">User</option>
+                            <option value="ADMIN">Admin</option>
+                        </select>
                     </div>
                     <button type="submit" className="btn-primary" style={{ marginBottom: '2px' }}>Create Account</button>
                 </form>
@@ -39,6 +50,7 @@ export default async function UsersPage() {
                         <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
                             <th style={{ padding: '12px 8px' }}>Username</th>
                             <th style={{ padding: '12px 8px' }}>Role</th>
+                            <th style={{ padding: '12px 8px' }}>Last Login</th>
                             <th style={{ padding: '12px 8px' }}>Created At</th>
                             <th style={{ padding: '12px 8px', textAlign: 'right' }}>Actions</th>
                         </tr>
@@ -59,9 +71,17 @@ export default async function UsersPage() {
                                     </span>
                                 </td>
                                 <td style={{ padding: '12px 8px', color: 'var(--text-muted)' }}>
+                                    {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
+                                </td>
+                                <td style={{ padding: '12px 8px', color: 'var(--text-muted)' }}>
                                     {new Date(user.createdAt).toLocaleDateString()}
                                 </td>
-                                <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                                <td style={{ padding: '12px 8px', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                                    <a href={`/users/${user.id}`} style={{
+                                        background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px'
+                                    }} className="nav-link">
+                                        Edit
+                                    </a>
                                     <form action={async () => {
                                         "use server"
                                         await deleteUser(user.id)

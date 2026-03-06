@@ -33,3 +33,23 @@ export async function deleteUser(id: string) {
 
     revalidatePath("/users");
 }
+
+export async function updateUser(id: string, formData: FormData) {
+    const username = formData.get("username") as string;
+    const password = formData.get("password") as string;
+    const role = formData.get("role") as string;
+
+    const updateData: any = {};
+    if (username) updateData.username = username;
+    if (role) updateData.role = role;
+    if (password) {
+        updateData.password = await bcrypt.hash(password, 10);
+    }
+
+    await prisma.user.update({
+        where: { id },
+        data: updateData
+    });
+
+    revalidatePath("/users");
+}

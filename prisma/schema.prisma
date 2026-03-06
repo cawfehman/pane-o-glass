@@ -14,7 +14,8 @@ model User {
   id        String   @id @default(cuid())
   username  String   @unique
   password  String
-  role      String   @default("USER")
+  role      String    @default("USER")
+  lastLogin DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

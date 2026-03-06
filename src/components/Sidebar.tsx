@@ -1,6 +1,10 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 
-export default function Sidebar() {
+export default async function Sidebar() {
+    const session = await auth();
+    const isAdmin = (session?.user as any)?.role === 'ADMIN';
+
     return (
         <aside className="sidebar">
             <div className="brand">
@@ -22,11 +26,15 @@ export default function Sidebar() {
                     System Tools
                 </Link>
 
-                <div className="nav-section">Settings</div>
-                <Link href="/users" className="nav-link">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                    Local Accounts
-                </Link>
+                {isAdmin && (
+                    <>
+                        <div className="nav-section">Settings</div>
+                        <Link href="/users" className="nav-link">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                            Local Accounts
+                        </Link>
+                    </>
+                )}
             </nav>
         </aside>
     );
