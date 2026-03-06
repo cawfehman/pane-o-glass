@@ -32,6 +32,8 @@ export default function HIBPQueryPage() {
     const [domainError, setDomainError] = useState("");
     const [domainResults, setDomainResults] = useState<{ hasBreaches: boolean, aliases: Record<string, string[]> } | null>(null);
     const [activeView, setActiveView] = useState<"all" | "breaches" | "summary" | null>(null);
+    const [allBreachesMeta, setAllBreachesMeta] = useState<Record<string, any>>({});
+    const [sortConfig, setSortConfig] = useState<{ key: 'count' | 'date', desc: boolean }>({ key: 'count', desc: true });
 
     // Fetch available domains on load
     useEffect(() => {
@@ -49,7 +51,23 @@ export default function HIBPQueryPage() {
                 console.error("Failed to fetch subscribed domains", e);
             }
         };
+
+        const fetchBreachesMeta = async () => {
+            try {
+                const res = await fetch("/api/hibp-breaches");
+                if (res.ok) {
+                    const data = await res.json();
+                    const metaMap: Record<string, any> = {};
+                    data.forEach((b: any) => metaMap[b.Name] = b);
+                    setAllBreachesMeta(metaMap);
+                }
+            } catch (e) {
+                console.error("Failed to fetch breaches metadata", e);
+            }
+        };
+
         fetchDomains();
+        fetchBreachesMeta();
     }, []);
 
     const handleEmailSearch = async (e: React.FormEvent) => {
@@ -171,7 +189,30 @@ export default function HIBPQueryPage() {
                 counts[b] = (counts[b] || 0) + 1;
             });
         });
-        return Object.entries(counts).sort((a, b) => b[1] - a[1]); // Sort by count descending
+
+        const mapped = Object.entries(counts).map(([name, count]) => ({
+            name,
+            count,
+            date: allBreachesMeta[name]?.BreachDate || "Unknown",
+        }));
+
+        return mapped.sort((a, b) => {
+            if (sortConfig.key === 'count') {
+                return sortConfig.desc ? b.count - a.count : a.count - b.count;
+            } else {
+                const fA = a.date === "Unknown" ? "" : a.date;
+                const fB = b.date === "Unknown" ? "" : b.date;
+                return sortConfig.desc ? fB.localeCompare(fA) : fA.localeCompare(fB);
+            }
+        });
+    };
+
+    const handleSort = (key: 'count' | 'date') => {
+        if (sortConfig.key === key) {
+            setSortConfig({ key, desc: !sortConfig.desc });
+        } else {
+            setSortConfig({ key, desc: true });
+        }
     };
 
     // 2. Get top N impacted aliases
@@ -394,16 +435,28 @@ export default function HIBPQueryPage() {
                                                 <thead>
                                                     <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', background: 'var(--bg-surface-hover)' }}>
                                                         <th style={{ padding: '12px 16px' }}>Breach Name</th>
-                                                        <th style={{ padding: '12px 16px', textAlign: 'right' }}>Impacted Emails</th>
+                                                        <th
+                                                            style={{ padding: '12px 16px', cursor: 'pointer', userSelect: 'none' }}
+                                                            onClick={() => handleSort('date')}
+                                                        >
+                                                            Date {sortConfig.key === 'date' ? (sortConfig.desc ? '↓' : '↑') : ''}
+                                                        </th>
+                                                        <th
+                                                            style={{ padding: '12px 16px', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}
+                                                            onClick={() => handleSort('count')}
+                                                        >
+                                                            Impacted Emails {sortConfig.key === 'count' ? (sortConfig.desc ? '↓' : '↑') : ''}
+                                                        </th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {getBreachCounts().map(([breachName, count]) => (
-                                                        <tr key={breachName} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                            <td style={{ padding: '12px 16px', fontWeight: 500, color: 'var(--accent-primary)' }}>{breachName}</td>
+                                                    {getBreachCounts().map((b) => (
+                                                        <tr key={b.name} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                            <td style={{ padding: '12px 16px', fontWeight: 500, color: 'var(--accent-primary)' }}>{b.name}</td>
+                                                            <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{b.date}</td>
                                                             <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                                                                 <span style={{ background: 'rgba(239,68,68,0.2)', padding: '4px 10px', borderRadius: '12px', color: '#fca5a5', fontSize: '0.85rem' }}>
-                                                                    {count}
+                                                                    {b.count}
                                                                 </span>
                                                             </td>
                                                         </tr>
@@ -419,13 +472,13 @@ export default function HIBPQueryPage() {
                                             <div>
                                                 <h4 style={{ color: 'var(--text-primary)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)' }}>Top 10 Worst Breaches</h4>
                                                 <div style={{ display: 'grid', gap: '8px' }}>
-                                                    {getBreachCounts().slice(0, 10).map(([breachName, count], idx) => (
-                                                        <div key={breachName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-dark)', padding: '8px 16px', borderRadius: 'var(--radius-sm)' }}>
+                                                    {getBreachCounts().slice(0, 10).map((b, idx) => (
+                                                        <div key={b.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-dark)', padding: '8px 16px', borderRadius: 'var(--radius-sm)' }}>
                                                             <span style={{ color: 'var(--text-secondary)' }}>
                                                                 <span style={{ color: 'var(--text-muted)', marginRight: '8px' }}>#{idx + 1}</span>
-                                                                {breachName}
+                                                                {b.name} <span style={{ fontSize: '0.8rem', marginLeft: '6px', color: 'var(--text-muted)' }}>({b.date})</span>
                                                             </span>
-                                                            <span style={{ fontWeight: 600, color: '#fca5a5' }}>{count} org accounts</span>
+                                                            <span style={{ fontWeight: 600, color: '#fca5a5' }}>{b.count} org accounts</span>
                                                         </div>
                                                     ))}
                                                 </div>
