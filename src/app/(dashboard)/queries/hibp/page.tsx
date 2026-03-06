@@ -25,6 +25,12 @@ export default function HIBPQueryPage() {
     const [pwdError, setPwdError] = useState("");
     const [pwdResult, setPwdResult] = useState<{ count: number, isPwned: boolean } | null>(null);
 
+    // Domain Search State
+    const [domainStr, setDomainStr] = useState("");
+    const [domainLoading, setDomainLoading] = useState(false);
+    const [domainError, setDomainError] = useState("");
+    const [domainResults, setDomainResults] = useState<{ hasBreaches: boolean, aliases: Record<string, string[]> } | null>(null);
+
     const handleEmailSearch = async (e: React.FormEvent) => {
         e.preventDefault();
         setEmailLoading(true);
@@ -96,6 +102,33 @@ export default function HIBPQueryPage() {
         }
     };
 
+    const handleDomainSearch = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setDomainLoading(true);
+        setDomainError("");
+        setDomainResults(null);
+
+        try {
+            const res = await fetch("/api/hibp-domain", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ domain: domainStr }),
+            });
+
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(text || "Failed to query HIBP Domain API");
+            }
+
+            const data = await res.json();
+            setDomainResults(data);
+        } catch (err: any) {
+            setDomainError(err.message || "An unexpected error occurred");
+        } finally {
+            setDomainLoading(false);
+        }
+    };
+
     return (
         <div>
             <div style={{ marginBottom: '32px' }}>
@@ -157,6 +190,69 @@ export default function HIBPQueryPage() {
                                                 <div style={{ fontSize: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                                                     {breach.DataClasses.map((dc: string) => (
                                                         <span key={dc} style={{ background: 'var(--bg-surface-hover)', padding: '2px 8px', borderRadius: '12px', color: 'var(--text-muted)' }}>{dc}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* --- DOMAIN SEARCH CARD --- */}
+                <div className="glass-card">
+                    <h3 style={{ marginBottom: '16px' }}>Domain Breach Check</h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+                        Retrieves all breached email aliases for a specific domain. <strong style={{ color: 'var(--accent-primary)' }}>Domain must be verified in your HIBP account.</strong>
+                    </p>
+
+                    <form onSubmit={handleDomainSearch} style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', marginBottom: '2rem' }}>
+                        <div className="input-group" style={{ flex: 1 }}>
+                            <label htmlFor="domainStr">Domain Name</label>
+                            <input
+                                type="text"
+                                id="domainStr"
+                                value={domainStr}
+                                onChange={(e) => setDomainStr(e.target.value)}
+                                placeholder="cooperhealth.edu"
+                                required
+                            />
+                        </div>
+                        <button type="submit" className="btn-primary" style={{ marginBottom: '2px', background: 'var(--accent-secondary)', borderColor: 'var(--accent-secondary)' }} disabled={domainLoading}>
+                            {domainLoading ? "Scanning..." : "Analyze"}
+                        </button>
+                    </form>
+
+                    {domainError && (
+                        <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444' }}>
+                            <strong>Error:</strong> {domainError}
+                        </div>
+                    )}
+
+                    {domainResults && (
+                        <div style={{ marginTop: '1rem' }}>
+                            {!domainResults.hasBreaches ? (
+                                <div style={{ padding: '1rem', backgroundColor: 'rgba(34,197,94,0.1)', color: '#22c55e', borderRadius: 'var(--radius-md)', border: '1px solid #22c55e' }}>
+                                    <strong>Clean!</strong> No known breaches found for any email addresses on {domainStr}.
+                                </div>
+                            ) : (
+                                <div>
+                                    <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1rem' }}>
+                                        <strong>Breaches Detected.</strong> Found compromised email aliases for this domain.
+                                    </div>
+                                    <div style={{ display: 'grid', gap: '1rem', maxHeight: '400px', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                                        {Object.entries(domainResults.aliases).map(([alias, breachList]: [string, any]) => (
+                                            <div key={alias} style={{ background: 'var(--bg-dark)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                                    <strong style={{ fontSize: '1.1rem', color: 'var(--text-primary)' }}>{alias}@{domainStr}</strong>
+                                                </div>
+                                                <div style={{ fontSize: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                    {breachList.map((breachName: string) => (
+                                                        <span key={breachName} style={{ background: 'rgba(239,68,68,0.2)', padding: '4px 10px', borderRadius: '12px', color: '#fca5a5' }}>
+                                                            {breachName}
+                                                        </span>
                                                     ))}
                                                 </div>
                                             </div>
