@@ -1,16 +1,7 @@
 "use client";
 
 import { useState } from "react";
-
-// Helper function to hash passwords for k-Anonymity using Web Crypto API
-async function sha1(str: string) {
-    const buffer = new TextEncoder().encode(str);
-    const hash = await crypto.subtle.digest("SHA-1", buffer);
-    return Array.from(new Uint8Array(hash))
-        .map(b => b.toString(16).padStart(2, "0"))
-        .join("")
-        .toUpperCase();
-}
+import { checkPasswordPwned } from "@/app/actions/hibp";
 
 export default function HIBPQueryPage() {
     // Email Search State
@@ -59,33 +50,8 @@ export default function HIBPQueryPage() {
         setPwdResult(null);
 
         try {
-            // k-Anonymity logic
-            const fullHash = await sha1(password);
-            const prefix = fullHash.substring(0, 5);
-            const suffix = fullHash.substring(5);
-
-            // Fetch list of matching suffixes from HIBP directly (no API key needed)
-            const res = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`);
-            if (!res.ok) {
-                throw new Error("Failed to contact Pwned Passwords API");
-            }
-
-            const text = await res.text();
-            const lines = text.split("\n");
-
-            let foundCount = 0;
-            for (const line of lines) {
-                const [hashSuffix, count] = line.split(":");
-                if (hashSuffix.trim() === suffix) {
-                    foundCount = parseInt(count.trim(), 10) || 0;
-                    break;
-                }
-            }
-
-            setPwdResult({
-                isPwned: foundCount > 0,
-                count: foundCount
-            });
+            const result = await checkPasswordPwned(password);
+            setPwdResult(result);
             // Clear the password field for security
             setPassword("");
 
