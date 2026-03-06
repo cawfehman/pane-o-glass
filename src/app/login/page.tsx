@@ -9,7 +9,7 @@ export default function LoginPage() {
                 <form
                     action={async (formData) => {
                         "use server"
-                        await signIn("credentials", formData)
+                        await signIn("credentials", Object.fromEntries(formData), { redirectTo: "/" })
                     }}
                     className="login-form"
                 >
