@@ -25,9 +25,15 @@ export default async function Sidebar() {
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
                     System Tools
                 </Link>
-                <Link href="/queries/hibp" className="nav-link" style={{ paddingLeft: '2.5rem', fontSize: '0.875rem' }}>
+                <div className="nav-link" style={{ paddingLeft: '2.5rem', fontSize: '0.875rem', cursor: 'default', color: 'var(--text-secondary)' }}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                     Have I Been Pwned
+                </div>
+                <Link href="/queries/hibp/account" className="nav-link" style={{ paddingLeft: '4rem', fontSize: '0.8rem' }}>
+                    Account Security
+                </Link>
+                <Link href="/queries/hibp/domain" className="nav-link" style={{ paddingLeft: '4rem', fontSize: '0.8rem' }}>
+                    Domain Security
                 </Link>
 
                 {isAdmin && (
