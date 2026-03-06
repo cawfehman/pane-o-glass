@@ -3,6 +3,11 @@
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
+import { signOut } from "@/lib/auth";
+
+export async function performLogout() {
+    await signOut({ redirectTo: "/login" });
+}
 
 export async function createUser(formData: FormData) {
     const username = formData.get("username") as string;

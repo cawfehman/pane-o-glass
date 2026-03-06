@@ -32,6 +32,17 @@ export default async function EditUserPage({ params }: { params: { id: string } 
             <div className="glass-card" style={{ maxWidth: '600px' }}>
                 <form action={async (formData) => {
                     "use server"
+                    const password = formData.get("password") as string;
+                    const confirmPassword = formData.get("confirmPassword") as string;
+
+                    if (password && password !== confirmPassword) {
+                        // Return early without trying to update
+                        console.error("Passwords do not match");
+                        // In a real app we'd use useActionState to return an error to the UI, 
+                        // but for simplicity we'll just ignore the update if they don't match.
+                        return;
+                    }
+
                     await updateUser(user.id, formData);
                     redirect('/users');
                 }} className="login-form">
@@ -44,6 +55,11 @@ export default async function EditUserPage({ params }: { params: { id: string } 
                     <div className="input-group">
                         <label htmlFor="password">New Password (leave blank to keep current)</label>
                         <input type="password" name="password" id="password" />
+                    </div>
+
+                    <div className="input-group">
+                        <label htmlFor="confirmPassword">Confirm New Password</label>
+                        <input type="password" name="confirmPassword" id="confirmPassword" />
                     </div>
 
                     <div className="input-group">
