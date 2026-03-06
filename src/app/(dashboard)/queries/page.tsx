@@ -1,80 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
 
 export default function QueriesPage() {
-    const [results, setResults] = useState<{ id: number, name: string, status: string }[] | null>(null);
-    const [loading, setLoading] = useState(false);
-
-    const handleQuery = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-
-        // Simulate an external system query delay
-        await new Promise(resolve => setTimeout(resolve, 800));
-
-        setResults([
-            { id: 101, name: "System Process Alpha", status: "Running" },
-            { id: 102, name: "System Process Beta", status: "Stopped" },
-            { id: 103, name: "Database Sync Job", status: "Pending" },
-        ]);
-
-        setLoading(false);
-    };
-
     return (
         <div>
             <h1 style={{ marginBottom: '24px' }}>System Tools & Queries</h1>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>
-                Interface with your internal services safely from this centralized dashboard.
+                Interface with your external services safely from this centralized dashboard.
             </p>
 
-            <div className="glass-card" style={{ marginBottom: '32px' }}>
-                <h3 style={{ marginBottom: '16px' }}>Query Process Status</h3>
-                <form onSubmit={handleQuery} style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                    <div className="input-group" style={{ flexGrow: 1, maxWidth: '400px' }}>
-                        <label htmlFor="search">Search Term (e.g. process name or ID)</label>
-                        <input type="text" id="search" name="search" placeholder="Enter process name..." />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
+                <Link href="/queries/hibp" style={{ textDecoration: 'none' }}>
+                    <div className="glass-card" style={{ cursor: 'pointer', transition: 'transform 0.2s', height: '100%' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                            <div style={{ background: 'var(--bg-surface-hover)', padding: '12px', borderRadius: '50%', color: 'var(--accent-primary)' }}>
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                            </div>
+                            <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>Have I Been Pwned</h3>
+                        </div>
+                        <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+                            Query the world's largest secure database of breached emails and passwords to verify account safety.
+                        </p>
                     </div>
-                    <button type="submit" className="btn-primary" disabled={loading} style={{ minWidth: '120px' }}>
-                        {loading ? "querying..." : "Execute Query"}
-                    </button>
-                </form>
-            </div>
+                </Link>
 
-            {results && (
-                <div className="glass-card">
-                    <h3 style={{ marginBottom: '16px' }}>Query Results</h3>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                        <thead>
-                            <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-                                <th style={{ padding: '12px 8px' }}>Process ID</th>
-                                <th style={{ padding: '12px 8px' }}>Name</th>
-                                <th style={{ padding: '12px 8px', textAlign: 'right' }}>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {results.map((res) => (
-                                <tr key={res.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                    <td style={{ padding: '12px 8px', fontFamily: 'monospace', color: 'var(--text-muted)' }}>#{res.id}</td>
-                                    <td style={{ padding: '12px 8px', fontWeight: 500 }}>{res.name}</td>
-                                    <td style={{ padding: '12px 8px', textAlign: 'right' }}>
-                                        <span style={{
-                                            padding: '4px 8px',
-                                            borderRadius: '12px',
-                                            fontSize: '0.75rem',
-                                            backgroundColor: res.status === 'Running' ? 'rgba(34, 197, 94, 0.2)' : 'var(--bg-surface-hover)',
-                                            color: res.status === 'Running' ? '#22c55e' : 'var(--text-secondary)'
-                                        }}>
-                                            {res.status}
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <div className="glass-card" style={{ opacity: 0.5 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                        <div style={{ background: 'var(--bg-surface-hover)', padding: '12px', borderRadius: '50%', color: 'var(--text-muted)' }}>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                        </div>
+                        <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>More Tools (Coming Soon)</h3>
+                    </div>
+                    <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+                        Placeholder for additional system queries and integrations.
+                    </p>
                 </div>
-            )}
+            </div>
         </div>
     );
 }
