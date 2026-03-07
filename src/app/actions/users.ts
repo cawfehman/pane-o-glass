@@ -32,6 +32,14 @@ export async function createUser(formData: FormData) {
 }
 
 export async function deleteUser(id: string) {
+    const userToDelete = await prisma.user.findUnique({ where: { id } });
+    if (userToDelete?.role === 'ADMIN') {
+        const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } });
+        if (adminCount <= 1) {
+            throw new Error("Cannot delete the last admin user.");
+        }
+    }
+
     await prisma.user.delete({
         where: { id }
     });
@@ -43,6 +51,15 @@ export async function updateUser(id: string, formData: FormData) {
     const username = formData.get("username") as string;
     const password = formData.get("password") as string;
     const role = formData.get("role") as string;
+
+    const userToUpdate = await prisma.user.findUnique({ where: { id } });
+
+    if (userToUpdate?.role === 'ADMIN' && role === 'USER') {
+        const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } });
+        if (adminCount <= 1) {
+            throw new Error("Cannot demote the last admin user.");
+        }
+    }
 
     const updateData: any = {};
     if (username) updateData.username = username;
