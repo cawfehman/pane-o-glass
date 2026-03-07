@@ -4,7 +4,7 @@ import { logAudit } from '@/lib/audit';
 import { parseStringPromise } from 'xml2js';
 
 export async function GET(req: Request) {
-    const session = await auth(req as any, {} as any);
+    const session = await auth();
     if (!session || !session.user) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
