@@ -64,37 +64,40 @@ export default function CiscoIsePage() {
                 </div>
             )}
 
-            {result && result.found && result.session && (
-                <div className="glass-card">
-                    <h3 style={{ marginBottom: '24px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>Active Session Details</h3>
+            {result && result.found && result.sessions && result.sessions.length > 0 && (
+                <div>
+                    <h3 style={{ marginBottom: '16px' }}>Found {result.sessions.length} Active Session{result.sessions.length !== 1 ? 's' : ''}</h3>
+                    {result.sessions.map((session: any, idx: number) => (
+                        <div key={idx} className="glass-card" style={{ marginBottom: '24px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+                                <div>
+                                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Identity</h4>
+                                    <p><strong>Username:</strong> {session.user_name || "N/A"}</p>
+                                    <p><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace', color: 'var(--accent-primary)' }}>{session.calling_station_id}</span></p>
+                                    <p><strong>IP Address:</strong> <span style={{ fontFamily: 'monospace' }}>{session.framed_ip_address || "N/A"}</span></p>
+                                </div>
 
-                        <div>
-                            <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Identity</h4>
-                            <p><strong>Username:</strong> {result.session.user_name || "N/A"}</p>
-                            <p><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace', color: 'var(--accent-primary)' }}>{result.session.calling_station_id}</span></p>
-                            <p><strong>IP Address:</strong> <span style={{ fontFamily: 'monospace' }}>{result.session.framed_ip_address || "N/A"}</span></p>
+                                <div>
+                                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Location</h4>
+                                    <p><strong>Network Device IP:</strong> {session.nas_ip_address}</p>
+                                    <p><strong>Connection Port/SSID:</strong> {session.nas_port_id}</p>
+                                    <p><strong>Switch Identifier:</strong> {session.nas_identifier}</p>
+                                </div>
+
+                                <div>
+                                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Posture & Authentication</h4>
+                                    <p><strong>Endpoint Profile:</strong> {session.endpoint_profile || "Unknown"}</p>
+                                    <p><strong>Identity Group:</strong> {session.identity_group || "Unknown"}</p>
+                                    <p><strong>Posture Status:</strong> <span style={{
+                                        color: session.posture_status === 'Compliant' ? 'var(--accent-tertiary)' :
+                                            session.posture_status === 'Pending' ? 'var(--accent-primary)' : 'var(--accent-secondary)'
+                                    }}>{session.posture_status || "Unknown"}</span></p>
+                                </div>
+
+                            </div>
                         </div>
-
-                        <div>
-                            <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Location</h4>
-                            <p><strong>Network Device IP:</strong> {result.session.nas_ip_address}</p>
-                            <p><strong>Connection Port/SSID:</strong> {result.session.nas_port_id}</p>
-                            <p><strong>Switch Identifier:</strong> {result.session.nas_identifier}</p>
-                        </div>
-
-                        <div>
-                            <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Posture & Authentication</h4>
-                            <p><strong>Endpoint Profile:</strong> {result.session.endpoint_profile || "Unknown"}</p>
-                            <p><strong>Identity Group:</strong> {result.session.identity_group || "Unknown"}</p>
-                            <p><strong>Posture Status:</strong> <span style={{
-                                color: result.session.posture_status === 'Compliant' ? 'var(--accent-tertiary)' :
-                                    result.session.posture_status === 'Pending' ? 'var(--accent-primary)' : 'var(--accent-secondary)'
-                            }}>{result.session.posture_status || "Unknown"}</span></p>
-                        </div>
-
-                    </div>
+                    ))}
                 </div>
             )}
         </div>

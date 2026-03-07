@@ -61,14 +61,19 @@ export async function fetchIseSession(query: string) {
         const data = await parseStringPromise(xmlText, { explicitArray: false });
 
         // Parse XML response
-        const sessionNode = data.sessionParameters || data.activeSession;
+        let sessionNodes = data.sessionParameters || data.activeSession;
+        if (!sessionNodes && data.activeList && data.activeList.activeSession) {
+            sessionNodes = data.activeList.activeSession;
+        }
 
-        if (!sessionNode) {
+        if (!sessionNodes) {
             return { found: false, message: "Session data empty." };
         }
 
-        // Map XML nodes to the format our frontend expects
-        const mappedSession = {
+        // Normalize to array
+        const sessionsArray = Array.isArray(sessionNodes) ? sessionNodes : [sessionNodes];
+
+        const mappedSessions = sessionsArray.map((sessionNode: any) => ({
             user_name: sessionNode.user_name?._ || sessionNode.user_name || sessionNode.userName,
             calling_station_id: sessionNode.calling_station_id?._ || sessionNode.calling_station_id || sessionNode.callingStationId,
             framed_ip_address: sessionNode.framed_ip_address?._ || sessionNode.framed_ip_address || sessionNode.framedIPAddress,
@@ -78,11 +83,11 @@ export async function fetchIseSession(query: string) {
             endpoint_profile: sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || sessionNode.endpointProfile || "Unknown",
             identity_group: sessionNode.identity_group?._ || sessionNode.identity_group || sessionNode.identityGroup || "Unknown",
             posture_status: sessionNode.posture_status?._ || sessionNode.posture_status || sessionNode.postureStatus || "Unknown"
-        };
+        }));
 
         return {
             found: true,
-            session: mappedSession
+            sessions: mappedSessions
         };
 
     } catch (e: any) {
