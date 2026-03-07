@@ -1,3 +1,5 @@
+import { parseStringPromise } from 'xml2js';
+
 export async function fetchIseSession(query: string) {
     const url = process.env.ISE_PAN_URL;
     const user = process.env.ISE_API_USER;
@@ -7,75 +9,84 @@ export async function fetchIseSession(query: string) {
         throw new Error("ISE Credentials not configured in .env");
     }
 
-    // Determine query type (IP vs MAC vs Username)
-    let filterProp = "user-name";
+    // Determine query type
+    let searchType = "user_name";
     if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(query)) {
-        filterProp = "framed_ip_address";
+        searchType = "framed_ip_address";
     } else if (/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(query) || /^[0-9A-Fa-f]{12}$/.test(query)) {
-        filterProp = "calling_station_id";
-        // Normalize MAC to XX:XX:XX:XX:XX:XX which ISE usually prefers
+        searchType = "calling_station_id"; // MAC Address
         if (query.length === 12) {
             query = query.match(/.{1,2}/g)?.join(":") || query;
         } else {
             query = query.replace(/-/g, ":");
         }
+        query = query.toUpperCase(); // ISE MnT often expects uppercase MAC
     }
 
-    // ISE ERS API uses Basic Auth
+    // MnT API uses Basic Auth
     const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
 
-    // Endpoint: /ers/config/session?filter={property}.EQ.{value}
-    const endpoint = `${url}/ers/config/session?filter=${filterProp}.EQ.${query}`;
+    // The MnT API for a specific session by MAC: /admin/API/mnt/Session/MACAddress/{mac}
+    // For Username or IP, we must query the ActiveList and filter it out.
+    // To ensure broad compatibility and not crash on 404s, we will grab the /admin/API/mnt/Session/ActiveList
+    // which returns ALL sessions, and filter it locally if it's small, OR we can use the specific endpoints.
+
+    let endpoint = "";
+    if (searchType === "calling_station_id") {
+        endpoint = `${url}/admin/API/mnt/Session/MACAddress/${query}`;
+    } else if (searchType === "user_name") {
+        endpoint = `${url}/admin/API/mnt/Session/UserName/${encodeURIComponent(query)}`;
+    } else if (searchType === "framed_ip_address") {
+        endpoint = `${url}/admin/API/mnt/Session/IPAddress/${query}`;
+    }
 
     try {
         const response = await fetch(endpoint, {
             headers: {
                 "Authorization": `Basic ${basicAuth}`,
-                "Accept": "application/json",
-                "Content-Type": "application/json",
-            },
-            // ISE typically uses a self-signed cert on the management interface, NextJS needs this if not behind proxy
-            // NOTE: fetch natively in Node 18+ might still reject self-signed certs. 
-            // Setting NODE_TLS_REJECT_UNAUTHORIZED="0" in .env might be required if self-signed.
-        });
-
-        if (!response.ok) {
-            if (response.status === 401) throw new Error("ISE Authentication Failed (401)");
-            if (response.status === 403) throw new Error("ISE Authorization Failed - Check ERS Admin role (403)");
-            throw new Error(`ISE API HTTP Error: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        // ERS API returns SearchResult
-        if (!data.SearchResult || !data.SearchResult.resources || data.SearchResult.resources.length === 0) {
-            return { found: false, message: "No active session found for query." };
-        }
-
-        // Fetch detailed session for the first result
-        const sessionId = data.SearchResult.resources[0].id;
-        const detailsEndpoint = `${url}/ers/config/session/${sessionId}`;
-
-        const detailsRes = await fetch(detailsEndpoint, {
-            headers: {
-                "Authorization": `Basic ${basicAuth}`,
-                "Accept": "application/json",
-                "Content-Type": "application/json",
+                "Accept": "application/xml" // MnT API strictly returns XML
             }
         });
 
-        if (!detailsRes.ok) {
-            throw new Error("Failed to fetch session details after ID lookup");
+        if (!response.ok) {
+            // MnT specifically throws 404/500 if the session just isn't found
+            if (response.status === 404 || response.status === 500) {
+                return { found: false, message: "No active session found for query." };
+            }
+            if (response.status === 401) throw new Error("ISE Authentication Failed (401)");
+            throw new Error(`ISE MnT API HTTP Error: ${response.status}`);
         }
 
-        const sessionDetails = await detailsRes.json();
+        const xmlText = await response.text();
+        const data = await parseStringPromise(xmlText, { explicitArray: false });
+
+        // Parse XML response
+        const sessionNode = data.sessionParameters || data.activeSession;
+
+        if (!sessionNode) {
+            return { found: false, message: "Session data empty." };
+        }
+
+        // Map XML nodes to the format our frontend expects
+        const mappedSession = {
+            user_name: sessionNode.user_name?._ || sessionNode.user_name || sessionNode.userName,
+            calling_station_id: sessionNode.calling_station_id?._ || sessionNode.calling_station_id || sessionNode.callingStationId,
+            framed_ip_address: sessionNode.framed_ip_address?._ || sessionNode.framed_ip_address || sessionNode.framedIPAddress,
+            nas_ip_address: sessionNode.nas_ip_address?._ || sessionNode.nas_ip_address || sessionNode.nasIpAddress,
+            nas_port_id: sessionNode.nas_port_id?._ || sessionNode.nas_port_id || sessionNode.nasPortId,
+            nas_identifier: sessionNode.nas_identifier?._ || sessionNode.nas_identifier || sessionNode.nasIdentifier || "Unknown",
+            endpoint_profile: sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || sessionNode.endpointProfile || "Unknown",
+            identity_group: sessionNode.identity_group?._ || sessionNode.identity_group || sessionNode.identityGroup || "Unknown",
+            posture_status: sessionNode.posture_status?._ || sessionNode.posture_status || sessionNode.postureStatus || "Unknown"
+        };
+
         return {
             found: true,
-            session: sessionDetails.Session
+            session: mappedSession
         };
 
     } catch (e: any) {
         console.error("ISE fetch error:", e);
-        throw new Error(e.message || "Failed to communicate with Cisco ISE");
+        throw new Error(e.message || "Failed to communicate with Cisco ISE MnT API");
     }
 }
