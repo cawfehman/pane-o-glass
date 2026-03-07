@@ -32,6 +32,7 @@ export async function fetchIseSession(query: string) {
             headers: {
                 "Authorization": `Basic ${basicAuth}`,
                 "Accept": "application/json",
+                "Content-Type": "application/json",
             },
             // ISE typically uses a self-signed cert on the management interface, NextJS needs this if not behind proxy
             // NOTE: fetch natively in Node 18+ might still reject self-signed certs. 
@@ -59,6 +60,7 @@ export async function fetchIseSession(query: string) {
             headers: {
                 "Authorization": `Basic ${basicAuth}`,
                 "Accept": "application/json",
+                "Content-Type": "application/json",
             }
         });
 
