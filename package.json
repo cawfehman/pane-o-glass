@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "next lint",
+    "deploy": "node scripts/bump.js && git add src/version.json && git commit -m \"chore: bump version\" && git push production master"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
