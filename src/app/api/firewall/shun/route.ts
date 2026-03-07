@@ -60,18 +60,47 @@ export async function POST(req: Request) {
                 readyTimeout: 10000
             });
 
-            // Execute the command
-            const result = await ssh.execCommand(command);
+            // Cisco ASA / pyos.sh environments often do not support `exec` channels gracefully (which `execCommand` uses).
+            // They expect a standard interactive shell.
 
-            // Disconnect immediately
-            ssh.dispose();
+            return new Promise((resolve, reject) => {
+                ssh.requestShell().then((stream) => {
+                    let output = "";
+                    let errorOutput = "";
 
-            return NextResponse.json({
-                success: true,
-                command: command,
-                target: targetHost,
-                stdout: result.stdout,
-                stderr: result.stderr
+                    stream.on("data", (data: any) => {
+                        output += data.toString();
+                    });
+
+                    stream.stderr.on("data", (data: any) => {
+                        errorOutput += data.toString();
+                    });
+
+                    stream.on("close", () => {
+                        ssh.dispose();
+                        resolve(NextResponse.json({
+                            success: errorOutput.length === 0,
+                            command: command,
+                            target: targetHost,
+                            stdout: output,
+                            stderr: errorOutput
+                        }));
+                    });
+
+                    // Send the command followed by a newline and exit
+                    stream.write(`${command}\n`);
+                    setTimeout(() => {
+                        stream.write("exit\n");
+                    }, 1000); // Give the firewall a second to process
+
+                }).catch((shellError) => {
+                    ssh.dispose();
+                    console.error("Failed to request shell:", shellError);
+                    resolve(NextResponse.json({
+                        success: false,
+                        error: "Failed to open interactive shell on firewall."
+                    }, { status: 500 }));
+                });
             });
 
         } catch (sshError: any) {
