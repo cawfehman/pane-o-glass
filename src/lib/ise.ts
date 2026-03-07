@@ -32,12 +32,17 @@ export async function fetchIseSession(query: string) {
     // which returns ALL sessions, and filter it locally if it's small, OR we can use the specific endpoints.
 
     let endpoint = "";
+    let localFilter = false;
+
     if (searchType === "calling_station_id") {
         endpoint = `${url}/admin/API/mnt/Session/MACAddress/${query}`;
-    } else if (searchType === "user_name") {
-        endpoint = `${url}/admin/API/mnt/Session/UserName/${encodeURIComponent(query)}`;
     } else if (searchType === "framed_ip_address") {
         endpoint = `${url}/admin/API/mnt/Session/IPAddress/${query}`;
+    } else if (searchType === "user_name") {
+        // Cisco's UserName endpoint explicitly caps returns to the *single latest* session.
+        // To return ALL active devices for a user, we must parse the entire ActiveList locally.
+        endpoint = `${url}/admin/API/mnt/Session/ActiveList`;
+        localFilter = true;
     }
 
     try {
@@ -71,7 +76,19 @@ export async function fetchIseSession(query: string) {
         }
 
         // Normalize to array
-        const sessionsArray = Array.isArray(sessionNodes) ? sessionNodes : [sessionNodes];
+        let sessionsArray = Array.isArray(sessionNodes) ? sessionNodes : [sessionNodes];
+
+        if (localFilter && searchType === "user_name") {
+            const searchLower = query.toLowerCase();
+            sessionsArray = sessionsArray.filter((s: any) => {
+                const u = s.user_name?._ || s.user_name || s.userName;
+                return u && typeof u === 'string' && u.toLowerCase() === searchLower;
+            });
+
+            if (sessionsArray.length === 0) {
+                return { found: false, message: "No active sessions found for this username." };
+            }
+        }
 
         const mappedSessions = sessionsArray.map((sessionNode: any) => ({
             user_name: sessionNode.user_name?._ || sessionNode.user_name || sessionNode.userName,
