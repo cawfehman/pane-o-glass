@@ -5,6 +5,17 @@ export default async function DashboardHome() {
     const session = await auth();
     const isAdmin = (session?.user as any)?.role === 'ADMIN';
 
+    // Fetch today's XKCD Comic
+    let xkcdData = null;
+    try {
+        const xkcdRes = await fetch("https://xkcd.com/info.0.json", { next: { revalidate: 3600 } });
+        if (xkcdRes.ok) {
+            xkcdData = await xkcdRes.json();
+        }
+    } catch (e) {
+        console.error("Failed to fetch XKCD:", e);
+    }
+
     // USER VIEW: Simplistic pending screen embedding XKCD
     if (!isAdmin) {
         return (
@@ -15,9 +26,23 @@ export default async function DashboardHome() {
                 </p>
                 <div className="glass-card" style={{ width: '100%', maxWidth: '800px', padding: '16px', background: 'var(--bg-surface)' }}>
                     <h3 style={{ marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Meanwhile...</h3>
-                    {/* Note: XKCD does not allow iframe embedding of the main site due to X-Frame-Options, but they offer an API. Let's just link out for simplicity or use a placeholder iframe mechanism */}
-                    <a href="https://xkcd.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'block', margin: '20px 0', color: 'var(--accent-primary)', textDecoration: 'none' }}>
-                        Click here to read today's XKCD Comic
+
+                    {xkcdData ? (
+                        <div style={{ margin: '20px 0' }}>
+                            <img
+                                src={xkcdData.img}
+                                alt={xkcdData.alt}
+                                title={xkcdData.title}
+                                style={{ maxWidth: '100%', height: 'auto', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+                            />
+                            <p style={{ marginTop: '12px', fontSize: '0.875rem', color: 'var(--text-muted)' }}>{xkcdData.alt}</p>
+                        </div>
+                    ) : (
+                        <p style={{ color: 'var(--text-muted)', margin: '20px 0' }}>Failed to load today's comic.</p>
+                    )}
+
+                    <a href="https://xkcd.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'block', color: 'var(--accent-primary)', textDecoration: 'none' }}>
+                        View on XKCD
                     </a>
                 </div>
             </div>
@@ -112,8 +137,22 @@ export default async function DashboardHome() {
             </div>
 
             <div className="glass-card" style={{ marginTop: '24px', textAlign: 'center', padding: '16px' }}>
-                <a href="https://xkcd.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'block', color: 'var(--text-secondary)', textDecoration: 'none' }}>
-                    Need a break? Read today's XKCD Comic
+                <h3 style={{ marginBottom: '16px', color: 'var(--text-secondary)' }}>Need a break?</h3>
+
+                {xkcdData && (
+                    <div style={{ margin: '20px 0', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <img
+                            src={xkcdData.img}
+                            alt={xkcdData.alt}
+                            title={xkcdData.title}
+                            style={{ maxWidth: '100%', maxHeight: '400px', height: 'auto', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+                        />
+                        <p style={{ marginTop: '12px', fontSize: '0.875rem', color: 'var(--text-muted)', maxWidth: '600px' }}>{xkcdData.alt}</p>
+                    </div>
+                )}
+
+                <a href="https://xkcd.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', color: 'var(--accent-primary)', textDecoration: 'none', border: '1px solid var(--accent-primary)', padding: '8px 16px', borderRadius: '4px' }}>
+                    View on XKCD
                 </a>
             </div>
         </div>
