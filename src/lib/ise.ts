@@ -8,7 +8,7 @@ export async function fetchIseSession(query: string) {
     }
 
     // Determine query type (IP vs MAC vs Username)
-    let filterProp = "user_name";
+    let filterProp = "user-name";
     if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(query)) {
         filterProp = "framed_ip_address";
     } else if (/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(query) || /^[0-9A-Fa-f]{12}$/.test(query)) {
