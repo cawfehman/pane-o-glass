@@ -110,6 +110,12 @@ export default async function DashboardHome() {
                     </div>
                 </div>
             </div>
+
+            <div className="glass-card" style={{ marginTop: '24px', textAlign: 'center', padding: '16px' }}>
+                <a href="https://xkcd.com/" target="_blank" rel="noopener noreferrer" style={{ display: 'block', color: 'var(--text-secondary)', textDecoration: 'none' }}>
+                    Need a break? Read today's XKCD Comic
+                </a>
+            </div>
         </div>
     )
 }
