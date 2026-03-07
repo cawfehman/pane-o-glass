@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { NodeSSH } from "node-ssh";
+import { logAudit } from "@/lib/audit";
 
 export async function POST(req: Request) {
     try {
@@ -15,6 +16,10 @@ export async function POST(req: Request) {
 
         const body = await req.json();
         const { ipAddress, action, targetHost } = body;
+
+        // Basic grab of the requester's IP if proxied
+        const forwardedFor = req.headers.get("x-forwarded-for");
+        const clientIp = forwardedFor ? forwardedFor.split(',')[0] : 'unknown';
 
         if (!ipAddress || !action || !targetHost) {
             return new NextResponse("Missing required parameters (ipAddress, action, targetHost)", { status: 400 });
@@ -84,10 +89,21 @@ export async function POST(req: Request) {
                         errorOutput += data.toString();
                     });
 
-                    stream.on("close", () => {
+                    stream.on("close", async () => {
                         ssh.dispose();
+                        const isSuccess = errorOutput.length === 0;
+
+                        if (isSuccess) {
+                            await logAudit(
+                                action === "show" ? "FIREWALL_SHUN_SHOW" : "FIREWALL_SHUN_REMOVE",
+                                `${action === "show" ? "Checked" : "Removed"} shun for ${ipAddress} on ${targetFirewall.name || sshHost}`,
+                                session.user?.id,
+                                clientIp
+                            );
+                        }
+
                         resolve(NextResponse.json({
-                            success: errorOutput.length === 0,
+                            success: isSuccess,
                             command: command,
                             target: targetFirewall.name || sshHost,
                             stdout: output,

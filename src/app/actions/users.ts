@@ -3,7 +3,8 @@
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
-import { signOut } from "@/lib/auth";
+import { signOut, auth } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 
 export async function performLogout() {
     await signOut({ redirectTo: "/login" });
@@ -28,6 +29,9 @@ export async function createUser(formData: FormData) {
         }
     });
 
+    const session = await auth();
+    await logAudit("USER_CREATE", `Created new user: ${username} with role ${role}`, session?.user?.id);
+
     revalidatePath("/users");
 }
 
@@ -43,6 +47,9 @@ export async function deleteUser(id: string) {
     await prisma.user.delete({
         where: { id }
     });
+
+    const session = await auth();
+    await logAudit("USER_DELETE", `Deleted user: ${userToDelete?.username}`, session?.user?.id);
 
     revalidatePath("/users");
 }
@@ -72,6 +79,9 @@ export async function updateUser(id: string, formData: FormData) {
         where: { id },
         data: updateData
     });
+
+    const session = await auth();
+    await logAudit("USER_UPDATE", `Updated user: ${userToUpdate?.username}`, session?.user?.id);
 
     revalidatePath("/users");
 }

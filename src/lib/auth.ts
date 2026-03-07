@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import { prisma } from "./prisma"
 import bcrypt from "bcryptjs"
 import { authConfig } from "./auth.config"
+import { logAudit } from "./audit"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
     ...authConfig,
@@ -34,7 +35,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                         where: { id: user.id },
                         data: { lastLogin: timestamp }
                     })
-                    console.log(`User ${user.username} logged in at: ${timestamp}`)
+
+                    // Log the successful login
+                    await logAudit("USER_LOGIN", "Successful login", user.id);
+
                     return { id: user.id, name: user.username, role: user.role }
                 }
 

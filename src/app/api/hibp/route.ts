@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 
 export async function POST(request: Request) {
     try {
@@ -23,14 +24,14 @@ export async function POST(request: Request) {
         }
 
         // 3. Make the Request to HIBP (URL encoding the account per spec required)
-        const encodedAccount = encodeURIComponent(account.trim());
-        const hibpUrl = `https://haveibeenpwned.com/api/v3/breachedaccount/${encodedAccount}?truncateResponse=false`;
+        const clientIp = request.headers.get("x-forwarded-for")?.split(',')[0] || 'unknown';
+        await logAudit("HIBP_ACCOUNT_SEARCH", `Searched breaches for account: ${account}`, session.user?.id, clientIp);
 
-        const response = await fetch(hibpUrl, {
+        const response = await fetch(`https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(account)}?truncateResponse=false`, {
             headers: {
                 "hibp-api-key": apiKey,
-                "user-agent": "LinuxDash-QueryTool",
-            },
+                "user-agent": "LinuxDash-Security-Tool"
+            }
         });
 
         // 4. Handle HTTP Response Codes defined by HIBP Spec
