@@ -8,16 +8,17 @@ export default function CiscoIseFailuresPage() {
     const [result, setResult] = useState<any>(null);
     const [error, setError] = useState("");
 
-    const handleSearch = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!query.trim()) return;
+    const handleSearch = async (e?: React.FormEvent, overrideQuery?: string) => {
+        if (e) e.preventDefault();
+        const searchTerm = overrideQuery || query;
+        if (!searchTerm.trim()) return;
 
         setLoading(true);
         setError("");
         setResult(null);
 
         try {
-            const res = await fetch(`/api/ise/failures?query=${encodeURIComponent(query)}`);
+            const res = await fetch(`/api/ise/failures?query=${encodeURIComponent(searchTerm)}`);
             const data = await res.json();
 
             if (!res.ok) {
@@ -25,6 +26,7 @@ export default function CiscoIseFailuresPage() {
             }
 
             setResult(data);
+            if (overrideQuery) setQuery(overrideQuery);
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -35,14 +37,14 @@ export default function CiscoIseFailuresPage() {
     return (
         <div>
             <h1 style={{ marginBottom: '8px' }}>Cisco ISE Auth Failures</h1>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>Search the monitoring logs for historic authentication failures by MAC Address.</p>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>Search the monitoring logs for historic authentication failures by MAC Address or Username.</p>
 
-            <form onSubmit={handleSearch} className="glass-card" style={{ display: 'flex', gap: '16px', marginBottom: '32px' }}>
+            <form onSubmit={(e) => handleSearch(e)} className="glass-card" style={{ display: 'flex', gap: '16px', marginBottom: '32px' }}>
                 <input
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Enter MAC Address (e.g., AA:BB:CC:DD:EE:FF)..."
+                    placeholder="Enter MAC Address or Username..."
                     style={{ flex: 1, padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '1rem' }}
                     disabled={loading}
                 />
@@ -59,11 +61,30 @@ export default function CiscoIseFailuresPage() {
 
             {result && !result.found && (
                 <div className="glass-card" style={{ textAlign: 'center', padding: '32px' }}>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem' }}>No authentication failures found for '{query}'</p>
-                    <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>The device might have successfully authenticated, or its failures are older than the 24-hour log retention.</p>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem' }}>No authentication data found for '{query}'</p>
+                    <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>The device might have successfully authenticated, or its history is older than the 24-hour log retention.</p>
                 </div>
             )}
 
+            {/* Discovery View: Multiple MACs found for a Username */}
+            {result && result.found && result.discovery && (
+                <div>
+                    <h3 style={{ marginBottom: '16px' }}>MAC Addresses associated with '{query}'</h3>
+                    <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>Click a MAC address to view its specific authentication failure history.</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
+                        {result.discovery.map((item: any, idx: number) => (
+                            <div key={idx} className="glass-card" style={{ cursor: 'pointer', border: '1px solid var(--border-color)', transition: 'border-color 0.2s' }} onClick={() => handleSearch(undefined, item.mac)}>
+                                <h4 style={{ color: 'var(--accent-primary)', marginBottom: '12px', fontFamily: 'monospace' }}>{item.mac}</h4>
+                                <p style={{ fontSize: '0.9rem', marginBottom: '4px' }}><strong>Last Seen:</strong> {item.timestamp !== "Unknown" ? new Date(item.timestamp).toLocaleString() : "Unknown"}</p>
+                                <p style={{ fontSize: '0.9rem', marginBottom: '12px' }}><strong>Last Connection:</strong> {item.nas_identifier}</p>
+                                <button className="btn-secondary" style={{ width: '100%', fontSize: '0.8rem', padding: '8px' }}>View Failure Logs</button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Failures View: Historical failures for a specific MAC */}
             {result && result.found && result.failures && result.failures.length > 0 && (
                 <div>
                     <h3 style={{ marginBottom: '16px' }}>Found {result.failures.length} Failed Authentication{result.failures.length !== 1 ? 's' : ''}</h3>
