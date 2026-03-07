@@ -90,17 +90,42 @@ export async function fetchIseSession(query: string) {
             }
         }
 
-        const mappedSessions = sessionsArray.map((sessionNode: any) => ({
-            user_name: sessionNode.user_name?._ || sessionNode.user_name || sessionNode.userName,
-            calling_station_id: sessionNode.calling_station_id?._ || sessionNode.calling_station_id || sessionNode.callingStationId,
-            framed_ip_address: sessionNode.framed_ip_address?._ || sessionNode.framed_ip_address || sessionNode.framedIPAddress,
-            nas_ip_address: sessionNode.nas_ip_address?._ || sessionNode.nas_ip_address || sessionNode.nasIpAddress,
-            nas_port_id: sessionNode.nas_port_id?._ || sessionNode.nas_port_id || sessionNode.nasPortId,
-            nas_identifier: sessionNode.nas_identifier?._ || sessionNode.nas_identifier || sessionNode.nasIdentifier || "Unknown",
-            endpoint_profile: sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || sessionNode.endpointProfile || "Unknown",
-            identity_group: sessionNode.identity_group?._ || sessionNode.identity_group || sessionNode.identityGroup || "Unknown",
-            posture_status: sessionNode.posture_status?._ || sessionNode.posture_status || sessionNode.postureStatus || "Unknown"
+        // Run secondary lookups to get rich data (like timestamp) that the ActiveList strips out
+        const detailedSessions = await Promise.all(sessionsArray.map(async (basicNode: any) => {
+            const mac = basicNode.calling_station_id?._ || basicNode.calling_station_id || basicNode.callingStationId;
+            if (!mac) return basicNode; // Fallback to basic node
+
+            try {
+                const macEnrichRes = await fetch(`${url}/admin/API/mnt/Session/MACAddress/${mac}`, {
+                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" }
+                });
+                if (macEnrichRes.ok) {
+                    const macXml = await macEnrichRes.text();
+                    const macData = await parseStringPromise(macXml, { explicitArray: false });
+                    return macData.sessionParameters || macData.activeSession || basicNode;
+                }
+                return basicNode;
+            } catch (e) {
+                return basicNode;
+            }
         }));
+
+        const mappedSessions = detailedSessions.map((sessionNode: any) => {
+            const timestamp = sessionNode.acs_timestamp?._ || sessionNode.acs_timestamp || sessionNode.acsTimestamp || "Unknown";
+
+            return {
+                user_name: sessionNode.user_name?._ || sessionNode.user_name || sessionNode.userName,
+                calling_station_id: sessionNode.calling_station_id?._ || sessionNode.calling_station_id || sessionNode.callingStationId,
+                framed_ip_address: sessionNode.framed_ip_address?._ || sessionNode.framed_ip_address || sessionNode.framedIPAddress,
+                nas_ip_address: sessionNode.nas_ip_address?._ || sessionNode.nas_ip_address || sessionNode.nasIpAddress,
+                nas_port_id: sessionNode.nas_port_id?._ || sessionNode.nas_port_id || sessionNode.nasPortId,
+                nas_identifier: sessionNode.nas_identifier?._ || sessionNode.nas_identifier || sessionNode.nasIdentifier || "Unknown",
+                endpoint_profile: sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || sessionNode.endpointProfile || "Unknown",
+                identity_group: sessionNode.identity_group?._ || sessionNode.identity_group || sessionNode.identityGroup || "Unknown",
+                posture_status: sessionNode.posture_status?._ || sessionNode.posture_status || sessionNode.postureStatus || "Unknown",
+                start_time: timestamp
+            };
+        });
 
         return {
             found: true,

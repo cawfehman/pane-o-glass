@@ -76,6 +76,7 @@ export default function CiscoIsePage() {
                                     <p><strong>Username:</strong> {session.user_name || "N/A"}</p>
                                     <p><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace', color: 'var(--accent-primary)' }}>{session.calling_station_id}</span></p>
                                     <p><strong>IP Address:</strong> <span style={{ fontFamily: 'monospace' }}>{session.framed_ip_address || "N/A"}</span></p>
+                                    <p><strong>Auth Start:</strong> {session.start_time && session.start_time !== "Unknown" ? new Date(session.start_time).toLocaleString() : "Unknown"}</p>
                                 </div>
 
                                 <div>
