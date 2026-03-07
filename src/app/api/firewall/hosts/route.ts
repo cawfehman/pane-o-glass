@@ -8,15 +8,26 @@ export async function GET() {
             return new NextResponse("Unauthorized", { status: 401 });
         }
 
-        const hostsStr = process.env.FIREWALL_HOSTS || "";
-        // Support comma separated list of IPs/Hostnames
-        const hosts = hostsStr.split(",").map(h => h.trim()).filter(h => h.length > 0);
-
-        if (hosts.length === 0) {
+        const configStr = process.env.FIREWALL_CONFIG || "[]";
+        let firewalls: any[] = [];
+        try {
+            firewalls = JSON.parse(configStr);
+        } catch (e) {
             return NextResponse.json({
-                error: "No firewalls configured. Please add FIREWALL_HOSTS to your .env file."
+                error: "Invalid FIREWALL_CONFIG JSON format in .env file."
             }, { status: 500 });
         }
+
+        if (!Array.isArray(firewalls) || firewalls.length === 0) {
+            return NextResponse.json({
+                error: "No firewalls configured. Please configure FIREWALL_CONFIG array in your .env file."
+            }, { status: 500 });
+        }
+
+        const hosts = firewalls.map((fw: any) => ({
+            id: fw.id,
+            name: fw.name || fw.ip
+        }));
 
         return NextResponse.json({ hosts });
     } catch (error) {

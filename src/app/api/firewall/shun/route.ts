@@ -31,27 +31,35 @@ export async function POST(req: Request) {
             return new NextResponse("Invalid action. Must be 'show' or 'remove'", { status: 400 });
         }
 
-        // Verify targetHost is in our allowed list
-        const hostsStr = process.env.FIREWALL_HOSTS || "";
-        const allowedHosts = hostsStr.split(",").map(h => h.trim());
-        if (!allowedHosts.includes(targetHost)) {
-            return new NextResponse("Target host is not in the allowed configuration listing", { status: 403 });
+        // Verify targetHost (ID) is in our JSON config
+        const configStr = process.env.FIREWALL_CONFIG || "[]";
+        let firewalls: any[] = [];
+        try {
+            firewalls = JSON.parse(configStr);
+        } catch (e) {
+            return new NextResponse("Invalid FIREWALL_CONFIG JSON configuration", { status: 500 });
+        }
+
+        const targetFirewall = firewalls.find((fw: any) => fw.id === targetHost);
+        if (!targetFirewall) {
+            return new NextResponse("Target host ID is not in the configured firewalls", { status: 403 });
         }
 
         const command = action === "show" ? `show shun ${ipAddress}` : `no shun ${ipAddress}`;
 
-        const username = process.env.FIREWALL_USER;
-        const password = process.env.FIREWALL_PASS;
+        const sshHost = targetFirewall.ip;
+        const username = targetFirewall.user;
+        const password = targetFirewall.pass;
 
-        if (!username || !password) {
-            return new NextResponse("Firewall credentials are not configured on the server", { status: 500 });
+        if (!username || !password || !sshHost) {
+            return new NextResponse("Credentials or IP missing for the target firewall in FIREWALL_CONFIG", { status: 500 });
         }
 
         const ssh = new NodeSSH();
 
         try {
             await ssh.connect({
-                host: targetHost,
+                host: sshHost,
                 username: username,
                 password: password,
                 // Cisco CLI often requires specific cipher/kex or works differently,
@@ -81,7 +89,7 @@ export async function POST(req: Request) {
                         resolve(NextResponse.json({
                             success: errorOutput.length === 0,
                             command: command,
-                            target: targetHost,
+                            target: targetFirewall.name || sshHost,
                             stdout: output,
                             stderr: errorOutput
                         }));

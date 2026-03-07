@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 
 export default function CiscoFirewallPage() {
     const [ipAddress, setIpAddress] = useState("");
-    const [availableHosts, setAvailableHosts] = useState<string[]>([]);
+    const [availableHosts, setAvailableHosts] = useState<{ id: string, name: string }[]>([]);
     const [targetHost, setTargetHost] = useState("");
     const [loadingHosts, setLoadingHosts] = useState(true);
     const [hostsError, setHostsError] = useState("");
@@ -22,7 +22,7 @@ export default function CiscoFirewallPage() {
                     const data = await res.json();
                     setAvailableHosts(data.hosts || []);
                     if (data.hosts && data.hosts.length > 0) {
-                        setTargetHost(data.hosts[0]);
+                        setTargetHost(data.hosts[0].id);
                     }
                 } else {
                     const err = await res.json();
@@ -48,7 +48,8 @@ export default function CiscoFirewallPage() {
         }
 
         if (action === "remove") {
-            const confirmed = window.confirm(`Are you sure you want to remove the shun for ${ipAddress} on ${targetHost}?`);
+            const hostName = availableHosts.find(h => h.id === targetHost)?.name || targetHost;
+            const confirmed = window.confirm(`Are you sure you want to remove the shun for ${ipAddress} on ${hostName}?`);
             if (!confirmed) return;
         }
 
@@ -114,7 +115,7 @@ export default function CiscoFirewallPage() {
                                     }}
                                 >
                                     {availableHosts.map(h => (
-                                        <option key={h} value={h} style={{ background: 'var(--bg-dark)' }}>{h}</option>
+                                        <option key={h.id} value={h.id} style={{ background: 'var(--bg-dark)' }}>{h.name}</option>
                                     ))}
                                 </select>
                             </div>
@@ -186,7 +187,7 @@ export default function CiscoFirewallPage() {
 
                         {actionLoading && (
                             <div style={{ color: '#3b82f6', animation: 'pulse 2s infinite' }}>
-                                Executing SSH command on {targetHost}...
+                                Executing SSH command on {availableHosts.find(h => h.id === targetHost)?.name || targetHost}...
                             </div>
                         )}
 
