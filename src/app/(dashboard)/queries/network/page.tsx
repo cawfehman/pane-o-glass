@@ -23,7 +23,7 @@ export default function NetworkToolsPage() {
                             <h3 style={{ margin: 0 }}>Cisco Firewall Utilities</h3>
                         </div>
                         <p style={{ color: 'var(--text-muted)' }}>
-                            Securely query and remove IPv4 shuns across your configured Cisco Adaptive Security Appliances (ASA) directly from the dashboard.
+                            Securely query and remove IPv4 shuns across your configured Cisco Firewalls directly from the dashboard.
                         </p>
                     </div>
                 </Link>
