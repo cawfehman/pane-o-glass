@@ -70,7 +70,10 @@ export default function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
                                 Cisco Firewall
                             </Link>
                             <Link href="/queries/ise" className={`nav-link ${pathname === "/queries/ise" ? "active" : ""}`} style={{ paddingLeft: '3.5rem', fontSize: '0.875rem' }}>
-                                Cisco ISE
+                                Cisco ISE Live Sessions
+                            </Link>
+                            <Link href="/queries/ise-failures" className={`nav-link ${pathname === "/queries/ise-failures" ? "active" : ""}`} style={{ paddingLeft: '3.5rem', fontSize: '0.875rem' }}>
+                                Cisco ISE Auth Failures
                             </Link>
                         </div>
                     )}
