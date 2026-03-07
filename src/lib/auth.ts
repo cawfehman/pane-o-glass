@@ -14,7 +14,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 username: { label: "Username", type: "text" },
                 password: { label: "Password", type: "password" }
             },
-            async authorize(credentials) {
+            async authorize(credentials, req) {
                 if (!credentials?.username || !credentials?.password) return null
 
                 const user = await prisma.user.findUnique({
@@ -36,8 +36,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                         data: { lastLogin: timestamp }
                     })
 
+                    // Try to extract IP from the request
+                    let clientIp = 'internal';
+                    try {
+                        // In NextAuth v5, req contains headers and standard Request properties
+                        const forwardedFor = typeof req?.headers?.get === 'function'
+                            ? req.headers.get("x-forwarded-for")
+                            : (req?.headers as any)?.["x-forwarded-for"];
+
+                        if (forwardedFor) {
+                            clientIp = String(forwardedFor).split(',')[0].trim();
+                        }
+                    } catch (e) {
+                        console.error("Failed to extract IP during login", e);
+                    }
+
                     // Log the successful login
-                    await logAudit("USER_LOGIN", "Successful login", user.id);
+                    await logAudit("USER_LOGIN", "Successful login", user.id, clientIp);
 
                     return { id: user.id, name: user.username, role: user.role }
                 }
