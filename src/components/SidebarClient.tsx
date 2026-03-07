@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import appVersion from "../version.json";
+import packageJson from "../../package.json";
 
 export default function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
     const pathname = usePathname();
@@ -122,7 +122,7 @@ export default function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
 
             {/* Version Footer */}
             <div style={{ marginTop: 'auto', paddingTop: '2rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                v{appVersion.version}
+                v{packageJson.version}
             </div>
         </aside>
     );

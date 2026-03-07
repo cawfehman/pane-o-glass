@@ -1,13 +1,13 @@
 {
   "name": "pane-o-glass",
-  "version": "0.1.0",
+  "version": "0.5.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "deploy": "node scripts/bump.js && git add src/version.json && git commit -m \"chore: bump version\" && git push production master"
+    "deploy": "npm version patch && git push production master --follow-tags"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
