@@ -123,7 +123,18 @@ export async function fetchIseSession(query: string) {
                 endpoint_profile: sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || sessionNode.endpointProfile || "Unknown",
                 identity_group: sessionNode.identity_group?._ || sessionNode.identity_group || sessionNode.identityGroup || "Unknown",
                 posture_status: sessionNode.posture_status?._ || sessionNode.posture_status || sessionNode.postureStatus || "Unknown",
-                start_time: timestamp
+                start_time: timestamp,
+                authorization_rule: sessionNode.authorization_rule?._ || sessionNode.authorization_rule || sessionNode.authorizationRule || "Unknown",
+                authentication_method: sessionNode.authentication_method?._ || sessionNode.authentication_method || sessionNode.authenticationMethod || "Unknown",
+                authentication_protocol: sessionNode.authentication_protocol?._ || sessionNode.authentication_protocol || sessionNode.authenticationProtocol || "Unknown",
+                vlan: sessionNode.vlan?._ || sessionNode.vlan || "Unknown",
+                security_group: sessionNode.cisco_cts_sgt?._ || sessionNode.cisco_cts_sgt || sessionNode.ciscoCtsSgt || "Unknown",
+                mdm_server_name: sessionNode.mdm_server_name?._ || sessionNode.mdm_server_name || sessionNode.mdmServerName || "N/A",
+                mdm_reachable: sessionNode.mdm_reachable?._ || sessionNode.mdm_reachable || sessionNode.mdmReachable || "Unknown",
+                mdm_compliant: sessionNode.mdm_compliant?._ || sessionNode.mdm_compliant || sessionNode.mdmCompliant || "Unknown",
+                audit_session_id: sessionNode.audit_session_id?._ || sessionNode.audit_session_id || sessionNode.auditSessionId || "Unknown",
+                acs_server: sessionNode.acs_server?._ || sessionNode.acs_server || sessionNode.acsServer || "Unknown",
+                endpoint_policy: sessionNode.endpoint_policy?._ || sessionNode.endpoint_policy || sessionNode.endpointPolicy || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || "Unknown"
             };
         });
 

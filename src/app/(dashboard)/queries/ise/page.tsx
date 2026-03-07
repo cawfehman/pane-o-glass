@@ -7,6 +7,7 @@ export default function CiscoIsePage() {
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState<any>(null);
     const [error, setError] = useState("");
+    const [expandedSession, setExpandedSession] = useState<number | null>(null);
 
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -15,6 +16,7 @@ export default function CiscoIsePage() {
         setLoading(true);
         setError("");
         setResult(null);
+        setExpandedSession(null); // Reset expansions on new search
 
         try {
             const res = await fetch(`/api/ise/session?query=${encodeURIComponent(query)}`);
@@ -30,6 +32,11 @@ export default function CiscoIsePage() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const toggleExpand = (idx: number) => {
+        if (expandedSession === idx) setExpandedSession(null);
+        else setExpandedSession(idx);
     };
 
     return (
@@ -67,38 +74,71 @@ export default function CiscoIsePage() {
             {result && result.found && result.sessions && result.sessions.length > 0 && (
                 <div>
                     <h3 style={{ marginBottom: '16px' }}>Found {result.sessions.length} Active Session{result.sessions.length !== 1 ? 's' : ''}</h3>
-                    {result.sessions.map((session: any, idx: number) => (
-                        <div key={idx} className="glass-card" style={{ marginBottom: '24px' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+                    {result.sessions.map((session: any, idx: number) => {
+                        const isExpanded = expandedSession === idx;
+                        return (
+                            <div
+                                key={idx}
+                                className="glass-card"
+                                style={{ marginBottom: '24px', cursor: 'pointer', transition: 'all 0.2s', border: isExpanded ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)' }}
+                                onClick={() => toggleExpand(idx)}
+                            >
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
 
-                                <div>
-                                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Identity</h4>
-                                    <p><strong>Username:</strong> {session.user_name || "N/A"}</p>
-                                    <p><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace', color: 'var(--accent-primary)' }}>{session.calling_station_id}</span></p>
-                                    <p><strong>IP Address:</strong> <span style={{ fontFamily: 'monospace' }}>{session.framed_ip_address || "N/A"}</span></p>
-                                    <p><strong>Auth Start:</strong> {session.start_time && session.start_time !== "Unknown" ? new Date(session.start_time).toLocaleString() : "Unknown"}</p>
+                                    <div>
+                                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Identity</h4>
+                                        <p><strong>Username:</strong> {session.user_name || "N/A"}</p>
+                                        <p><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace', color: 'var(--accent-primary)' }}>{session.calling_station_id}</span></p>
+                                        <p><strong>IP Address:</strong> <span style={{ fontFamily: 'monospace' }}>{session.framed_ip_address || "N/A"}</span></p>
+                                        <p><strong>Auth Start:</strong> {session.start_time && session.start_time !== "Unknown" ? new Date(session.start_time).toLocaleString() : "Unknown"}</p>
+                                    </div>
+
+                                    <div>
+                                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Location</h4>
+                                        <p><strong>Network Device IP:</strong> {session.nas_ip_address}</p>
+                                        <p><strong>Connection Port/SSID:</strong> {session.nas_port_id}</p>
+                                        <p><strong>Switch Identifier:</strong> {session.nas_identifier}</p>
+                                        {isExpanded && <p><strong>ACS Server (PSN):</strong> {session.acs_server || "Unknown"}</p>}
+                                    </div>
+
+                                    <div>
+                                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Posture & Authentication</h4>
+                                        <p><strong>Endpoint Profile:</strong> {session.endpoint_profile || "Unknown"}</p>
+                                        <p><strong>Identity Group:</strong> {session.identity_group || "Unknown"}</p>
+                                        <p><strong>Posture Status:</strong> <span style={{
+                                            color: session.posture_status === 'Compliant' ? 'var(--accent-tertiary)' :
+                                                session.posture_status === 'Pending' ? 'var(--accent-primary)' : 'var(--accent-secondary)'
+                                        }}>{session.posture_status || "Unknown"}</span></p>
+                                    </div>
+
                                 </div>
 
-                                <div>
-                                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Location</h4>
-                                    <p><strong>Network Device IP:</strong> {session.nas_ip_address}</p>
-                                    <p><strong>Connection Port/SSID:</strong> {session.nas_port_id}</p>
-                                    <p><strong>Switch Identifier:</strong> {session.nas_identifier}</p>
-                                </div>
+                                {isExpanded && (
+                                    <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid var(--border-color)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+                                        <div>
+                                            <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Deep Forensics</h4>
+                                            <p><strong>AuthZ Rule:</strong> {session.authorization_rule || "Unknown"}</p>
+                                            <p><strong>Auth Method:</strong> {session.authentication_method || "Unknown"}</p>
+                                            <p><strong>Auth Protocol:</strong> {session.authentication_protocol || "Unknown"}</p>
+                                            <p><strong>TrustSec SGT:</strong> {session.security_group || "Unknown"}</p>
+                                        </div>
+                                        <div>
+                                            <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>MDM & Audit</h4>
+                                            <p><strong>MDM Server:</strong> {session.mdm_server_name || "N/A"}</p>
+                                            <p><strong>MDM Reachable:</strong> {session.mdm_reachable || "Unknown"}</p>
+                                            <p><strong>MDM Compliant:</strong> {session.mdm_compliant || "Unknown"}</p>
+                                            <p><strong>Audit Session ID:</strong> <span style={{ fontFamily: 'monospace', fontSize: '0.85em' }}>{session.audit_session_id || "Unknown"}</span></p>
+                                        </div>
+                                    </div>
+                                )}
 
-                                <div>
-                                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Posture & Authentication</h4>
-                                    <p><strong>Endpoint Profile:</strong> {session.endpoint_profile || "Unknown"}</p>
-                                    <p><strong>Identity Group:</strong> {session.identity_group || "Unknown"}</p>
-                                    <p><strong>Posture Status:</strong> <span style={{
-                                        color: session.posture_status === 'Compliant' ? 'var(--accent-tertiary)' :
-                                            session.posture_status === 'Pending' ? 'var(--accent-primary)' : 'var(--accent-secondary)'
-                                    }}>{session.posture_status || "Unknown"}</span></p>
+                                <div style={{ textAlign: 'center', marginTop: isExpanded ? '16px' : '0px', paddingTop: isExpanded ? '16px' : '16px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                                    {isExpanded ? '▲ Click anywhere on card to collapse' : '▼ Click card to expand deep forensic details'}
                                 </div>
 
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </div>
