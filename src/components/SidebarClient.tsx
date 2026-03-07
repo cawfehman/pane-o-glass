@@ -69,6 +69,9 @@ export default function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
                             <Link href="/queries/firewall" className={`nav-link ${pathname === "/queries/firewall" ? "active" : ""}`} style={{ paddingLeft: '3.5rem', fontSize: '0.875rem' }}>
                                 Cisco Firewall
                             </Link>
+                            <Link href="/queries/ise" className={`nav-link ${pathname === "/queries/ise" ? "active" : ""}`} style={{ paddingLeft: '3.5rem', fontSize: '0.875rem' }}>
+                                Cisco ISE
+                            </Link>
                         </div>
                     )}
                 </div>
