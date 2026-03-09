@@ -101,14 +101,48 @@ export default function PasswordCheckCard() {
                 </div>
 
                 {showInfo && (
-                    <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(16, 185, 129, 0.1)', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                        <p style={{ marginBottom: '8px' }}><strong>How k-Anonymity works:</strong></p>
-                        <ol style={{ paddingLeft: '1.2rem', margin: 0 }}>
-                            <li>Your browser creates a digital fingerprint (SHA-1 hash) of the password.</li>
-                            <li>Only the first 5 characters of that fingerprint are sent to the "Have I Been Pwned" database.</li>
-                            <li>The database returns thousands of potential matches.</li>
-                            <li>Your browser checks the list locally to find the match. Your password remains unknown to the server.</li>
-                        </ol>
+                    <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(16, 185, 129, 0.1)', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                        <h4 style={{ color: 'var(--text-primary)', marginBottom: '1rem' }}>How the Password Risk Check Tool Works</h4>
+                        
+                        <div style={{ marginBottom: '1.25rem' }}>
+                            <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>1. Your Password Never Leaves Your Browser</strong>
+                            <p style={{ margin: 0, lineHeight: '1.5' }}>
+                                When you type a password into this tool, <strong>the actual password is never sent to our servers or anyone else.</strong>
+                            </p>
+                        </div>
+
+                        <div style={{ marginBottom: '1.25rem' }}>
+                            <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>2. We Use "k-Anonymity" Technology</strong>
+                            <p style={{ margin: 0, lineHeight: '1.5' }}>
+                                Instead of sending your password, your browser creates a security "fingerprint" called a SHA-1 hash.
+                            </p>
+                            <ul style={{ paddingLeft: '1.2rem', marginTop: '8px', marginBottom: '8px' }}>
+                                <li>Your browser takes only the <strong>first 5 characters</strong> of that fingerprint and sends them to the "Have I Been Pwned" security database.</li>
+                                <li>The database sends back a list of thousands of fingerprints that also start with those same 5 characters.</li>
+                                <li>Your browser then checks that list locally to see if your full fingerprint is there.</li>
+                            </ul>
+                            <p style={{ margin: 0, lineHeight: '1.5', fontStyle: 'italic', fontSize: '0.8rem' }}>
+                                <strong>Result:</strong> The security database never knows what your password (or even your full fingerprint) is.
+                            </p>
+                        </div>
+
+                        <div style={{ marginBottom: '1.25rem' }}>
+                            <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>3. Secure and Anonymous</strong>
+                            <p style={{ margin: 0, lineHeight: '1.5' }}>
+                                <strong>No Storage:</strong> We do not store, log, or track the passwords you check.
+                                <br />
+                                <strong>Trusted Database:</strong> We query the "Have I Been Pwned" service, which is a world-renowned security resource covering over <strong>13 billion compromised records</strong>.
+                            </p>
+                        </div>
+
+                        <div style={{ background: 'rgba(56, 189, 248, 0.05)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.1)' }}>
+                            <strong style={{ color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>Questions or Concerns?</strong>
+                            <p style={{ margin: 0, fontSize: '0.8rem' }}>
+                                Your security is our top priority. If you have any questions, please contact the <strong>Cooper Health InfoSec Team</strong> directly at:
+                                <br />
+                                <a href="mailto:infosec@cooperhealth.edu" style={{ color: 'var(--accent-primary)', textDecoration: 'none' }}>infosec@cooperhealth.edu</a>
+                            </p>
+                        </div>
                     </div>
                 )}
             </div>
