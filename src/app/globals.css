@@ -297,6 +297,23 @@ body {
   --accent-glow: rgba(6, 182, 212, 0.2);
 }
 
+.theme-light {
+  --bg-dark: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-hover: #f1f5f9;
+  
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  
+  --accent-primary: #2563eb;
+  --accent-primary-hover: #1d4ed8;
+  --accent-glow: rgba(37, 99, 235, 0.1);
+  
+  --border-color: #e2e8f0;
+  --glass-bg: rgba(255, 255, 255, 0.8);
+}
+
 /* User Menu Dropdown */
 .user-menu-container {
   position: relative;

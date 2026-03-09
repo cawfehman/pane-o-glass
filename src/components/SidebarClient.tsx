@@ -2,24 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect } from "react";
 import packageJson from "../../package.json";
 
-export default function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
+export default function SidebarClient({ role }: { role: string }) {
     const pathname = usePathname();
-
-    // Auto-expand menus based on current path
-    const [networkOpen, setNetworkOpen] = useState(false);
-    const [hibpOpen, setHibpOpen] = useState(false);
-
-    useEffect(() => {
-        if (pathname?.startsWith("/queries/network") || pathname?.startsWith("/queries/firewall")) {
-            setNetworkOpen(true);
-        }
-        if (pathname?.startsWith("/queries/hibp")) {
-            setHibpOpen(true);
-        }
-    }, [pathname]);
+    const isAdmin = role === "ADMIN";
+    const isAnalyst = role === "ANALYST" || isAdmin;
 
     return (
         <aside className="sidebar">
@@ -37,81 +25,39 @@ export default function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
                     Dashboard
                 </Link>
+
                 <Link href="/queries" className={`nav-link ${pathname === "/queries" ? "active" : ""}`}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
                     System Tools
                 </Link>
 
-                <div className="nav-section" style={{ marginTop: '1rem' }}>Modules</div>
-
-                {/* Network Tools Collapsible */}
-                <div>
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <Link
-                            href="/queries/network"
-                            className={`nav-link ${pathname === "/queries/network" ? "active" : ""}`}
-                            style={{ flex: 1, paddingLeft: '1.5rem' }}
-                        >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '8px' }}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                            Network Tools
+                {/* Consolidated Tool Links */}
+                {isAnalyst && (
+                    <div style={{ marginLeft: '1rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <Link href="/queries/firewall" className={`nav-link ${pathname === "/queries/firewall" ? "active" : ""}`} style={{ fontSize: '0.9rem' }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                            Cisco Firewall
                         </Link>
-                        <button
-                            onClick={(e) => { e.preventDefault(); setNetworkOpen(!networkOpen); }}
-                            style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '8px' }}
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: networkOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
-                                <polyline points="6 9 12 15 18 9"></polyline>
-                            </svg>
-                        </button>
-                    </div>
-                    {networkOpen && (
-                        <div style={{ display: 'flex', flexDirection: 'column', marginTop: '4px' }}>
-                            <Link href="/queries/firewall" className={`nav-link ${pathname === "/queries/firewall" ? "active" : ""}`} style={{ paddingLeft: '3.5rem', fontSize: '0.875rem' }}>
-                                Cisco Firewall
-                            </Link>
-                            <Link href="/queries/ise" className={`nav-link ${pathname === "/queries/ise" ? "active" : ""}`} style={{ paddingLeft: '3.5rem', fontSize: '0.875rem' }}>
-                                Cisco ISE Live Sessions
-                            </Link>
-                            <Link href="/queries/ise-failures" className={`nav-link ${pathname === "/queries/ise-failures" ? "active" : ""}`} style={{ paddingLeft: '3.5rem', fontSize: '0.875rem' }}>
-                                Cisco ISE Auth Failures
-                            </Link>
-                        </div>
-                    )}
-                </div>
-
-                {/* HIBP Collapsible */}
-                <div>
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <Link
-                            href="/queries/hibp"
-                            className={`nav-link ${pathname === "/queries/hibp" ? "active" : ""}`}
-                            style={{ flex: 1, paddingLeft: '1.5rem' }}
-                        >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '8px' }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                            Have I Been Pwned
+                        <Link href="/queries/ise" className={`nav-link ${pathname === "/queries/ise" ? "active" : ""}`} style={{ fontSize: '0.9rem' }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+                            Cisco ISE
                         </Link>
-                        <button
-                            onClick={(e) => { e.preventDefault(); setHibpOpen(!hibpOpen); }}
-                            style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '8px' }}
-                        >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: hibpOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
-                                <polyline points="6 9 12 15 18 9"></polyline>
-                            </svg>
-                        </button>
-                    </div>
-                    {hibpOpen && (
-                        <div style={{ display: 'flex', flexDirection: 'column', marginTop: '4px' }}>
-                            <Link href="/queries/hibp/account" className={`nav-link ${pathname === "/queries/hibp/account" ? "active" : ""}`} style={{ paddingLeft: '3.5rem', fontSize: '0.875rem' }}>
-                                Account Security
+                        <Link href="/queries/ise-failures" className={`nav-link ${pathname === "/queries/ise-failures" ? "active" : ""}`} style={{ fontSize: '0.9rem' }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                            ISE Auth Failures
+                        </Link>
+                        <Link href="/queries/hibp/account" className={`nav-link ${pathname === "/queries/hibp/account" ? "active" : ""}`} style={{ fontSize: '0.9rem' }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                            HIBP Account Security
+                        </Link>
+                        {isAdmin && (
+                            <Link href="/queries/hibp/domain" className={`nav-link ${pathname === "/queries/hibp/domain" ? "active" : ""}`} style={{ fontSize: '0.9rem' }}>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                                HIBP Domain Security
                             </Link>
-                            {isAdmin && (
-                                <Link href="/queries/hibp/domain" className={`nav-link ${pathname === "/queries/hibp/domain" ? "active" : ""}`} style={{ paddingLeft: '3.5rem', fontSize: '0.875rem' }}>
-                                    Domain Security
-                                </Link>
-                            )}
-                        </div>
-                    )}
-                </div>
+                        )}
+                    </div>
+                )}
 
                 {isAdmin && (
                     <>

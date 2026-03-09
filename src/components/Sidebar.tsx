@@ -3,7 +3,7 @@ import SidebarClient from "./SidebarClient";
 
 export default async function Sidebar() {
     const session = await auth();
-    const isAdmin = (session?.user as any)?.role === 'ADMIN';
+    const role = (session?.user as any)?.role || 'USER';
 
-    return <SidebarClient isAdmin={isAdmin} />;
+    return <SidebarClient role={role} />;
 }

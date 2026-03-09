@@ -9,6 +9,7 @@ const THEMES = [
     { id: "forest", name: "Emerald Forest", colors: ["#10b981", "#0a1f0a", "#050a05"] },
     { id: "sunset", name: "Deep Sunset", colors: ["#f97316", "#1f0a0a", "#0f0505"] },
     { id: "slate", name: "Pro Slate", colors: ["#06b6d4", "#1e293b", "#0f172a"] },
+    { id: "light", name: "Professional Light", colors: ["#2563eb", "#ffffff", "#f8fafc"] },
 ] as const;
 
 export default function ThemeSelector() {
