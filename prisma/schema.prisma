@@ -11,14 +11,26 @@ datasource db {
 }
 
 model User {
-  id        String     @id @default(cuid())
-  username  String     @unique
-  password  String
-  role      String     @default("USER")
-  lastLogin DateTime?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  auditLogs AuditLog[]
+  id         String     @id @default(cuid())
+  username   String     @unique
+  password   String
+  role       String     @default("USER")
+  isExternal Boolean    @default(false)
+  lastLogin  DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  auditLogs  AuditLog[]
+  firewallQueries FirewallQueryHistory[]
+}
+
+model FirewallQueryHistory {
+  id        String   @id @default(cuid())
+  userId    String?  
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  command   String   // "Check Shun", "Remove Shun"
+  targetIp  String
+  targetName String? // e.g. "FW01"
+  createdAt DateTime @default(now())
 }
 
 model AuditLog {

@@ -1,5 +1,6 @@
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
+import SessionTimeout from "@/components/SessionTimeout";
 
 export default function DashboardLayout({
     children,
@@ -8,6 +9,7 @@ export default function DashboardLayout({
 }) {
     return (
         <div className="app-shell">
+            <SessionTimeout />
             <Sidebar />
             <main className="main-content">
                 <Topbar />

@@ -6,9 +6,8 @@ export async function POST(request: Request) {
     try {
         // 1. Verify Authentication & Authorization
         const session = await auth();
-        // Allow all logged-in users to query (or restrict to ADMIN if desired)
-        if (!session?.user) {
-            return new NextResponse("Unauthorized", { status: 401 });
+        if (!session?.user || (session.user as any).role !== 'ADMIN') {
+            return new NextResponse("Forbidden: This tool is restricted to Administrators.", { status: 403 });
         }
 
         const { domain } = await request.json();

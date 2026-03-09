@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { NodeSSH } from "node-ssh";
 import { logAudit } from "@/lib/audit";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
     try {
@@ -100,6 +101,19 @@ export async function POST(req: Request) {
                                 session.user?.id,
                                 clientIp
                             );
+                        }
+
+                        try {
+                            await prisma.firewallQueryHistory.create({
+                                data: {
+                                    userId: session.user?.id,
+                                    command: action === "show" ? "Check Shun" : "Remove Shun",
+                                    targetIp: ipAddress,
+                                    targetName: targetFirewall.name || sshHost
+                                }
+                            });
+                        } catch (e) {
+                            console.error("Failed to log firewall query to history:", e);
                         }
 
                         resolve(NextResponse.json({

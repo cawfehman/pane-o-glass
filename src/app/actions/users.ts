@@ -14,6 +14,7 @@ export async function createUser(formData: FormData) {
     const username = formData.get("username") as string;
     const password = formData.get("password") as string;
     const role = formData.get("role") as string || "USER";
+    const isExternal = formData.get("isExternal") === "on";
 
     if (!username || !password) {
         throw new Error("Username and password required");
@@ -25,7 +26,8 @@ export async function createUser(formData: FormData) {
         data: {
             username,
             password: hashedPassword,
-            role
+            role,
+            isExternal
         }
     });
 
@@ -58,6 +60,7 @@ export async function updateUser(id: string, formData: FormData) {
     const username = formData.get("username") as string;
     const password = formData.get("password") as string;
     const role = formData.get("role") as string;
+    const isExternal = formData.get("isExternal");
 
     const userToUpdate = await prisma.user.findUnique({ where: { id } });
 
@@ -71,6 +74,7 @@ export async function updateUser(id: string, formData: FormData) {
     const updateData: any = {};
     if (username) updateData.username = username;
     if (role) updateData.role = role;
+    if (isExternal !== null) updateData.isExternal = isExternal === "on";
     if (password) {
         updateData.password = await bcrypt.hash(password, 10);
     }

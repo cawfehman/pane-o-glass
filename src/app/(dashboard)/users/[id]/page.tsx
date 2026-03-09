@@ -66,8 +66,16 @@ export default async function EditUserPage({ params }: { params: { id: string } 
                         <label htmlFor="role">Role</label>
                         <select name="role" id="role" defaultValue={user.role} style={{ background: 'var(--bg-dark)', border: '1px solid var(--border-color)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit' }}>
                             <option value="USER">User</option>
+                            <option value="ANALYST">Analyst</option>
                             <option value="ADMIN">Admin</option>
                         </select>
+                    </div>
+
+                    <div className="input-group">
+                        <label htmlFor="isExternal" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                            <input type="checkbox" name="isExternal" id="isExternal" defaultChecked={user.isExternal} style={{ width: '16px', height: '16px' }} />
+                            Use Active Directory (External)
+                        </label>
                     </div>
 
                     <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>

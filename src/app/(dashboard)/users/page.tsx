@@ -36,8 +36,15 @@ export default async function UsersPage() {
                         <label htmlFor="role">Role</label>
                         <select name="role" id="role" style={{ background: 'var(--bg-dark)', border: '1px solid var(--border-color)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit' }}>
                             <option value="USER">User</option>
+                            <option value="ANALYST">Analyst</option>
                             <option value="ADMIN">Admin</option>
                         </select>
+                    </div>
+                    <div className="input-group">
+                        <label htmlFor="isExternal" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                            <input type="checkbox" name="isExternal" id="isExternal" style={{ width: '16px', height: '16px' }} />
+                            Use Active Directory (External)
+                        </label>
                     </div>
                     <button type="submit" className="btn-primary" style={{ marginBottom: '2px' }}>Create Account</button>
                 </form>
@@ -60,15 +67,29 @@ export default async function UsersPage() {
                             <tr key={user.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                                 <td style={{ padding: '12px 8px', fontWeight: 500 }}>{user.username}</td>
                                 <td style={{ padding: '12px 8px' }}>
-                                    <span style={{
-                                        padding: '4px 8px',
-                                        borderRadius: '12px',
-                                        fontSize: '0.75rem',
-                                        backgroundColor: user.role === 'ADMIN' ? 'rgba(59, 130, 246, 0.2)' : 'var(--bg-surface-hover)',
-                                        color: user.role === 'ADMIN' ? 'var(--accent-primary)' : 'var(--text-secondary)'
-                                    }}>
-                                        {user.role}
-                                    </span>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                        <span style={{
+                                            padding: '4px 8px',
+                                            borderRadius: '12px',
+                                            fontSize: '0.75rem',
+                                            backgroundColor: user.role === 'ADMIN' ? 'rgba(59, 130, 246, 0.2)' : user.role === 'ANALYST' ? 'rgba(168, 85, 247, 0.2)' : 'var(--bg-surface-hover)',
+                                            color: user.role === 'ADMIN' ? 'var(--accent-primary)' : user.role === 'ANALYST' ? 'rgb(192, 132, 252)' : 'var(--text-secondary)'
+                                        }}>
+                                            {user.role}
+                                        </span>
+                                        {user.isExternal && (
+                                            <span style={{
+                                                padding: '4px 8px',
+                                                borderRadius: '12px',
+                                                fontSize: '0.75rem',
+                                                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                                                color: 'rgb(74, 222, 128)',
+                                                border: '1px solid rgba(34, 197, 94, 0.2)'
+                                            }} title="Authenticates via Active Directory">
+                                                AD / EXT
+                                            </span>
+                                        )}
+                                    </div>
                                 </td>
                                 <td style={{ padding: '12px 8px', color: 'var(--text-muted)' }}>
                                     {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}

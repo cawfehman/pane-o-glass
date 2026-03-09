@@ -4,8 +4,8 @@ import { auth } from "@/lib/auth";
 export async function GET() {
     try {
         const session = await auth();
-        if (!session?.user) {
-            return new NextResponse("Unauthorized", { status: 401 });
+        if (!session?.user || (session.user as any).role !== 'ADMIN') {
+            return new NextResponse("Forbidden: This tool is restricted to Administrators.", { status: 403 });
         }
 
         const apiKey = process.env.HIBP_API_KEY;

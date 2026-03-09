@@ -13,6 +13,23 @@ export default function CiscoFirewallPage() {
     const [actionError, setActionError] = useState("");
     const [actionResult, setActionResult] = useState<{ stdout: string; stderr: string; command: string; target: string } | null>(null);
 
+    const [history, setHistory] = useState<any[]>([]);
+    const [loadingHistory, setLoadingHistory] = useState(true);
+
+    const fetchHistory = async () => {
+        try {
+            const res = await fetch("/api/firewall/history");
+            if (res.ok) {
+                const data = await res.json();
+                setHistory(data);
+            }
+        } catch (e) {
+            console.error("Failed to load history");
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
+
     // Fetch configured firewalls on load
     useEffect(() => {
         const fetchHosts = async () => {
@@ -36,6 +53,7 @@ export default function CiscoFirewallPage() {
         };
 
         fetchHosts();
+        fetchHistory();
     }, []);
 
     const handleAction = async (action: "show" | "remove") => {
@@ -74,6 +92,7 @@ export default function CiscoFirewallPage() {
 
             const data = await res.json();
             setActionResult(data);
+            fetchHistory(); // Refresh history
         } catch (err: any) {
             setActionError(err.message || "An unexpected error occurred during execution.");
         } finally {
@@ -211,6 +230,62 @@ export default function CiscoFirewallPage() {
                 </div>
 
             </div>
+
+            {/* --- RECENT HISTORY CARD --- */}
+            <div className="glass-card" style={{ marginTop: '2rem' }}>
+                <h3 style={{ marginBottom: '16px' }}>Recent Global Queries</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+                    Showing the last 50 shun queries executed across all team members.
+                </p>
+
+                {loadingHistory ? (
+                    <p style={{ color: 'var(--text-muted)' }}>Loading history...</p>
+                ) : history.length === 0 ? (
+                    <p style={{ color: 'var(--text-muted)' }}>No queries have been executed yet.</p>
+                ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
+                                    <th style={{ padding: '12px 8px' }}>Timestamp</th>
+                                    <th style={{ padding: '12px 8px' }}>User</th>
+                                    <th style={{ padding: '12px 8px' }}>Action</th>
+                                    <th style={{ padding: '12px 8px' }}>Target IP</th>
+                                    <th style={{ padding: '12px 8px' }}>Firewall</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {history.map((record) => (
+                                    <tr key={record.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                        <td style={{ padding: '12px 8px', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                                            {new Date(record.createdAt).toLocaleString()}
+                                        </td>
+                                        <td style={{ padding: '12px 8px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                                            {record.user?.username || "Unknown"}
+                                        </td>
+                                        <td style={{ padding: '12px 8px' }}>
+                                            <span style={{
+                                                padding: '4px 8px', borderRadius: '12px', fontSize: '0.75rem',
+                                                backgroundColor: record.command === "Check Shun" ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                                                color: record.command === "Check Shun" ? '#60a5fa' : '#f87171'
+                                            }}>
+                                                {record.command}
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: '12px 8px', fontFamily: 'monospace', color: 'var(--accent-primary)' }}>
+                                            {record.targetIp}
+                                        </td>
+                                        <td style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                                            {record.targetName}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+
         </div>
     );
 }

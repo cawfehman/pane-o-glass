@@ -1,15 +1,25 @@
 "use client";
 
 import { signIn } from "next-auth/react"
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, Suspense } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 
 export default function LoginPage() {
+    return (
+        <Suspense fallback={<div className="login-container"><div className="login-card">Loading...</div></div>}>
+            <LoginContent />
+        </Suspense>
+    );
+}
+
+function LoginContent() {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const isTimeout = searchParams.get("timeout") === "true";
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -46,6 +56,11 @@ export default function LoginPage() {
                 <h1 style={{ color: error ? '#ef4444' : 'inherit', transition: 'color 0.3s' }}>
                     {error ? 'Access Denied' : 'Welcome Back'}
                 </h1>
+                {isTimeout && (
+                    <div style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', border: '1px solid #f59e0b', color: '#f59e0b', padding: '12px', borderRadius: '4px', marginBottom: '16px', fontSize: '0.875rem' }}>
+                        Your session has expired due to 10 minutes of inactivity. Please sign in again.
+                    </div>
+                )}
                 <p>Sign in to your dashboard</p>
                 <form onSubmit={handleSubmit} className="login-form">
                     <div className="input-group">

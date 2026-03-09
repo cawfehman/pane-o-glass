@@ -104,9 +104,11 @@ export default function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
                             <Link href="/queries/hibp/account" className={`nav-link ${pathname === "/queries/hibp/account" ? "active" : ""}`} style={{ paddingLeft: '3.5rem', fontSize: '0.875rem' }}>
                                 Account Security
                             </Link>
-                            <Link href="/queries/hibp/domain" className={`nav-link ${pathname === "/queries/hibp/domain" ? "active" : ""}`} style={{ paddingLeft: '3.5rem', fontSize: '0.875rem' }}>
-                                Domain Security
-                            </Link>
+                            {isAdmin && (
+                                <Link href="/queries/hibp/domain" className={`nav-link ${pathname === "/queries/hibp/domain" ? "active" : ""}`} style={{ paddingLeft: '3.5rem', fontSize: '0.875rem' }}>
+                                    Domain Security
+                                </Link>
+                            )}
                         </div>
                     )}
                 </div>
