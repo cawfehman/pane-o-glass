@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
 import { parseStringPromise } from 'xml2js';
+import { fetchIseSession } from '@/lib/ise';
 
 export async function GET(req: Request) {
     const session = await auth();
@@ -39,15 +40,18 @@ export async function GET(req: Request) {
         }
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
-        let endpoint = "";
-
-        if (searchType === "mac") {
-            // MnT API call for AuthStatus by MAC. 86400s = 24 hours. Max 50 records.
-            endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/${formattedQuery}/86400/50/All`;
-        } else {
-            // New logic: Search for recent sessions by Username to discover MACs
-            endpoint = `${url}/admin/API/mnt/Session/UserName/${encodeURIComponent(formattedQuery)}`;
-        }
+        const fetchAuthStatus = async (mac: string) => {
+            const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/${mac}/86400/50/All`;
+            const response = await fetch(endpoint, {
+                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" }
+            });
+            if (!response.ok) return [];
+            const xmlText = await response.text();
+            const data = await parseStringPromise(xmlText, { explicitArray: false });
+            let nodes = data.authStatusList?.authStatus || data.authStatus;
+            if (!nodes) return [];
+            return Array.isArray(nodes) ? nodes : [nodes];
+        };
 
         await logAudit(
             'ISE_FAILURES_QUERY',
@@ -56,68 +60,92 @@ export async function GET(req: Request) {
             (session.user as any).ipAddress
         );
 
-        const response = await fetch(endpoint, {
-            headers: {
-                "Authorization": `Basic ${basicAuth}`,
-                "Accept": "application/xml"
+        if (searchType === "mac") {
+            const nodes = await fetchAuthStatus(formattedQuery);
+            const mappedResults = nodes.map((node: any) => ({
+                timestamp: node.acs_timestamp?._ || node.acs_timestamp || "Unknown",
+                user_name: node.user_name?._ || node.user_name || "Unknown",
+                calling_station_id: node.calling_station_id?._ || node.calling_station_id || "Unknown",
+                nas_ip_address: node.nas_ip_address?._ || node.nas_ip_address || "Unknown",
+                nas_port_id: node.nas_port_id?._ || node.nas_port_id || "Unknown",
+                failure_reason: node.failure_reason?._ || node.failure_reason || "Passed/Active",
+                status: node.passed?._ || node.passed || (node.failure_reason ? "failed" : "passed"),
+                authentication_method: node.authentication_method?._ || node.authentication_method || "Unknown",
+                authentication_protocol: node.authentication_protocol?._ || node.authentication_protocol || "Unknown",
+                acs_server: node.acs_server?._ || node.acs_server || "Unknown",
+                nas_identifier: node.nas_identifier?._ || node.nas_identifier || "Unknown",
+            }));
+            
+            const failures = mappedResults.filter(r => r.status === "false" || r.status === false || r.failure_reason !== "Passed/Active");
+            failures.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            return NextResponse.json({ found: failures.length > 0, failures, searchType: "mac" });
+        } 
+        else {
+            // User Workflow - Discover ALL associated MAC addresses
+            const macsToScan = new Set<string>();
+            const userHistoryPayloads: any[] = [];
+            
+            // 1. Pull the massive ActiveList locally (what we did for Live Sessions)
+            const activeSessionData = await fetchIseSession(formattedQuery);
+            if (activeSessionData.found && activeSessionData.sessions) {
+                activeSessionData.sessions.forEach((s: any) => {
+                    if (s.calling_station_id) macsToScan.add(s.calling_station_id);
+                });
             }
-        });
 
-        if (!response.ok) {
-            if (response.status === 404 || response.status === 500) {
+            // 2. Query the direct Session/UserName endpoint just in case the endpoint failed entirely and is disconnected
+            try {
+                const endpoint = `${url}/admin/API/mnt/Session/UserName/${encodeURIComponent(formattedQuery)}`;
+                const response = await fetch(endpoint, {
+                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" }
+                });
+                if (response.ok) {
+                    const xmlText = await response.text();
+                    const data = await parseStringPromise(xmlText, { explicitArray: false });
+                    let nodes = data.sessionParameters || data.activeSession;
+                    const nodesArr = Array.isArray(nodes) ? nodes : [nodes];
+                    nodesArr.forEach((node: any) => {
+                        if (node && (node.calling_station_id?._ || node.calling_station_id || node.callingStationId)) {
+                             const mac = node.calling_station_id?._ || node.calling_station_id || node.callingStationId;
+                             macsToScan.add(mac);
+                             userHistoryPayloads.push(node);
+                        }
+                    });
+                }
+            } catch (e) { }
+
+            if (macsToScan.size === 0) {
                 return NextResponse.json({ found: false, failures: [], sessions: [] });
             }
-            if (response.status === 401) throw new Error("ISE Authentication Failed (401)");
-            throw new Error(`ISE API returned ${response.status}`);
-        }
 
-        const xmlText = await response.text();
-        const data = await parseStringPromise(xmlText, { explicitArray: false });
+            // Generate Discovery array showing summary of each MAC
+            // We pull the AuthStatus for each harvested MAC so we can show the last seen time & connection properly!
+            const summaryArray: any[] = [];
+            
+            await Promise.allSettled(Array.from(macsToScan).map(async (mac) => {
+                const logs = await fetchAuthStatus(mac);
+                let latestLog = logs.length > 0 ? logs[0] : null;
+                
+                // If the AuthStatus log doesn't exist but we harvested it from Username, use fallback
+                if (!latestLog) {
+                    latestLog = userHistoryPayloads.find(p => (p.calling_station_id?._ || p.calling_station_id || p.callingStationId) === mac);
+                }
 
-        let nodes = data.authStatusList?.authStatus || data.authStatus || data.sessionParameters || data.activeSession;
-        if (!nodes && data.activeList && data.activeList.activeSession) {
-            nodes = data.activeList.activeSession;
-        }
+                if (latestLog) {
+                    summaryArray.push({
+                        mac,
+                        timestamp: latestLog.acs_timestamp?._ || latestLog.acs_timestamp || latestLog.last_accounting_update?._ || latestLog.last_accounting_update || "Unknown",
+                        nas_identifier: latestLog.nas_identifier?._ || latestLog.nas_identifier || "Unknown",
+                    });
+                } else {
+                    summaryArray.push({ mac, timestamp: "Unknown", nas_identifier: "Unknown" });
+                }
+            }));
+            
+            // Sort summary newest first
+            summaryArray.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-        if (!nodes) {
-            return NextResponse.json({ found: false, failures: [], sessions: [] });
-        }
-
-        const nodesArray = Array.isArray(nodes) ? nodes : [nodes];
-
-        const mappedResults = nodesArray.map((node: any) => ({
-            timestamp: node.acs_timestamp?._ || node.acs_timestamp || node.last_accounting_update?._ || node.last_accounting_update || "Unknown",
-            user_name: node.user_name?._ || node.user_name || node.userName || "Unknown",
-            calling_station_id: node.calling_station_id?._ || node.calling_station_id || node.callingStationId || "Unknown",
-            nas_ip_address: node.nas_ip_address?._ || node.nas_ip_address || node.nasIpAddress || "Unknown",
-            nas_port_id: node.nas_port_id?._ || node.nas_port_id || node.nasPortId || "Unknown",
-            failure_reason: node.failure_reason?._ || node.failure_reason || "Passed/Active",
-            status: node.passed?._ || node.passed || (node.failure_reason ? "failed" : "passed"),
-            authentication_method: node.authentication_method?._ || node.authentication_method || "Unknown",
-            authentication_protocol: node.authentication_protocol?._ || node.authentication_protocol || "Unknown",
-            acs_server: node.acs_server?._ || node.acs_server || "Unknown",
-            nas_identifier: node.nas_identifier?._ || node.nas_identifier || "Unknown",
-        }));
-
-        // Sort by timestamp desc
-        mappedResults.sort((a, b) => {
-            if (a.timestamp === "Unknown" || b.timestamp === "Unknown") return 0;
-            return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-        });
-
-        // For MAC searches, we strictly return "failures" (passed=false)
-        // For USER searches, we return everything as "sessions" for discovery
-        if (searchType === "mac") {
-            const failures = mappedResults.filter(r => r.status === "false" || r.status === false || r.failure_reason !== "Passed/Active");
-            return NextResponse.json({ found: failures.length > 0, failures, searchType: "mac" });
-        } else {
-            // Deduplicate MACs for the user discovery view
-            const uniqueMacs = Array.from(new Set(mappedResults.map(r => r.calling_station_id)));
-            const summary = uniqueMacs.map(mac => {
-                const latest = mappedResults.find(r => r.calling_station_id === mac);
-                return { ...latest, mac };
-            });
-            return NextResponse.json({ found: summary.length > 0, discovery: summary, searchType: "user_name" });
+            return NextResponse.json({ found: summaryArray.length > 0, discovery: summaryArray, searchType: "user_name" });
         }
 
     } catch (e: any) {
