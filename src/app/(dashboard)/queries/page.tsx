@@ -10,7 +10,7 @@ export default async function QueriesPage() {
     
     // Fetch dynamic permissions from DB
     const permissions = await getPermissionsForRole(normalizedRole);
-    const hasPermission = (toolId: string) => permissions.includes(toolId) || isAdmin;
+    const hasPermission = (toolId: string) => permissions.includes(toolId);
 
     return (
         <div className="page-container">

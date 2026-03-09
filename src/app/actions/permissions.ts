@@ -4,6 +4,15 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 import { auth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import fs from "fs";
+import path from "path";
+
+function logInternalError(msg: string, err: any) {
+    const logPath = path.join(process.cwd(), "error.log");
+    const timestamp = new Date().toISOString();
+    const content = `[${timestamp}] ${msg}: ${String(err)}\n${err?.stack || ""}\n\n`;
+    fs.appendFileSync(logPath, content);
+}
 
 export async function getToolPermissions() {
     noStore();
@@ -15,7 +24,7 @@ export async function getToolPermissions() {
             ]
         });
     } catch (error) {
-        console.error("Error fetching tool permissions:", error);
+        logInternalError("Error fetching tool permissions", error);
         return [];
     }
 }
@@ -57,7 +66,7 @@ export async function getPermissionsForRole(role: string) {
         });
         return permissions.map((p: any) => p.toolId as string);
     } catch (error) {
-        console.error(`Error fetching permissions for role ${role}:`, error);
+        logInternalError(`Error fetching permissions for role ${role}`, error);
         return [];
     }
 }
@@ -112,7 +121,7 @@ export async function resetPermissions() {
         revalidatePath("/", "layout");
         return { success: true };
     } catch (error) {
-        console.error("Error resetting permissions:", error);
+        logInternalError("Error resetting permissions", error);
         throw error;
     }
 }

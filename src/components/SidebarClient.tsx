@@ -9,7 +9,7 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
     const isAdmin = role === "ADMIN";
     const isAnalyst = role === "ANALYST" || isAdmin;
 
-    const hasPermission = (toolId: string) => permissions.includes(toolId) || isAdmin;
+    const hasPermission = (toolId: string) => permissions.includes(toolId);
 
     return (
         <aside className="sidebar">
