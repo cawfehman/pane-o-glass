@@ -45,7 +45,7 @@ export async function updateToolPermission(toolId: string, role: string, isEnabl
         revalidatePath("/users/permissions", "page");
     } catch (error) {
         console.error("FATAL ERROR updating tool permission:", error);
-        throw error; // Still throw for mutations to alert the UI
+        throw error;
     }
 }
 
@@ -53,11 +53,66 @@ export async function getPermissionsForRole(role: string) {
     noStore();
     try {
         const permissions = await prisma.toolPermission.findMany({
-            where: { role, isEnabled: true }
+            where: { role: String(role).toUpperCase(), isEnabled: true }
         });
         return permissions.map((p: any) => p.toolId as string);
     } catch (error) {
         console.error(`Error fetching permissions for role ${role}:`, error);
         return [];
+    }
+}
+
+export async function getPermissionsDiagnostic() {
+    try {
+        return {
+            databaseUrl: process.env.DATABASE_URL,
+            allPermissions: await prisma.toolPermission.findMany(),
+            users: await prisma.user.findMany({
+                select: { username: true, role: true }
+            }),
+            timestamp: new Date().toISOString()
+        };
+    } catch (error) {
+        return { error: String(error) };
+    }
+}
+
+export async function resetPermissions() {
+    const session = await auth();
+    if ((session?.user as any)?.role !== 'ADMIN') {
+        throw new Error("Unauthorized");
+    }
+
+    try {
+        await prisma.toolPermission.deleteMany({});
+
+        const DEFAULT_PERMISSIONS = [
+            { toolId: 'firewall', role: 'ADMIN', isEnabled: true },
+            { toolId: 'ise', role: 'ADMIN', isEnabled: true },
+            { toolId: 'ise-failures', role: 'ADMIN', isEnabled: true },
+            { toolId: 'hibp-account', role: 'ADMIN', isEnabled: true },
+            { toolId: 'hibp-domain', role: 'ADMIN', isEnabled: true },
+            { toolId: 'firewall', role: 'ANALYST', isEnabled: true },
+            { toolId: 'ise', role: 'ANALYST', isEnabled: true },
+            { toolId: 'ise-failures', role: 'ANALYST', isEnabled: true },
+            { toolId: 'hibp-account', role: 'ANALYST', isEnabled: true },
+            { toolId: 'hibp-domain', role: 'ANALYST', isEnabled: false },
+            { toolId: 'firewall', role: 'USER', isEnabled: false },
+            { toolId: 'ise', role: 'USER', isEnabled: false },
+            { toolId: 'ise-failures', role: 'USER', isEnabled: false },
+            { toolId: 'hibp-account', role: 'USER', isEnabled: true },
+            { toolId: 'hibp-domain', role: 'USER', isEnabled: false }
+        ];
+
+        for (const perm of DEFAULT_PERMISSIONS) {
+            await prisma.toolPermission.create({ data: perm });
+        }
+
+        await logAudit("PERMISSION_RESET", "Admin reset all tool permissions to defaults", session?.user?.id);
+        revalidatePath("/", "layout");
+        return { success: true };
+    } catch (error) {
+        console.error("Error resetting permissions:", error);
+        throw error;
     }
 }
