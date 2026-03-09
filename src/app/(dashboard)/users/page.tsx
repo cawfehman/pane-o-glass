@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
-import { createUser, deleteUser } from "@/app/actions/users";
+import { deleteUser } from "@/app/actions/users";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import UserForm from "@/components/UserForm";
 
 export default async function UsersPage() {
     const session = await auth();
@@ -23,31 +24,7 @@ export default async function UsersPage() {
 
             <div className="glass-card" style={{ marginBottom: '32px' }}>
                 <h3 style={{ marginBottom: '16px' }}>Create New Account</h3>
-                <form action={createUser} style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                    <div className="input-group">
-                        <label htmlFor="username">Username</label>
-                        <input type="text" name="username" id="username" required placeholder="admin_user" />
-                    </div>
-                    <div className="input-group">
-                        <label htmlFor="password">Password</label>
-                        <input type="password" name="password" id="password" required />
-                    </div>
-                    <div className="input-group">
-                        <label htmlFor="role">Role</label>
-                        <select name="role" id="role" style={{ background: 'var(--bg-dark)', border: '1px solid var(--border-color)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', outline: 'none', fontFamily: 'inherit' }}>
-                            <option value="USER">User</option>
-                            <option value="ANALYST">Analyst</option>
-                            <option value="ADMIN">Admin</option>
-                        </select>
-                    </div>
-                    <div className="input-group">
-                        <label htmlFor="isExternal" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                            <input type="checkbox" name="isExternal" id="isExternal" style={{ width: '16px', height: '16px' }} />
-                            Use Active Directory (External)
-                        </label>
-                    </div>
-                    <button type="submit" className="btn-primary" style={{ marginBottom: '2px' }}>Create Account</button>
-                </form>
+                <UserForm />
             </div>
 
             <div className="glass-card">
@@ -56,6 +33,7 @@ export default async function UsersPage() {
                     <thead>
                         <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
                             <th style={{ padding: '12px 8px' }}>Username</th>
+                            <th style={{ padding: '12px 8px' }}>Name</th>
                             <th style={{ padding: '12px 8px' }}>Role</th>
                             <th style={{ padding: '12px 8px' }}>Last Login</th>
                             <th style={{ padding: '12px 8px' }}>Created At</th>
@@ -66,6 +44,12 @@ export default async function UsersPage() {
                         {users.map((user: any) => (
                             <tr key={user.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                                 <td style={{ padding: '12px 8px', fontWeight: 500 }}>{user.username}</td>
+                                <td style={{ padding: '12px 8px', color: 'var(--text-primary)' }}>
+                                    {user.firstName || user.lastName 
+                                        ? `${user.firstName || ''} ${user.lastName || ''}`.trim() 
+                                        : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.875rem' }}>Not set</span>
+                                    }
+                                </td>
                                 <td style={{ padding: '12px 8px' }}>
                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                                         <span style={{
@@ -118,7 +102,7 @@ export default async function UsersPage() {
                         ))}
                         {users.length === 0 && (
                             <tr>
-                                <td colSpan={4} style={{ padding: '24px 8px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                <td colSpan={6} style={{ padding: '24px 8px', textAlign: 'center', color: 'var(--text-muted)' }}>
                                     No accounts found. Create the first one above!
                                 </td>
                             </tr>

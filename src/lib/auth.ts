@@ -23,6 +23,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
                 if (!user) return null
 
+                if (user.isExternal) {
+                    // TODO: Implement Active Directory / LDAP authentication
+                    // For now, external accounts cannot login via Credentials provider
+                    return null;
+                }
+
+                if (!user.password) return null;
+
                 const passwordsMatch = await bcrypt.compare(
                     credentials.password as string,
                     user.password
