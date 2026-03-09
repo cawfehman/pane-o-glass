@@ -64,8 +64,8 @@ export default function PasswordCheckCard() {
     };
 
     return (
-        <div className="glass-card" style={{ background: 'var(--bg-surface)' }}>
-            {/* Privacy Guarantee Box */}
+        <div style={{ background: 'transparent', border: 'none', padding: 0 }}>
+            {/* Privacy Notice Box */}
             <div style={{ 
                 padding: '1.25rem', 
                 background: 'rgba(34, 197, 94, 0.05)', 
@@ -75,7 +75,7 @@ export default function PasswordCheckCard() {
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#10b981', marginBottom: '8px' }}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                    <strong style={{ fontSize: '1rem' }}>Privacy & Security Guarantee</strong>
+                    <strong style={{ fontSize: '1rem' }}>Privacy & Security Notice</strong>
                 </div>
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: 0 }}>
                     This check happens <strong>locally in your browser</strong>. Your actual password is never captured, stored, or sent to any server. We use advanced "k-Anonymity" technology to verify your safety against <strong>13 billion compromised records</strong> while keeping your data 100% private.
