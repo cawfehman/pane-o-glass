@@ -18,7 +18,7 @@ export default function CiscoFirewallPage() {
 
     const fetchHistory = async () => {
         try {
-            const res = await fetch("/api/firewall/history");
+            const res = await fetch("/api/firewall/history", { cache: 'no-store' });
             if (res.ok) {
                 const data = await res.json();
                 setHistory(data);
