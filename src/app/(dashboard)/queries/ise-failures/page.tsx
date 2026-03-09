@@ -5,17 +5,26 @@ import { useState } from "react";
 export default function CiscoIseFailuresPage() {
     const [query, setQuery] = useState("");
     const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState<any>(null);
+    const [discoveryResult, setDiscoveryResult] = useState<any>(null);
+    const [failuresResult, setFailuresResult] = useState<any>(null);
+    const [activeView, setActiveView] = useState<"discovery" | "failures">("discovery");
     const [error, setError] = useState("");
 
-    const handleSearch = async (e?: React.FormEvent, overrideQuery?: string) => {
+    const handleSearch = async (e?: React.FormEvent, macToDrilldown?: string) => {
         if (e) e.preventDefault();
-        const searchTerm = overrideQuery || query;
+        const searchTerm = macToDrilldown || query;
         if (!searchTerm.trim()) return;
 
         setLoading(true);
         setError("");
-        setResult(null);
+        
+        // Only clear discovery if we are doing a brand new primary search
+        if (!macToDrilldown) {
+            setDiscoveryResult(null);
+            setFailuresResult(null);
+        } else {
+            setFailuresResult(null);
+        }
 
         try {
             const res = await fetch(`/api/ise/failures?query=${encodeURIComponent(searchTerm)}`);
@@ -25,8 +34,15 @@ export default function CiscoIseFailuresPage() {
                 throw new Error(data.error || "Failed to query ISE");
             }
 
-            setResult(data);
-            if (overrideQuery) setQuery(overrideQuery);
+            if (data.searchType === "user_name") {
+                setDiscoveryResult(data);
+                setActiveView("discovery");
+                if (!macToDrilldown) setQuery(searchTerm);
+            } else {
+                setFailuresResult(data);
+                setActiveView("failures");
+            }
+
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -59,20 +75,30 @@ export default function CiscoIseFailuresPage() {
                 </div>
             )}
 
-            {result && !result.found && (
+            {activeView === "discovery" && discoveryResult && !discoveryResult.found && (
                 <div className="glass-card" style={{ textAlign: 'center', padding: '32px' }}>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem' }}>No authentication data found for '{query}'</p>
                     <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>The device might have successfully authenticated, or its history is older than the 24-hour log retention.</p>
                 </div>
             )}
+            
+            {activeView === "failures" && failuresResult && !failuresResult.found && (
+                <div className="glass-card" style={{ textAlign: 'center', padding: '32px' }}>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem' }}>No authentication failures found for this MAC Address.</p>
+                    <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>The device might have successfully authenticated, or its failures are older than the 24-hour log retention.</p>
+                    {discoveryResult && (
+                        <button onClick={() => setActiveView("discovery")} className="btn-secondary" style={{ marginTop: '16px', padding: '8px 16px' }}>&larr; Back to MAC List</button>
+                    )}
+                </div>
+            )}
 
             {/* Discovery View: Multiple MACs found for a Username */}
-            {result && result.found && result.discovery && (
+            {activeView === "discovery" && discoveryResult && discoveryResult.found && discoveryResult.discovery && (
                 <div>
                     <h3 style={{ marginBottom: '16px' }}>MAC Addresses associated with '{query}'</h3>
                     <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>Click a MAC address to view its specific authentication failure history.</p>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
-                        {result.discovery.map((item: any, idx: number) => (
+                        {discoveryResult.discovery.map((item: any, idx: number) => (
                             <div key={idx} className="glass-card" style={{ cursor: 'pointer', border: '1px solid var(--border-color)', transition: 'border-color 0.2s' }} onClick={() => handleSearch(undefined, item.mac)}>
                                 <h4 style={{ color: 'var(--accent-primary)', marginBottom: '12px', fontFamily: 'monospace' }}>{item.mac}</h4>
                                 <p style={{ fontSize: '0.9rem', marginBottom: '4px' }}><strong>Last Seen:</strong> {item.timestamp !== "Unknown" ? new Date(item.timestamp).toLocaleString() : "Unknown"}</p>
@@ -85,10 +111,15 @@ export default function CiscoIseFailuresPage() {
             )}
 
             {/* Failures View: Historical failures for a specific MAC */}
-            {result && result.found && result.failures && result.failures.length > 0 && (
+            {activeView === "failures" && failuresResult && failuresResult.found && failuresResult.failures && failuresResult.failures.length > 0 && (
                 <div>
-                    <h3 style={{ marginBottom: '16px' }}>Found {result.failures.length} Failed Authentication{result.failures.length !== 1 ? 's' : ''}</h3>
-                    {result.failures.map((failure: any, idx: number) => (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                        <h3>Found {failuresResult.failures.length} Failed Authentication{failuresResult.failures.length !== 1 ? 's' : ''}</h3>
+                        {discoveryResult && (
+                            <button onClick={() => setActiveView("discovery")} className="btn-secondary" style={{ padding: '8px 16px' }}>&larr; Back to MAC List</button>
+                        )}
+                    </div>
+                    {failuresResult.failures.map((failure: any, idx: number) => (
                         <div key={idx} className="glass-card" style={{ marginBottom: '24px', borderLeft: '4px solid var(--accent-secondary)' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
 
