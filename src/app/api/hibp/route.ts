@@ -30,7 +30,7 @@ export async function POST(request: Request) {
         const response = await fetch(`https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(account)}?truncateResponse=false`, {
             headers: {
                 "hibp-api-key": apiKey,
-                "user-agent": "LinuxDash-Security-Tool"
+                "user-agent": "InfoSec-Tools"
             }
         });
 

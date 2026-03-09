@@ -32,7 +32,7 @@ export async function GET(req: Request) {
         const response = await fetch(endpoint, {
             headers: {
                 "hibp-api-key": apiKey,
-                "user-agent": "LinuxDash-Security-Tool"
+                "user-agent": "InfoSec-Tools"
             }
         });
 

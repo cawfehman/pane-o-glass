@@ -17,7 +17,7 @@ export async function GET() {
         const response = await fetch(hibpUrl, {
             headers: {
                 "hibp-api-key": apiKey,
-                "user-agent": "LinuxDash-QueryTool",
+                "user-agent": "InfoSec-Tools",
             },
         });
 

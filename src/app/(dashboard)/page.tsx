@@ -1,9 +1,13 @@
-import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import Link from "next/link";
+import { redirect } from "next/navigation";
+
 export default async function DashboardHome() {
     const session = await auth();
-    const isAdmin = (session?.user as any)?.role === 'ADMIN';
+    
+    if (!session) {
+        redirect("/public/password-check");
+    }
+
+    const isAdmin = (session.user as any)?.role === 'ADMIN';
 
     // Fetch today's XKCD Comic
     let xkcdData = null;
@@ -22,7 +26,7 @@ export default async function DashboardHome() {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '2rem 0' }}>
                 <h1 style={{ marginBottom: '16px' }}>User Dashboard</h1>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>
-                    Welcome to LinuxDash. User-specific modules are coming soon.
+                    Welcome to InfoSec Tools. User-specific modules are coming soon.
                 </p>
                 <div className="glass-card" style={{ width: '100%', maxWidth: '800px', padding: '16px', background: 'var(--bg-surface)' }}>
                     <h3 style={{ marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Meanwhile...</h3>

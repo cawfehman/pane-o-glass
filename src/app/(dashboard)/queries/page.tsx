@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
+import { getPermissionsForRole } from "@/app/actions/permissions";
 
 export default async function QueriesPage() {
     const session = await auth();
     const role = (session?.user as any)?.role || "USER";
     const isAdmin = role === "ADMIN";
-    const isAnalyst = role === "ANALYST" || isAdmin;
+    
+    // Fetch dynamic permissions from DB
+    const permissions = await getPermissionsForRole(role);
+    const hasPermission = (toolId: string) => permissions.includes(toolId) || isAdmin;
 
     return (
         <div className="page-container">
@@ -17,25 +21,41 @@ export default async function QueriesPage() {
             </header>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
-                {/* HIBP - Available to Analysts and Admins */}
-                {isAnalyst && (
-                    <Link href="/queries/hibp" style={{ textDecoration: 'none' }}>
+                {/* HIBP - Dynamic Permission */}
+                {hasPermission('hibp-account') && (
+                    <Link href="/queries/hibp/account" style={{ textDecoration: 'none' }}>
                         <div className="glass-card" style={{ cursor: 'pointer', transition: 'transform 0.2s', height: '100%', background: 'var(--bg-surface)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
                                 <div style={{ background: 'var(--accent-glow)', padding: '12px', borderRadius: '12px', color: 'var(--accent-primary)' }}>
                                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
                                 </div>
-                                <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>Have I Been Pwned</h3>
+                                <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>HIBP Account Safety</h3>
                             </div>
                             <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.95rem' }}>
-                                Query breached databases to verify account and domain security safety.
+                                Query breached databases to verify account safety.
                             </p>
                         </div>
                     </Link>
                 )}
 
-                {/* ISE - Available to Analysts and Admins */}
-                {isAnalyst && (
+                {hasPermission('hibp-domain') && (
+                    <Link href="/queries/hibp/domain" style={{ textDecoration: 'none' }}>
+                        <div className="glass-card" style={{ cursor: 'pointer', transition: 'transform 0.2s', height: '100%', background: 'var(--bg-surface)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                                <div style={{ background: 'var(--accent-glow)', padding: '12px', borderRadius: '12px', color: 'var(--accent-primary)' }}>
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                                </div>
+                                <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>HIBP Domain Safety</h3>
+                            </div>
+                            <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.95rem' }}>
+                                Monitor domain-wide breach data for organization safety.
+                            </p>
+                        </div>
+                    </Link>
+                )}
+
+                {/* ISE - Dynamic Permission */}
+                {hasPermission('ise') && (
                     <Link href="/queries/ise" style={{ textDecoration: 'none' }}>
                         <div className="glass-card" style={{ cursor: 'pointer', transition: 'transform 0.2s', height: '100%', background: 'var(--bg-surface)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
@@ -51,8 +71,8 @@ export default async function QueriesPage() {
                     </Link>
                 )}
 
-                {/* Firewall - Available to Analysts and Admins */}
-                {isAnalyst && (
+                {/* Firewall - Dynamic Permission */}
+                {hasPermission('firewall') && (
                     <Link href="/queries/firewall" style={{ textDecoration: 'none' }}>
                         <div className="glass-card" style={{ cursor: 'pointer', transition: 'transform 0.2s', height: '100%', background: 'var(--bg-surface)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
@@ -68,8 +88,8 @@ export default async function QueriesPage() {
                     </Link>
                 )}
 
-                {/* placeholder for regular users if needed */}
-                {!isAnalyst && (
+                {/* If no tools are available */}
+                {!isAdmin && permissions.length === 0 && (
                     <div className="glass-card" style={{ background: 'var(--bg-surface)', padding: '2rem', textAlign: 'center' }}>
                         <p style={{ color: 'var(--text-secondary)' }}>You do not have access to any system tools yet. Contact an administrator if this is an error.</p>
                     </div>

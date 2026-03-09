@@ -21,7 +21,7 @@ export default function PublicLayout({
                         <line x1="3" y1="9" x2="21" y2="9"></line>
                         <line x1="9" y1="21" x2="9" y2="9"></line>
                     </svg>
-                    LinuxDash <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginLeft: '8px' }}>Security Tools</span>
+                    InfoSec Tools <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginLeft: '8px' }}>Security Tools</span>
                 </div>
                 <Link href="/login" className="btn-secondary" style={{ textDecoration: 'none' }}>
                     Return to Login

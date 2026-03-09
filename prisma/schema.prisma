@@ -51,3 +51,12 @@ model HealthProbe {
   userAgent String?
   createdAt DateTime @default(now())
 }
+model ToolPermission {
+  id        String   @id @default(cuid())
+  toolId    String   // e.g. "firewall", "ise", "ise-failures", "hibp-account", "hibp-domain"
+  role      String   // "ADMIN", "ANALYST", "USER"
+  isEnabled Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  @@unique([toolId, role])
+}

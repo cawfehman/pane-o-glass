@@ -2,7 +2,7 @@ import PasswordCheckCard from "@/components/PasswordCheckCard";
 import Link from "next/link";
 
 export const metadata = {
-    title: "Password Risk Check | LinuxDash",
+    title: "Password Risk Check | InfoSec Tools",
     description: "Check if your password has been compromised in a data breach safely and privately.",
 };
 
