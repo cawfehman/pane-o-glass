@@ -41,7 +41,7 @@ export default function PublicLayout({
                 fontSize: '0.875rem',
                 borderTop: '1px solid var(--border-color)'
             }}>
-                &copy; {new Date().getFullYear()} LinuxDash Secure Utilities
+                &copy; {new Date().getFullYear()} Information Security Secure Utilities
             </footer>
         </div>
     );

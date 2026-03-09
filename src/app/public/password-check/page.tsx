@@ -21,14 +21,7 @@ export default function PublicPasswordCheckPage() {
                 <PasswordCheckCard />
             </div>
 
-            <div style={{ marginTop: '4rem', textAlign: 'center' }}>
-                <div className="glass-card" style={{ display: 'inline-block', padding: '1.5rem', background: 'rgba(56, 189, 248, 0.05)' }}>
-                    <p style={{ marginBottom: '1rem' }}>Want more powerful security tools?</p>
-                    <Link href="/login" className="btn-primary" style={{ textDecoration: 'none' }}>
-                        Sign In to Access Dashboard
-                    </Link>
-                </div>
-            </div>
+
         </div>
     );
 }
