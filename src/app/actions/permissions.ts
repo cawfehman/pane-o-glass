@@ -4,30 +4,45 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 
 export async function getToolPermissions() {
-    return await prisma.toolPermission.findMany({
-        orderBy: [
-            { toolId: 'asc' },
-            { role: 'asc' }
-        ]
-    });
+    try {
+        return await prisma.toolPermission.findMany({
+            orderBy: [
+                { toolId: 'asc' },
+                { role: 'asc' }
+            ]
+        });
+    } catch (error) {
+        console.error("Error fetching tool permissions:", error);
+        return [];
+    }
 }
 
 export async function updateToolPermission(toolId: string, role: string, isEnabled: boolean) {
-    await prisma.toolPermission.upsert({
-        where: {
-            toolId_role: { toolId, role }
-        },
-        update: { isEnabled },
-        create: { toolId, role, isEnabled }
-    });
-    
-    revalidatePath("/");
-    revalidatePath("/queries");
+    try {
+        await prisma.toolPermission.upsert({
+            where: {
+                toolId_role: { toolId, role }
+            },
+            update: { isEnabled },
+            create: { toolId, role, isEnabled }
+        });
+        
+        revalidatePath("/");
+        revalidatePath("/queries");
+    } catch (error) {
+        console.error("Error updating tool permission:", error);
+        throw error; // Still throw for mutations to alert the UI
+    }
 }
 
 export async function getPermissionsForRole(role: string) {
-    const permissions = await prisma.toolPermission.findMany({
-        where: { role, isEnabled: true }
-    });
-    return permissions.map(p => p.toolId);
+    try {
+        const permissions = await prisma.toolPermission.findMany({
+            where: { role, isEnabled: true }
+        });
+        return permissions.map(p => p.toolId);
+    } catch (error) {
+        console.error(`Error fetching permissions for role ${role}:`, error);
+        return [];
+    }
 }

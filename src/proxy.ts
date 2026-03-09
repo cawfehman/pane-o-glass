@@ -21,9 +21,10 @@ export default NextAuth(authConfig).auth((req) => {
     const isLoggedIn = !!req.auth?.user;
     const isOnLoginPage = req.nextUrl.pathname.startsWith('/login');
     const isHealthCheck = req.nextUrl.pathname === '/api/health';
+    const isPublicRoute = req.nextUrl.pathname.startsWith('/public/');
 
-    // Allow public access to health check
-    if (isHealthCheck) return;
+    // Allow public access to health check and public routes
+    if (isHealthCheck || isPublicRoute) return;
 
     if (isOnLoginPage) {
         if (isLoggedIn) {
@@ -33,6 +34,11 @@ export default NextAuth(authConfig).auth((req) => {
     }
 
     if (!isLoggedIn) {
+        // If visiting root, go to public password check
+        if (req.nextUrl.pathname === '/') {
+            return Response.redirect(new URL('/public/password-check', req.nextUrl));
+        }
+
         let from = req.nextUrl.pathname;
         if (req.nextUrl.search) {
             from += req.nextUrl.search;
