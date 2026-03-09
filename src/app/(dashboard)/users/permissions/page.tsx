@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { getToolPermissions, updateToolPermission } from "@/app/actions/permissions";
 
 const TOOLS = [
@@ -14,6 +15,7 @@ const TOOLS = [
 const ROLES = ["ADMIN", "ANALYST", "USER"];
 
 export default function PermissionsPage() {
+    const router = useRouter();
     const [permissions, setPermissions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState<string | null>(null);
@@ -29,12 +31,15 @@ export default function PermissionsPage() {
     };
 
     const togglePermission = async (toolId: string, role: string) => {
-        const current = permissions.find(p => p.toolId === toolId && p.role === role);
+        const current = permissions.find((p: any) => p.toolId === toolId && p.role === role);
         const newState = current ? !current.isEnabled : true;
         
         setSaving(`${toolId}-${role}`);
         try {
             await updateToolPermission(toolId, role, newState);
+            // Refresh server components (like the Sidebar)
+            router.refresh();
+            // Refresh local state
             await loadPermissions();
         } catch (err) {
             console.error("Failed to update permission", err);
@@ -44,7 +49,7 @@ export default function PermissionsPage() {
     };
 
     const isEnabled = (toolId: string, role: string) => {
-        const p = permissions.find(per => per.toolId === toolId && per.role === role);
+        const p = permissions.find((per: any) => per.toolId === toolId && per.role === role);
         return p ? p.isEnabled : false;
     };
 
