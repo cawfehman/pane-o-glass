@@ -21,15 +21,20 @@ export async function authenticateWithAD(username: string, password: string): Pr
     });
 
     try {
+        console.log(`LDAP: Attempting service account bind to ${url} with DN: ${bindDN}`);
         // Step 1: Bind with service account
         await client.bind(bindDN, bindPassword);
+        console.log("LDAP: Service account bind successful.");
 
+        console.log(`LDAP: Searching for user "${username}" in baseDN "${baseDN}"`);
         // Step 2: Search for the user to get their full DN
+        // We search both sAMAccountName and userPrincipalName to be robust
         const { searchEntries } = await client.search(baseDN, {
-            filter: `(sAMAccountName=${username})`,
+            filter: `(|(sAMAccountName=${username})(userPrincipalName=${username}))`,
             scope: "sub",
             attributes: ["dn"],
         });
+        console.log(`LDAP: Search returned ${searchEntries.length} results.`);
 
         if (searchEntries.length === 0) {
             console.warn(`LDAP User not found: ${username}`);
@@ -45,8 +50,10 @@ export async function authenticateWithAD(username: string, password: string): Pr
             tlsOptions: url.startsWith("ldaps") ? { rejectUnauthorized } : undefined,
         });
 
+        console.log(`LDAP: Attempting user bind with DN: ${userDN}`);
         try {
             await authClient.bind(userDN, password);
+            console.log(`LDAP: User ${username} authentication SUCCESSFUL.`);
             return true;
         } catch (err: any) {
             console.warn(`LDAP Authentication failed for ${username}:`, err.message);

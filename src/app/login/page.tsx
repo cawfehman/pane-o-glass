@@ -92,6 +92,27 @@ function LoginContent() {
                     </button>
                     {error && <p style={{ color: '#ef4444', fontSize: '0.875rem', marginTop: '1rem', textAlign: 'center' }}>Invalid username or password.</p>}
                 </form>
+
+                <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)', textAlign: 'center' }}>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '12px' }}>Security Tools</p>
+                    <a href="/public/password-check" style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center', 
+                        gap: '8px',
+                        padding: '12px',
+                        background: 'rgba(234, 179, 8, 0.05)',
+                        border: '1px solid rgba(234, 179, 8, 0.2)',
+                        borderRadius: '8px',
+                        color: '#eab308',
+                        textDecoration: 'none',
+                        fontSize: '0.9rem',
+                        transition: 'all 0.2s'
+                    }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                        Public Password Risk Check
+                    </a>
+                </div>
             </div>
         </div>
     )

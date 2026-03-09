@@ -12,18 +12,14 @@ async function sha1(str: string) {
         .toUpperCase();
 }
 
+import PasswordCheckCard from "@/components/PasswordCheckCard";
+
 export default function AccountSecurityPage() {
     // Email Search State
     const [account, setAccount] = useState("");
     const [emailLoading, setEmailLoading] = useState(false);
     const [emailError, setEmailError] = useState("");
     const [emailResults, setEmailResults] = useState<{ hasBreaches: boolean, breaches: any[] } | null>(null);
-
-    // Password Search State
-    const [password, setPassword] = useState("");
-    const [pwdLoading, setPwdLoading] = useState(false);
-    const [pwdError, setPwdError] = useState("");
-    const [pwdResult, setPwdResult] = useState<{ count: number, isPwned: boolean } | null>(null);
 
     const handleEmailSearch = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -49,50 +45,6 @@ export default function AccountSecurityPage() {
             setEmailError(err.message || "An unexpected error occurred");
         } finally {
             setEmailLoading(false);
-        }
-    };
-
-    const handlePasswordSearch = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setPwdLoading(true);
-        setPwdError("");
-        setPwdResult(null);
-
-        try {
-            // k-Anonymity logic
-            const fullHash = await sha1(password);
-            const prefix = fullHash.substring(0, 5);
-            const suffix = fullHash.substring(5);
-
-            // Fetch list of matching suffixes from HIBP directly (no API key needed)
-            const res = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`);
-            if (!res.ok) {
-                throw new Error("Failed to contact Pwned Passwords API");
-            }
-
-            const text = await res.text();
-            const lines = text.split("\n");
-
-            let foundCount = 0;
-            for (const line of lines) {
-                const [hashSuffix, count] = line.split(":");
-                if (hashSuffix.trim() === suffix) {
-                    foundCount = parseInt(count.trim(), 10) || 0;
-                    break;
-                }
-            }
-
-            setPwdResult({
-                isPwned: foundCount > 0,
-                count: foundCount
-            });
-            // Clear the password field for security
-            setPassword("");
-
-        } catch (err: any) {
-            setPwdError(err.message || "An unexpected error occurred");
-        } finally {
-            setPwdLoading(false);
         }
     };
 
@@ -169,49 +121,7 @@ export default function AccountSecurityPage() {
                 </div>
 
                 {/* --- PASSWORD SEARCH CARD --- */}
-                <div className="glass-card">
-                    <h3 style={{ marginBottom: '16px' }}>Password Risk Check</h3>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-                        Safely checks if a password has been compromised. Uses k-Anonymity (only the first 5 chars of the SHA-1 hash are sent to the API).
-                    </p>
-
-                    <form onSubmit={handlePasswordSearch} style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', marginBottom: '2rem' }}>
-                        <div className="input-group" style={{ flex: 1 }}>
-                            <label htmlFor="password">Password</label>
-                            <input
-                                type="password"
-                                id="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="••••••••••••"
-                                required
-                            />
-                        </div>
-                        <button type="submit" className="btn-primary" style={{ marginBottom: '2px', background: '#eab308' }} disabled={pwdLoading}>
-                            {pwdLoading ? "Checking..." : "Inspect"}
-                        </button>
-                    </form>
-
-                    {pwdError && (
-                        <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444' }}>
-                            <strong>Error:</strong> {pwdError}
-                        </div>
-                    )}
-
-                    {pwdResult && (
-                        <div style={{ marginTop: '1rem' }}>
-                            {!pwdResult.isPwned ? (
-                                <div style={{ padding: '1rem', backgroundColor: 'rgba(34,197,94,0.1)', color: '#22c55e', borderRadius: 'var(--radius-md)', border: '1px solid #22c55e' }}>
-                                    <strong>Safe!</strong> This password has not been seen in any known data breaches.
-                                </div>
-                            ) : (
-                                <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444' }}>
-                                    <strong>Compromised!</strong> This exact password has been seen <strong>{pwdResult.count.toLocaleString()}</strong> times in data breaches. Do not use it.
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
+                <PasswordCheckCard />
 
             </div>
         </div>
