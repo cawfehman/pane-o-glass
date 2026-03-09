@@ -53,7 +53,7 @@ export async function updateToolPermission(toolId: string, role: string, isEnabl
         revalidatePath("/queries", "page");
         revalidatePath("/users/permissions", "page");
     } catch (error) {
-        console.error("FATAL ERROR updating tool permission:", error);
+        logInternalError("FATAL ERROR updating tool permission", error);
         throw error;
     }
 }
@@ -73,8 +73,15 @@ export async function getPermissionsForRole(role: string) {
 
 export async function getPermissionsDiagnostic() {
     try {
+        const dbPath = process.env.DATABASE_URL?.replace('file:', '') || '';
+        const absDbPath = path.isAbsolute(dbPath) ? dbPath : path.resolve(process.cwd(), dbPath);
+        const exists = fs.existsSync(absDbPath);
+
         return {
             databaseUrl: process.env.DATABASE_URL,
+            cwd: process.cwd(),
+            absDbPath,
+            dbFileExists: exists,
             allPermissions: await prisma.toolPermission.findMany(),
             users: await prisma.user.findMany({
                 select: { username: true, role: true }
@@ -82,7 +89,23 @@ export async function getPermissionsDiagnostic() {
             timestamp: new Date().toISOString()
         };
     } catch (error) {
-        return { error: String(error) };
+        return { 
+            error: String(error),
+            stack: (error as any)?.stack,
+            cwd: process.cwd(),
+            env: process.env.DATABASE_URL
+        };
+    }
+}
+
+export async function getInternalLogs() {
+    const logPath = path.join(process.cwd(), "error.log");
+    if (!fs.existsSync(logPath)) return "No error log found.";
+    try {
+        const content = fs.readFileSync(logPath, "utf-8");
+        return content.split("\n").slice(-100).join("\n");
+    } catch (e) {
+        return "Error reading log: " + String(e);
     }
 }
 

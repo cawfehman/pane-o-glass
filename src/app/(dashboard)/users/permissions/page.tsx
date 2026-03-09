@@ -6,7 +6,8 @@ import {
     getToolPermissions, 
     updateToolPermission, 
     getPermissionsDiagnostic, 
-    resetPermissions 
+    resetPermissions,
+    getInternalLogs
 } from "@/app/actions/permissions";
 
 const TOOLS = [
@@ -26,6 +27,8 @@ export default function PermissionsPage() {
     const [saving, setSaving] = useState<string | null>(null);
     const [debugInfo, setDebugInfo] = useState<any>(null);
     const [showDebug, setShowDebug] = useState(false);
+    const [logs, setLogs] = useState<string | null>(null);
+    const [showLogs, setShowLogs] = useState(false);
 
     useEffect(() => {
         loadPermissions();
@@ -60,6 +63,19 @@ export default function PermissionsPage() {
             setShowDebug(true);
         } catch (err: any) {
             alert("Diagnostics failed: " + err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const viewLogs = async () => {
+        setLoading(true);
+        try {
+            const content = await getInternalLogs();
+            setLogs(content);
+            setShowLogs(true);
+        } catch (err: any) {
+            alert("Failed to fetch logs: " + err.message);
         } finally {
             setLoading(false);
         }
@@ -112,8 +128,11 @@ export default function PermissionsPage() {
                     <p style={{ color: 'var(--text-secondary)' }}>Control which roles can access specific security tools.</p>
                 </div>
                 <div style={{ display: 'flex', gap: '12px' }}>
+                    <button onClick={viewLogs} className="btn-secondary" style={{ fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)' }}>
+                        View Technical Logs
+                    </button>
                     <button onClick={runDiagnostics} className="btn-secondary" style={{ fontSize: '0.8rem' }}>
-                        Run Diagnostics
+                        Server Diagnostics
                     </button>
                     <button onClick={handleReset} className="btn-danger" style={{ fontSize: '0.8rem', background: '#991b1b' }}>
                         Reset Defaults
@@ -122,26 +141,72 @@ export default function PermissionsPage() {
             </div>
 
             {showDebug && debugInfo && (
-                <div className="glass-card" style={{ marginBottom: '32px', padding: '16px', background: 'rgba(0,0,0,0.4)', fontSize: '0.75rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                        <h3 style={{ margin: 0 }}>System Diagnostics</h3>
+                <div className="glass-card" style={{ marginBottom: '32px', padding: '16px', background: 'rgba(0,0,0,0.6)', border: '1px solid var(--accent-primary)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+                        <h3 style={{ margin: 0, color: 'var(--accent-primary)' }}>Production Safety Diagnostics</h3>
                         <button onClick={() => setShowDebug(false)}>Close</button>
                     </div>
-                    <div style={{ marginBottom: '8px' }}><strong>DB URL:</strong> {debugInfo.databaseUrl}</div>
-                    <div style={{ marginBottom: '8px' }}><strong>Timestamp:</strong> {debugInfo.timestamp}</div>
-                    <div style={{ gridTemplateColumns: '1fr 1fr', display: 'grid', gap: '16px' }}>
-                        <div>
-                            <strong>Users found:</strong>
-                            <ul style={{ margin: '4px 0', paddingLeft: '16px' }}>
-                                {debugInfo.users?.map((u: any) => (
-                                    <li key={u.username}>{u.username} ({u.role})</li>
-                                ))}
-                            </ul>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', fontSize: '0.85rem' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div>
+                                <strong style={{ color: 'var(--text-secondary)' }}>Current Working Dir:</strong>
+                                <div style={{ fontFamily: 'monospace', background: '#000', padding: '4px', borderRadius: '4px', marginTop: '4px' }}>{debugInfo.cwd}</div>
+                            </div>
+                            <div>
+                                <strong style={{ color: 'var(--text-secondary)' }}>Expected DB Path:</strong>
+                                <div style={{ fontFamily: 'monospace', background: '#000', padding: '4px', borderRadius: '4px', marginTop: '4px' }}>{debugInfo.absDbPath}</div>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <strong>File Exists:</strong> 
+                                <span style={{ color: debugInfo.dbFileExists ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+                                    {debugInfo.dbFileExists ? 'YES' : 'NO (MISSING)'}
+                                </span>
+                            </div>
                         </div>
-                        <div>
-                            <strong>Raw Records Count:</strong> {debugInfo.allPermissions?.length}
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div>
+                                <strong style={{ color: 'var(--text-secondary)' }}>DATABASE_URL Env:</strong>
+                                <div style={{ fontFamily: 'monospace', background: '#000', padding: '4px', borderRadius: '4px', marginTop: '4px' }}>{debugInfo.databaseUrl}</div>
+                            </div>
+                            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '8px', borderRadius: '8px' }}>
+                                <div style={{ marginBottom: '4px' }}><strong>Users found:</strong> {debugInfo.users?.length || 0}</div>
+                                <div style={{ marginBottom: '4px' }}><strong>Permission records:</strong> {debugInfo.allPermissions?.length || 0}</div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Last Scan: {debugInfo.timestamp}</div>
+                            </div>
                         </div>
                     </div>
+                    
+                    {debugInfo.error && (
+                        <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '4px', color: '#fca5a5' }}>
+                            <div style={{ fontWeight: 700, marginBottom: '4px' }}>Connection Error:</div>
+                            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '0.75rem' }}>{debugInfo.error}</pre>
+                            {debugInfo.stack && <pre style={{ marginTop: '8px', fontSize: '0.65rem', opacity: 0.7 }}>{debugInfo.stack}</pre>}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {showLogs && (
+                <div className="glass-card" style={{ marginBottom: '32px', padding: '16px', background: '#000', border: '1px solid var(--accent-primary)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                        <h3 style={{ margin: 0, color: 'var(--accent-primary)' }}>Full Server Logs (Last 100 lines)</h3>
+                        <button onClick={() => setShowLogs(false)}>Close</button>
+                    </div>
+                    <pre style={{ 
+                        margin: 0, 
+                        whiteSpace: 'pre-wrap', 
+                        fontSize: '0.75rem', 
+                        color: '#4ade80', 
+                        fontFamily: 'monospace',
+                        maxHeight: '400px',
+                        overflowY: 'auto',
+                        background: '#0a0a0a',
+                        padding: '12px'
+                    }}>
+                        {logs || "Loading logs..."}
+                    </pre>
                 </div>
             )}
 
