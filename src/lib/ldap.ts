@@ -14,7 +14,13 @@ export async function authenticateWithAD(username: string, password: string): Pr
         return false;
     }
 
-    const client = ldap.createClient({ url });
+    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
+    const tlsOptions = url.startsWith("ldaps") ? { rejectUnauthorized } : undefined;
+
+    const client = ldap.createClient({ 
+        url,
+        tlsOptions
+    });
 
     return new Promise((resolve) => {
         // Step 1: Bind with service account
@@ -62,7 +68,7 @@ export async function authenticateWithAD(username: string, password: string): Pr
                     }
 
                     // Step 3: Bind with user's DN and their password
-                    const userClient = ldap.createClient({ url });
+                    const userClient = ldap.createClient({ url, tlsOptions });
                     userClient.bind(userDN, password, (err) => {
                         userClient.unbind();
                         client.unbind();
