@@ -5,7 +5,8 @@ import { getPermissionsForRole } from "@/app/actions/permissions";
 export default async function Sidebar() {
     const session = await auth();
     const role = (session?.user as any)?.role || 'USER';
-    const permissions = await getPermissionsForRole(role);
+    const normalizedRole = String(role).toUpperCase();
+    const permissions = await getPermissionsForRole(normalizedRole);
 
-    return <SidebarClient role={role} permissions={permissions} />;
+    return <SidebarClient role={normalizedRole} permissions={permissions} />;
 }

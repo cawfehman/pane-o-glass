@@ -5,10 +5,11 @@ import { getPermissionsForRole } from "@/app/actions/permissions";
 export default async function QueriesPage() {
     const session = await auth();
     const role = (session?.user as any)?.role || "USER";
-    const isAdmin = role === "ADMIN";
+    const normalizedRole = String(role).toUpperCase();
+    const isAdmin = normalizedRole === "ADMIN";
     
     // Fetch dynamic permissions from DB
-    const permissions = await getPermissionsForRole(role);
+    const permissions = await getPermissionsForRole(normalizedRole);
     const hasPermission = (toolId: string) => permissions.includes(toolId) || isAdmin;
 
     return (
