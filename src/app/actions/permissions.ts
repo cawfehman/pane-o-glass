@@ -14,8 +14,17 @@ function logInternalError(msg: string, err: any) {
     fs.appendFileSync(logPath, content);
 }
 
+async function ensureAdmin() {
+    const session = await auth();
+    if ((session?.user as any)?.role !== 'ADMIN') {
+        throw new Error("Unauthorized: Administrator access required.");
+    }
+    return session;
+}
+
 export async function getToolPermissions() {
     noStore();
+    await ensureAdmin();
     try {
         return await prisma.toolPermission.findMany({
             orderBy: [
@@ -30,6 +39,7 @@ export async function getToolPermissions() {
 }
 
 export async function updateToolPermission(toolId: string, role: string, isEnabled: boolean) {
+    const session = await ensureAdmin();
     console.log(`Updating permission: ${toolId} for ${role} to ${isEnabled}`);
     try {
         await prisma.toolPermission.upsert({
@@ -72,6 +82,7 @@ export async function getPermissionsForRole(role: string) {
 }
 
 export async function getPermissionsDiagnostic() {
+    await ensureAdmin();
     try {
         const dbPath = process.env.DATABASE_URL?.replace('file:', '') || '';
         const absDbPath = path.isAbsolute(dbPath) ? dbPath : path.resolve(process.cwd(), dbPath);
@@ -99,6 +110,7 @@ export async function getPermissionsDiagnostic() {
 }
 
 export async function getInternalLogs() {
+    await ensureAdmin();
     const logPath = path.join(process.cwd(), "error.log");
     if (!fs.existsSync(logPath)) return "No error log found.";
     try {
@@ -110,10 +122,7 @@ export async function getInternalLogs() {
 }
 
 export async function resetPermissions() {
-    const session = await auth();
-    if ((session?.user as any)?.role !== 'ADMIN') {
-        throw new Error("Unauthorized");
-    }
+    const session = await ensureAdmin();
 
     try {
         await prisma.toolPermission.deleteMany({});
