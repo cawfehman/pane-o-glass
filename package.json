@@ -17,6 +17,7 @@
     "@types/bcryptjs": "^2.4.6",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.3.1",
+    "ldapjs": "^3.0.7",
     "next": "16.1.6",
     "next-auth": "^5.0.0-beta.30",
     "node-ssh": "^13.2.1",
@@ -26,6 +27,7 @@
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
+    "@types/ldapjs": "^3.0.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
