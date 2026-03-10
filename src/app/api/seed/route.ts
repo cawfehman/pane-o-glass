@@ -8,24 +8,35 @@ export async function GET() {
         const hashedPassword = bcrypt.hashSync('admin123', 10);
         console.log("Hashed password generated.");
 
-        const admin = await prisma.user.upsert({
-            where: { username: 'admin' },
-            update: { 
-                password: hashedPassword,
-                role: 'ADMIN' // Ensure it's ADMIN
-            },
-            create: {
-                username: 'admin',
-                password: hashedPassword,
-                role: 'ADMIN',
-            },
-        });
+        const accounts = [
+            { username: 'admin', role: 'ADMIN' },
+            { username: 'test-user', role: 'USER' },
+            { username: 'test-analyst', role: 'ANALYST' },
+            { username: 'test-network', role: 'NETWORK' },
+        ];
 
-        console.log("Admin user upserted successfully:", admin.username);
+        const seededUsers = [];
+
+        for (const acc of accounts) {
+            const user = await prisma.user.upsert({
+                where: { username: acc.username },
+                update: { 
+                    password: hashedPassword,
+                    role: acc.role
+                },
+                create: {
+                    username: acc.username,
+                    password: hashedPassword,
+                    role: acc.role,
+                },
+            });
+            seededUsers.push(user.username);
+            console.log(`User ${user.username} (${user.role}) upserted successfully.`);
+        }
+
         return NextResponse.json({ 
-            message: "Seeded admin user successfully. Default password: admin123", 
-            user: admin.username,
-            role: admin.role,
+            message: "Seeding complete. All accounts reset to password: admin123", 
+            users: seededUsers,
             nextSteps: "Visit the Tool Permissions page and click 'Reset Defaults' to populate the new roles and permissions."
         });
     } catch (error: any) {
