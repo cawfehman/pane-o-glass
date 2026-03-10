@@ -171,8 +171,9 @@ body {
 /* Dashboard Centering & Shell */
 .app-shell {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
   width: 100%;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -239,6 +240,8 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
 .topbar {
@@ -258,6 +261,7 @@ body {
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
+  overflow: auto;
 }
 
 /* Theme Overrides */
