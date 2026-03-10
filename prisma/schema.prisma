@@ -23,6 +23,7 @@ model User {
   updatedAt  DateTime   @updatedAt
   auditLogs  AuditLog[]
   firewallQueries FirewallQueryHistory[]
+  feedback   Feedback[]
 }
 
 model FirewallQueryHistory {
@@ -59,4 +60,14 @@ model ToolPermission {
   updatedAt DateTime @updatedAt
 
   @@unique([toolId, role])
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String?  
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  tool      String   // URL or Name of the tool
+  subject   String
+  body      String
+  createdAt DateTime @default(now())
 }

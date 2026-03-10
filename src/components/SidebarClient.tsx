@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import packageJson from "../../package.json";
+import FeedbackModal from "./FeedbackModal";
 
 export default function SidebarClient({ role, permissions = [] }: { role: string, permissions?: string[] }) {
     const pathname = usePathname();
@@ -88,13 +89,20 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
                             System Health
                         </Link>
+                        <Link href="/admin/feedback" className={`nav-link ${pathname === "/admin/feedback" ? "active" : ""}`}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                            User Feedback
+                        </Link>
                     </>
                 )}
             </nav>
 
-            {/* Version Footer */}
-            <div style={{ marginTop: 'auto', paddingTop: '2rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                v{packageJson.version}
+            {/* Feedback & Version Footer */}
+            <div style={{ marginTop: 'auto', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <FeedbackModal />
+                <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    v{packageJson.version}
+                </div>
             </div>
         </aside>
     );
