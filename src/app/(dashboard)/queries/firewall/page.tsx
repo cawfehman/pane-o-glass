@@ -248,51 +248,75 @@ export default function CiscoFirewallPage() {
                 ) : (
                     <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                            <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--bg-surface)', zIndex: 10 }}>
-                                <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-                                    <th style={{ padding: '12px 8px' }}>Timestamp</th>
-                                    <th style={{ padding: '12px 8px' }}>User</th>
-                                    <th style={{ padding: '12px 8px' }}>Action</th>
-                                    <th style={{ padding: '12px 8px' }}>Target IP</th>
-                                    <th style={{ padding: '12px 8px' }}>Firewall</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {history.map((record) => (
-                                    <tr key={record.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                        <td style={{ padding: '12px 8px', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
-                                            {new Date(record.createdAt).toLocaleString()}
-                                        </td>
-                                        <td style={{ padding: '12px 8px', fontWeight: 500, color: 'var(--text-primary)' }}>
-                                            {record.user?.username || "Unknown"}
-                                        </td>
-                                        <td style={{ padding: '12px 8px' }}>
-                                            <span style={{
-                                                padding: '4px 8px', borderRadius: '12px', fontSize: '0.75rem',
-                                                backgroundColor: record.command === "Check Shun" ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                                                color: record.command === "Check Shun" ? '#60a5fa' : '#f87171'
-                                            }}>
-                                                {record.command}
-                                            </span>
-                                        </td>
-                                        <td style={{ padding: '12px 8px', fontFamily: 'monospace', color: 'var(--accent-primary)' }}>
-                                            <a 
-                                                href={`https://ipinfo.io/${record.targetIp}?lookup_source=search-bar`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                style={{ color: 'inherit', textDecoration: 'none' }}
-                                                onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
-                                                onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
-                                            >
-                                                {record.targetIp}
-                                            </a>
-                                        </td>
-                                        <td style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                                            {record.targetName}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
+                                    <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--bg-surface)', zIndex: 10 }}>
+                                        <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
+                                            <th style={{ padding: '12px 8px' }}>Timestamp</th>
+                                            <th style={{ padding: '12px 8px' }}>User</th>
+                                            <th style={{ padding: '12px 8px' }}>Action</th>
+                                            <th style={{ padding: '12px 8px' }}>Target IP</th>
+                                            <th style={{ padding: '12px 8px' }}>Network Info</th>
+                                            <th style={{ padding: '12px 8px' }}>Firewall</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {history.map((record) => (
+                                            <tr key={record.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                <td style={{ padding: '12px 8px', color: 'var(--text-muted)', fontSize: '0.875rem' }}>
+                                                    {new Date(record.createdAt).toLocaleString()}
+                                                </td>
+                                                <td style={{ padding: '12px 8px', fontWeight: 500, color: 'var(--text-primary)' }}>
+                                                    {record.user?.username || "Unknown"}
+                                                </td>
+                                                <td style={{ padding: '12px 8px' }}>
+                                                    <span style={{
+                                                        padding: '4px 8px', borderRadius: '12px', fontSize: '0.75rem',
+                                                        backgroundColor: record.command === "Check Shun" ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                                                        color: record.command === "Check Shun" ? '#60a5fa' : '#f87171'
+                                                    }}>
+                                                        {record.command}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '12px 8px', fontFamily: 'monospace', color: 'var(--accent-primary)' }}>
+                                                    <a 
+                                                        href={`https://ipinfo.io/${record.targetIp}?lookup_source=search-bar`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        style={{ color: 'inherit', textDecoration: 'none' }}
+                                                        onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                                                        onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
+                                                    >
+                                                        {record.targetIp}
+                                                    </a>
+                                                </td>
+                                                <td style={{ padding: '12px 8px', fontSize: '0.875rem' }}>
+                                                    {record.ipAsName ? (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                            <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{record.ipAsName}</span>
+                                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{record.ipAsn}</span>
+                                                                {record.ipCountryCode && (
+                                                                    <span style={{ 
+                                                                        padding: '2px 6px', 
+                                                                        borderRadius: '4px', 
+                                                                        backgroundColor: 'rgba(255,255,255,0.05)',
+                                                                        fontSize: '0.7rem',
+                                                                        color: 'var(--text-secondary)'
+                                                                    }} title={record.ipCountry}>
+                                                                        {record.ipCountryCode}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>No metadata</span>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
+                                                    {record.targetName}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
                         </table>
                     </div>
                 )}

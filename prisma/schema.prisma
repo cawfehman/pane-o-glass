@@ -33,6 +33,11 @@ model FirewallQueryHistory {
   command   String   // "Check Shun", "Remove Shun"
   targetIp  String
   targetName String? // e.g. "FW01"
+  ipAsn      String?
+  ipAsName   String?
+  ipAsDomain String?
+  ipCountry  String?
+  ipCountryCode String?
   createdAt DateTime @default(now())
 }
 

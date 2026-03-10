@@ -61,20 +61,16 @@ export async function POST(req: Request) {
         }
 
         const ssh = new NodeSSH();
+        const { getIpInfoLite } = await import("@/lib/ipinfo");
+        const ipInfo = await getIpInfoLite(ipAddress);
 
         try {
             await ssh.connect({
                 host: sshHost,
                 username: username,
                 password: password,
-                // Cisco CLI often requires specific cipher/kex or works differently,
-                // but node-ssh handles standard SSH2 well. Specific algorithms might
-                // need to be defined if the firewall is older.
                 readyTimeout: 10000
             });
-
-            // Cisco ASA / pyos.sh environments often do not support `exec` channels gracefully (which `execCommand` uses).
-            // They expect a standard interactive shell.
 
             return new Promise((resolve, reject) => {
                 ssh.requestShell().then((stream) => {
@@ -108,7 +104,12 @@ export async function POST(req: Request) {
                                     userId: session.user?.id,
                                     command: action === "show" ? "Check Shun" : "Remove Shun",
                                     targetIp: ipAddress,
-                                    targetName: targetFirewall.name || sshHost
+                                    targetName: targetFirewall.name || sshHost,
+                                    ipAsn: ipInfo?.asn,
+                                    ipAsName: ipInfo?.as_name,
+                                    ipAsDomain: ipInfo?.as_domain,
+                                    ipCountry: ipInfo?.country,
+                                    ipCountryCode: ipInfo?.country_code
                                 }
                             });
                         } catch (e) {
