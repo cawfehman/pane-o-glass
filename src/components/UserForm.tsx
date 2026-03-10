@@ -96,6 +96,7 @@ export default function UserForm({
                 >
                     <option value="USER">User</option>
                     <option value="ANALYST">Analyst</option>
+                    <option value="NETWORK">Network</option>
                     <option value="ADMIN">Admin</option>
                 </select>
             </div>

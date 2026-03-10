@@ -18,7 +18,7 @@ const TOOLS = [
     { id: 'hibp-domain', name: 'HIBP Domain Security' },
 ];
 
-const ROLES = ["ADMIN", "ANALYST", "USER"];
+const ROLES = ["ADMIN", "ANALYST", "NETWORK", "USER"];
 
 export default function PermissionsPage() {
     const router = useRouter();

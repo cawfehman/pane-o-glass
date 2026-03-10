@@ -10,7 +10,10 @@ export async function GET() {
 
         const admin = await prisma.user.upsert({
             where: { username: 'admin' },
-            update: { password: hashedPassword },
+            update: { 
+                password: hashedPassword,
+                role: 'ADMIN' // Ensure it's ADMIN
+            },
             create: {
                 username: 'admin',
                 password: hashedPassword,
@@ -20,9 +23,10 @@ export async function GET() {
 
         console.log("Admin user upserted successfully:", admin.username);
         return NextResponse.json({ 
-            message: "Seeded admin user successfully", 
+            message: "Seeded admin user successfully. Default password: admin123", 
             user: admin.username,
-            role: admin.role
+            role: admin.role,
+            nextSteps: "Visit the Tool Permissions page and click 'Reset Defaults' to populate the new roles and permissions."
         });
     } catch (error: any) {
         console.error("SEEDING ERROR:", error);

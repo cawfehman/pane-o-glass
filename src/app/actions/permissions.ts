@@ -141,8 +141,13 @@ export async function resetPermissions() {
             { toolId: 'firewall', role: 'USER', isEnabled: false },
             { toolId: 'ise', role: 'USER', isEnabled: false },
             { toolId: 'ise-failures', role: 'USER', isEnabled: false },
-            { toolId: 'hibp-account', role: 'USER', isEnabled: true },
-            { toolId: 'hibp-domain', role: 'USER', isEnabled: false }
+            {toolId: 'hibp-account', role: 'USER', isEnabled: true },
+            {toolId: 'hibp-domain', role: 'USER', isEnabled: false },
+            { toolId: 'firewall', role: 'NETWORK', isEnabled: true },
+            { toolId: 'ise', role: 'NETWORK', isEnabled: false },
+            { toolId: 'ise-failures', role: 'NETWORK', isEnabled: false },
+            { toolId: 'hibp-account', role: 'NETWORK', isEnabled: true },
+            { toolId: 'hibp-domain', role: 'NETWORK', isEnabled: false }
         ];
 
         for (const perm of DEFAULT_PERMISSIONS) {
