@@ -273,7 +273,16 @@ export default function CiscoFirewallPage() {
                                             </span>
                                         </td>
                                         <td style={{ padding: '12px 8px', fontFamily: 'monospace', color: 'var(--accent-primary)' }}>
-                                            {record.targetIp}
+                                            <a 
+                                                href={`https://ipinfo.io/${record.targetIp}?lookup_source=search-bar`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                style={{ color: 'inherit', textDecoration: 'none' }}
+                                                onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                                                onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
+                                            >
+                                                {record.targetIp}
+                                            </a>
                                         </td>
                                         <td style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
                                             {record.targetName}
