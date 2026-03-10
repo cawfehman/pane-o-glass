@@ -55,8 +55,8 @@ export default function SystemHealthPage() {
     );
 
     return (
-        <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+        <div className="internal-scroll-layout">
+            <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <div>
                     <h1>System Health</h1>
                     <p style={{ color: 'var(--text-muted)' }}>{metrics.osType} {metrics.osRelease} | Uptime: {hours}h {minutes}m</p>
@@ -69,88 +69,96 @@ export default function SystemHealthPage() {
                 </div>
             </div>
 
-            {/* Utilization Dials */}
-            <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', marginBottom: '24px' }}>
-                <Gauge value={metrics.cpuUsage || 0} label="CPU Usage" />
-                <Gauge value={memPercent || 0} label={`RAM (${memUsedGB}GB / ${memTotalGB}GB)`} color="var(--accent-secondary)" />
-                <Gauge value={parseInt(metrics.diskUsage) || 0} label={`Disk Space (Root)`} color="var(--accent-tertiary)" />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
-
-                {/* Top Probes */}
-                <div className="glass-card">
-                    <h3 style={{ marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Top API Probe Sources</h3>
-                    {metrics.topProbes.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>No probes recorded.</p> : (
-                        <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.875rem' }}>
-                                    <th style={{ padding: '8px 0' }}>Client IP</th>
-                                    <th style={{ padding: '8px 0', textAlign: 'right' }}>Hits</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {metrics.topProbes.map((p: any, i: number) => (
-                                    <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                        <td style={{ padding: '8px 0', fontFamily: 'monospace' }}>{p.ip}</td>
-                                        <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 'bold' }}>{p.count}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
+            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingRight: '4px' }}>
+                {/* Utilization Dials */}
+                <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', marginBottom: '24px' }}>
+                    <Gauge value={metrics.cpuUsage || 0} label="CPU Usage" />
+                    <Gauge value={memPercent || 0} label={`RAM (${memUsedGB}GB / ${memTotalGB}GB)`} color="var(--accent-secondary)" />
+                    <Gauge value={parseInt(metrics.diskUsage) || 0} label={`Disk Space (Root)`} color="var(--accent-tertiary)" />
                 </div>
 
-                {/* Top CPU Processes */}
-                <div className="glass-card" style={{ overflowX: 'auto' }}>
-                    <h3 style={{ marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Top CPU Processes</h3>
-                    {metrics.processesCpu.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>Linux strictly required for process tracking.</p> : (
-                        <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                            <thead>
-                                <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-                                    <th style={{ padding: '8px 0' }}>PID</th>
-                                    <th style={{ padding: '8px 0' }}>Command</th>
-                                    <th style={{ padding: '8px 0', textAlign: 'right' }}>%CPU</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {metrics.processesCpu.map((p: any, i: number) => (
-                                    <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                        <td style={{ padding: '8px 0' }}>{p.pid}</td>
-                                        <td style={{ padding: '8px 0', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.cmd}>{p.cmd}</td>
-                                        <td style={{ padding: '8px 0', textAlign: 'right', color: 'var(--accent-primary)' }}>{p.cpu}%</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
-                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '24px' }}>
 
-                {/* Top RAM Processes */}
-                <div className="glass-card" style={{ overflowX: 'auto' }}>
-                    <h3 style={{ marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Top RAM Processes</h3>
-                    {metrics.processesMem.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>Linux strictly required for process tracking.</p> : (
-                        <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
-                            <thead>
-                                <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-                                    <th style={{ padding: '8px 0' }}>PID</th>
-                                    <th style={{ padding: '8px 0' }}>Command</th>
-                                    <th style={{ padding: '8px 0', textAlign: 'right' }}>%MEM</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {metrics.processesMem.map((p: any, i: number) => (
-                                    <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                        <td style={{ padding: '8px 0' }}>{p.pid}</td>
-                                        <td style={{ padding: '8px 0', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.cmd}>{p.cmd}</td>
-                                        <td style={{ padding: '8px 0', textAlign: 'right', color: 'var(--accent-secondary)' }}>{p.mem}%</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )}
-                </div>
+                    {/* Top Probes */}
+                    <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px' }}>
+                        <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Top API Probe Sources</h3>
+                        {metrics.topProbes.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>No probes recorded.</p> : (
+                            <div style={{ flex: 1, overflowY: 'auto' }}>
+                                <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+                                    <thead className="sticky-header">
+                                        <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.875rem', background: 'var(--bg-card)' }}>
+                                            <th style={{ padding: '8px 0' }}>Client IP</th>
+                                            <th style={{ padding: '8px 0', textAlign: 'right' }}>Hits</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {metrics.topProbes.map((p: any, i: number) => (
+                                            <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                <td style={{ padding: '8px 0', fontFamily: 'monospace' }}>{p.ip}</td>
+                                                <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 'bold' }}>{p.count}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
 
+                    {/* Top CPU Processes */}
+                    <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px' }}>
+                        <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Top CPU Processes</h3>
+                        {metrics.processesCpu.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>Linux strictly required for process tracking.</p> : (
+                            <div style={{ flex: 1, overflowY: 'auto' }}>
+                                <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                                    <thead className="sticky-header">
+                                        <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', background: 'var(--bg-card)' }}>
+                                            <th style={{ padding: '8px 0' }}>PID</th>
+                                            <th style={{ padding: '8px 0' }}>Command</th>
+                                            <th style={{ padding: '8px 0', textAlign: 'right' }}>%CPU</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {metrics.processesCpu.map((p: any, i: number) => (
+                                            <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                <td style={{ padding: '8px 0' }}>{p.pid}</td>
+                                                <td style={{ padding: '8px 0', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.cmd}>{p.cmd}</td>
+                                                <td style={{ padding: '8px 0', textAlign: 'right', color: 'var(--accent-primary)' }}>{p.cpu}%</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Top RAM Processes */}
+                    <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px' }}>
+                        <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Top RAM Processes</h3>
+                        {metrics.processesMem.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>Linux strictly required for process tracking.</p> : (
+                            <div style={{ flex: 1, overflowY: 'auto' }}>
+                                <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                                    <thead className="sticky-header">
+                                        <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', background: 'var(--bg-card)' }}>
+                                            <th style={{ padding: '8px 0' }}>PID</th>
+                                            <th style={{ padding: '8px 0' }}>Command</th>
+                                            <th style={{ padding: '8px 0', textAlign: 'right' }}>%MEM</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {metrics.processesMem.map((p: any, i: number) => (
+                                            <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                <td style={{ padding: '8px 0' }}>{p.pid}</td>
+                                                <td style={{ padding: '8px 0', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.cmd}>{p.cmd}</td>
+                                                <td style={{ padding: '8px 0', textAlign: 'right', color: 'var(--accent-secondary)' }}>{p.mem}%</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+
+                </div>
             </div>
         </div>
     );

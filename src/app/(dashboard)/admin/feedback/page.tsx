@@ -28,37 +28,37 @@ export default function AdminFeedbackPage() {
     }, []);
 
     return (
-        <div>
-            <div style={{ marginBottom: '32px' }}>
+        <div className="internal-scroll-layout">
+            <div style={{ flexShrink: 0, marginBottom: '32px' }}>
                 <h1>User Feedback Management</h1>
                 <p style={{ color: 'var(--text-secondary)' }}>Review and track feedback submitted by members across the utility suite.</p>
             </div>
 
-            <div className="glass-card">
+            <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: 0 }}>
                 {loading ? (
-                    <p style={{ color: 'var(--text-muted)' }}>Loading feedback...</p>
+                    <p style={{ color: 'var(--text-muted)', padding: '24px' }}>Loading feedback...</p>
                 ) : error ? (
-                    <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444' }}>
+                    <div style={{ margin: '24px', padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444' }}>
                         {error}
                     </div>
                 ) : feedbackList.length === 0 ? (
-                    <p style={{ color: 'var(--text-muted)' }}>No feedback has been submitted yet.</p>
+                    <p style={{ color: 'var(--text-muted)', padding: '24px' }}>No feedback has been submitted yet.</p>
                 ) : (
-                    <div style={{ overflowX: 'auto' }}>
+                    <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                            <thead>
+                            <thead className="sticky-header">
                                 <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-                                    <th style={{ padding: '12px 8px' }}>Timestamp</th>
+                                    <th style={{ padding: '12px 0 12px 24px' }}>Timestamp</th>
                                     <th style={{ padding: '12px 8px' }}>User</th>
                                     <th style={{ padding: '12px 8px' }}>Tool/Page</th>
                                     <th style={{ padding: '12px 8px' }}>Subject</th>
-                                    <th style={{ padding: '12px 8px' }}>Details</th>
+                                    <th style={{ padding: '12px 8px 12px 0' }}>Details</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {feedbackList.map((item) => (
                                     <tr key={item.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                        <td style={{ padding: '12px 8px', color: 'var(--text-muted)', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+                                        <td style={{ padding: '12px 0 12px 24px', color: 'var(--text-muted)', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
                                             {new Date(item.createdAt).toLocaleString()}
                                         </td>
                                         <td style={{ padding: '12px 8px', fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
@@ -71,7 +71,7 @@ export default function AdminFeedbackPage() {
                                         <td style={{ padding: '12px 8px', fontWeight: 600, color: 'var(--text-primary)' }}>
                                             {item.subject}
                                         </td>
-                                        <td style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontSize: '0.9rem', maxWidth: '400px' }}>
+                                        <td style={{ padding: '12px 8px 12px 0', color: 'var(--text-secondary)', fontSize: '0.9rem', maxWidth: '400px' }}>
                                             {item.body}
                                         </td>
                                     </tr>

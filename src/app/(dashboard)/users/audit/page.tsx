@@ -26,8 +26,8 @@ export default async function AuditLogsPage() {
     });
 
     return (
-        <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+        <div className="internal-scroll-layout">
+            <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
                 <div>
                     <h1>Audit Logs</h1>
                     <p style={{ color: 'var(--text-secondary)' }}>View system activity and track user actions.</p>
@@ -39,10 +39,10 @@ export default async function AuditLogsPage() {
                 </div>
             </div>
 
-            <div className="glass-card">
-                <div style={{ overflowX: 'auto' }}>
+            <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                        <thead>
+                        <thead className="sticky-header">
                             <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                                 <th style={{ padding: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Time</th>
                                 <th style={{ padding: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>User</th>

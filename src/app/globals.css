@@ -298,6 +298,15 @@ body {
   gap: 2rem;
 }
 
+/* Sticky Table Headers */
+thead.sticky-header th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-surface);
+  z-index: 10;
+  box-shadow: 0 1px 0 var(--border-color);
+}
+
 /* Theme Overrides */
 .theme-midnight {
   --bg-dark: #09090b;
