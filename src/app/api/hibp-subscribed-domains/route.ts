@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { hasPermission } from "@/app/actions/permissions";
 
 export async function GET() {
     try {
         const session = await auth();
-        if (!session?.user || (session.user as any).role !== 'ADMIN') {
-            return new NextResponse("Forbidden: This tool is restricted to Administrators.", { status: 403 });
+        const role = (session?.user as any)?.role;
+
+        if (!session?.user || !(await hasPermission(role, 'hibp-domain'))) {
+            return new NextResponse("Forbidden: Access to this tool is restricted.", { status: 403 });
         }
 
         const apiKey = process.env.HIBP_API_KEY;

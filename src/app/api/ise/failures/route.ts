@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
+import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
 import { fetchIseSession } from '@/lib/ise';
 
 export async function GET(req: Request) {
     const session = await auth();
-    if (!session || !session.user) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const role = (session?.user as any)?.role;
+
+    if (!session?.user || !(await hasPermission(role, 'ise-failures'))) {
+        return NextResponse.json({ error: 'Forbidden: Access to this tool is restricted.' }, { status: 403 });
     }
 
     const { searchParams } = new URL(req.url);

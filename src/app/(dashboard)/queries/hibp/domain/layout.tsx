@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { hasPermission } from "@/app/actions/permissions";
 
 export default async function DomainSecurityLayout({
     children,
@@ -7,9 +8,10 @@ export default async function DomainSecurityLayout({
     children: React.ReactNode;
 }) {
     const session = await auth();
-    const isAdmin = (session?.user as any)?.role === 'ADMIN';
+    const role = (session?.user as any)?.role;
+    const canAccess = await hasPermission(role, 'hibp-domain');
 
-    if (!isAdmin) {
+    if (!canAccess) {
         redirect('/');
     }
 

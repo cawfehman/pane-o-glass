@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import { hasPermission } from "@/app/actions/permissions";
 
 export async function POST(request: Request) {
     try {
         // 1. Verify Authentication & Authorization
         const session = await auth();
-        // Allow all logged-in users to query (or restrict to ADMIN if desired)
-        if (!session?.user) {
-            return new NextResponse("Unauthorized", { status: 401 });
+        const role = (session?.user as any)?.role;
+
+        if (!session?.user || !(await hasPermission(role, 'hibp-account'))) {
+            return new NextResponse("Forbidden: Access to this tool is restricted.", { status: 403 });
         }
 
         const { account } = await request.json();

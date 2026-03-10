@@ -81,6 +81,24 @@ export async function getPermissionsForRole(role: string) {
     }
 }
 
+export async function hasPermission(role: string, toolId: string) {
+    if (role === 'ADMIN') return true;
+    noStore();
+    try {
+        const permission = await prisma.toolPermission.findFirst({
+            where: { 
+                role: String(role).toUpperCase(), 
+                toolId, 
+                isEnabled: true 
+            }
+        });
+        return !!permission;
+    } catch (error) {
+        logInternalError(`Error checking permission ${toolId} for role ${role}`, error);
+        return false;
+    }
+}
+
 export async function getPermissionsDiagnostic() {
     await ensureAdmin();
     try {

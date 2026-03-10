@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { hasPermission } from "@/app/actions/permissions";
 
 export async function GET() {
     try {
         const session = await auth();
-        if (!session) {
-            return new NextResponse("Unauthorized", { status: 401 });
+        const role = (session?.user as any)?.role;
+
+        if (!session?.user || !(await hasPermission(role, 'firewall'))) {
+            return new NextResponse("Forbidden: Access to this tool is restricted.", { status: 403 });
         }
 
         const configStr = process.env.FIREWALL_CONFIG || "[]";

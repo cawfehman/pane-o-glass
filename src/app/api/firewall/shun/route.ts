@@ -3,17 +3,16 @@ import { auth } from "@/lib/auth";
 import { NodeSSH } from "node-ssh";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
+import { hasPermission } from "@/app/actions/permissions";
 
 export async function POST(req: Request) {
     try {
         const session = await auth();
-        if (!session) {
-            return new NextResponse("Unauthorized", { status: 401 });
-        }
+        const role = (session?.user as any)?.role;
 
-        // Optional: restrict to ADMIN role
-        // const isAdmin = (session?.user as any)?.role === 'ADMIN';
-        // if (!isAdmin) return new NextResponse("Forbidden", { status: 403 });
+        if (!session?.user || !(await hasPermission(role, 'firewall'))) {
+            return new NextResponse("Forbidden: Access to this tool is restricted.", { status: 403 });
+        }
 
         const body = await req.json();
         const { ipAddress, action, targetHost } = body;
