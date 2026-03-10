@@ -37,6 +37,25 @@
   margin: 0;
 }
 
+/* Custom Subtle Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -262,6 +281,21 @@ body {
   margin: 0 auto;
   width: 100%;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Internal Scrolling Mode */
+.page-container:has(.internal-scroll-layout) {
+  overflow: hidden;
+  height: calc(100vh - 60px);
+}
+
+.internal-scroll-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 2rem;
 }
 
 /* Theme Overrides */

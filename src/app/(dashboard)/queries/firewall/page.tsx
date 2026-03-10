@@ -101,151 +101,154 @@ export default function CiscoFirewallPage() {
     };
 
     return (
-        <div>
-            <div style={{ marginBottom: '32px' }}>
-                <h1>Cisco Firewall Utilities</h1>
-                <p style={{ color: 'var(--text-secondary)' }}>Query or remove IP address shuns across your configured Cisco devices.</p>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 450px) 1fr', gap: '2rem', alignItems: 'flex-start' }}>
-
-                {/* --- CONTROLS CARD --- */}
-                <div className="glass-card">
-                    <h3 style={{ marginBottom: '16px' }}>Shun Management</h3>
-
-                    {loadingHosts ? (
-                        <p style={{ color: 'var(--text-muted)' }}>Loading configured firewalls...</p>
-                    ) : hostsError ? (
-                        <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1.5rem' }}>
-                            <strong>Configuration Error:</strong> {hostsError}
-                        </div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '2rem' }}>
-                            <div className="input-group">
-                                <label htmlFor="targetHost">Target Firewall</label>
-                                <select
-                                    id="targetHost"
-                                    value={targetHost}
-                                    onChange={(e) => setTargetHost(e.target.value)}
-                                    style={{
-                                        width: '100%', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                                        border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)',
-                                        color: 'var(--text-primary)', fontSize: '1rem', outline: 'none'
-                                    }}
-                                >
-                                    {availableHosts.map(h => (
-                                        <option key={h.id} value={h.id} style={{ background: 'var(--bg-dark)' }}>{h.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className="input-group">
-                                <label htmlFor="ipAddress">IPv4 Address to Query/Manage</label>
-                                <input
-                                    type="text"
-                                    id="ipAddress"
-                                    value={ipAddress}
-                                    onChange={(e) => setIpAddress(e.target.value)}
-                                    placeholder="e.g. 192.168.1.50"
-                                />
-                            </div>
-                        </div>
-                    )}
-
-                    {!loadingHosts && !hostsError && (
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                            <button
-                                type="button"
-                                className="btn-primary"
-                                onClick={() => handleAction("show")}
-                                disabled={actionLoading || !ipAddress}
-                                style={{ flex: 1, background: 'var(--bg-surface-hover)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
-                            >
-                                {actionLoading ? "Processing..." : "Check Shun"}
-                            </button>
-                            <button
-                                type="button"
-                                className="btn-primary"
-                                onClick={() => handleAction("remove")}
-                                disabled={actionLoading || !ipAddress}
-                                style={{ flex: 1, background: '#ef4444', borderColor: '#ef4444' }}
-                            >
-                                {actionLoading ? "Processing..." : "Remove Shun"}
-                            </button>
-                        </div>
-                    )}
+        <div className="internal-scroll-layout">
+            <div style={{ flexShrink: 0 }}>
+                <div style={{ marginBottom: '32px' }}>
+                    <h1>Cisco Firewall Utilities</h1>
+                    <p style={{ color: 'var(--text-secondary)' }}>Query or remove IP address shuns across your configured Cisco devices.</p>
                 </div>
 
-                {/* --- OUTPUT CARD --- */}
-                <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
-                    <h3 style={{ marginBottom: '16px' }}>Terminal Output</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 450px) 1fr', gap: '2rem', alignItems: 'flex-start' }}>
 
-                    {actionError && (
-                        <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1rem' }}>
-                            <strong>Execution Error:</strong> {actionError}
-                        </div>
-                    )}
+                    {/* --- CONTROLS CARD --- */}
+                    <div className="glass-card">
+                        <h3 style={{ marginBottom: '16px' }}>Shun Management</h3>
 
-                    <div style={{
-                        flex: 1,
-                        background: '#0a0a0a',
-                        borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--border-color)',
-                        padding: '1rem',
-                        fontFamily: 'monospace',
-                        color: '#d4d4d4',
-                        overflowY: 'auto',
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-all'
-                    }}>
-                        {!actionResult && !actionLoading && !actionError && (
-                            <div style={{ color: '#555', fontStyle: 'italic', paddingTop: '1rem', textAlign: 'center' }}>
-                                Awaiting command execution...
+                        {loadingHosts ? (
+                            <p style={{ color: 'var(--text-muted)' }}>Loading configured firewalls...</p>
+                        ) : hostsError ? (
+                            <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1.5rem' }}>
+                                <strong>Configuration Error:</strong> {hostsError}
                             </div>
-                        )}
-
-                        {actionLoading && (
-                            <div style={{ color: '#3b82f6', animation: 'pulse 2s infinite' }}>
-                                Executing SSH command on {availableHosts.find(h => h.id === targetHost)?.name || targetHost}...
-                            </div>
-                        )}
-
-                        {actionResult && (
-                            <>
-                                <div style={{ color: '#38bdf8', marginBottom: '0.5rem' }}>
-                                    $ ssh user@{actionResult.target} -c "{actionResult.command}"
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '2rem' }}>
+                                <div className="input-group">
+                                    <label htmlFor="targetHost">Target Firewall</label>
+                                    <select
+                                        id="targetHost"
+                                        value={targetHost}
+                                        onChange={(e) => setTargetHost(e.target.value)}
+                                        style={{
+                                            width: '100%', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                            border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)',
+                                            color: 'var(--text-primary)', fontSize: '1rem', outline: 'none'
+                                        }}
+                                    >
+                                        {availableHosts.map(h => (
+                                            <option key={h.id} value={h.id} style={{ background: 'var(--bg-dark)' }}>{h.name}</option>
+                                        ))}
+                                    </select>
                                 </div>
-                                {actionResult.stdout && (
-                                    <div style={{ color: '#a3be8c', marginBottom: '1rem' }}>{actionResult.stdout}</div>
-                                )}
-                                {actionResult.stderr && (
-                                    <div style={{ color: '#bf616a' }}>{actionResult.stderr}</div>
-                                )}
-                                {!actionResult.stdout && !actionResult.stderr && (
-                                    <div style={{ color: '#888', fontStyle: 'italic' }}>(Command returned cleanly with no text output)</div>
-                                )}
-                            </>
+
+                                <div className="input-group">
+                                    <label htmlFor="ipAddress">IPv4 Address to Query/Manage</label>
+                                    <input
+                                        type="text"
+                                        id="ipAddress"
+                                        value={ipAddress}
+                                        onChange={(e) => setIpAddress(e.target.value)}
+                                        placeholder="e.g. 192.168.1.50"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {!loadingHosts && !hostsError && (
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                <button
+                                    type="button"
+                                    className="btn-primary"
+                                    onClick={() => handleAction("show")}
+                                    disabled={actionLoading || !ipAddress}
+                                    style={{ flex: 1, background: 'var(--bg-surface-hover)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+                                >
+                                    {actionLoading ? "Processing..." : "Check Shun"}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn-primary"
+                                    onClick={() => handleAction("remove")}
+                                    disabled={actionLoading || !ipAddress}
+                                    style={{ flex: 1, background: '#ef4444', borderColor: '#ef4444' }}
+                                >
+                                    {actionLoading ? "Processing..." : "Remove Shun"}
+                                </button>
+                            </div>
                         )}
                     </div>
-                </div>
 
+                    {/* --- OUTPUT CARD --- */}
+                    <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '300px' }}>
+                        <h3 style={{ marginBottom: '16px' }}>Terminal Output</h3>
+
+                        {actionError && (
+                            <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1rem' }}>
+                                <strong>Execution Error:</strong> {actionError}
+                            </div>
+                        )}
+
+                        <div style={{
+                            flex: 1,
+                            background: '#0a0a0a',
+                            borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--border-color)',
+                            padding: '1rem',
+                            fontFamily: 'monospace',
+                            color: '#d4d4d4',
+                            overflowY: 'auto',
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-all'
+                        }}>
+                            {!actionResult && !actionLoading && !actionError && (
+                                <div style={{ color: '#555', fontStyle: 'italic', paddingTop: '1rem', textAlign: 'center' }}>
+                                    Awaiting command execution...
+                                </div>
+                            )}
+
+                            {actionLoading && (
+                                <div style={{ color: '#3b82f6', animation: 'pulse 2s infinite' }}>
+                                    Executing SSH command on {availableHosts.find(h => h.id === targetHost)?.name || targetHost}...
+                                </div>
+                            )}
+
+                            {actionResult && (
+                                <>
+                                    <div style={{ color: '#38bdf8', marginBottom: '0.5rem' }}>
+                                        $ ssh user@{actionResult.target} -c "{actionResult.command}"
+                                    </div>
+                                    {actionResult.stdout && (
+                                        <div style={{ color: '#a3be8c', marginBottom: '1rem' }}>{actionResult.stdout}</div>
+                                    )}
+                                    {actionResult.stderr && (
+                                        <div style={{ color: '#bf616a' }}>{actionResult.stderr}</div>
+                                    )}
+                                    {!actionResult.stdout && !actionResult.stderr && (
+                                        <div style={{ color: '#888', fontStyle: 'italic' }}>(Command returned cleanly with no text output)</div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* --- RECENT HISTORY CARD --- */}
-            <div className="glass-card" style={{ marginTop: '2rem' }}>
-                <h3 style={{ marginBottom: '16px' }}>Recent Global Queries</h3>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-                    Showing the last 50 shun queries executed across all team members.
-                </p>
+            <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <div style={{ flexShrink: 0 }}>
+                    <h3 style={{ marginBottom: '16px' }}>Recent Global Queries</h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+                        Showing the last 50 shun queries executed across all team members.
+                    </p>
+                </div>
 
                 {loadingHistory ? (
                     <p style={{ color: 'var(--text-muted)' }}>Loading history...</p>
                 ) : history.length === 0 ? (
                     <p style={{ color: 'var(--text-muted)' }}>No queries have been executed yet.</p>
                 ) : (
-                    <div style={{ overflowX: 'auto' }}>
+                    <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                            <thead>
+                            <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--bg-surface)', zIndex: 10 }}>
                                 <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
                                     <th style={{ padding: '12px 8px' }}>Timestamp</th>
                                     <th style={{ padding: '12px 8px' }}>User</th>
@@ -294,7 +297,6 @@ export default function CiscoFirewallPage() {
                     </div>
                 )}
             </div>
-
         </div>
     );
 }
