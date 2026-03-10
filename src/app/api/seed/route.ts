@@ -4,6 +4,13 @@ import { NextResponse } from "next/server"
 
 export async function GET() {
     console.log("Seed API triggered...");
+    
+    // Security Guard: Only allow seeding in development mode
+    if (process.env.NODE_ENV === 'production') {
+        console.warn("Seeding attempt blocked in production environment.");
+        return new NextResponse("Not Found", { status: 404 });
+    }
+
     try {
         const hashedPassword = bcrypt.hashSync('admin123', 10);
         console.log("Hashed password generated.");
