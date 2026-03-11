@@ -9,8 +9,11 @@ export async function GET() {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role;
+        const permitted = await hasPermission(role, 'firewall');
 
-        if (!session?.user || !(await hasPermission(role, 'firewall'))) {
+        console.log(`[API/Firewall/History] Request by ${session?.user?.name} (Role: ${role}). Permitted: ${permitted}`);
+
+        if (!session?.user || !permitted) {
             return new NextResponse("Forbidden: Access to this tool is restricted.", { status: 403 });
         }
 

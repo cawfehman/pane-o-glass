@@ -102,13 +102,13 @@ export default function CiscoFirewallPage() {
 
     return (
         <div className="internal-scroll-layout">
-            <div style={{ flexShrink: 0 }}>
-                <div style={{ marginBottom: '32px' }}>
+            <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+                <div>
                     <h1>Cisco Firewall Utilities</h1>
                     <p style={{ color: 'var(--text-secondary)' }}>Query or remove IP address shuns across your configured Cisco devices.</p>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 450px) 1fr', gap: '2rem', alignItems: 'flex-start' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 450px) 1fr', gap: '2rem', alignItems: 'stretch' }}>
 
                     {/* --- CONTROLS CARD --- */}
                     <div className="glass-card">
@@ -178,7 +178,7 @@ export default function CiscoFirewallPage() {
                     </div>
 
                     {/* --- OUTPUT CARD --- */}
-                    <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '300px' }}>
+                    <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '250px' }}>
                         <h3 style={{ marginBottom: '16px' }}>Terminal Output</h3>
 
                         {actionError && (
