@@ -13,7 +13,7 @@ export default function SessionTimeout() {
             clearTimeout(timerRef.current);
         }
         timerRef.current = setTimeout(() => {
-            signOut({ callbackUrl: "/login?timeout=true" });
+            signOut({ callbackUrl: `${window.location.origin}/login?timeout=true` });
         }, TIMEOUT_MS);
     };
 
