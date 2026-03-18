@@ -128,7 +128,7 @@ export default function CiscoIseFailuresPage() {
                             return (
                                 <div key={idx} className="glass-card" style={{ 
                                     marginBottom: '24px', 
-                                    borderLeft: `4px solid ${failure.status === 'true' || failure.status === true ? 'var(--accent-tertiary)' : 'var(--accent-secondary)'}`, 
+                                    borderLeft: `4px solid ${failure.status ? 'var(--accent-tertiary)' : 'var(--accent-secondary)'}`, 
                                     padding: '0' 
                                 }}>
                                     <div style={{ padding: '24px' }}>
@@ -138,17 +138,17 @@ export default function CiscoIseFailuresPage() {
                                                     Session Status
                                                     <span style={{ 
                                                         fontSize: '0.7rem', 
-                                                        background: failure.status === 'true' || failure.status === true ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)', 
-                                                        color: failure.status === 'true' || failure.status === true ? 'var(--accent-tertiary)' : 'var(--accent-secondary)', 
+                                                        background: failure.status ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)', 
+                                                        color: failure.status ? 'var(--accent-tertiary)' : 'var(--accent-secondary)', 
                                                         padding: '2px 8px', 
                                                         borderRadius: '4px', 
                                                         textTransform: 'uppercase' 
                                                     }}>
-                                                        {failure.status === 'true' || failure.status === true ? 'PASS' : `FAIL (${failure.failure_id})`}
+                                                        {failure.status ? 'PASS' : `FAIL (${failure.failure_id})`}
                                                     </span>
                                                 </h4>
                                                 <p title="The exact date and time the authentication occurred"><strong>Timestamp:</strong> {failure.timestamp !== "Unknown" ? new Date(failure.timestamp).toLocaleString() : "Unknown"}</p>
-                                                <p title="The translated ISE failure reason or pass status"><strong>Result:</strong> <span style={{ color: failure.status === 'true' || failure.status === true ? 'var(--accent-tertiary)' : 'var(--accent-secondary)', fontWeight: 'bold' }}>{failure.failure_reason}</span></p>
+                                                <p title="The translated ISE failure reason or pass status"><strong>Result:</strong> <span style={{ color: failure.status ? 'var(--accent-tertiary)' : 'var(--accent-secondary)', fontWeight: 'bold' }}>{failure.failure_reason}</span></p>
                                             </div>
 
                                             <div>

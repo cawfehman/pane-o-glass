@@ -85,7 +85,7 @@ export async function GET(req: Request) {
                     nas_port_id: node.nas_port_id?._ || node.nas_port_id || node.nasPortId || "Unknown",
                     failure_reason: node.failure_reason?._ || node.failure_reason || node.failureReason || "Passed/Active",
                     failure_id: node.failure_id?._ || node.failure_id || node.failureId || "N/A",
-                    status: node.passed?._ || node.passed || (node.failure_reason ? "failed" : "passed"),
+                    status: node.passed?._ === "true" || node.passed === "true" || node.passed === true || (!node.failure_reason && node.passed !== "false" && node.passed !== false),
                     authentication_method: node.authentication_method?._ || node.authentication_method || node.authenticationMethod || "Unknown",
                     authentication_protocol: node.authentication_protocol?._ || node.authentication_protocol || node.authenticationProtocol || "Unknown",
                     acs_server: node.acs_server?._ || node.acs_server || node.acsServer || "Unknown",
