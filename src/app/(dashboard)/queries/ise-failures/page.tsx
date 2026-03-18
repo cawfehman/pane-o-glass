@@ -53,8 +53,8 @@ export default function CiscoIseFailuresPage() {
     return (
         <div className="internal-scroll-layout">
             <div style={{ flexShrink: 0 }}>
-                <h1 style={{ marginBottom: '8px' }}>Cisco ISE Auth Failures</h1>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>Search the monitoring logs for historic authentication failures by MAC Address or Username.</p>
+                <h1 style={{ marginBottom: '8px' }}>ISE Auth Diagnostics</h1>
+                <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>Comprehensive 24-hour authentication history and forensic deep-drills for MACs or Usernames.</p>
 
                 <form onSubmit={(e) => handleSearch(e)} className="glass-card" style={{ display: 'flex', gap: '16px', marginBottom: '32px' }}>
                     <input

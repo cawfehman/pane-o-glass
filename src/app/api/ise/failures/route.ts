@@ -57,8 +57,8 @@ export async function GET(req: Request) {
         };
 
         await logAudit(
-            'ISE_FAILURES_QUERY',
-            `Searched ISE for Auth Failures associated with ${searchType === "mac" ? "MAC" : "User"}: ${formattedQuery}`,
+            'ISE_DIAGNOSTICS_QUERY',
+            `Searched ISE diagnostics for ${searchType === "mac" ? "MAC" : "User"}: ${formattedQuery}`,
             session.user.id,
             (session.user as any).ipAddress
         );
