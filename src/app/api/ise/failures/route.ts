@@ -59,7 +59,12 @@ export async function GET(req: Request) {
                 }
                 const xmlText = await response.text();
                 await logSystemEvent(`[ISE-DEBUG] Raw XML Length: ${xmlText.length}`);
-                const data = await parseStringPromise(xmlText, { explicitArray: false });
+                await logSystemEvent(`[ISE-DEBUG] XML Snippet: ${xmlText.substring(0, 500).replace(/</g, "&lt;").replace(/>/g, "&gt;")}`);
+                
+                const data = await parseStringPromise(xmlText, { 
+                    explicitArray: false,
+                    tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
+                });
                 let nodes = data.authStatusList?.authStatus || data.authStatus;
                 await logSystemEvent(`[ISE-DEBUG] Found Nodes: ${Array.isArray(nodes) ? nodes.length : (nodes ? 1 : 0)}`);
                 if (!nodes) return [];
