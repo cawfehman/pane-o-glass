@@ -71,12 +71,16 @@ export async function GET(req: Request) {
                 
                 if (!rawNodes) return [];
                 const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
-                
-                // Map to the actual data payloads (authStatusElements)
-                const processedNodes = nodesArray.map(n => n.authStatusElements || n);
+                // Flatten authStatusElements if they are arrays (happens when one device has many events)
+                const processedNodes = nodesArray.flatMap(n => {
+                    const elements = n.authStatusElements || n;
+                    return Array.isArray(elements) ? elements : [elements];
+                });
+
                 await logSystemEvent(`[ISE-DEBUG] Found Nodes: ${processedNodes.length}`);
                 if (processedNodes.length > 0) {
-                    await logSystemEvent(`[ISE-DEBUG] Sample Node Keys: ${Object.keys(processedNodes[0]).join(', ')}`);
+                    const firstNode = processedNodes[0];
+                    await logSystemEvent(`[ISE-DEBUG] Sample Node Keys: ${Object.keys(firstNode).join(', ')}`);
                 }
                 return processedNodes;
             };
