@@ -44,18 +44,35 @@ export async function GET(req: Request) {
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         const fetchAuthStatus = async (mac: string) => {
-            const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/${mac}/86400/50/All`;
-            const response = await fetch(endpoint, {
-                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" }
-            });
-            if (!response.ok) return [];
-            const xmlText = await response.text();
-            const data = await parseStringPromise(xmlText, { explicitArray: false });
-            let nodes = data.authStatusList?.authStatus || data.authStatus;
-            if (!nodes) return [];
-            return Array.isArray(nodes) ? nodes : [nodes];
+            const tryFormat = async (formattedMac: string) => {
+                const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/86400/50/All`;
+                console.log(`[ISE-DEBUG] Querying: ${endpoint}`);
+                const response = await fetch(endpoint, {
+                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" }
+                });
+                console.log(`[ISE-DEBUG] Response Status: ${response.status}`);
+                if (!response.ok) return [];
+                const xmlText = await response.text();
+                const data = await parseStringPromise(xmlText, { explicitArray: false });
+                let nodes = data.authStatusList?.authStatus || data.authStatus;
+                if (!nodes) return [];
+                return Array.isArray(nodes) ? nodes : [nodes];
+            };
+
+            // Try Colons first (standard format in this app)
+            let nodes = await tryFormat(mac);
+            
+            // If nothing found and it looks like a MAC, try Dashes (ISE internal preference)
+            if (nodes.length === 0) {
+                const dashed = mac.replace(/:/g, "-");
+                console.log(`[ISE-DEBUG] Colons returned 0. Retrying with Dashes: ${dashed}`);
+                nodes = await tryFormat(dashed);
+            }
+
+            return nodes;
         };
 
+        console.log(`[ISE-DEBUG] Starting ${searchType} search for: ${formattedQuery}`);
         await logAudit(
             'ISE_DIAGNOSTICS_QUERY',
             `Searched ISE diagnostics for ${searchType === "mac" ? "MAC" : "User"}: ${formattedQuery}`,
@@ -170,7 +187,7 @@ export async function GET(req: Request) {
         }
 
     } catch (e: any) {
-        console.error("ISE Failures API error:", e);
+        console.error("ISE-DEBUG-FATAL:", e);
         return NextResponse.json({ error: e.message || "Failed to communicate with Cisco ISE API" }, { status: 500 });
     }
 }
