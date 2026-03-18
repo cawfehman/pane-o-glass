@@ -101,6 +101,26 @@ export default function CiscoIsePage() {
 
                 {activeView === "details" && (
                     <div>
+                        {discoveryResult && (
+                            <button 
+                                onClick={() => setActiveView("discovery")}
+                                style={{ 
+                                    background: 'transparent', 
+                                    border: 'none', 
+                                    color: 'var(--accent-primary)', 
+                                    cursor: 'pointer', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '8px', 
+                                    marginBottom: '16px',
+                                    paddingLeft: '0',
+                                    fontWeight: 'bold'
+                                }}
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                                Back to MAC Selection
+                            </button>
+                        )}
                         {/* Tab Headers */}
                         <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0' }}>
                             <button 
