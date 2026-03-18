@@ -27,22 +27,17 @@ export default function CiscoIsePage() {
         }
 
         try {
-            // STEP 1: Always check for active session first (ERS)
             const sessionRes = await fetch(`/api/ise/session?query=${encodeURIComponent(searchTerm)}`);
             const sessionData = await sessionRes.json();
 
-            // If it's a username search, ISE ERS API returns a specific structure via our wrapper
             if (sessionData.found && sessionData.sessions && sessionData.sessions.length > 1 && !macToDrilldown) {
-                // Discovery mode: multiple MACs found for this user
                 setDiscoveryResult(sessionData);
                 setActiveView("discovery");
             } else {
-                // Single MAC or specific drilldown
                 setEndpointResult(sessionData.sessions?.[0] || null);
                 setActiveView("details");
                 if (!macToDrilldown) setQuery(searchTerm);
 
-                // STEP 2: Simultaneously fetch 24h Auth History (MnT)
                 const historyRes = await fetch(`/api/ise/failures?query=${encodeURIComponent(searchTerm)}`);
                 const historyData = await historyRes.json();
                 setHistoryResult(historyData);
@@ -73,6 +68,11 @@ export default function CiscoIsePage() {
                     <button type="submit" className="btn-primary" disabled={loading} style={{ padding: '12px 32px', borderRadius: '8px', fontWeight: 'bold' }}>
                         {loading ? "Analyzing ISE..." : "Search"}
                     </button>
+                    {query && (
+                        <button type="button" onClick={() => { setQuery(""); setDiscoveryResult(null); setEndpointResult(null); setHistoryResult(null); setActiveView("discovery"); }} className="btn-secondary" style={{ padding: '12px 16px', borderRadius: '8px' }}>
+                            Reset
+                        </button>
+                    )}
                 </form>
 
                 {error && (
@@ -121,7 +121,6 @@ export default function CiscoIsePage() {
                                 Back to MAC Selection
                             </button>
                         )}
-                        {/* Tab Headers */}
                         <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0' }}>
                             <button 
                                 onClick={() => setActiveTab("live")}
@@ -155,7 +154,6 @@ export default function CiscoIsePage() {
                             </button>
                         </div>
 
-                        {/* Live Status Tab */}
                         {activeTab === "live" && (
                             <div>
                                 {!endpointResult ? (
@@ -169,7 +167,6 @@ export default function CiscoIsePage() {
                             </div>
                         )}
 
-                        {/* History Tab */}
                         {activeTab === "history" && (
                             <div>
                                 {historyResult && historyResult.found && historyResult.failures ? (
@@ -208,40 +205,43 @@ function EndpointCard({ session }: { session: any }) {
                         Identity
                         <span style={{ fontSize: '0.7rem', background: 'rgba(59, 130, 246, 0.2)', color: 'var(--accent-primary)', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>ACTIVE</span>
                     </h4>
-                    <p><strong>Username:</strong> {session.user_name || "N/A"}</p>
-                    <p><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace' }}>{session.calling_station_id}</span></p>
-                    <p><strong>IP Address:</strong> <span style={{ fontFamily: 'monospace' }}>{session.framed_ip_address || "N/A"}</span></p>
+                    <p title="The authenticated username or machine name for this session"><strong>Username:</strong> {session.user_name || "N/A"}</p>
+                    <p title="The hardware MAC address of the connecting endpoint (calling_station_id)"><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace' }}>{session.calling_station_id}</span></p>
+                    <p title="The IP address assigned to the endpoint (framed_ip_address)"><strong>IP Address:</strong> <span style={{ fontFamily: 'monospace' }}>{session.framed_ip_address || "N/A"}</span></p>
                 </div>
 
                 <div>
                     <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Network Location</h4>
-                    <p><strong>Device IP:</strong> {session.nas_ip_address}</p>
-                    <p><strong>Port/SSID:</strong> {session.nas_port_id}</p>
-                    <p><strong>Switch:</strong> {session.nas_identifier}</p>
+                    <p title="The IP address of the switch, WLC, or firewall the endpoint connects through (nas_ip_address)"><strong>Device IP:</strong> {session.nas_ip_address}</p>
+                    <p title="The physical port or wireless SSID the endpoint is connected to (nas_port_id)"><strong>Port/SSID:</strong> {session.nas_port_id}</p>
+                    <p title="The hostname or identifier of the network access device (nas_identifier)"><strong>Switch:</strong> {session.nas_identifier}</p>
                 </div>
 
                 <div>
                     <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Posture State</h4>
-                    <p><strong>Profile:</strong> <span style={{ color: 'var(--accent-primary)' }}>{session.endpoint_profile || "Unknown"}</span></p>
-                    <p><strong>Posture:</strong> <span style={{ color: accentColor, fontWeight: 'bold' }}>{session.posture_status || "Unknown"}</span></p>
-                    <span style={{ fontSize: '0.75rem', background: bgColor, color: accentColor, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>
+                    <p title="The physical device type that ISE profiled this endpoint as (e.g., Apple-iPhone, Microsoft-Workstation)"><strong>Profile:</strong> <span style={{ color: 'var(--accent-primary)' }}>{session.endpoint_profile || "Unknown"}</span></p>
+                    <p title="The AnyConnect/Secure Client compliance posture status of the endpoint"><strong>Posture:</strong> <span style={{ color: accentColor, fontWeight: 'bold' }}>{session.posture_status || "Unknown"}</span></p>
+                    <span 
+                        title="The AnyConnect/Secure Client compliance posture status of the endpoint"
+                        style={{ fontSize: '0.75rem', background: bgColor, color: accentColor, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}
+                    >
                         {session.posture_status || "UNKNOWN"}
                     </span>
                 </div>
 
                 <div>
                     <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>MDM & Compliance</h4>
-                    <p><strong>MDM Reachable:</strong> {session.mdm_reachable || "N/A"}</p>
-                    <p><strong>MDM Compliant:</strong> {session.mdm_compliant || "N/A"}</p>
-                    <p><strong>Audit ID:</strong> <span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{session.audit_session_id?.substring(0, 16)}...</span></p>
+                    <p title="Whether the ISE policy node can successfully reach the MDM server to query compliance"><strong>MDM Reachable:</strong> {session.mdm_reachable || "N/A"}</p>
+                    <p title="Whether the MDM server actively reports this device as compliant with corporate policy"><strong>MDM Compliant:</strong> {session.mdm_compliant || "N/A"}</p>
+                    <p title="The unique, hex-encoded Audit Session ID generated by the network access device. Critical for syslog firewall tracking."><strong>Audit ID:</strong> <span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{session.audit_session_id?.substring(0, 16)}...</span></p>
                 </div>
             </div>
             
             <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-color)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px', fontSize: '0.9rem' }}>
-                <p><strong>AuthZ Rule:</strong> {session.authorization_rule || "Unknown"}</p>
-                <p><strong>Auth Method:</strong> {session.authentication_method || "Unknown"}</p>
-                <p><strong>Auth Protocol:</strong> {session.authentication_protocol || "Unknown"}</p>
-                <p><strong>ACS Server:</strong> {session.acs_server || "Unknown"}</p>
+                <p title="The exact ISE Authorization Policy Rule that granted this endpoint access"><strong>AuthZ Rule:</strong> {session.authorization_rule || "Unknown"}</p>
+                <p title="The authentication method used, such as dot1x (802.1X), mab (MAC Authentication Bypass), or WebAuth"><strong>Auth Method:</strong> {session.authentication_method || "Unknown"}</p>
+                <p title="The inner EAP protocol used for the secure tunnel (e.g., EAP-TLS, PEAP)"><strong>Auth Protocol:</strong> {session.authentication_protocol || "Unknown"}</p>
+                <p title="The specific Cisco ISE Policy Service Node (PSN) that processed this authentication"><strong>ACS Server:</strong> {session.acs_server || "Unknown"}</p>
             </div>
         </div>
     );
@@ -276,29 +276,29 @@ function FailureCard({ failure }: { failure: any }) {
                                 {isPass ? 'PASS' : 'FAIL'}
                             </span>
                         </h4>
-                        <p><strong>Timestamp:</strong> {failure.timestamp !== "Unknown" ? new Date(failure.timestamp).toLocaleString() : "Unknown"}</p>
-                        <p><strong>Result:</strong> <span style={{ color: accentColor, fontWeight: 'bold' }}>{failure.failure_reason}</span></p>
+                        <p title="The exact date and time this authentication event was logged (acs_timestamp)"><strong>Timestamp:</strong> {failure.timestamp !== "Unknown" ? new Date(failure.timestamp).toLocaleString() : "Unknown"}</p>
+                        <p title="The final result or reason code returned by the ISE authorization engine"><strong>Result:</strong> <span style={{ color: accentColor, fontWeight: 'bold' }}>{failure.failure_reason}</span></p>
                     </div>
 
                     <div>
                         <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Identity & Device</h4>
-                        <p><strong>Username:</strong> {failure.user_name || "N/A"}</p>
-                        <p><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace' }}>{failure.calling_station_id}</span></p>
-                        <p><strong>Profile:</strong> <span style={{ color: 'var(--accent-primary)' }}>{failure.endpoint_profile || "Unknown"}</span></p>
+                        <p title="The user or machine identity associated with this event"><strong>Username:</strong> {failure.user_name || "N/A"}</p>
+                        <p title="The hardware MAC address of the connecting endpoint"><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace' }}>{failure.calling_station_id}</span></p>
+                        <p title="The profiling category assigned to this endpoint during this session"><strong>Profile:</strong> <span style={{ color: 'var(--accent-primary)' }}>{failure.endpoint_profile || "Unknown"}</span></p>
                     </div>
 
                     <div>
                         <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Network Location</h4>
-                        <p><strong>Device IP:</strong> {failure.nas_ip_address}</p>
-                        <p><strong>Port/SSID:</strong> {failure.nas_port_id}</p>
-                        <p><strong>Switch:</strong> {failure.nas_identifier}</p>
+                        <p title="The NAS-IP-Address of the network device managing the connection"><strong>Device IP:</strong> {failure.nas_ip_address}</p>
+                        <p title="The physical port or SSID name where the device is plugged/connected"><strong>Port/SSID:</strong> {failure.nas_port_id}</p>
+                        <p title="The hostname or identifier of the network switch/controller"><strong>Switch:</strong> {failure.nas_identifier}</p>
                     </div>
 
                     <div>
                         <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Matched Policy</h4>
-                        <p><strong>Auth Rule:</strong> {failure.authorization_rule}</p>
-                        <p><strong>Auth Policy:</strong> {failure.auth_policy}</p>
-                        <p><strong>Server:</strong> {failure.acs_server}</p>
+                        <p title="The specific ISE Authorization Rule that was triggered"><strong>Auth Rule:</strong> {failure.authorization_rule}</p>
+                        <p title="The high-level ISE Policy Set or Authentication Policy that processed this request"><strong>Auth Policy:</strong> {failure.auth_policy}</p>
+                        <p title="The exact ISE node (PSN) that served this authentication request"><strong>Server:</strong> {failure.acs_server}</p>
                     </div>
                 </div>
 
@@ -309,7 +309,7 @@ function FailureCard({ failure }: { failure: any }) {
                             className="btn-secondary"
                             style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}
                         >
-                            <span>{expanded ? 'Hide' : 'Show'} Technical Details ({failure.steps.length} Steps)</span>
+                            <span title="Click to view the step-by-step diagnostic sequence from the ISE MnT log">{expanded ? 'Hide' : 'Show'} Technical Details ({failure.steps.length} Steps)</span>
                             <span>{expanded ? '▲' : '▼'}</span>
                         </button>
 
