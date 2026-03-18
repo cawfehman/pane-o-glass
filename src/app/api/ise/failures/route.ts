@@ -75,6 +75,9 @@ export async function GET(req: Request) {
                 // Map to the actual data payloads (authStatusElements)
                 const processedNodes = nodesArray.map(n => n.authStatusElements || n);
                 await logSystemEvent(`[ISE-DEBUG] Found Nodes: ${processedNodes.length}`);
+                if (processedNodes.length > 0) {
+                    await logSystemEvent(`[ISE-DEBUG] Sample Node Keys: ${Object.keys(processedNodes[0]).join(', ')}`);
+                }
                 return processedNodes;
             };
 
@@ -102,34 +105,37 @@ export async function GET(req: Request) {
         if (searchType === "mac") {
             const nodes = await fetchAuthStatus(formattedQuery);
             const mappedResults = nodes.map((node: any) => {
+                // Helper to extract text from xml2js node (handles both string and {_: text})
+                const val = (v: any) => v?._ || v || "";
+
                 // Parse steps if they exist
                 let steps: any[] = [];
                 const stepsList = node.steps?.step;
                 if (stepsList) {
                     const stepArr = Array.isArray(stepsList) ? stepsList : [stepsList];
                     steps = stepArr.map((s: any) => ({
-                        id: s.id?._ || s.id || "Unknown",
-                        description: s.description?._ || s.description || "Unknown"
+                        id: val(s.id),
+                        description: val(s.description)
                     }));
                 }
 
                 return {
-                    timestamp: node.acs_timestamp?._ || node.acs_timestamp || node.acsTimestamp || "Unknown",
-                    user_name: node.user_name?._ || node.user_name || node.userName || "Unknown",
-                    calling_station_id: node.calling_station_id?._ || node.calling_station_id || node.callingStationId || "Unknown",
-                    nas_ip_address: node.nas_ip_address?._ || node.nas_ip_address || node.nasIpAddress || "Unknown",
-                    nas_port_id: node.nas_port_id?._ || node.nas_port_id || node.nasPortId || "Unknown",
-                    failure_reason: node.failure_reason?._ || node.failure_reason || node.failureReason || "Passed/Active",
-                    failure_id: node.failure_id?._ || node.failure_id || node.failureId || "N/A",
-                    status: node.passed?._ === "true" || node.passed === "true" || node.passed === true || (!node.failure_reason && node.passed !== "false" && node.passed !== false),
-                    authentication_method: node.authentication_method?._ || node.authentication_method || node.authenticationMethod || "Unknown",
-                    authentication_protocol: node.authentication_protocol?._ || node.authentication_protocol || node.authenticationProtocol || "Unknown",
-                    acs_server: node.acs_server?._ || node.acs_server || node.acsServer || "Unknown",
-                    nas_identifier: node.nas_identifier?._ || node.nas_identifier || node.nasIdentifier || "Unknown",
-                    endpoint_profile: node.endpoint_profile?._ || node.endpoint_profile || node.endpointProfile || "Unknown",
-                    identity_group: node.identity_group?._ || node.identity_group || node.identityGroup || "Unknown",
-                    authorization_rule: node.authorization_rule?._ || node.authorization_rule || node.authorizationRule || "Unknown",
-                    auth_policy: node.authentication_policy?._ || node.authentication_policy || node.authenticationPolicy || "Unknown",
+                    timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || val(node.timestamp) || "Unknown",
+                    user_name: val(node.user_name) || val(node.userName) || "Unknown",
+                    calling_station_id: val(node.calling_station_id) || val(node.callingStationId) || val(node.mac_address) || val(node.macAddress) || "Unknown",
+                    nas_ip_address: val(node.nas_ip_address) || val(node.nasIpAddress) || "Unknown",
+                    nas_port_id: val(node.nas_port_id) || val(node.nasPortId) || "Unknown",
+                    failure_reason: val(node.failure_reason) || val(node.failureReason) || "Passed/Active",
+                    failure_id: val(node.failure_id) || val(node.failureId) || "N/A",
+                    status: val(node.passed) === "true" || node.passed === true || (!val(node.failure_reason) && val(node.passed) !== "false"),
+                    authentication_method: val(node.authentication_method) || val(node.authenticationMethod) || "Unknown",
+                    authentication_protocol: val(node.authentication_protocol) || val(node.authenticationProtocol) || "Unknown",
+                    acs_server: val(node.acs_server) || val(node.acsServer) || "Unknown",
+                    nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown",
+                    endpoint_profile: val(node.endpoint_profile) || val(node.endpointProfile) || "Unknown",
+                    identity_group: val(node.identity_group) || val(node.identityGroup) || "Unknown",
+                    authorization_rule: val(node.authorization_rule) || val(node.authorizationRule) || "Unknown",
+                    auth_policy: val(node.authentication_policy) || val(node.authenticationPolicy) || val(node.auth_policy) || "Unknown",
                     steps
                 };
             });
