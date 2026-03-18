@@ -122,39 +122,75 @@ export default function CiscoIseFailuresPage() {
                                 <button onClick={() => setActiveView("discovery")} className="btn-secondary" style={{ padding: '8px 16px' }}>&larr; Back to MAC List</button>
                             )}
                         </div>
-                        {failuresResult.failures.map((failure: any, idx: number) => (
-                            <div key={idx} className="glass-card" style={{ marginBottom: '24px', borderLeft: '4px solid var(--accent-secondary)' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
+                        {failuresResult.failures.map((failure: any, idx: number) => {
+                            const [expanded, setExpanded] = useState(false);
+                            
+                            return (
+                                <div key={idx} className="glass-card" style={{ marginBottom: '24px', borderLeft: '4px solid var(--accent-secondary)', padding: '0' }}>
+                                    <div style={{ padding: '24px' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
 
-                                    <div>
-                                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Log Detail</h4>
-                                        <p title="The exact date and time the failure occurred"><strong>Timestamp:</strong> {failure.timestamp !== "Unknown" ? new Date(failure.timestamp).toLocaleString() : "Unknown"}</p>
-                                        <p title="The translated ISE failure reason indicating why the connection was rejected"><strong>Failure Reason:</strong> <span style={{ color: 'var(--accent-secondary)', fontWeight: 'bold' }}>{failure.failure_reason}</span></p>
+                                            <div>
+                                                <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    Log Detail
+                                                    <span style={{ fontSize: '0.7rem', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-secondary)', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>ID: {failure.failure_id}</span>
+                                                </h4>
+                                                <p title="The exact date and time the failure occurred"><strong>Timestamp:</strong> {failure.timestamp !== "Unknown" ? new Date(failure.timestamp).toLocaleString() : "Unknown"}</p>
+                                                <p title="The translated ISE failure reason indicating why the connection was rejected"><strong>Failure Reason:</strong> <span style={{ color: 'var(--accent-secondary)', fontWeight: 'bold' }}>{failure.failure_reason}</span></p>
+                                            </div>
+
+                                            <div>
+                                                <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Identity & Device</h4>
+                                                <p title="The username or machine identity attempted"><strong>Username:</strong> {failure.user_name || "N/A"}</p>
+                                                <p title="Thehardware MAC address of the endpoint"><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace' }}>{failure.calling_station_id}</span></p>
+                                                <p title="The profiled device type from ISE"><strong>Profile:</strong> <span style={{ color: 'var(--accent-primary)' }}>{failure.endpoint_profile || "Unknown"}</span></p>
+                                            </div>
+
+                                            <div>
+                                                <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Network Location</h4>
+                                                <p title="The IP address of the switch, WLC, or firewall"><strong>Device IP:</strong> {failure.nas_ip_address}</p>
+                                                <p title="The SSID or physical port"><strong>Port/SSID:</strong> {failure.nas_port_id}</p>
+                                                <p title="The hostname of the network device"><strong>Switch:</strong> {failure.nas_identifier}</p>
+                                            </div>
+
+                                            <div>
+                                                <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Matched Policy</h4>
+                                                <p title="The ISE Policy Set Rule matched"><strong>Auth Rule:</strong> {failure.authorization_rule}</p>
+                                                <p title="The authentication policy used"><strong>Auth Policy:</strong> {failure.auth_policy}</p>
+                                                <p title="The Policy Service Node that processed the failure"><strong>Server:</strong> {failure.acs_server}</p>
+                                            </div>
+
+                                        </div>
+
+                                        {failure.steps && failure.steps.length > 0 && (
+                                            <div style={{ marginTop: '24px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                                                <button 
+                                                    onClick={() => setExpanded(!expanded)}
+                                                    className="btn-secondary"
+                                                    style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}
+                                                >
+                                                    <span>{expanded ? 'Hide' : 'Show'} Technical Auth Steps ({failure.steps.length})</span>
+                                                    <span>{expanded ? '▲' : '▼'}</span>
+                                                </button>
+
+                                                {expanded && (
+                                                    <div style={{ marginTop: '16px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '16px', border: '1px solid var(--border-color)' }}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                            {failure.steps.map((step: any, sIdx: number) => (
+                                                                <div key={sIdx} style={{ display: 'flex', gap: '12px', fontSize: '0.85rem' }}>
+                                                                    <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', minWidth: '45px' }}>{step.id}</span>
+                                                                    <span style={{ color: 'var(--text-secondary)' }}>{step.description}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
-
-                                    <div>
-                                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Identity</h4>
-                                        <p title="The username or machine identity attempted"><strong>Username:</strong> {failure.user_name || "N/A"}</p>
-                                        <p title="The hardware MAC address of the endpoint"><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace' }}>{failure.calling_station_id}</span></p>
-                                    </div>
-
-                                    <div>
-                                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Network Location</h4>
-                                        <p title="The IP address of the switch, WLC, or firewall"><strong>Device IP:</strong> {failure.nas_ip_address}</p>
-                                        <p title="The SSID or physical port"><strong>Port/SSID:</strong> {failure.nas_port_id}</p>
-                                        <p title="The hostname of the network device"><strong>Switch Name:</strong> {failure.nas_identifier}</p>
-                                    </div>
-
-                                    <div>
-                                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Auth Protocols</h4>
-                                        <p><strong>Method:</strong> {failure.authentication_method}</p>
-                                        <p><strong>Protocol:</strong> {failure.authentication_protocol}</p>
-                                        <p title="The Policy Service Node that processed the failure"><strong>ACS Server:</strong> {failure.acs_server}</p>
-                                    </div>
-
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>

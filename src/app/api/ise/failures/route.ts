@@ -65,19 +65,38 @@ export async function GET(req: Request) {
 
         if (searchType === "mac") {
             const nodes = await fetchAuthStatus(formattedQuery);
-            const mappedResults = nodes.map((node: any) => ({
-                timestamp: node.acs_timestamp?._ || node.acs_timestamp || "Unknown",
-                user_name: node.user_name?._ || node.user_name || "Unknown",
-                calling_station_id: node.calling_station_id?._ || node.calling_station_id || "Unknown",
-                nas_ip_address: node.nas_ip_address?._ || node.nas_ip_address || "Unknown",
-                nas_port_id: node.nas_port_id?._ || node.nas_port_id || "Unknown",
-                failure_reason: node.failure_reason?._ || node.failure_reason || "Passed/Active",
-                status: node.passed?._ || node.passed || (node.failure_reason ? "failed" : "passed"),
-                authentication_method: node.authentication_method?._ || node.authentication_method || "Unknown",
-                authentication_protocol: node.authentication_protocol?._ || node.authentication_protocol || "Unknown",
-                acs_server: node.acs_server?._ || node.acs_server || "Unknown",
-                nas_identifier: node.nas_identifier?._ || node.nas_identifier || "Unknown",
-            }));
+            const mappedResults = nodes.map((node: any) => {
+                // Parse steps if they exist
+                let steps: any[] = [];
+                const stepsList = node.steps?.step;
+                if (stepsList) {
+                    const stepArr = Array.isArray(stepsList) ? stepsList : [stepsList];
+                    steps = stepArr.map((s: any) => ({
+                        id: s.id?._ || s.id || "Unknown",
+                        description: s.description?._ || s.description || "Unknown"
+                    }));
+                }
+
+                return {
+                    timestamp: node.acs_timestamp?._ || node.acs_timestamp || "Unknown",
+                    user_name: node.user_name?._ || node.user_name || "Unknown",
+                    calling_station_id: node.calling_station_id?._ || node.calling_station_id || "Unknown",
+                    nas_ip_address: node.nas_ip_address?._ || node.nas_ip_address || "Unknown",
+                    nas_port_id: node.nas_port_id?._ || node.nas_port_id || "Unknown",
+                    failure_reason: node.failure_reason?._ || node.failure_reason || "Passed/Active",
+                    failure_id: node.failure_id?._ || node.failure_id || "N/A",
+                    status: node.passed?._ || node.passed || (node.failure_reason ? "failed" : "passed"),
+                    authentication_method: node.authentication_method?._ || node.authentication_method || "Unknown",
+                    authentication_protocol: node.authentication_protocol?._ || node.authentication_protocol || "Unknown",
+                    acs_server: node.acs_server?._ || node.acs_server || "Unknown",
+                    nas_identifier: node.nas_identifier?._ || node.nas_identifier || "Unknown",
+                    endpoint_profile: node.endpoint_profile?._ || node.endpoint_profile || "Unknown",
+                    identity_group: node.identity_group?._ || node.identity_group || "Unknown",
+                    authorization_rule: node.authorization_rule?._ || node.authorization_rule || "Unknown",
+                    auth_policy: node.authentication_policy?._ || node.authentication_policy || "Unknown",
+                    steps
+                };
+            });
             
             const failures = mappedResults.filter(r => r.status === "false" || r.status === false || r.failure_reason !== "Passed/Active");
             failures.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
