@@ -18,7 +18,6 @@ export default function CiscoIseFailuresPage() {
         setLoading(true);
         setError("");
         
-        // Only clear discovery if we are doing a brand new primary search
         if (!macToDrilldown) {
             setDiscoveryResult(null);
             setFailuresResult(null);
@@ -87,33 +86,31 @@ export default function CiscoIseFailuresPage() {
                 
                 {activeView === "failures" && failuresResult && !failuresResult.found && (
                     <div className="glass-card" style={{ textAlign: 'center', padding: '32px' }}>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem' }}>No authentication failures found for this MAC Address.</p>
-                        <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>The device might have successfully authenticated, or its failures are older than the 24-hour log retention.</p>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem' }}>No authentication logs found for this MAC Address.</p>
+                        <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>The device might have successfully authenticated, or its logs are older than the 24-hour retention period.</p>
                         {discoveryResult && (
                             <button onClick={() => setActiveView("discovery")} className="btn-secondary" style={{ marginTop: '16px', padding: '8px 16px' }}>&larr; Back to MAC List</button>
                         )}
                     </div>
                 )}
 
-                {/* Discovery View: Multiple MACs found for a Username */}
                 {activeView === "discovery" && discoveryResult && discoveryResult.found && discoveryResult.discovery && (
                     <div>
                         <h3 style={{ marginBottom: '16px' }}>MAC Addresses associated with '{query}'</h3>
-                        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>Click a MAC address to view its specific authentication failure history.</p>
+                        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>Click a MAC address to view its specific authentication log history.</p>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
                             {discoveryResult.discovery.map((item: any, idx: number) => (
                                 <div key={idx} className="glass-card" style={{ cursor: 'pointer', border: '1px solid var(--border-color)', transition: 'border-color 0.2s' }} onClick={() => handleSearch(undefined, item.mac)}>
                                     <h4 style={{ color: 'var(--accent-primary)', marginBottom: '12px', fontFamily: 'monospace' }}>{item.mac}</h4>
                                     <p style={{ fontSize: '0.9rem', marginBottom: '4px' }}><strong>Last Seen:</strong> {item.timestamp !== "Unknown" ? new Date(item.timestamp).toLocaleString() : "Unknown"}</p>
                                     <p style={{ fontSize: '0.9rem', marginBottom: '12px' }}><strong>Last Connection:</strong> {item.nas_identifier}</p>
-                                    <button className="btn-secondary" style={{ width: '100%', fontSize: '0.8rem', padding: '8px' }}>View Failure Logs</button>
+                                    <button className="btn-secondary" style={{ width: '100%', fontSize: '0.8rem', padding: '8px' }}>View Device Logs</button>
                                 </div>
                             ))}
                         </div>
                     </div>
                 )}
 
-                {/* Failures View: Historical failures for a specific MAC */}
                 {activeView === "failures" && failuresResult && failuresResult.found && failuresResult.failures && failuresResult.failures.length > 0 && (
                     <div style={{ paddingBottom: '24px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -122,87 +119,96 @@ export default function CiscoIseFailuresPage() {
                                 <button onClick={() => setActiveView("discovery")} className="btn-secondary" style={{ padding: '8px 16px' }}>&larr; Back to MAC List</button>
                             )}
                         </div>
-                        {failuresResult.failures.map((failure: any, idx: number) => {
-                            const [expanded, setExpanded] = useState(false);
-                            
-                            return (
-                                <div key={idx} className="glass-card" style={{ 
-                                    marginBottom: '24px', 
-                                    borderLeft: `4px solid ${failure.status ? 'var(--accent-tertiary)' : 'var(--accent-secondary)'}`, 
-                                    padding: '0' 
-                                }}>
-                                    <div style={{ padding: '24px' }}>
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
-                                            <div>
-                                                <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    Session Status
-                                                    <span style={{ 
-                                                        fontSize: '0.7rem', 
-                                                        background: failure.status ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)', 
-                                                        color: failure.status ? 'var(--accent-tertiary)' : 'var(--accent-secondary)', 
-                                                        padding: '2px 8px', 
-                                                        borderRadius: '4px', 
-                                                        textTransform: 'uppercase' 
-                                                    }}>
-                                                        {failure.status ? 'PASS' : `FAIL (${failure.failure_id})`}
-                                                    </span>
-                                                </h4>
-                                                <p title="The exact date and time the authentication occurred"><strong>Timestamp:</strong> {failure.timestamp !== "Unknown" ? new Date(failure.timestamp).toLocaleString() : "Unknown"}</p>
-                                                <p title="The translated ISE failure reason or pass status"><strong>Result:</strong> <span style={{ color: failure.status ? 'var(--accent-tertiary)' : 'var(--accent-secondary)', fontWeight: 'bold' }}>{failure.failure_reason}</span></p>
-                                            </div>
+                        {failuresResult.failures.map((failure: any, idx: number) => (
+                            <FailureCard key={idx} failure={failure} />
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
 
-                                            <div>
-                                                <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Identity & Device</h4>
-                                                <p title="The username or machine identity attempted"><strong>Username:</strong> {failure.user_name || "N/A"}</p>
-                                                <p title="Thehardware MAC address of the endpoint"><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace' }}>{failure.calling_station_id}</span></p>
-                                                <p title="The profiled device type from ISE"><strong>Profile:</strong> <span style={{ color: 'var(--accent-primary)' }}>{failure.endpoint_profile || "Unknown"}</span></p>
-                                            </div>
+function FailureCard({ failure }: { failure: any }) {
+    const [expanded, setExpanded] = useState(false);
+    
+    // Calculate status colors strictly (Green for Pass, Red for Fail)
+    const isPass = failure.status === true;
+    const accentColor = isPass ? '#10b981' : '#ef4444';
+    const bgColor = isPass ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+    
+    return (
+        <div className="glass-card" style={{ 
+            marginBottom: '24px', 
+            borderLeft: `6px solid ${accentColor}`, 
+            padding: '0' 
+        }}>
+            <div style={{ padding: '24px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
+                    <div>
+                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            Session Status
+                            <span style={{ 
+                                fontSize: '0.7rem', 
+                                background: bgColor, 
+                                color: accentColor, 
+                                padding: '2px 8px', 
+                                borderRadius: '4px', 
+                                textTransform: 'uppercase',
+                                fontWeight: 'bold'
+                            }}>
+                                {isPass ? 'PASS' : `FAIL (${failure.failure_id})`}
+                            </span>
+                        </h4>
+                        <p title="The exact date and time the authentication occurred"><strong>Timestamp:</strong> {failure.timestamp !== "Unknown" ? new Date(failure.timestamp).toLocaleString() : "Unknown"}</p>
+                        <p title="The translated ISE failure reason or pass status"><strong>Result:</strong> <span style={{ color: accentColor, fontWeight: 'bold' }}>{failure.failure_reason}</span></p>
+                    </div>
 
-                                            <div>
-                                                <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Network Location</h4>
-                                                <p title="The IP address of the switch, WLC, or firewall"><strong>Device IP:</strong> {failure.nas_ip_address}</p>
-                                                <p title="The SSID or physical port"><strong>Port/SSID:</strong> {failure.nas_port_id}</p>
-                                                <p title="The hostname of the network device"><strong>Switch:</strong> {failure.nas_identifier}</p>
-                                            </div>
+                    <div>
+                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Identity & Device</h4>
+                        <p title="The username or machine identity attempted"><strong>Username:</strong> {failure.user_name || "N/A"}</p>
+                        <p title="The hardware MAC address of the endpoint"><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace' }}>{failure.calling_station_id}</span></p>
+                        <p title="The profiled device type from ISE"><strong>Profile:</strong> <span style={{ color: 'var(--accent-primary)' }}>{failure.endpoint_profile || "Unknown"}</span></p>
+                    </div>
 
-                                            <div>
-                                                <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Matched Policy</h4>
-                                                <p title="The ISE Policy Set Rule matched"><strong>Auth Rule:</strong> {failure.authorization_rule}</p>
-                                                <p title="The authentication policy used"><strong>Auth Policy:</strong> {failure.auth_policy}</p>
-                                                <p title="The Policy Service Node that processed the failure"><strong>Server:</strong> {failure.acs_server}</p>
-                                            </div>
+                    <div>
+                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Network Location</h4>
+                        <p title="The IP address of the switch, WLC, or firewall"><strong>Device IP:</strong> {failure.nas_ip_address}</p>
+                        <p title="The SSID or physical port"><strong>Port/SSID:</strong> {failure.nas_port_id}</p>
+                        <p title="The hostname of the network device"><strong>Switch:</strong> {failure.nas_identifier}</p>
+                    </div>
 
+                    <div>
+                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Matched Policy</h4>
+                        <p title="The ISE Policy Set Rule matched"><strong>Auth Rule:</strong> {failure.authorization_rule}</p>
+                        <p title="The authentication policy used"><strong>Auth Policy:</strong> {failure.auth_policy}</p>
+                        <p title="The Policy Service Node that processed the failure"><strong>Server:</strong> {failure.acs_server}</p>
+                    </div>
+                </div>
+
+                {failure.steps && failure.steps.length > 0 && (
+                    <div style={{ marginTop: '24px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                        <button 
+                            onClick={() => setExpanded(!expanded)}
+                            className="btn-secondary"
+                            style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}
+                        >
+                            <span>{expanded ? 'Hide' : 'Show'} Technical Details ({failure.steps.length} Steps)</span>
+                            <span>{expanded ? '▲' : '▼'}</span>
+                        </button>
+
+                        {expanded && (
+                            <div style={{ marginTop: '16px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '16px', border: '1px solid var(--border-color)' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {failure.steps.map((step: any, sIdx: number) => (
+                                        <div key={sIdx} style={{ display: 'flex', gap: '12px', fontSize: '0.85rem' }}>
+                                            <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', minWidth: '45px' }}>{step.id}</span>
+                                            <span style={{ color: 'var(--text-secondary)' }}>{step.description}</span>
                                         </div>
-
-                                        {failure.steps && failure.steps.length > 0 && (
-                                            <div style={{ marginTop: '24px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-                                                <button 
-                                                    onClick={() => setExpanded(!expanded)}
-                                                    className="btn-secondary"
-                                                    style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}
-                                                >
-                                                    <span>{expanded ? 'Hide' : 'Show'} Technical Auth Steps ({failure.steps.length})</span>
-                                                    <span>{expanded ? '▲' : '▼'}</span>
-                                                </button>
-
-                                                {expanded && (
-                                                    <div style={{ marginTop: '16px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '16px', border: '1px solid var(--border-color)' }}>
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                            {failure.steps.map((step: any, sIdx: number) => (
-                                                                <div key={sIdx} style={{ display: 'flex', gap: '12px', fontSize: '0.85rem' }}>
-                                                                    <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', minWidth: '45px' }}>{step.id}</span>
-                                                                    <span style={{ color: 'var(--text-secondary)' }}>{step.description}</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
+                                    ))}
                                 </div>
-                            );
-                        })}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
