@@ -117,7 +117,7 @@ export default function CiscoIseFailuresPage() {
                 {activeView === "failures" && failuresResult && failuresResult.found && failuresResult.failures && failuresResult.failures.length > 0 && (
                     <div style={{ paddingBottom: '24px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                            <h3>Found {failuresResult.failures.length} Failed Authentication{failuresResult.failures.length !== 1 ? 's' : ''}</h3>
+                            <h3>Found {failuresResult.failures.length} Authentication Event{failuresResult.failures.length !== 1 ? 's' : ''} (Last 24h)</h3>
                             {discoveryResult && (
                                 <button onClick={() => setActiveView("discovery")} className="btn-secondary" style={{ padding: '8px 16px' }}>&larr; Back to MAC List</button>
                             )}
@@ -126,17 +126,29 @@ export default function CiscoIseFailuresPage() {
                             const [expanded, setExpanded] = useState(false);
                             
                             return (
-                                <div key={idx} className="glass-card" style={{ marginBottom: '24px', borderLeft: '4px solid var(--accent-secondary)', padding: '0' }}>
+                                <div key={idx} className="glass-card" style={{ 
+                                    marginBottom: '24px', 
+                                    borderLeft: `4px solid ${failure.status === 'true' || failure.status === true ? 'var(--accent-tertiary)' : 'var(--accent-secondary)'}`, 
+                                    padding: '0' 
+                                }}>
                                     <div style={{ padding: '24px' }}>
                                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
-
                                             <div>
                                                 <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    Log Detail
-                                                    <span style={{ fontSize: '0.7rem', background: 'rgba(239, 68, 68, 0.2)', color: 'var(--accent-secondary)', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>ID: {failure.failure_id}</span>
+                                                    Session Status
+                                                    <span style={{ 
+                                                        fontSize: '0.7rem', 
+                                                        background: failure.status === 'true' || failure.status === true ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)', 
+                                                        color: failure.status === 'true' || failure.status === true ? 'var(--accent-tertiary)' : 'var(--accent-secondary)', 
+                                                        padding: '2px 8px', 
+                                                        borderRadius: '4px', 
+                                                        textTransform: 'uppercase' 
+                                                    }}>
+                                                        {failure.status === 'true' || failure.status === true ? 'PASS' : `FAIL (${failure.failure_id})`}
+                                                    </span>
                                                 </h4>
-                                                <p title="The exact date and time the failure occurred"><strong>Timestamp:</strong> {failure.timestamp !== "Unknown" ? new Date(failure.timestamp).toLocaleString() : "Unknown"}</p>
-                                                <p title="The translated ISE failure reason indicating why the connection was rejected"><strong>Failure Reason:</strong> <span style={{ color: 'var(--accent-secondary)', fontWeight: 'bold' }}>{failure.failure_reason}</span></p>
+                                                <p title="The exact date and time the authentication occurred"><strong>Timestamp:</strong> {failure.timestamp !== "Unknown" ? new Date(failure.timestamp).toLocaleString() : "Unknown"}</p>
+                                                <p title="The translated ISE failure reason or pass status"><strong>Result:</strong> <span style={{ color: failure.status === 'true' || failure.status === true ? 'var(--accent-tertiary)' : 'var(--accent-secondary)', fontWeight: 'bold' }}>{failure.failure_reason}</span></p>
                                             </div>
 
                                             <div>

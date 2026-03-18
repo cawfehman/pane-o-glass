@@ -98,9 +98,8 @@ export async function GET(req: Request) {
                 };
             });
             
-            const failures = mappedResults.filter(r => r.status === "false" || r.status === false || r.failure_reason !== "Passed/Active");
-            failures.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-            return NextResponse.json({ found: failures.length > 0, failures, searchType: "mac" });
+            const events = mappedResults.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            return NextResponse.json({ found: events.length > 0, failures: events, searchType: "mac" });
         } 
         else {
             // User Workflow - Discover ALL associated MAC addresses
