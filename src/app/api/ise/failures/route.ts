@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
-import { hasPermission, logSystemEvent } from "@/app/actions/permissions";
+import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
 import { fetchIseSession } from '@/lib/ise';
 
@@ -9,7 +9,7 @@ export async function GET(req: Request) {
     const session = await auth();
     const role = (session?.user as any)?.role;
 
-    if (!session?.user || !(await hasPermission(role, 'ise-failures'))) {
+    if (!session?.user || !(await hasPermission(role, 'ise'))) {
         return NextResponse.json({ error: 'Forbidden: Access to this tool is restricted.' }, { status: 403 });
     }
 
@@ -20,7 +20,6 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: 'Missing query parameter' }, { status: 400 });
     }
 
-    // Determine query type
     let searchType = "user_name";
     let formattedQuery = query;
     if (/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(query) || /^[0-9A-Fa-f]{12}$/.test(query)) {
@@ -47,58 +46,36 @@ export async function GET(req: Request) {
         const fetchAuthStatus = async (mac: string) => {
             const tryFormat = async (formattedMac: string) => {
                 const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/86400/50/All`;
-                await logSystemEvent(`[ISE-DEBUG] Querying: ${endpoint}`);
                 const response = await fetch(endpoint, {
                     headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" }
                 });
-                await logSystemEvent(`[ISE-DEBUG] Response Status: ${response.status}`);
-                if (!response.ok) {
-                    const errText = await response.text();
-                    await logSystemEvent(`[ISE-DEBUG] API error: ${errText}`);
-                    return [];
-                }
+
+                if (!response.ok) return [];
+
                 const xmlText = await response.text();
-                await logSystemEvent(`[ISE-DEBUG] Raw XML Length: ${xmlText.length}`);
-                await logSystemEvent(`[ISE-DEBUG] XML Snippet: ${xmlText.substring(0, 500).replace(/</g, "&lt;").replace(/>/g, "&gt;")}`);
-                
                 const data = await parseStringPromise(xmlText, { 
                     explicitArray: false,
                     tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
                 });
                 
-                // The snippet shows authStatusOutputList -> authStatusList -> authStatusElements
-                let rawNodes = data.authStatusOutputList?.authStatusList || data.authStatusList?.authStatus || data.authStatus;
-                
+                const rawNodes = data.authStatusOutputList?.authStatusList || data.authStatusList || data.authStatus;
                 if (!rawNodes) return [];
                 const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
-                // Flatten authStatusElements if they are arrays (happens when one device has many events)
-                const processedNodes = nodesArray.flatMap(n => {
+                
+                return nodesArray.flatMap((n: any) => {
                     const elements = n.authStatusElements || n;
                     return Array.isArray(elements) ? elements : [elements];
                 });
-
-                await logSystemEvent(`[ISE-DEBUG] Found Nodes: ${processedNodes.length}`);
-                if (processedNodes.length > 0) {
-                    const firstNode = processedNodes[0];
-                    await logSystemEvent(`[ISE-DEBUG] Sample Node Keys: ${Object.keys(firstNode).join(', ')}`);
-                }
-                return processedNodes;
             };
 
-            // Try Colons first
             let nodes = await tryFormat(mac);
-            
-            // If nothing found, try Dashes
             if (nodes.length === 0) {
                 const dashed = mac.replace(/:/g, "-");
-                await logSystemEvent(`[ISE-DEBUG] Colons returned 0. Retrying with Dashes: ${dashed}`);
                 nodes = await tryFormat(dashed);
             }
-
             return nodes;
         };
 
-        await logSystemEvent(`[ISE-DEBUG] Starting ${searchType} search for: ${formattedQuery}`);
         await logAudit(
             'ISE_DIAGNOSTICS_QUERY',
             `Searched ISE diagnostics for ${searchType === "mac" ? "MAC" : "User"}: ${formattedQuery}`,
@@ -109,12 +86,10 @@ export async function GET(req: Request) {
         if (searchType === "mac") {
             const nodes = await fetchAuthStatus(formattedQuery);
             const mappedResults = nodes.map((node: any) => {
-                // Helper to extract text from xml2js node (handles both string and {_: text})
                 const val = (v: any) => v?._ || v || "";
 
-                // Parse steps if they exist
                 let steps: any[] = [];
-                const stepsList = node.steps?.step;
+                const stepsList = node.execution_steps?.step || node.steps?.step;
                 if (stepsList) {
                     const stepArr = Array.isArray(stepsList) ? stepsList : [stepsList];
                     steps = stepArr.map((s: any) => ({
@@ -144,18 +119,22 @@ export async function GET(req: Request) {
                 };
             });
             
-            const events = mappedResults.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+            const events = mappedResults.sort((a, b) => {
+                const timeA = new Date(a.timestamp).getTime();
+                const timeB = new Date(b.timestamp).getTime();
+                return isNaN(timeB) ? -1 : (isNaN(timeA) ? 1 : timeB - timeA);
+            });
             return NextResponse.json({ found: events.length > 0, failures: events, searchType: "mac" });
         } 
         else {
-            // User Workflow
             const macsToScan = new Set<string>();
             const userHistoryPayloads: any[] = [];
             
             const activeSessionData = await fetchIseSession(formattedQuery);
             if (activeSessionData.found && activeSessionData.sessions) {
                 activeSessionData.sessions.forEach((s: any) => {
-                    if (s.calling_station_id) macsToScan.add(s.calling_station_id);
+                    const mac = s.calling_station_id?._ || s.calling_station_id || s.callingStationId;
+                    if (mac) macsToScan.add(mac);
                 });
             }
 
@@ -166,12 +145,15 @@ export async function GET(req: Request) {
                 });
                 if (response.ok) {
                     const xmlText = await response.text();
-                    const data = await parseStringPromise(xmlText, { explicitArray: false });
+                    const data = await parseStringPromise(xmlText, { 
+                        explicitArray: false,
+                        tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
+                    });
                     let nodes = data.sessionParameters || data.activeSession;
                     const nodesArr = Array.isArray(nodes) ? nodes : [nodes];
                     nodesArr.forEach((node: any) => {
-                        if (node && (node.calling_station_id?._ || node.calling_station_id || node.callingStationId)) {
-                             const mac = node.calling_station_id?._ || node.calling_station_id || node.callingStationId;
+                        const mac = node.calling_station_id?._ || node.calling_station_id || node.callingStationId;
+                        if (mac) {
                              macsToScan.add(mac);
                              userHistoryPayloads.push(node);
                         }
@@ -184,13 +166,15 @@ export async function GET(req: Request) {
             }
 
             const summaryArray: any[] = [];
-            
             await Promise.allSettled(Array.from(macsToScan).map(async (mac) => {
                 const logs = await fetchAuthStatus(mac);
                 let latestLog = logs.length > 0 ? logs[0] : null;
                 
                 if (!latestLog) {
-                    latestLog = userHistoryPayloads.find(p => (p.calling_station_id?._ || p.calling_station_id || p.callingStationId) === mac);
+                    latestLog = userHistoryPayloads.find(p => {
+                        const pMac = p.calling_station_id?._ || p.calling_station_id || p.callingStationId;
+                        return pMac === mac;
+                    });
                 }
 
                 if (latestLog) {
@@ -204,14 +188,15 @@ export async function GET(req: Request) {
                 }
             }));
             
-            summaryArray.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
+            summaryArray.sort((a, b) => {
+                const timeA = new Date(a.timestamp).getTime();
+                const timeB = new Date(b.timestamp).getTime();
+                return isNaN(timeB) ? -1 : (isNaN(timeA) ? 1 : timeB - timeA);
+            });
             return NextResponse.json({ found: summaryArray.length > 0, discovery: summaryArray, searchType: "user_name" });
         }
 
     } catch (e: any) {
-        await logSystemEvent(`ISE-DEBUG-FATAL: ${e.message}`);
-        console.error("ISE-DEBUG-FATAL:", e);
         return NextResponse.json({ error: e.message || "Failed to communicate with Cisco ISE API" }, { status: 500 });
     }
 }
