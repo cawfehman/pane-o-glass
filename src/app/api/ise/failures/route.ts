@@ -78,22 +78,22 @@ export async function GET(req: Request) {
                 }
 
                 return {
-                    timestamp: node.acs_timestamp?._ || node.acs_timestamp || "Unknown",
-                    user_name: node.user_name?._ || node.user_name || "Unknown",
-                    calling_station_id: node.calling_station_id?._ || node.calling_station_id || "Unknown",
-                    nas_ip_address: node.nas_ip_address?._ || node.nas_ip_address || "Unknown",
-                    nas_port_id: node.nas_port_id?._ || node.nas_port_id || "Unknown",
-                    failure_reason: node.failure_reason?._ || node.failure_reason || "Passed/Active",
-                    failure_id: node.failure_id?._ || node.failure_id || "N/A",
+                    timestamp: node.acs_timestamp?._ || node.acs_timestamp || node.acsTimestamp || "Unknown",
+                    user_name: node.user_name?._ || node.user_name || node.userName || "Unknown",
+                    calling_station_id: node.calling_station_id?._ || node.calling_station_id || node.callingStationId || "Unknown",
+                    nas_ip_address: node.nas_ip_address?._ || node.nas_ip_address || node.nasIpAddress || "Unknown",
+                    nas_port_id: node.nas_port_id?._ || node.nas_port_id || node.nasPortId || "Unknown",
+                    failure_reason: node.failure_reason?._ || node.failure_reason || node.failureReason || "Passed/Active",
+                    failure_id: node.failure_id?._ || node.failure_id || node.failureId || "N/A",
                     status: node.passed?._ || node.passed || (node.failure_reason ? "failed" : "passed"),
-                    authentication_method: node.authentication_method?._ || node.authentication_method || "Unknown",
-                    authentication_protocol: node.authentication_protocol?._ || node.authentication_protocol || "Unknown",
-                    acs_server: node.acs_server?._ || node.acs_server || "Unknown",
-                    nas_identifier: node.nas_identifier?._ || node.nas_identifier || "Unknown",
-                    endpoint_profile: node.endpoint_profile?._ || node.endpoint_profile || "Unknown",
-                    identity_group: node.identity_group?._ || node.identity_group || "Unknown",
-                    authorization_rule: node.authorization_rule?._ || node.authorization_rule || "Unknown",
-                    auth_policy: node.authentication_policy?._ || node.authentication_policy || "Unknown",
+                    authentication_method: node.authentication_method?._ || node.authentication_method || node.authenticationMethod || "Unknown",
+                    authentication_protocol: node.authentication_protocol?._ || node.authentication_protocol || node.authenticationProtocol || "Unknown",
+                    acs_server: node.acs_server?._ || node.acs_server || node.acsServer || "Unknown",
+                    nas_identifier: node.nas_identifier?._ || node.nas_identifier || node.nasIdentifier || "Unknown",
+                    endpoint_profile: node.endpoint_profile?._ || node.endpoint_profile || node.endpointProfile || "Unknown",
+                    identity_group: node.identity_group?._ || node.identity_group || node.identityGroup || "Unknown",
+                    authorization_rule: node.authorization_rule?._ || node.authorization_rule || node.authorizationRule || "Unknown",
+                    auth_policy: node.authentication_policy?._ || node.authentication_policy || node.authenticationPolicy || "Unknown",
                     steps
                 };
             });
