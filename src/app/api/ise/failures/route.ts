@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
-import { hasPermission } from "@/app/actions/permissions";
+import { hasPermission, logSystemEvent } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
 import { fetchIseSession } from '@/lib/ise';
 
@@ -43,36 +43,43 @@ export async function GET(req: Request) {
         }
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
+        
         const fetchAuthStatus = async (mac: string) => {
             const tryFormat = async (formattedMac: string) => {
                 const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/86400/50/All`;
-                console.log(`[ISE-DEBUG] Querying: ${endpoint}`);
+                await logSystemEvent(`[ISE-DEBUG] Querying: ${endpoint}`);
                 const response = await fetch(endpoint, {
                     headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" }
                 });
-                console.log(`[ISE-DEBUG] Response Status: ${response.status}`);
-                if (!response.ok) return [];
+                await logSystemEvent(`[ISE-DEBUG] Response Status: ${response.status}`);
+                if (!response.ok) {
+                    const errText = await response.text();
+                    await logSystemEvent(`[ISE-DEBUG] API error: ${errText}`);
+                    return [];
+                }
                 const xmlText = await response.text();
+                await logSystemEvent(`[ISE-DEBUG] Raw XML Length: ${xmlText.length}`);
                 const data = await parseStringPromise(xmlText, { explicitArray: false });
                 let nodes = data.authStatusList?.authStatus || data.authStatus;
+                await logSystemEvent(`[ISE-DEBUG] Found Nodes: ${Array.isArray(nodes) ? nodes.length : (nodes ? 1 : 0)}`);
                 if (!nodes) return [];
                 return Array.isArray(nodes) ? nodes : [nodes];
             };
 
-            // Try Colons first (standard format in this app)
+            // Try Colons first
             let nodes = await tryFormat(mac);
             
-            // If nothing found and it looks like a MAC, try Dashes (ISE internal preference)
+            // If nothing found, try Dashes
             if (nodes.length === 0) {
                 const dashed = mac.replace(/:/g, "-");
-                console.log(`[ISE-DEBUG] Colons returned 0. Retrying with Dashes: ${dashed}`);
+                await logSystemEvent(`[ISE-DEBUG] Colons returned 0. Retrying with Dashes: ${dashed}`);
                 nodes = await tryFormat(dashed);
             }
 
             return nodes;
         };
 
-        console.log(`[ISE-DEBUG] Starting ${searchType} search for: ${formattedQuery}`);
+        await logSystemEvent(`[ISE-DEBUG] Starting ${searchType} search for: ${formattedQuery}`);
         await logAudit(
             'ISE_DIAGNOSTICS_QUERY',
             `Searched ISE diagnostics for ${searchType === "mac" ? "MAC" : "User"}: ${formattedQuery}`,
@@ -119,11 +126,10 @@ export async function GET(req: Request) {
             return NextResponse.json({ found: events.length > 0, failures: events, searchType: "mac" });
         } 
         else {
-            // User Workflow - Discover ALL associated MAC addresses
+            // User Workflow
             const macsToScan = new Set<string>();
             const userHistoryPayloads: any[] = [];
             
-            // 1. Pull the massive ActiveList locally (what we did for Live Sessions)
             const activeSessionData = await fetchIseSession(formattedQuery);
             if (activeSessionData.found && activeSessionData.sessions) {
                 activeSessionData.sessions.forEach((s: any) => {
@@ -131,7 +137,6 @@ export async function GET(req: Request) {
                 });
             }
 
-            // 2. Query the direct Session/UserName endpoint just in case the endpoint failed entirely and is disconnected
             try {
                 const endpoint = `${url}/admin/API/mnt/Session/UserName/${encodeURIComponent(formattedQuery)}`;
                 const response = await fetch(endpoint, {
@@ -156,15 +161,12 @@ export async function GET(req: Request) {
                 return NextResponse.json({ found: false, failures: [], sessions: [] });
             }
 
-            // Generate Discovery array showing summary of each MAC
-            // We pull the AuthStatus for each harvested MAC so we can show the last seen time & connection properly!
             const summaryArray: any[] = [];
             
             await Promise.allSettled(Array.from(macsToScan).map(async (mac) => {
                 const logs = await fetchAuthStatus(mac);
                 let latestLog = logs.length > 0 ? logs[0] : null;
                 
-                // If the AuthStatus log doesn't exist but we harvested it from Username, use fallback
                 if (!latestLog) {
                     latestLog = userHistoryPayloads.find(p => (p.calling_station_id?._ || p.calling_station_id || p.callingStationId) === mac);
                 }
@@ -180,13 +182,13 @@ export async function GET(req: Request) {
                 }
             }));
             
-            // Sort summary newest first
             summaryArray.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
             return NextResponse.json({ found: summaryArray.length > 0, discovery: summaryArray, searchType: "user_name" });
         }
 
     } catch (e: any) {
+        await logSystemEvent(`ISE-DEBUG-FATAL: ${e.message}`);
         console.error("ISE-DEBUG-FATAL:", e);
         return NextResponse.json({ error: e.message || "Failed to communicate with Cisco ISE API" }, { status: 500 });
     }

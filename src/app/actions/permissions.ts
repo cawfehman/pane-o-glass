@@ -7,11 +7,24 @@ import { logAudit } from "@/lib/audit";
 import fs from "fs";
 import path from "path";
 
+export async function logSystemEvent(msg: string) {
+    const logPath = path.join(process.cwd(), "system.log");
+    const timestamp = new Date().toISOString();
+    const content = `[${timestamp}] ${msg}\n`;
+    try {
+        fs.appendFileSync(logPath, content);
+    } catch (e) {
+        console.error("Failed to write to system log:", e);
+    }
+}
+
 function logInternalError(msg: string, err: any) {
     const logPath = path.join(process.cwd(), "error.log");
     const timestamp = new Date().toISOString();
     const content = `[${timestamp}] ${msg}: ${String(err)}\n${err?.stack || ""}\n\n`;
     fs.appendFileSync(logPath, content);
+    // Also mirror to system log for easier viewing
+    logSystemEvent(`ERROR: ${msg}: ${String(err)}`);
 }
 
 async function ensureAdmin() {
@@ -129,14 +142,23 @@ export async function getPermissionsDiagnostic() {
 
 export async function getInternalLogs() {
     await ensureAdmin();
-    const logPath = path.join(process.cwd(), "error.log");
-    if (!fs.existsSync(logPath)) return "No error log found.";
-    try {
-        const content = fs.readFileSync(logPath, "utf-8");
-        return content.split("\n").slice(-100).join("\n");
-    } catch (e) {
-        return "Error reading log: " + String(e);
+    const errorLogPath = path.join(process.cwd(), "error.log");
+    const systemLogPath = path.join(process.cwd(), "system.log");
+    
+    let combinedLogs = "";
+    
+    if (fs.existsSync(systemLogPath)) {
+        combinedLogs += "--- SYSTEM LOGS ---\n";
+        combinedLogs += fs.readFileSync(systemLogPath, "utf-8").split("\n").slice(-100).join("\n");
+        combinedLogs += "\n\n";
     }
+    
+    if (fs.existsSync(errorLogPath)) {
+        combinedLogs += "--- ERROR LOGS ---\n";
+        combinedLogs += fs.readFileSync(errorLogPath, "utf-8").split("\n").slice(-100).join("\n");
+    }
+
+    return combinedLogs || "No logs found.";
 }
 
 export async function resetPermissions() {
