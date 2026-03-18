@@ -65,10 +65,17 @@ export async function GET(req: Request) {
                     explicitArray: false,
                     tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
                 });
-                let nodes = data.authStatusList?.authStatus || data.authStatus;
-                await logSystemEvent(`[ISE-DEBUG] Found Nodes: ${Array.isArray(nodes) ? nodes.length : (nodes ? 1 : 0)}`);
-                if (!nodes) return [];
-                return Array.isArray(nodes) ? nodes : [nodes];
+                
+                // The snippet shows authStatusOutputList -> authStatusList -> authStatusElements
+                let rawNodes = data.authStatusOutputList?.authStatusList || data.authStatusList?.authStatus || data.authStatus;
+                
+                if (!rawNodes) return [];
+                const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
+                
+                // Map to the actual data payloads (authStatusElements)
+                const processedNodes = nodesArray.map(n => n.authStatusElements || n);
+                await logSystemEvent(`[ISE-DEBUG] Found Nodes: ${processedNodes.length}`);
+                return processedNodes;
             };
 
             // Try Colons first
