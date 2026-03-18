@@ -101,7 +101,7 @@ export async function hasPermission(role: string, toolId: string) {
         const permission = await prisma.toolPermission.findFirst({
             where: { 
                 role: String(role).toUpperCase(), 
-                toolId: toolId === 'ise-failures' ? 'ise' : toolId, 
+                toolId: (toolId === 'ise-failures' || toolId === 'ise-tacacs') ? 'ise' : toolId, 
                 isEnabled: true 
             }
         });
@@ -170,18 +170,22 @@ export async function resetPermissions() {
         const DEFAULT_PERMISSIONS = [
             { toolId: 'firewall', role: 'ADMIN', isEnabled: true },
             { toolId: 'ise', role: 'ADMIN', isEnabled: true },
+            { toolId: 'ise-tacacs', role: 'ADMIN', isEnabled: true },
             { toolId: 'hibp-account', role: 'ADMIN', isEnabled: true },
             { toolId: 'hibp-domain', role: 'ADMIN', isEnabled: true },
             { toolId: 'firewall', role: 'ANALYST', isEnabled: true },
             { toolId: 'ise', role: 'ANALYST', isEnabled: true },
+            { toolId: 'ise-tacacs', role: 'ANALYST', isEnabled: true },
             { toolId: 'hibp-account', role: 'ANALYST', isEnabled: true },
             { toolId: 'hibp-domain', role: 'ANALYST', isEnabled: false },
             { toolId: 'firewall', role: 'USER', isEnabled: false },
             { toolId: 'ise', role: 'USER', isEnabled: false },
+            { toolId: 'ise-tacacs', role: 'USER', isEnabled: false },
             { toolId: 'hibp-account', role: 'USER', isEnabled: true },
             { toolId: 'hibp-domain', role: 'USER', isEnabled: false },
             { toolId: 'firewall', role: 'NETWORK', isEnabled: true },
             { toolId: 'ise', role: 'NETWORK', isEnabled: true },
+            { toolId: 'ise-tacacs', role: 'NETWORK', isEnabled: true },
             { toolId: 'hibp-account', role: 'NETWORK', isEnabled: true },
             { toolId: 'hibp-domain', role: 'NETWORK', isEnabled: false }
         ];

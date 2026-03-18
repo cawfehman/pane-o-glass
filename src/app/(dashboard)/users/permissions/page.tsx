@@ -13,6 +13,7 @@ import {
 const TOOLS = [
     { id: 'firewall', name: 'Cisco Firewall' },
     { id: 'ise', name: 'Cisco ISE Center' },
+    { id: 'ise-tacacs', name: 'Cisco ISE TACACS' },
     { id: 'hibp-account', name: 'HIBP Account Security' },
     { id: 'hibp-domain', name: 'HIBP Domain Security' },
 ];
