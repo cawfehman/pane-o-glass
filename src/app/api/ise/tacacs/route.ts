@@ -14,11 +14,8 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const query = searchParams.get('query');
-
-    if (!query) {
-        return NextResponse.json({ error: 'Query parameter is required' }, { status: 400 });
-    }
+    const query = searchParams.get('query') || "";
+    const limit = searchParams.get('limit') || "25";
 
     try {
         const url = process.env.ISE_MNT_URL;
@@ -30,10 +27,17 @@ export async function GET(request: Request) {
         }
 
         const isMac = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(query);
-        const endpointType = isMac ? 'MACAddress' : 'User';
+        let endpointType = isMac ? 'MACAddress' : 'User';
+        let searchTerm = query;
+
+        // If query is empty or "recent", fetch all events
+        if (!query || query.toLowerCase() === 'recent') {
+            endpointType = 'All';
+            searchTerm = 'All';
+        }
         
         // For TACACS, we query the TACACS AuthStatus endpoint
-        const endpoint = `${url}/admin/API/mnt/TACACS/AuthStatus/${endpointType}/${query}/86400/50/All`;
+        const endpoint = `${url}/admin/API/mnt/TACACS/AuthStatus/${endpointType}/${searchTerm}/86400/${limit}/All`;
 
         const response = await fetch(endpoint, {
             headers: {
@@ -94,9 +98,9 @@ export async function GET(request: Request) {
             };
         });
 
-        const sortedList = normalizedList.sort((a, b) => {
-            const dateA = new Date(a.timestamp).getTime();
-            const dateB = new Date(b.timestamp).getTime();
+        const sortedList = normalizedList.sort((a: any, b: any) => {
+            const dateA = new Date(String(a.timestamp || 0)).getTime();
+            const dateB = new Date(String(b.timestamp || 0)).getTime();
             return dateB - dateA; // Descending
         });
 

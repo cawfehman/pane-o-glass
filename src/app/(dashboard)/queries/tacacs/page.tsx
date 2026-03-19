@@ -1,23 +1,48 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 export default function TacacsPage() {
     const [query, setQuery] = useState("");
     const [loading, setLoading] = useState(false);
     const [tacacsResult, setTacacsResult] = useState<any>(null);
     const [error, setError] = useState("");
+    const [isRecentMode, setIsRecentMode] = useState(true);
     
     // RBAC state
     const [hasTacacsPerm, setHasTacacsPerm] = useState(false);
     const [permsLoading, setPermsLoading] = useState(true);
+
+    const fetchRecentLogs = useCallback(async () => {
+        setLoading(true);
+        setError("");
+        try {
+            const res = await fetch('/api/ise/tacacs?query=recent&limit=25');
+            const data = await res.json();
+            if (res.ok) {
+                setTacacsResult(data);
+                setIsRecentMode(true);
+            } else {
+                throw new Error(data.error || "Failed to fetch recent logs");
+            }
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
         const fetchPerms = async () => {
             try {
                 // Probe the TACACS API
                 const res = await fetch('/api/ise/tacacs?query=');
-                setHasTacacsPerm(res.status !== 403);
+                const hasPerm = res.status !== 403;
+                setHasTacacsPerm(hasPerm);
+                
+                if (hasPerm) {
+                    await fetchRecentLogs();
+                }
             } catch (e) {
                 console.error("Failed to detect TACACS permissions");
             } finally {
@@ -25,15 +50,19 @@ export default function TacacsPage() {
             }
         };
         fetchPerms();
-    }, []);
+    }, [fetchRecentLogs]);
 
     const handleSearch = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
-        if (!query.trim()) return;
+        if (!query.trim()) {
+            fetchRecentLogs();
+            return;
+        }
 
         setLoading(true);
         setError("");
         setTacacsResult(null);
+        setIsRecentMode(false);
 
         try {
             const res = await fetch(`/api/ise/tacacs?query=${encodeURIComponent(query)}`);
@@ -51,18 +80,31 @@ export default function TacacsPage() {
         }
     };
 
-    if (permsLoading) return <div className="p-8">Verifying TACACS+ Administration access...</div>;
+    if (permsLoading) return <div className="p-8 font-medium animate-pulse">Verifying TACACS+ Administration access...</div>;
     if (!hasTacacsPerm) return <div className="p-8 glass-card m-8 border-l-4 border-red-500 text-red-400">Access Denied: You do not have permission to view TACACS+ administration forensics.</div>;
 
     return (
         <div className="internal-scroll-layout">
             <div style={{ flexShrink: 0 }}>
-                <h1 style={{ marginBottom: '8px' }}>TACACS+ Administration</h1>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>
-                    Standalone forensics for network device management. Search by **Device Name**, **Device IP**, or **Admin Username**.
-                </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                    <div>
+                        <h1>TACACS+ Administration</h1>
+                        <p style={{ color: 'var(--text-secondary)' }}>
+                            Forensics for network device management.
+                        </p>
+                    </div>
+                    <button 
+                        onClick={fetchRecentLogs} 
+                        className="btn-secondary" 
+                        disabled={loading}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px' }}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={loading ? "animate-spin" : ""}><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                        Refresh Events
+                    </button>
+                </div>
 
-                <form onSubmit={handleSearch} className="glass-card" style={{ display: 'flex', gap: '16px', marginBottom: '32px' }}>
+                <form onSubmit={handleSearch} className="glass-card" style={{ display: 'flex', gap: '16px', marginBottom: '32px', marginTop: '24px' }}>
                     <input
                         type="text"
                         value={query}
@@ -72,11 +114,11 @@ export default function TacacsPage() {
                         disabled={loading}
                     />
                     <button type="submit" className="btn-primary" disabled={loading} style={{ padding: '12px 32px', borderRadius: '8px', fontWeight: 'bold' }}>
-                        {loading ? "Searching MnT..." : "Search Logs"}
+                        {loading ? "Searching..." : "Filter Logs"}
                     </button>
                     {query && (
-                        <button type="button" onClick={() => { setQuery(""); setTacacsResult(null); }} className="btn-secondary" style={{ padding: '12px 16px', borderRadius: '8px' }}>
-                            Reset
+                        <button type="button" onClick={() => { setQuery(""); fetchRecentLogs(); }} className="btn-secondary" style={{ padding: '12px 16px', borderRadius: '8px' }}>
+                            Clear
                         </button>
                     )}
                 </form>
@@ -91,18 +133,26 @@ export default function TacacsPage() {
             <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                 {tacacsResult && (
                     <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '16px' }}>
+                            <h3 style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
+                                {isRecentMode ? "Latest 25 Administrative Events" : `Search Results for "${query}"`}
+                            </h3>
+                            {tacacsResult.found && (
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                    Found {tacacsResult.failures.length} events
+                                </span>
+                            )}
+                        </div>
+                        
                         {tacacsResult.found && tacacsResult.failures ? (
                             <div>
-                                <h3 style={{ marginBottom: '16px', color: 'var(--text-secondary)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                    Found {tacacsResult.failures.length} Administrative Events
-                                </h3>
                                 {tacacsResult.failures.map((f: any, idx: number) => (
                                     <TacacsCard key={idx} event={f} />
                                 ))}
                             </div>
                         ) : (
                             <div className="glass-card" style={{ textAlign: 'center', padding: '32px' }}>
-                                <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>No TACACS+ administration logs found for '{query}' in the last 24 hours.</p>
+                                <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>No TACACS+ logs found.</p>
                             </div>
                         )}
                     </div>
@@ -141,7 +191,7 @@ function TacacsCard({ event }: { event: any }) {
                 </div>
                 <div>
                     <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Policy & Command</h4>
-                    <p title="The privilege level assigned to the session (typically 1-15)"><strong>Privilege:</strong> <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>Level {event.privilege_level}</span></p>
+                    <p title="The privilege level assigned to the session"><strong>Privilege:</strong> <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>Level {event.privilege_level}</span></p>
                     <p title="The specific command set or profile applied to this session"><strong>Command Set:</strong> {event.command_set}</p>
                     <p title="The ISE Authorization Rule matched for this administrative session"><strong>Matched Rule:</strong> {event.authorization_rule}</p>
                 </div>
