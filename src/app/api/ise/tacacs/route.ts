@@ -22,37 +22,44 @@ export async function GET() {
         const normalizedList = buffer.map((entry: any) => {
             const msg = entry.raw;
             
-            // Refined Cisco ISE Syslog Parser
+            // Deep Forensic Cisco ISE Syslog Parser (v2.8.0)
             const extract = (key: string) => {
                 const match = msg.match(new RegExp(`${key}=(.*?)(,|\\s|$)`));
                 return match ? match[1].trim() : "";
             };
 
-            // Status Heatmap (v2.7.2)
-            // Cisco use various tags for success: Passed, Authorized, Granted, Accounting
+            // Status Heatmap
             const isExplicitFail = msg.includes('Failed') || msg.includes('Denied') || msg.includes('Rejected');
             const isExplicitPass = msg.includes('Passed') || msg.includes('Authorized') || msg.includes('Granted') || msg.includes('Accounting') || msg.includes('Success');
 
             let status = 'Unknown';
             if (isExplicitFail) status = 'Failed';
             else if (isExplicitPass) status = 'Passed';
-            else status = 'Passed'; // Default to Passed for informational/benign logs
+            else status = 'Passed'; 
 
-            // Extract NAS / Server identifiers
-            const server = extract('ConfigServiceNode') || entry.source || "ISE-Cluster";
-            const nasIp = extract('NAS-IP-Address') || entry.source;
+            // Source Differentiation
+            const iseNode = extract('ConfigServiceNode') || "ISE-Cluster";
+            const nasIp = extract('Device-IP-Address') || extract('NAS-IP-Address') || entry.source;
             const nasName = extract('Device-Name') || extract('NAS-Identifier') || "Network Device";
+            const adminIp = extract('Remote-Address') || extract('Address') || "Unknown";
 
             return {
                 timestamp: entry.timestamp,
                 user_name: extract('User-Name') || extract('User') || "Unknown",
-                calling_station_id: extract('Remote-Address') || extract('Address') || entry.source,
-                nas_ip_address: nasIp,
-                server: server,
+                calling_station_id: adminIp, // The Admin's originating IP
+                nas_ip_address: nasIp,      // The Network Device IP
+                server: iseNode,            // The ISE server processing the log
                 status: status,
                 nas_port_id: extract('NAS-Port') || "N/A",
                 failure_reason: status === 'Failed' ? "Authentication Denied" : "Success",
-                device_name: nasName
+                device_name: nasName,
+                
+                // Deep Forensics
+                command_set: extract('Command-String') || "N/A",
+                privilege_level: extract('Privilege-Level') || "15",
+                authen_type: extract('Authen-Type') || "Unknown",
+                service: extract('Service') || "Unknown",
+                raw_message: msg
             };
         });
 

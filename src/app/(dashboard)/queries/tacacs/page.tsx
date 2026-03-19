@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Shield, Search, RefreshCw, Clock, Wifi, User, Activity, Globe, Save } from 'lucide-react';
+import { Shield, Search, RefreshCw, Clock, Wifi, User, Activity, Globe, Save, ChevronDown, ChevronUp, Terminal } from 'lucide-react';
 
 interface TacacsEvent {
     timestamp: string;
@@ -11,25 +11,26 @@ interface TacacsEvent {
     nas_port_id: string;
     failure_reason: string;
     failure_id: string;
-    status: boolean;
-    acs_server: string;
-    nas_identifier: string;
-    privilege_level: string;
+    status: string;
+    server: string;
+    device_name: string;
     command_set: string;
-    authorization_rule: string;
-    identity_store: string;
+    privilege_level: string;
+    authen_type: string;
+    service: string;
+    raw_message: string;
 }
 
 const TacacsCard = ({ event }: { event: any }) => {
-    // Defensive rendering to prevent crashes on non-string data
+    const [showRaw, setShowRaw] = useState(false);
+
     const safeStr = (v: any) => {
         if (v === null || v === undefined) return "N/A";
         if (typeof v === 'string') return v;
-        if (typeof v === 'object') return JSON.stringify(v);
         return String(v);
     };
 
-    const isPass = event.status === true || event.status === "true" || event.status === "Passed";
+    const isPass = event.status === "Passed" || event.status === true || event.status === "true";
     const accentColor = isPass ? 'var(--status-success)' : 'var(--status-error)';
     const bgColor = isPass ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)';
 
@@ -40,49 +41,83 @@ const TacacsCard = ({ event }: { event: any }) => {
             padding: '20px',
             animation: 'fadeIn 0.3s ease-out'
         }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '32px' }}>
                 <div>
-                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        Log Event <span style={{ fontSize: '0.7rem', background: bgColor, color: accentColor, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>{isPass ? 'PASS' : 'FAIL'}</span>
-                    </h4>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <User size={16} color="var(--text-secondary)" />
-                            <span style={{ fontWeight: '600', fontSize: '1.1rem' }}>{safeStr(event.user_name)}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            Log Event <span style={{ fontSize: '0.7rem', background: bgColor, color: accentColor, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>{isPass ? 'PASS' : 'FAIL'}</span>
+                        </h4>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Clock size={12} /> {safeStr(event.timestamp)}
+                        </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ padding: '8px', background: 'var(--glass-bg)', borderRadius: '8px' }}>
+                                <User size={20} color="var(--accent-primary)" />
+                            </div>
+                            <div>
+                                <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '-2px' }}>Administrative User</p>
+                                <p style={{ fontWeight: '700', fontSize: '1.2rem' }}>{safeStr(event.user_name)}</p>
+                            </div>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                            <Clock size={14} />
-                            <span>{safeStr(event.timestamp)}</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                            <Wifi size={14} />
-                            <span>Device: {safeStr(event.nas_ip_address)} ({safeStr(event.device_name || event.nas_identifier)})</span>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '4px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                                <Globe size={14} />
+                                <span>Source: {safeStr(event.calling_station_id)}</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                                <Wifi size={14} />
+                                <span>Device: {safeStr(event.nas_ip_address)}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div style={{ borderLeft: '1px solid var(--glass-border)', paddingLeft: '24px' }}>
-                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Forensic Details</h4>
+                <div style={{ borderLeft: '1px solid var(--glass-border)', paddingLeft: '32px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                        <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem' }}>Forensic Properties</h4>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--accent-primary)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }} onClick={() => setShowRaw(!showRaw)}>
+                            <Terminal size={14} /> {showRaw ? 'Hide Raw' : 'View Source'}
+                        </span>
+                    </div>
+                    
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.85rem' }}>
                         <div>
-                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>Privilege Level</p>
-                            <p style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>{safeStr(event.privilege_level || "15")}</p>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '1px' }}>Network Device</p>
+                            <p style={{ fontWeight: '700' }}>{safeStr(event.device_name || event.nas_identifier)}</p>
                         </div>
                         <div>
-                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>NAS Port</p>
-                            <p style={{ fontWeight: 'bold' }}>{safeStr(event.nas_port_id || "N/A")}</p>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '1px' }}>ISE Processing Node</p>
+                            <p style={{ fontWeight: '700', color: 'var(--accent-primary)' }}>{safeStr(event.server || event.acs_server)}</p>
                         </div>
                         <div>
-                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>Source Node</p>
-                            <p>{safeStr(event.server || event.acs_server)}</p>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '1px' }}>Privilege Level</p>
+                            <p style={{ fontWeight: '700' }}>{safeStr(event.privilege_level)}</p>
                         </div>
                         <div>
-                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>Result</p>
-                            <p style={{ color: accentColor, fontWeight: '600' }}>{safeStr(event.status)}</p>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '1px' }}>Service Type</p>
+                            <p style={{ fontWeight: '700' }}>{safeStr(event.service || event.authen_type)}</p>
                         </div>
                     </div>
                 </div>
             </div>
+
+            {event.command_set && event.command_set !== "N/A" && (
+                <div style={{ marginTop: '16px', padding: '12px 16px', background: 'var(--glass-bg)', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>Command Executed</p>
+                    <code style={{ color: 'var(--accent-primary)', fontSize: '0.95rem', fontWeight: '700' }}>{safeStr(event.command_set)}</code>
+                </div>
+            )}
+
+            {showRaw && (
+                <div style={{ marginTop: '16px', padding: '16px', background: '#000', borderRadius: '8px', border: '1px solid #333', overflowX: 'auto' }}>
+                    <p style={{ color: '#666', fontSize: '0.7rem', marginBottom: '8px', borderBottom: '1px solid #222', paddingBottom: '4px' }}>RAW CISCO SYSLOG PAYLOAD</p>
+                    <code style={{ color: '#0f0', fontSize: '0.8rem', whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>{safeStr(event.raw_message)}</code>
+                </div>
+            )}
 
             {(!isPass || event.failure_reason !== "Success") && event.status !== "Passed" && (
                 <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '8px', border: '1px dashed var(--status-error)' }}>
@@ -108,8 +143,6 @@ export default function TacacsPage() {
             const res = await fetch(`/api/ise/tacacs?query=${encodeURIComponent(searchQuery)}`);
             const data = await res.json();
             if (data.error) throw new Error(data.error);
-            
-            // Map legacy 'failures' to new 'sessions' key for backward compatibility
             const sessions = data.sessions || data.failures || [];
             setTacacsResult({ ...data, sessions });
         } catch (e: any) {
@@ -132,7 +165,7 @@ export default function TacacsPage() {
                         TACACS+ Administration
                     </h1>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>
-                        Search administrative activity, command sets, and privilege level forensic logs.
+                        Real-time forensic monitoring of Device Admin authentication, authorization, and command execution.
                     </p>
                 </div>
                 <button 
@@ -155,7 +188,7 @@ export default function TacacsPage() {
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && performSearch(query)}
-                            placeholder="Search by Admin Username, Device IP, or Device Name..."
+                            placeholder="Search by Admin Username, Device IP, or Command String..."
                             style={{ 
                                 width: '100%', 
                                 padding: '16px 16px 16px 48px',
@@ -177,9 +210,6 @@ export default function TacacsPage() {
                         {isSearching ? 'Searching...' : 'Search Logs'}
                     </button>
                 </div>
-                <p style={{ marginTop: '12px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                    Tip: Leave query empty to see the most recent administrative activity across all systems.
-                </p>
             </div>
 
             {error && (
