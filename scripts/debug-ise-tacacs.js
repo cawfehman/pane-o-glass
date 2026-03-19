@@ -16,7 +16,6 @@ const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
 // Parse Arguments
 const args = process.argv.slice(2);
 let host = process.env.ISE_PAN_URL;
-let identity = user;
 
 for (let i = 0; i < args.length; i++) {
     if (args[i] === '--host' && args[i+1]) {
@@ -26,34 +25,29 @@ for (let i = 0; i < args.length; i++) {
     }
 }
 
-const shotgunEndpoints = [
-    // 1. Precise Forensic Roots (Pluralized)
-    { url: `${host}/admin/API/mnt/TACACS/TacacsAuthorization/All/86400/10/All`, type: 'XML' },
-    { url: `${host}/admin/API/mnt/TACACS/TacacsAuthentication/All/86400/10/All`, type: 'XML' },
+const reduxEndpoints = [
+    // 1. Semantic Redux: AuditStatus vs AuthStatus
+    { url: `${host}/admin/API/mnt/TACACS/AuditStatus/All/86400/10/All`, type: 'XML' },
+    { url: `${host}/admin/API/mnt/TACACS/AuthStatus/All/86400/10/All`, type: 'XML' },
 
-    // 2. Singular Logistic Roots
+    // 2. Pluralization Redux: Log vs Logs
+    { url: `${host}/admin/API/mnt/TACACS/Log/All/86400/10/All`, type: 'XML' },
+    { url: `${host}/admin/API/mnt/TACACS/Logs/All/86400/10/All`, type: 'XML' },
+
+    // 3. Entity Redux: Audit vs Activity
     { url: `${host}/admin/API/mnt/TACACS/Audit/All/86400/10/All`, type: 'XML' },
-    { url: `${host}/admin/API/mnt/TACACS/Authorization/All/86400/10/All`, type: 'XML' },
-    { url: `${host}/admin/API/mnt/TACACS/Authentication/All/86400/10/All`, type: 'XML' },
+    { url: `${host}/admin/API/mnt/TACACS/Activity/All/86400/10/All`, type: 'XML' },
 
-    // 3. Alternative "Log" Namespace
-    { url: `${host}/admin/API/mnt/Log/TACACS/All/86400/10/All`, type: 'XML' },
-    { url: `${host}/admin/API/mnt/Log/TacacsAuthorization/All/86400/10/All`, type: 'XML' },
-    { url: `${host}/admin/API/mnt/Log/TacacsAuthentication/All/86400/10/All`, type: 'XML' },
-
-    // 4. Combined Identifier Roots
-    { url: `${host}/admin/API/mnt/TACACSAudit/All/86400/10/All`, type: 'XML' },
-    { url: `${host}/admin/API/mnt/TACACSSession/All/86400/10/All`, type: 'XML' },
-
-    // 5. Native Reports (Absolute Last Resort)
-    { url: `${host}/admin/API/mnt/TACACS/Reports/Latest/86400/10/All`, type: 'XML' }
+    // 4. Case-Sensitive Redux (all lowercase)
+    { url: `${host}/admin/api/mnt/tacacs/auditstatus/all/86400/10/all`, type: 'XML' },
+    { url: `${host}/admin/api/mnt/tacacs/authstatus/all/86400/10/all`, type: 'XML' }
 ];
 
-async function shotgun() {
-    console.log(`\n--- ISE 3.3 FORENSIC SHOTGUN (v2.0.0) ---`);
+async function redux() {
+    console.log(`\n--- ISE 3.3 FORENSIC REDUX (v2.1.0) ---`);
     console.log(`Host: ${host}`);
     
-    for (const ep of shotgunEndpoints) {
+    for (const ep of reduxEndpoints) {
         console.log(`\nTesting: ${ep.url}`);
         try {
             const result = await new Promise((resolve, reject) => {
@@ -76,7 +70,7 @@ async function shotgun() {
             
             console.log(`Status: ${result.status}`);
             if (result.status === 200) {
-                console.log(`🎯 BREAKTHROUGH! FOUND THE DATABASE!`);
+                console.log(`🎯 BREAKTHROUGH! SEMANTIC MATCH FOUND!`);
                 console.log(`Body snippet: ${result.body.substring(0, 500)}`);
             } else {
                 console.log(`Response: ${result.status} - ${result.body.substring(0, 50) || "Empty"}`);
@@ -85,7 +79,7 @@ async function shotgun() {
             console.log(`Failed: ${e.message}`);
         }
     }
-    console.log(`\n--- SHOTGUN COMPLETE ---`);
+    console.log(`\n--- REDUX COMPLETE ---`);
 }
 
-shotgun();
+redux();
