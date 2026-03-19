@@ -51,7 +51,6 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
         </div>
     );
 
-    // --- HIGH-DENSITY CONDENSED VIEW (v3.0.0) ---
     if (!isExpanded) {
         return (
             <div 
@@ -69,7 +68,7 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
                     transition: 'all 0.1s ease'
                 }}
             >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '140px' }}>
                         <User size={14} color="var(--accent-primary)" />
                         <span style={{ fontWeight: '700', fontSize: '0.9rem' }}>{event.user_name}</span>
@@ -93,7 +92,6 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
         );
     }
 
-    // --- FULL FORENSIC VIEW ---
     return (
         <div className="glass-card" style={{ 
             marginBottom: '12px', 
@@ -135,12 +133,6 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
                         <span>Group: <b>{event.identity_group}</b></span>
                     </div>
                 )}
-                {safeStr(event.privilege_level) && (
-                    <div className="badge-static">
-                        <Hash size={12} />
-                        <span>Privilege: <b>{event.privilege_level}</b></span>
-                    </div>
-                )}
                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <button onClick={() => setShowRaw(!showRaw)} className="text-button">
                         <Terminal size={14} /> {showRaw ? 'Hide Syslog' : 'Show Cisco Payload'}
@@ -150,17 +142,13 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
 
             {isAccounting && (
                 <div className="command-box-analytic">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <Activity size={14} color="var(--status-success)" />
-                        <span style={{ fontSize: '0.7rem', color: '#666', fontWeight: 'bold' }}>CLI COMMAND EXECUTED (ACCOUNTING)</span>
-                    </div>
+                    <Activity size={14} color="var(--status-success)" />
                     <code onClick={() => onQuickSearch(event.command_set)}>{event.command_set}</code>
                 </div>
             )}
 
             {showRaw && (
                 <div className="raw-payload-analytic">
-                    <p style={{ fontSize: '0.65rem', color: '#444', marginBottom: '6px' }}>UNENCRYPTED CISCO ARCHIVE STRING</p>
                     <code style={{ color: '#0f0' }}>{event.raw_message}</code>
                 </div>
             )}
@@ -168,24 +156,21 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
     );
 };
 
+// --- HIGH-DENSITY METRIC UI (v3.0.1) ---
 const MetricList = ({ title, items, icon: Icon, color }: any) => (
-    <div className="glass-card analytic-metric-card" style={{ flex: 1, minWidth: '240px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: color }}>
-                <Icon size={18} />
-                <span style={{ fontWeight: '800', fontSize: '0.85rem', textTransform: 'uppercase' }}>{title}</span>
-            </div>
-            <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>TOP 10</span>
+    <div className="glass-card" style={{ flex: 1, padding: '16px', minWidth: '280px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+            <Icon size={18} color={color} />
+            <span style={{ fontWeight: '800', fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>{title}</span>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {items && items.length > 0 ? items.map((item: any, idx: number) => (
-                <div key={idx} className="metric-row">
-                    <span className="metric-name">{item.name}</span>
-                    <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.05)', margin: '0 8px' }}></div>
-                    <span className="metric-value">{item.value}</span>
+                <div key={idx} className="metric-row-analytic">
+                    <span className="metric-name-analytic" title={item.name}>{item.name}</span>
+                    <span className="metric-badge-analytic" style={{ background: `${color}22`, color: color }}>{item.value}</span>
                 </div>
             )) : (
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '20px' }}>No Data Available</p>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '10px' }}>No Data</p>
             )}
         </div>
     </div>
@@ -231,7 +216,6 @@ export default function TacacsPage() {
     return (
         <div style={{ maxWidth: '1600px', margin: '0 auto', padding: '0 20px 60px' }}>
             
-            {/* UNIFIED ANALYTICS HEADER (v3.0.0) */}
             <div style={{ 
                 position: 'sticky', 
                 top: '0px', 
@@ -243,16 +227,15 @@ export default function TacacsPage() {
             }}>
                 <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                        <h1 style={{ fontSize: '2.2rem', fontWeight: '900', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '14px' }}>
+                        <h1 style={{ fontSize: '2.2rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '14px' }}>
                             <Shield size={36} color="var(--accent-primary)" />
-                            TACACS+ Forensic Intelligence
+                            Forensic Intelligence
                         </h1>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', opacity: 0.8 }}>Administrative Command accountability & behavioral analytics suite.</p>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>Administrative command accountability & behavioral statistics.</p>
                     </div>
                     
                     <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                         <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '4px', border: '1px solid var(--glass-border)' }}>
-                            <Calendar size={14} style={{ margin: '0 8px', color: 'var(--text-secondary)' }} />
                             {['15m', '1h', '12h', '24h', '7d'].map((w) => (
                                 <button
                                     key={w}
@@ -291,20 +274,17 @@ export default function TacacsPage() {
                 </div>
             </div>
 
-            {/* ANALYTICS RIBBON (v3.0.0) */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', margin: '24px 0 40px' }}>
                 <MetricList title="Top Administrative Users" items={tacacsResult?.metrics?.top_usernames} icon={Users} color="var(--accent-primary)" />
                 <MetricList title="Top Source Ingress" items={tacacsResult?.metrics?.top_sources} icon={MapPin} color="var(--status-warning)" />
                 <MetricList title="Network Device Focus" items={tacacsResult?.metrics?.top_devices} icon={Monitor} color="var(--status-info)" />
                 
-                <div className="glass-card summary-card-analytic" style={{ background: 'rgba(var(--accent-primary-rgb), 0.03)' }}>
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: '900', letterSpacing: '0.1em' }}>BUFFER VOLUME ({window})</span>
-                        <h2 style={{ fontSize: '3.5rem', fontWeight: '900', lineHeight: 1 }}>{totalEvents}</h2>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px', color: failures > 0 ? 'var(--status-error)' : 'var(--status-success)', fontSize: '0.85rem', fontWeight: '800' }}>
-                            <AlertCircle size={16} />
-                            {failures} AUTHENTICATION FAILURES
-                        </div>
+                <div className="glass-card summary-card-analytic">
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: '900', letterSpacing: '0.1em' }}>BUFFER VOLUME ({window})</span>
+                    <h2 style={{ fontSize: '3rem', fontWeight: '950' }}>{totalEvents}</h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: failures > 0 ? 'var(--status-error)' : 'var(--status-success)', fontSize: '0.8rem', fontWeight: '800' }}>
+                        <AlertCircle size={14} />
+                        {failures} FAILURES
                     </div>
                 </div>
             </div>
@@ -322,7 +302,7 @@ export default function TacacsPage() {
                     <RefreshCw size={48} className="animate-spin" style={{ color: 'var(--accent-primary)', opacity: 0.3 }} />
                 </div>
             ) : (
-                <div className="forensic-scroller" style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
                     {tacacsResult?.sessions?.map((event, idx) => (
                         <TacacsCard key={idx} event={event} onQuickSearch={handleQuickSearch} />
                     ))}
@@ -330,18 +310,18 @@ export default function TacacsPage() {
             )}
             
             <style jsx>{`
-                .feed-card-compact:hover { background: rgba(255,255,255,0.05) !important; transform: scale(1.002); z-index: 10; }
-                .metric-row { display: flex; align-items: center; justify-content: space-between; font-family: 'Inter', sans-serif; }
-                .metric-name { font-size: 0.8rem; color: var(--text-primary); font-weight: 500; }
-                .metric-value { font-size: 0.8rem; color: var(--text-secondary); font-weight: 800; min-width: 30px; text-align: right; }
-                .summary-card-analytic { padding: 24px; display: flex; flex-direction: column; text-align: center; border: 1px solid rgba(var(--accent-primary-rgb), 0.1); border-radius: 12px; }
-                .command-box-analytic { padding: 14px 16px; background: #080808; border-radius: 8px; border: 1px solid #222; margin-top: 12px; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5); }
-                .command-box-analytic code { color: var(--status-success); font-weight: 800; cursor: pointer; font-size: 1.1rem; font-family: 'JetBrains Mono', monospace; }
+                .feed-card-compact:hover { background: rgba(255,255,255,0.05) !important; z-index: 10; }
+                
+                .metric-row-analytic { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; min-width: 0; }
+                .metric-name-analytic { font-size: 0.85rem; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; padding-right: 12px; }
+                .metric-badge-analytic { font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; min-width: 32px; text-align: center; }
+
+                .summary-card-analytic { padding: 24px; display: flex; flex-direction: column; justify-content: center; text-align: center; background: rgba(var(--accent-primary-rgb), 0.05); }
+                .command-box-analytic { padding: 12px 14px; background: #000; border-radius: 6px; border: 1px solid #222; margin-top: 12px; display: flex; align-items: center; gap: 10px; }
+                .command-box-analytic code { color: var(--status-success); font-weight: 800; cursor: pointer; font-size: 1rem; }
                 .raw-payload-analytic { margin-top: 12px; padding: 16px; background: #000; border-radius: 8px; border: 1px solid #111; overflow-x: auto; font-family: monospace; }
                 .badge-clickable { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(var(--accent-primary-rgb), 0.1); border-radius: 6px; font-size: 0.75rem; border: 1px solid var(--glass-border); cursor: pointer; }
-                .badge-static { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(255,255,255,0.02); border-radius: 6px; font-size: 0.75rem; border: 1px solid var(--glass-border); color: var(--text-secondary); }
-                .text-button { background: none; border: none; color: var(--accent-primary); font-size: 0.75rem; cursor: pointer; display: flex; alignItems: center; gap: 6px; padding: 8px; opacity: 0.8; }
-                .text-button:hover { opacity: 1; text-decoration: underline; }
+                .text-button { background: none; border: none; color: var(--accent-primary); font-size: 0.75rem; cursor: pointer; display: flex; alignItems: center; gap: 6px; padding: 4px; opacity: 0.8; }
                 .count-badge { font-size: 0.7rem; font-weight: 900; background: var(--accent-primary); color: #000; padding: 2px 10px; border-radius: 4px; }
                 .hover-bright:hover { filter: brightness(1.2); }
                 .hover-underline:hover { text-decoration: underline; }
