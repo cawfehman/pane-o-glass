@@ -29,7 +29,7 @@ const TacacsCard = ({ event }: { event: any }) => {
         return String(v);
     };
 
-    const isPass = event.status === true || event.status === "true";
+    const isPass = event.status === true || event.status === "true" || event.status === "Passed";
     const accentColor = isPass ? 'var(--status-success)' : 'var(--status-error)';
     const bgColor = isPass ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)';
 
@@ -56,7 +56,7 @@ const TacacsCard = ({ event }: { event: any }) => {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
                             <Wifi size={14} />
-                            <span>Device: {safeStr(event.nas_ip_address)} ({safeStr(event.nas_identifier)})</span>
+                            <span>Device: {safeStr(event.nas_ip_address)} ({safeStr(event.device_name || event.nas_identifier)})</span>
                         </div>
                     </div>
                 </div>
@@ -66,28 +66,28 @@ const TacacsCard = ({ event }: { event: any }) => {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.85rem' }}>
                         <div>
                             <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>Privilege Level</p>
-                            <p style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>{safeStr(event.privilege_level)}</p>
+                            <p style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>{safeStr(event.privilege_level || "15")}</p>
                         </div>
                         <div>
-                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>Command Set</p>
-                            <p style={{ fontWeight: 'bold' }}>{safeStr(event.command_set)}</p>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>NAS Port</p>
+                            <p style={{ fontWeight: 'bold' }}>{safeStr(event.nas_port_id || "N/A")}</p>
                         </div>
                         <div>
-                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>Identity Store</p>
-                            <p>{safeStr(event.identity_store)}</p>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>Source Node</p>
+                            <p>{safeStr(event.server || event.acs_server)}</p>
                         </div>
                         <div>
-                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>Auth Rule</p>
-                            <p>{safeStr(event.authorization_rule)}</p>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>Result</p>
+                            <p style={{ color: accentColor, fontWeight: '600' }}>{safeStr(event.status)}</p>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {!isPass && (
+            {(!isPass || event.failure_reason !== "Success") && event.status !== "Passed" && (
                 <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '8px', border: '1px dashed var(--status-error)' }}>
                     <p style={{ color: 'var(--status-error)', fontSize: '0.875rem', fontWeight: '500' }}>
-                        Failure Reason: {safeStr(event.failure_reason)} (ID: {safeStr(event.failure_id)})
+                        Failure Reason: {safeStr(event.failure_reason)}
                     </p>
                 </div>
             )}
@@ -98,7 +98,7 @@ const TacacsCard = ({ event }: { event: any }) => {
 export default function TacacsPage() {
     const [query, setQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
-    const [tacacsResult, setTacacsResult] = useState<{ found: boolean, failures: TacacsEvent[] } | null>(null);
+    const [tacacsResult, setTacacsResult] = useState<{ found: boolean, sessions: TacacsEvent[] } | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const performSearch = async (searchQuery: string = 'recent') => {
@@ -108,7 +108,10 @@ export default function TacacsPage() {
             const res = await fetch(`/api/ise/tacacs?query=${encodeURIComponent(searchQuery)}`);
             const data = await res.json();
             if (data.error) throw new Error(data.error);
-            setTacacsResult(data);
+            
+            // Map legacy 'failures' to new 'sessions' key for backward compatibility
+            const sessions = data.sessions || data.failures || [];
+            setTacacsResult({ ...data, sessions });
         } catch (e: any) {
             setError(e.message);
         } finally {
@@ -201,9 +204,9 @@ export default function TacacsPage() {
                         ))}
                     </div>
                 ) : tacacsResult ? (
-                    tacacsResult.found && tacacsResult.failures.length > 0 ? (
+                    tacacsResult.found && tacacsResult.sessions.length > 0 ? (
                         <div>
-                            {tacacsResult.failures.map((f: any, idx: number) => (
+                            {tacacsResult.sessions.map((f: any, idx: number) => (
                                 <TacacsCard key={idx} event={f} />
                             ))}
                         </div>
