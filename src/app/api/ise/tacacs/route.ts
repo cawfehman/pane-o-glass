@@ -31,7 +31,7 @@ export async function GET(request: Request) {
         const normalizedList = buffer.map((entry: any) => {
             const msg = entry.raw || "";
             
-            // Quotation-Aware Cisco ISE Syslog Parser (v2.9.1)
+            // Quotation-Aware Cisco ISE Syslog Parser (v2.9.4)
             const extract = (key: string) => {
                 const quotedMatch = msg.match(new RegExp(`${key}="(.*?)"`));
                 if (quotedMatch) return quotedMatch[1].trim();
@@ -39,11 +39,11 @@ export async function GET(request: Request) {
                 return simpleMatch ? simpleMatch[1].trim() : "";
             };
 
-            // Multi-Key Fallback Logic (v2.9.1)
+            // Multi-Key Fallback Logic (v2.9.4)
             const extractAny = (keys: string[]) => {
                 for (const key of keys) {
                     const val = extract(key);
-                    if (val && val !== "N/A") return val;
+                    if (val && val !== "N/A" && val !== "None") return val;
                 }
                 return "";
             };
@@ -57,11 +57,14 @@ export async function GET(request: Request) {
             else if (isExplicitPass) status = 'Passed';
             else status = 'Passed'; 
 
-            // High-Fidelity Source Differentiation
+            // High-Fidelity Extraction
             const iseNode = extractAny(['ConfigServiceNode', 'acs_server', 'Server']) || "ISE-Cluster";
             const nasIp = extractAny(['Device-IP-Address', 'NAS-IP-Address', 'Device_IP_Address']) || entry.source || "Unknown";
             const nasName = extractAny(['Device-Name', 'NetworkDeviceName', 'Network_Device_Name', 'NAS-Identifier', 'nas-name']) || "Network Device";
-            const adminIp = extractAny(['Remote-Address', 'Address', 'Calling-Station-ID']) || entry.source || "Unknown";
+            const adminIp = extractAny(['Remote-Address', 'Address', 'Calling-Station-ID', 'Port']) || entry.source || "Unknown";
+
+            // UNIVERSAL COMMAND EXTRACTION (v2.9.4)
+            const commandSet = extractAny(['CmdSet', 'CommandSet', 'Command-String', 'Command']);
 
             return {
                 timestamp: entry.timestamp || new Date().toISOString(),
@@ -75,7 +78,7 @@ export async function GET(request: Request) {
                 device_name: nasName,
                 
                 // Deep Forensics
-                command_set: extract('Command-String') || "N/A",
+                command_set: commandSet || "N/A",
                 privilege_level: extract('Privilege-Level') || "15",
                 authen_type: extract('Authen-Type') || "Unknown",
                 authen_method: extract('Authen-Method') || "Unknown",
