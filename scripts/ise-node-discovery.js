@@ -15,16 +15,16 @@ if (!urlStr || !user || !pass) {
 const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
 
 async function discoverNodes() {
-    console.log(`\n--- ISE TOPOLOGY DISCOVERY (v1.7.7) ---`);
+    console.log(`\n--- ISE TOPOLOGY DISCOVERY (v1.8.6) ---`);
     console.log(`Querying Primary Node: ${urlStr}`);
     
-    // ERS Node API: returns all nodes in the deployment
+    // ERS Node API
     const endpoint = `${urlStr}/ers/config/node`;
     
     const options = {
         headers: {
             "Authorization": `Basic ${basicAuth}`,
-            "Accept": "application/json" // Use JSON for easier parsing than XML
+            "Accept": "application/json"
         },
         rejectUnauthorized: false
     };
@@ -42,39 +42,23 @@ async function discoverNodes() {
                 const data = JSON.parse(body);
                 const nodes = data.SearchResult.resources || [];
                 
-                console.log(`\nFound ${nodes.length} nodes in deployment:`);
+                console.log(`\nFound ${nodes.length} nodes in deployment.`);
                 
-                for (const nodeRef of nodes) {
-                    // Fetch full detail for each node to see roles
+                if (nodes.length > 0) {
+                    console.log(`\n--- RAW SCHEMA CAPTURE (Node 1) ---`);
+                    const nodeRef = nodes[0];
                     await new Promise((resolve) => {
                         https.get(nodeRef.link.href, options, (nodeRes) => {
                             let nodeBody = '';
                             nodeRes.on('data', d => nodeBody += d);
                             nodeRes.on('end', () => {
-                                const nodeDetail = JSON.parse(nodeBody).Node;
-                                const name = nodeDetail.name;
-                                const ip = nodeDetail.ipAddress;
-                                const roles = nodeDetail.roles || [];
-                                
-                                const isMnt = roles.includes('Monitoring');
-                                const isPan = roles.includes('Administration');
-                                const isPsn = roles.includes('PolicyService');
-                                
-                                let roleStr = [
-                                    isPan ? 'PAN (Admin)' : '',
-                                    isMnt ? 'MnT (Monitoring)' : '',
-                                    isPsn ? 'PSN (Policy)' : ''
-                                ].filter(Boolean).join(', ');
-
-                                console.log(`- [${name}] IP: ${ip} | Roles: ${roleStr}`);
-                                if (isMnt) {
-                                    console.log(`  >>> THIS IS A MONITORING NODE! Use this IP for TACACS logs if ADM01 fails.`);
-                                }
+                                console.log(JSON.stringify(JSON.parse(nodeBody), null, 2));
                                 resolve();
                             });
                         });
                     });
                 }
+                
                 console.log(`\n--- DISCOVERY COMPLETE ---`);
             } catch (err) {
                 console.error("Failed to parse ERS response:", err.message);
