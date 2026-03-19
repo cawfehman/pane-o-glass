@@ -1,203 +1,228 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from 'react';
+import { Shield, Search, RefreshCw, Clock, Wifi, User, Activity, Globe, Save } from 'lucide-react';
 
-export default function TacacsPage() {
-    const [query, setQuery] = useState("");
-    const [loading, setLoading] = useState(false);
-    const [tacacsResult, setTacacsResult] = useState<any>(null);
-    const [error, setError] = useState("");
-    const [isRecentMode, setIsRecentMode] = useState(true);
-    
-    // RBAC state
-    const [hasTacacsPerm, setHasTacacsPerm] = useState(false);
-    const [permsLoading, setPermsLoading] = useState(true);
-
-    const fetchRecentLogs = useCallback(async () => {
-        setLoading(true);
-        setError("");
-        try {
-            const res = await fetch('/api/ise/tacacs?query=recent&limit=25');
-            const data = await res.json();
-            if (res.ok) {
-                setTacacsResult(data);
-                setIsRecentMode(true);
-            } else {
-                throw new Error(data.error || "Failed to fetch recent logs");
-            }
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        const fetchPerms = async () => {
-            try {
-                // Probe the TACACS API
-                const res = await fetch('/api/ise/tacacs?query=');
-                const hasPerm = res.status !== 403;
-                setHasTacacsPerm(hasPerm);
-                
-                if (hasPerm) {
-                    await fetchRecentLogs();
-                }
-            } catch (e) {
-                console.error("Failed to detect TACACS permissions");
-            } finally {
-                setPermsLoading(false);
-            }
-        };
-        fetchPerms();
-    }, [fetchRecentLogs]);
-
-    const handleSearch = async (e?: React.FormEvent) => {
-        if (e) e.preventDefault();
-        if (!query.trim()) {
-            fetchRecentLogs();
-            return;
-        }
-
-        setLoading(true);
-        setError("");
-        setTacacsResult(null);
-        setIsRecentMode(false);
-
-        try {
-            const res = await fetch(`/api/ise/tacacs?query=${encodeURIComponent(query)}`);
-            const data = await res.json();
-            
-            if (res.ok) {
-                setTacacsResult(data);
-            } else {
-                throw new Error(data.error || "Failed to fetch TACACS logs");
-            }
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    if (permsLoading) return <div className="p-8 font-medium animate-pulse">Verifying TACACS+ Administration access...</div>;
-    if (!hasTacacsPerm) return <div className="p-8 glass-card m-8 border-l-4 border-red-500 text-red-400">Access Denied: You do not have permission to view TACACS+ administration forensics.</div>;
-
-    return (
-        <div className="internal-scroll-layout">
-            <div style={{ flexShrink: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-                    <div>
-                        <h1>TACACS+ Administration</h1>
-                        <p style={{ color: 'var(--text-secondary)' }}>
-                            Forensics for network device management.
-                        </p>
-                    </div>
-                    <button 
-                        onClick={fetchRecentLogs} 
-                        className="btn-secondary" 
-                        disabled={loading}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 16px' }}
-                    >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={loading ? "animate-spin" : ""}><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                        Refresh Events
-                    </button>
-                </div>
-
-                <form onSubmit={handleSearch} className="glass-card" style={{ display: 'flex', gap: '16px', marginBottom: '32px', marginTop: '24px' }}>
-                    <input
-                        type="text"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Search Device IP, Name, or Admin User..."
-                        style={{ flex: 1, padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '1rem' }}
-                        disabled={loading}
-                    />
-                    <button type="submit" className="btn-primary" disabled={loading} style={{ padding: '12px 32px', borderRadius: '8px', fontWeight: 'bold' }}>
-                        {loading ? "Searching..." : "Filter Logs"}
-                    </button>
-                    {query && (
-                        <button type="button" onClick={() => { setQuery(""); fetchRecentLogs(); }} className="btn-secondary" style={{ padding: '12px 16px', borderRadius: '8px' }}>
-                            Clear
-                        </button>
-                    )}
-                </form>
-
-                {error && (
-                    <div style={{ padding: '16px', borderLeft: '4px solid var(--accent-secondary)', background: 'rgba(239, 68, 68, 0.1)', color: 'var(--accent-secondary)', marginBottom: '24px' }}>
-                        <strong>Forensic Error:</strong> {error}
-                    </div>
-                )}
-            </div>
-
-            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-                {tacacsResult && (
-                    <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '16px' }}>
-                            <h3 style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 'bold' }}>
-                                {isRecentMode ? "Latest 25 Administrative Events" : `Search Results for "${query}"`}
-                            </h3>
-                            {tacacsResult.found && (
-                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                    Found {tacacsResult.failures.length} events
-                                </span>
-                            )}
-                        </div>
-                        
-                        {tacacsResult.found && tacacsResult.failures ? (
-                            <div>
-                                {tacacsResult.failures.map((f: any, idx: number) => (
-                                    <TacacsCard key={idx} event={f} />
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="glass-card" style={{ textAlign: 'center', padding: '32px' }}>
-                                <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>No TACACS+ logs found.</p>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
+interface TacacsEvent {
+    timestamp: string;
+    user_name: string;
+    calling_station_id: string;
+    nas_ip_address: string;
+    nas_port_id: string;
+    failure_reason: string;
+    failure_id: string;
+    status: boolean;
+    acs_server: string;
+    nas_identifier: string;
+    privilege_level: string;
+    command_set: string;
+    authorization_rule: string;
+    identity_store: string;
 }
 
-function TacacsCard({ event }: { event: any }) {
-    const isPass = event.status === true;
-    const accentColor = isPass ? '#10b981' : '#ef4444';
-    const bgColor = isPass ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+const TacacsCard = ({ event }: { event: any }) => {
+    // Defensive rendering to prevent crashes on non-string data
+    const safeStr = (v: any) => {
+        if (v === null || v === undefined) return "N/A";
+        if (typeof v === 'string') return v;
+        if (typeof v === 'object') return JSON.stringify(v);
+        return String(v);
+    };
+
+    const isPass = event.status === true || event.status === "true";
+    const accentColor = isPass ? 'var(--status-success)' : 'var(--status-error)';
+    const bgColor = isPass ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)';
 
     return (
-        <div className="glass-card" style={{ marginBottom: '24px', borderLeft: `6px solid ${accentColor}`, padding: '24px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
+        <div className="glass-card" style={{ 
+            marginBottom: '16px', 
+            borderLeft: `4px solid ${accentColor}`,
+            padding: '20px',
+            animation: 'fadeIn 0.3s ease-out'
+        }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
                 <div>
                     <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                         Log Event <span style={{ fontSize: '0.7rem', background: bgColor, color: accentColor, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>{isPass ? 'PASS' : 'FAIL'}</span>
                     </h4>
-                    <p title="The exact time of the TACACS+ authentication or authorization event"><strong>Timestamp:</strong> {event.timestamp !== "Unknown" ? new Date(event.timestamp).toLocaleString() : "Unknown"}</p>
-                    <p title="The final result returned by the TACACS+ engine"><strong>Result:</strong> <span style={{ color: accentColor, fontWeight: 'bold' }}>{event.failure_reason}</span></p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <User size={16} color="var(--text-secondary)" />
+                            <span style={{ fontWeight: '600', fontSize: '1.1rem' }}>{safeStr(event.user_name)}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                            <Clock size={14} />
+                            <span>{safeStr(event.timestamp)}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                            <Wifi size={14} />
+                            <span>Device: {safeStr(event.nas_ip_address)} ({safeStr(event.nas_identifier)})</span>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Administrator</h4>
-                    <p title="The system administrator username that initiated this TACACS+ event"><strong>Username:</strong> {event.user_name || "N/A"}</p>
-                    <p title="The source MAC address or identifier of the administrative connection"><strong>Client ID:</strong> <span style={{ fontFamily: 'monospace' }}>{event.calling_station_id}</span></p>
-                    <p title="The Identity Store used to validate the credentials"><strong>Store:</strong> {event.identity_store || "Unknown"}</p>
-                </div>
-                <div>
-                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Network Device</h4>
-                    <p title="The IP address of the switch, router, or firewall being managed"><strong>Device IP:</strong> {event.nas_ip_address}</p>
-                    <p title="The actual physical or logical port on the target device"><strong>Access Port:</strong> {event.nas_port_id}</p>
-                    <p title="The friendly name assigned to the target device in ISE network resources"><strong>Device Name:</strong> {event.nas_identifier}</p>
-                </div>
-                <div>
-                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Policy & Command</h4>
-                    <p title="The privilege level assigned to the session"><strong>Privilege:</strong> <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>Level {event.privilege_level}</span></p>
-                    <p title="The specific command set or profile applied to this session"><strong>Command Set:</strong> {event.command_set}</p>
-                    <p title="The ISE Authorization Rule matched for this administrative session"><strong>Matched Rule:</strong> {event.authorization_rule}</p>
+
+                <div style={{ borderLeft: '1px solid var(--glass-border)', paddingLeft: '24px' }}>
+                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Forensic Details</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.85rem' }}>
+                        <div>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>Privilege Level</p>
+                            <p style={{ fontWeight: 'bold', color: 'var(--accent-primary)' }}>{safeStr(event.privilege_level)}</p>
+                        </div>
+                        <div>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>Command Set</p>
+                            <p style={{ fontWeight: 'bold' }}>{safeStr(event.command_set)}</p>
+                        </div>
+                        <div>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>Identity Store</p>
+                            <p>{safeStr(event.identity_store)}</p>
+                        </div>
+                        <div>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '2px' }}>Auth Rule</p>
+                            <p>{safeStr(event.authorization_rule)}</p>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div style={{ marginTop: '16px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                <strong>Processing Node:</strong> {event.acs_server} | <strong>Status ID:</strong> {event.failure_id}
+
+            {!isPass && (
+                <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '8px', border: '1px dashed var(--status-error)' }}>
+                    <p style={{ color: 'var(--status-error)', fontSize: '0.875rem', fontWeight: '500' }}>
+                        Failure Reason: {safeStr(event.failure_reason)} (ID: {safeStr(event.failure_id)})
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default function TacacsPage() {
+    const [query, setQuery] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+    const [tacacsResult, setTacacsResult] = useState<{ found: boolean, failures: TacacsEvent[] } | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const performSearch = async (searchQuery: string = 'recent') => {
+        setIsSearching(true);
+        setError(null);
+        try {
+            const res = await fetch(`/api/ise/tacacs?query=${encodeURIComponent(searchQuery)}`);
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            setTacacsResult(data);
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setIsSearching(false);
+        }
+    };
+
+    useEffect(() => {
+        performSearch('recent');
+    }, []);
+
+    return (
+        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '40px 20px' }}>
+            <div style={{ marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                <div>
+                    <h1 style={{ fontSize: '2.5rem', fontWeight: '800', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                        <Shield size={40} className="text-accent" />
+                        TACACS+ Administration
+                    </h1>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>
+                        Search administrative activity, command sets, and privilege level forensic logs.
+                    </p>
+                </div>
+                <button 
+                    onClick={() => performSearch()}
+                    disabled={isSearching}
+                    className="glass-button"
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', height: 'fit-content' }}
+                >
+                    <RefreshCw size={18} className={isSearching ? 'animate-spin' : ''} />
+                    Refresh Feed
+                </button>
+            </div>
+
+            <div className="glass-card" style={{ padding: '32px', marginBottom: '32px' }}>
+                <div style={{ display: 'flex', gap: '16px' }}>
+                    <div style={{ flex: 1, position: 'relative' }}>
+                        <Search style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} size={20} />
+                        <input 
+                            type="text"
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && performSearch(query)}
+                            placeholder="Search by Admin Username, Device IP, or Device Name..."
+                            style={{ 
+                                width: '100%', 
+                                padding: '16px 16px 16px 48px',
+                                background: 'var(--glass-bg)',
+                                border: '1px solid var(--glass-border)',
+                                borderRadius: '12px',
+                                color: 'var(--text-primary)',
+                                fontSize: '1rem',
+                                outline: 'none'
+                            }}
+                        />
+                    </div>
+                    <button 
+                        onClick={() => performSearch(query)}
+                        disabled={isSearching}
+                        className="glass-button primary"
+                        style={{ padding: '0 32px' }}
+                    >
+                        {isSearching ? 'Searching...' : 'Search Logs'}
+                    </button>
+                </div>
+                <p style={{ marginTop: '12px', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                    Tip: Leave query empty to see the most recent administrative activity across all systems.
+                </p>
+            </div>
+
+            {error && (
+                <div className="glass-card" style={{ padding: '24px', border: '1px solid var(--status-error)', background: 'rgba(239, 68, 68, 0.05)', marginBottom: '32px' }}>
+                    <p style={{ color: 'var(--status-error)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Activity size={20} />
+                        Forensic Error: {error}
+                    </p>
+                </div>
+            )}
+
+            <div style={{ marginBottom: '24px' }}>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Clock size={20} color="var(--accent-primary)" />
+                    {query ? `Search Results for "${query}"` : 'Recent Administrative Activity'}
+                </h3>
+
+                {isSearching ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {[1, 2, 3].map(i => (
+                            <div key={i} className="glass-card skeleton" style={{ height: '140px', animation: 'pulse 1.5s infinite' }}></div>
+                        ))}
+                    </div>
+                ) : tacacsResult ? (
+                    tacacsResult.found && tacacsResult.failures.length > 0 ? (
+                        <div>
+                            {tacacsResult.failures.map((f: any, idx: number) => (
+                                <TacacsCard key={idx} event={f} />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="glass-card" style={{ textAlign: 'center', padding: '64px 32px' }}>
+                            <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'var(--glass-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
+                                <Search size={32} color="var(--text-secondary)" />
+                            </div>
+                            <h3 style={{ fontSize: '1.2rem', marginBottom: '8px' }}>No TACACS+ Logs Found</h3>
+                            <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', margin: '0 auto' }}>
+                                {query ? `We couldn't find any administrative events matching "${query}" in the specified time window.` : "No administrative activity has been recorded in the last 7 days."}
+                            </p>
+                        </div>
+                    )
+                ) : (
+                    <div className="glass-card" style={{ textAlign: 'center', padding: '32px' }}>
+                        <p style={{ color: 'var(--text-secondary)' }}>Enter a search query or refresh to load recent activity.</p>
+                    </div>
+                )}
             </div>
         </div>
     );
