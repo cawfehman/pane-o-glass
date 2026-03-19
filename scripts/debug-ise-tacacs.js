@@ -18,29 +18,29 @@ const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
 const testUser = process.argv[2] || user;
 
 const endpoints = [
-    // Dashed & Underscored variants (Standard for some ISE 3.3 images)
-    `${urlStr}/admin/API/mnt/TACACS-AuthStatus/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/TACACS_AuthStatus/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/AuthStatus-TACACS/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/AuthStatus_TACACS/All/86400/10/All`,
+    // DeviceAdmin variants (Cisco's internal TACACS name)
+    `${urlStr}/admin/API/mnt/DeviceAdmin/AuthStatus/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/DeviceAdmin/Accounting/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/AuthStatus/DeviceAdmin/All/86400/10/All`,
     
-    // Legacy / Unified Probes
-    `${urlStr}/admin/API/mnt/AuthStatus/TACACS/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/AuthStatus/TACACS/${testUser}/86400/10/All`,
+    // Root Level Probes
+    `${urlStr}/admin/API/mnt/TacacsAudit/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/TacacsCommand/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/TacacsReports/AuthStatus/All/86400/10/All`,
     
-    // Accounting Variants
-    `${urlStr}/admin/API/mnt/TACACS-Accounting/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/TACACS_Accounting/All/86400/10/All`,
+    // Simplified Segmentation
+    `${urlStr}/admin/API/mnt/Log/TACACS/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/Audit/TACACS/All/86400/10/All`,
     
-    // Simplified Lowercase Discovery
-    `${urlStr}/admin/API/mnt/tacacsauthstatus/All/86400/10/All`,
+    // Authorization Check
+    `${urlStr}/admin/API/mnt/DeviceAdmin/Authorization/All/86400/10/All`,
     
-    // Verify successful path from Step 6224 as a control
-    `${urlStr}/admin/API/mnt/AuthStatus/MACAddress/All/86400/10/All`
+    // Control Check (Expected 200)
+    `${urlStr}/admin/API/mnt/AuthStatus/MACAddress/All/86400/5/All`
 ];
 
 async function sweep() {
-    console.log(`\n--- ISE MnT DASH & UNDERSCORE SWEEPER (v1.7.4) ---`);
+    console.log(`\n--- ISE MnT DEVICEADMIN & ROOT SWEEPER (v1.7.5) ---`);
     console.log(`Node: ${urlStr}`);
     console.log(`Identity: ${testUser}`);
     
