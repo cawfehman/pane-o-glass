@@ -7,7 +7,7 @@ async function main() {
     const permissions = [
         { toolId: 'vectra', role: 'ADMIN', isEnabled: true },
         { toolId: 'vectra', role: 'ANALYST', isEnabled: true },
-        { toolId: 'vectra', role: 'DESKTOP', isEnabled: true },
+        { toolId: 'vectra', role: 'DESKTOP', isEnabled: false },
         { toolId: 'vectra', role: 'NETWORK', isEnabled: false },
         { toolId: 'vectra', role: 'USER', isEnabled: false }
     ];

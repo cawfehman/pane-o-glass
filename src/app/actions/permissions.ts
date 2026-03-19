@@ -190,7 +190,7 @@ export async function resetPermissions() {
             { toolId: 'hibp-domain', role: 'NETWORK', isEnabled: false },
             { toolId: 'vectra', role: 'ADMIN', isEnabled: true },
             { toolId: 'vectra', role: 'ANALYST', isEnabled: true },
-            { toolId: 'vectra', role: 'DESKTOP', isEnabled: true },
+            { toolId: 'vectra', role: 'DESKTOP', isEnabled: false },
             { toolId: 'vectra', role: 'NETWORK', isEnabled: false },
             { toolId: 'vectra', role: 'USER', isEnabled: false },
             { toolId: 'firewall', role: 'DESKTOP', isEnabled: true },
