@@ -22,10 +22,10 @@ export async function GET() {
         const normalizedList = buffer.map((entry: any) => {
             const msg = entry.raw;
             
-            // Basic Cisco ISE Syslog Parser
+            // Refined Cisco ISE Syslog Parser
             const extract = (key: string) => {
                 const match = msg.match(new RegExp(`${key}=(.*?)(,|\\s|$)`));
-                return match ? match[1] : "Unknown";
+                return match ? match[1].trim() : "";
             };
 
             // Detect Status based on Cisco Tag
@@ -33,15 +33,21 @@ export async function GET() {
             if (msg.includes('Passed')) status = 'Passed';
             if (msg.includes('Failed')) status = 'Failed';
 
+            // Extract NAS / Server identifiers
+            const server = extract('ConfigServiceNode') || entry.source || "ISE-Cluster";
+            const nasIp = extract('NAS-IP-Address') || entry.source;
+            const nasName = extract('Device-Name') || extract('NAS-Identifier') || "Network Device";
+
             return {
                 timestamp: entry.timestamp,
                 user_name: extract('User-Name') || extract('User') || "Unknown",
                 calling_station_id: extract('Remote-Address') || extract('Address') || entry.source,
-                nas_ip_address: extract('NAS-IP-Address') || entry.source,
-                server: extract('ConfigServiceNode') || entry.source || "ISE-Cluster",
+                nas_ip_address: nasIp,
+                server: server,
                 status: status,
                 nas_port_id: extract('NAS-Port') || "N/A",
-                failure_reason: status === 'Failed' ? "Authentication Denied" : "Success"
+                failure_reason: status === 'Failed' ? "Authentication Denied" : "Success",
+                device_name: nasName
             };
         });
 
