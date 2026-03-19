@@ -214,39 +214,40 @@ export default function TacacsPage() {
     }, []);
 
     return (
-        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '40px 20px' }}>
-            <div style={{ marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                <div>
-                    <h1 style={{ fontSize: '2.5rem', fontWeight: '800', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <Shield size={40} className="text-accent" />
-                        TACACS+ Forensic Audit
-                    </h1>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>
-                        Interactive administrative monitoring. Click any field to quickly pivot forensic searches.
-                    </p>
-                </div>
-                <button 
-                    onClick={() => performSearch(query)}
-                    disabled={isSearching}
-                    className="glass-button"
-                    title="Refresh forensic feed"
-                    style={{ display: 'flex', alignItems: 'center', gap: '8px', height: 'fit-content' }}
-                >
-                    <RefreshCw size={18} className={isSearching ? 'animate-spin' : ''} />
-                    Refresh Feed
-                </button>
-            </div>
-
-            {/* STICKY SEARCH HEADER (v2.9.3) */}
+        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 20px 40px' }}>
+            
+            {/* UNIFIED STICKY DASHBOARD HEADER (v2.9.7) */}
             <div style={{ 
                 position: 'sticky', 
                 top: '0px', 
                 zIndex: 100, 
-                padding: '20px 0',
-                background: 'linear-gradient(to bottom, var(--background-page) 80%, transparent)',
-                backdropFilter: 'blur(8px)',
-                marginBottom: '20px'
+                padding: '40px 0 20px',
+                background: 'linear-gradient(to bottom, var(--background-page) 90%, transparent)',
+                backdropFilter: 'blur(12px)',
+                borderBottom: '1px solid rgba(255,255,255,0.05)'
             }}>
+                <div style={{ marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                    <div>
+                        <h1 style={{ fontSize: '2.5rem', fontWeight: '800', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <Shield size={40} className="text-accent" />
+                            TACACS+ Forensic Audit
+                        </h1>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>
+                            Interactive administrative tracking. High-fidelity command accountability feed.
+                        </p>
+                    </div>
+                    <button 
+                        onClick={() => performSearch(query)}
+                        disabled={isSearching}
+                        className="glass-button"
+                        title="Refresh forensic feed"
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', height: 'fit-content' }}
+                    >
+                        <RefreshCw size={18} className={isSearching ? 'animate-spin' : ''} />
+                        Refresh Feed
+                    </button>
+                </div>
+
                 <div className="glass-card" style={{ padding: '24px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
                     <div style={{ display: 'flex', gap: '16px' }}>
                         <div style={{ flex: 1, position: 'relative' }}>
@@ -276,13 +277,13 @@ export default function TacacsPage() {
                             style={{ padding: '0 32px' }}
                             title="Execute forensic search"
                         >
-                            {isSearching ? 'Searching...' : 'Search Logs'}
+                            {isSearching ? 'Analyzing...' : 'Execute Search'}
                         </button>
                     </div>
                 </div>
             </div>
 
-            <div style={{ marginBottom: '24px' }}>
+            <div style={{ marginTop: '24px', marginBottom: '24px' }}>
                 <h3 style={{ fontSize: '1.25rem', fontWeight: '700', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <Hash size={20} color="var(--accent-primary)" />
                     {query ? `Forensic Matches for "${query}"` : 'Real-Time Administrative Feed'}
