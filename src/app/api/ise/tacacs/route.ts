@@ -77,7 +77,27 @@ export async function GET(request: Request) {
             return NextResponse.json({ found: false, failures: [] });
         }
 
-        const normalizedList = rawSessions.map((node: any) => {
+        // -------------------------------------------------------------------------
+        // PURITY FILTER (v1.9.4)
+        // 1. Node Affinity: psn03 and psn04 are the designated TACACS nodes.
+        // 2. Protocol Scrubbing: RADIUS sessions have acct_session_id/audit_session_id.
+        // -------------------------------------------------------------------------
+        const pureSessions = rawSessions.filter((node: any) => {
+            const val = (v: any) => v?._ || (typeof v === 'string' ? v : "");
+            const server = val(node.server).toLowerCase();
+            const hasRadiusId = node.acct_session_id || node.audit_session_id;
+            
+            // Only include sessions from TACACS nodes that lack RADIUS identifiers
+            return (server.includes('psn03') || server.includes('psn04')) && !hasRadiusId;
+        });
+
+        if (pureSessions.length === 0) {
+            // If No Active Sessions on 03/04, we might be in a failover. 
+            // We'll return empty rather than showing RADIUS spam.
+            return NextResponse.json({ found: false, failures: [] });
+        }
+
+        const normalizedList = pureSessions.map((node: any) => {
             const val = (v: any) => v?._ || (typeof v === 'string' ? v : "");
 
             return {
