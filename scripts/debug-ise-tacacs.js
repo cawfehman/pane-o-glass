@@ -3,58 +3,86 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-const urlStr = process.env.ISE_PAN_URL;
 const user = process.env.ISE_API_USER;
 const pass = process.env.ISE_API_PASSWORD;
 
-if (!urlStr || !user || !pass) {
+if (!user || !pass) {
     console.error("ERROR: ISE Credentials not found in .env");
     process.exit(1);
 }
 
 const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
 
-async function scrubSessions() {
-    console.log(`\n--- ISE 3.3 SESSION SCRUBBER (v1.9.2) ---`);
-    console.log(`Querying: ${urlStr}`);
-    
-    const endpoint = `${urlStr}/admin/API/mnt/Session/ActiveList?service=TACACS`;
-    
-    const options = {
-        headers: {
-            "Authorization": `Basic ${basicAuth}`,
-            "Accept": "application/xml"
-        },
-        timeout: 10000,
-        rejectUnauthorized: false
-    };
+// Parse Arguments
+const args = process.argv.slice(2);
+let host = process.env.ISE_PAN_URL;
+let identity = user;
 
-    https.get(endpoint, options, (res) => {
-        let body = '';
-        res.on('data', d => body += d);
-        res.on('end', () => {
-            console.log(`Status: ${res.statusCode}`);
-            if (res.statusCode === 200) {
-                // We want the RAW XML to find the protocol tags
-                console.log("\n--- RAW XML PREVIEW (FIRST 2000 chars) ---");
-                console.log(body.substring(0, 2000));
-                
-                console.log("\n--- TAG DISCOVERY ---");
-                const tags = ["protocol", "service", "auth_type", "nas_port_type", "network_device_name"];
-                tags.forEach(tag => {
-                    const regex = new RegExp(`<${tag}>(.*?)</${tag}>`, 'g');
-                    const matches = [...body.matchAll(regex)];
-                    if (matches.length > 0) {
-                        console.log(`Found <${tag}>: ${matches[0][1]} (Example from first match)`);
-                    }
-                });
-            } else {
-                console.log(`Error Response: ${body}`);
-            }
-        });
-    }).on('error', (e) => {
-        console.error(`Fatal Network Error: ${e.message}`);
-    });
+for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--host' && args[i+1]) {
+        host = args[i+1];
+        if (!host.startsWith('http')) host = `https://${host}`;
+        i++;
+    } else if (!args[i].startsWith('--')) {
+        identity = args[i];
+    }
 }
 
-scrubSessions();
+const endpoints = [
+    // 1. Native TACACS Session Root (ISE 3.3 Precise Forensic)
+    { url: `${host}/admin/API/mnt/TACACS/Session/All/86400/10/All`, type: 'XML' },
+    
+    // 2. Transposed Segmented Root
+    { url: `${host}/admin/API/mnt/Session/TACACS/ActiveList`, type: 'XML' },
+    
+    // 3. User-Specific Segmented Root
+    { url: `${host}/admin/API/mnt/Session/ActiveList/UserName/${identity}`, type: 'XML' },
+    
+    // 4. Root Level Service Active List
+    { url: `${host}/admin/API/mnt/TACACS/ActiveList`, type: 'XML' },
+    
+    // 5. Control Check (The generic one that leaked RADIUS)
+    { url: `${host}/admin/API/mnt/Session/ActiveList?service=TACACS`, type: 'XML' }
+];
+
+async function sweep() {
+    console.log(`\n--- ISE 3.3 DISCOVERY: NATIVE FORENSIC (v1.9.3) ---`);
+    console.log(`Target Host: ${host}`);
+    console.log(`Identity: ${identity}`);
+    
+    for (const ep of endpoints) {
+        console.log(`\nTesting: ${ep.url}`);
+        try {
+            const result = await new Promise((resolve, reject) => {
+                const options = {
+                    headers: {
+                        "Authorization": `Basic ${basicAuth}`,
+                        "Accept": ep.type === 'JSON' ? 'application/json' : 'application/xml'
+                    },
+                    timeout: 5000,
+                    rejectUnauthorized: false
+                };
+                const req = https.get(ep.url, options, (res) => {
+                    let body = '';
+                    res.on('data', d => body += d);
+                    res.on('end', () => resolve({ status: res.statusCode, body }));
+                });
+                req.on('error', reject);
+                req.on('timeout', () => { req.destroy(); reject(new Error("Request Timeout (5s)")); });
+            });
+            
+            console.log(`Status: ${result.status}`);
+            if (result.status === 200) {
+                console.log(`SUCCESS! Found data or service response.`);
+                console.log(`Body snippet: ${result.body.substring(0, 500)}`);
+            } else {
+                console.log(`Response: ${result.status} - ${result.body.substring(0, 100)}`);
+            }
+        } catch (e) {
+            console.log(`Failed: ${e.message}`);
+        }
+    }
+    console.log(`\n--- SWEEP COMPLETE ---`);
+}
+
+sweep();
