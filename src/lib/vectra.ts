@@ -1,4 +1,9 @@
 import axios from 'axios';
+import https from 'https';
+
+const httpsAgent = new https.Agent({
+    rejectUnauthorized: false,
+});
 
 let cachedToken: string | null = null;
 let tokenExpiry: number = 0;
@@ -23,6 +28,7 @@ async function getVectraToken() {
                 scope: 'read'
             }), 
             {
+                httpsAgent,
                 auth: {
                     username: VECTRA_CLIENT_ID,
                     password: VECTRA_CLIENT_SECRET
@@ -46,6 +52,7 @@ export async function getVectraHosts(params: any = {}) {
     const token = await getVectraToken();
     try {
         const response = await axios.get(`${VECTRA_URL}/api/v3.4/hosts`, {
+            httpsAgent,
             headers: { Authorization: `Bearer ${token}` },
             params: {
                 ordering: '-last_detection_timestamp',
@@ -64,6 +71,7 @@ export async function getVectraDetections(params: any = {}) {
     const token = await getVectraToken();
     try {
         const response = await axios.get(`${VECTRA_URL}/api/v3.4/detections`, {
+            httpsAgent,
             headers: { Authorization: `Bearer ${token}` },
             params: {
                 ordering: '-last_timestamp',
@@ -82,6 +90,7 @@ export async function getVectraAccounts(params: any = {}) {
     const token = await getVectraToken();
     try {
         const response = await axios.get(`${VECTRA_URL}/api/v3.4/accounts`, {
+            httpsAgent,
             headers: { Authorization: `Bearer ${token}` },
             params: {
                 ordering: '-last_detection_timestamp',
@@ -109,6 +118,7 @@ export async function searchVectraMetadata(query: string, limit: number = 100) {
             query: query,
             limit: limit
         }, {
+            httpsAgent,
             headers: { Authorization: `Bearer ${token}` }
         });
         return response.data;

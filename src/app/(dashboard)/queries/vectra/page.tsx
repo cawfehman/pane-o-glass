@@ -185,9 +185,11 @@ export default function VectraPage() {
     const [hosts, setHosts] = useState<any[]>([]);
     const [accounts, setAccounts] = useState<any[]>([]);
     const [counts, setCounts] = useState({ hosts: 0, accounts: 0, active_detections: 0 });
+    const [error, setError] = useState<string | null>(null);
 
     const loadVectraData = async (searchQuery: string = query) => {
         setLoading(true);
+        setError(null);
         try {
             const [hRes, aRes] = await Promise.all([
                 fetch(`/api/vectra?type=hosts&query=${encodeURIComponent(searchQuery)}`),
@@ -197,6 +199,11 @@ export default function VectraPage() {
             const hData = await hRes.json();
             const aData = await aRes.json();
             
+            if (hData.error || aData.error) {
+                setError(hData.error || aData.error);
+                return;
+            }
+
             setHosts(hData.results || []);
             setAccounts(aData.results || []);
             
@@ -268,6 +275,27 @@ export default function VectraPage() {
                     </div>
                 </div>
             </div>
+
+            {error && (
+                <div style={{ 
+                    marginBottom: '24px', 
+                    padding: '16px 24px', 
+                    background: 'rgba(239, 68, 68, 0.1)', 
+                    border: '1px solid #ef4444', 
+                    borderRadius: '10px',
+                    color: '#fca5a5',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px'
+                }}>
+                    <AlertCircle size={24} />
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: '900', fontSize: '0.9rem', marginBottom: '4px', textTransform: 'uppercase' }}>Vectra Connectivity Error</div>
+                        <div style={{ fontSize: '0.85rem', fontFamily: 'monospace', opacity: 0.9 }}>{error} - Check your .env credentials or Brain reachability.</div>
+                    </div>
+                    <button onClick={() => loadVectraData()} className="badge-action" style={{ background: '#ef4444', color: '#fff' }}>Retry Connection</button>
+                </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', margin: '24px 0 40px' }}>
                 <MetricList title="High-Risk Forensic Hosts" items={topHosts} icon={Monitor} color="var(--status-error)" />
