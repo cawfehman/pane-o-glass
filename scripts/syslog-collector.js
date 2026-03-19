@@ -23,23 +23,37 @@ if (fs.existsSync(BUFFER_PATH)) {
     } catch (err) {
         console.log(`[RECOVERY] Buffer corrupted. Initializing fresh dataset.`);
         activeBuffer = [];
-        // Clear corrupted file
         try { fs.unlinkSync(BUFFER_PATH); } catch(e) {}
+    }
+}
+
+// --- Daily Persistence Engine (v3.0.0) ---
+function saveToDailyLog(entry) {
+    const dateStr = new Date().toISOString().split('T')[0];
+    const dailyPath = path.join(LOG_DIR, `tacacs-${dateStr}.json`);
+    
+    // We append to a daily list. This is more efficient for analytics.
+    // However, appending to a JSON file is tricky. Better to append a line of JSON (JSONL).
+    const line = JSON.stringify(entry) + '\n';
+    try {
+        fs.appendFileSync(dailyPath, line);
+    } catch (err) {
+        console.error(`[DAILY WRITE ERROR] ${err.message}`);
     }
 }
 
 server.on('listening', () => {
     const address = server.address();
-    console.log(`\n--- ISE 3.3 TACACS ATOMIC COLLECTOR (v2.8.1) ---`);
+    console.log(`\n--- ISE 3.3 TACACS ATOMIC COLLECTOR (v3.0.0) ---`);
     console.log(`Listening on: ${address.address}:${address.port}`);
     console.log(`Active Buffer: ${BUFFER_PATH} (Max 1000)`);
+    console.log(`Daily Persistence: logs/tacacs-YYYY-MM-DD.json (Last 7 Days)`);
     console.log(`--------------------------------------------------------\n`);
 });
 
 server.on('message', (msg, rinfo) => {
     const raw = msg.toString();
     
-    // We filter for Cisco ISE TACACS Specific Tags
     if (raw.includes('TACACS')) {
         process.stdout.write('T');
         
@@ -49,12 +63,14 @@ server.on('message', (msg, rinfo) => {
             raw: raw
         };
 
-        // Rotate the buffer (1000 record cap)
+        // 1. Permanent Daily Log (v3.0.0)
+        saveToDailyLog(entry);
+
+        // 2. Real-Time Circular Buffer (1000 record cap)
         if (activeBuffer.length >= 1000) activeBuffer.shift();
         activeBuffer.push(entry);
 
-        // ATOMIC WRITE STRATEGY (v2.8.1)
-        // Write to tmp, then rename. This prevents half-written files / corruption.
+        // Atomic write for recent buffer
         try {
             const dataString = JSON.stringify(activeBuffer, null, 2);
             fs.writeFileSync(TEMP_BUFFER_PATH, dataString);
@@ -67,14 +83,33 @@ server.on('message', (msg, rinfo) => {
     }
 });
 
+server.on('error', (err) => {
+    console.error(`[SERVER ERROR] ${err.stack}`);
+    server.close();
+});
+
 server.bind(PORT, HOST);
 
-// Daily Background Rotation (7 Days)
-function rotateLogs() {
-    console.log(`\n[ROTATION STARTED] Scanning for logs older than 7 days...`);
-    // Existing logic... but for the 1000-record JSON limit, we are already circular.
-    // This is for the flat archives if we add them back.
+// Daily Maintenance (Purge logs older than 7 days)
+function purgeOldLogs() {
+    console.log(`\n[MAINTENANCE] Scanning for logs older than 7 days...`);
+    const files = fs.readdirSync(LOG_DIR);
+    const now = new Date();
+    const expiry = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
+
+    files.forEach(file => {
+        if (file.startsWith('tacacs-') && file.endsWith('.json') && file !== 'tacacs-recent.json') {
+            const dateMatch = file.match(/tacacs-(\d{4}-\d{2}-\d{2})\.json/);
+            if (dateMatch) {
+                const fileDate = new Date(dateMatch[1]);
+                if (fileDate < expiry) {
+                    console.log(`[PURGE] Deleting expired log: ${file}`);
+                    fs.unlinkSync(path.join(LOG_DIR, file));
+                }
+            }
+        }
+    });
 }
 
-setImmediate(rotateLogs);
-setInterval(rotateLogs, 86400000);
+setInterval(purgeOldLogs, 86400000); // Once a day
+setImmediate(purgeOldLogs); // Run on startup
