@@ -29,38 +29,42 @@ for (let i = 0; i < args.length; i++) {
 }
 
 const endpoints = [
-    // The Standard ISE 3.x TACACS path
-    `${host}/admin/API/mnt/TACACS/AuthStatus/All/86400/10/All`,
-    `${host}/admin/API/mnt/TACACS/AuthStatus/User/${identity}/86400/10/All`,
+    // 1. Modern OpenAPI TACACS Reports (ISE 3.1+)
+    { url: `${host}/api/v1/tacacs-reports/authentication-logs`, type: 'JSON' },
+    { url: `${host}/api/v1/tacacs-reports/authorization-logs`, type: 'JSON' },
     
-    // Unified AuthStatus (RADIUS path - used as Control Check)
-    `${host}/admin/API/mnt/AuthStatus/MACAddress/All/86400/5/All`,
+    // 2. Modern MnT Context Root (ISE 3.2+)
+    { url: `${host}/ise/mnt/api/TACACS/AuthStatus/All/86400/10/All`, type: 'XML' },
+    { url: `${host}/ise/mnt/api/AuthStatus/MACAddress/All/86400/5/All`, type: 'XML' },
     
-    // Accounting Check
-    `${host}/admin/API/mnt/TACACS/Accounting/All/86400/10/All`,
+    // 3. Dashboard Integrated Reports
+    { url: `${host}/admin/API/mnt/Dashboard/TACACS/All/86400/10/All`, type: 'XML' },
     
-    // DeviceAdmin variant
-    `${host}/admin/API/mnt/DeviceAdmin/AuthStatus/All/86400/10/All`
+    // 4. ERS Audit (As a fallback for identity lookup)
+    { url: `${host}/ers/config/tacacsprofile`, type: 'JSON' },
+    
+    // 5. Control Check (Legacy Root)
+    { url: `${host}/admin/API/mnt/AuthStatus/MACAddress/All/86400/5/All`, type: 'XML' }
 ];
 
 async function sweep() {
-    console.log(`\n--- ISE MULTI-NODE MnT VALIDATION (v1.7.8) ---`);
+    console.log(`\n--- ISE 3.3 OpenAPI & MnT SWEEPER (v1.8.0) ---`);
     console.log(`Target Host: ${host}`);
     console.log(`Identity: ${identity}`);
     
-    for (const endpoint of endpoints) {
-        console.log(`\nTesting: ${endpoint}`);
+    for (const ep of endpoints) {
+        console.log(`\nTesting: ${ep.url}`);
         try {
             const result = await new Promise((resolve, reject) => {
                 const options = {
                     headers: {
                         "Authorization": `Basic ${basicAuth}`,
-                        "Accept": "application/xml"
+                        "Accept": ep.type === 'JSON' ? 'application/json' : 'application/xml'
                     },
                     timeout: 5000,
                     rejectUnauthorized: false
                 };
-                const req = https.get(endpoint, options, (res) => {
+                const req = https.get(ep.url, options, (res) => {
                     let body = '';
                     res.on('data', d => body += d);
                     res.on('end', () => resolve({ status: res.statusCode, body }));
@@ -72,9 +76,9 @@ async function sweep() {
                 });
             });
             
-            console.log(`Status: ${result.status}`);
+            console.log(`Status: ${result.status} [${ep.type}]`);
             if (result.status === 200) {
-                console.log(`SUCCESS! Node is responsive at this path.`);
+                console.log(`SUCCESS! Found data or service response.`);
                 console.log(`Body snippet: ${result.body.substring(0, 500)}`);
             } else {
                 console.log(`Response: ${result.status} - ${result.body.substring(0, 100)}`);
@@ -84,7 +88,6 @@ async function sweep() {
         }
     }
     console.log(`\n--- SWEEP COMPLETE ---`);
-    console.log(`\nTo test another node, run: \n  node scripts/debug-ise-tacacs.js <identity> --host <hostname_or_ip>`);
 }
 
 sweep();
