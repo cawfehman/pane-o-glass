@@ -29,22 +29,26 @@ for (let i = 0; i < args.length; i++) {
 }
 
 const endpoints = [
-    // 1. Modern OpenAPI Monitoring TACACS (ISE 3.3 Precise)
-    { url: `${host}/api/v1/monitoring/tacacs/authentication-logs`, type: 'JSON' },
-    { url: `${host}/api/v1/monitoring/tacacs/authorization-logs`, type: 'JSON' },
+    // 1. Context-Specific Audit/Monitoring Segments (ISE 3.3 Forensic Roots)
+    { url: `${host}/admin/API/mnt/TACACS/Audit/All/86400/10/All`, type: 'XML' },
+    { url: `${host}/admin/API/mnt/TACACS/Monitoring/All/86400/10/All`, type: 'XML' },
     
-    // 2. Monitoring AuthStatus Generic (JSON variant)
-    { url: `${host}/api/v1/monitoring/auth-status/user/${identity}`, type: 'JSON' },
+    // 2. Combined Identifiers (No slash separation - Legacy support)
+    { url: `${host}/admin/API/mnt/TACACSAuthentication/All/86400/10/All`, type: 'XML' },
+    { url: `${host}/admin/API/mnt/TACACSAuthorization/All/86400/10/All`, type: 'XML' },
     
-    // 3. Alternative Modern Roots
-    { url: `${host}/ise/mnt/api/AuthStatus/MACAddress/All/86400/5/All`, type: 'XML' },
+    // 3. Reports Root
+    { url: `${host}/admin/API/mnt/Reports/TACACS_AuthStatus/All/86400/10/All`, type: 'XML' },
     
-    // 4. Fallback (RADIUS path that we know works - used as Connectivity Control)
+    // 4. Combined Audit Identifier
+    { url: `${host}/admin/API/mnt/Audit/TACACS_AuthStatus/All/86400/10/All`, type: 'XML' },
+    
+    // 5. Control Check (RADIUS path that we know works)
     { url: `${host}/admin/API/mnt/AuthStatus/MACAddress/All/86400/5/All`, type: 'XML' }
 ];
 
 async function sweep() {
-    console.log(`\n--- ISE 3.3 DISCOVERY: REFINED OpenAPI (v1.8.1) ---`);
+    console.log(`\n--- ISE 3.3 DISCOVERY: FORENSIC ESCALATION (v1.8.2) ---`);
     console.log(`Target Host: ${host}`);
     console.log(`Identity: ${identity}`);
     
@@ -63,18 +67,15 @@ async function sweep() {
                 const req = https.get(ep.url, options, (res) => {
                     let body = '';
                     res.on('data', d => body += d);
-                    res.on('end', () => resolve({ status: res.statusCode, body, location: res.headers.location }));
+                    res.on('end', () => resolve({ status: res.statusCode, body }));
                 });
                 req.on('error', reject);
                 req.on('timeout', () => { req.destroy(); reject(new Error("Request Timeout (5s)")); });
             });
             
-            if (result.status === 302 || result.status === 301) {
-                console.log(`REDIRECT DETECTED (302/301) -> ${result.location}`);
-                console.log(`!!! WARNING: This node is forcing a UI login. It means ERS or OpenAPI is likely DISABLED.`);
-                console.log(`!!! FIX: Go to Administration > System > Settings > API Settings and enable 'ERS' and 'OpenAPI'.`);
-            } else if (result.status === 200) {
-                console.log(`SUCCESS [200 OK]! Found data or service response.`);
+            console.log(`Status: ${result.status}`);
+            if (result.status === 200) {
+                console.log(`SUCCESS! Found data or service response.`);
                 console.log(`Body snippet: ${result.body.substring(0, 500)}`);
             } else {
                 console.log(`Response: ${result.status} - ${result.body.substring(0, 100)}`);
