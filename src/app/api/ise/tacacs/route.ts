@@ -31,13 +31,21 @@ export async function GET(request: Request) {
         const normalizedList = buffer.map((entry: any) => {
             const msg = entry.raw || "";
             
-            // Quotation-Aware Cisco ISE Syslog Parser (v2.9.0)
-            // Handles: key=value OR key="value with spaces"
+            // Quotation-Aware Cisco ISE Syslog Parser (v2.9.1)
             const extract = (key: string) => {
                 const quotedMatch = msg.match(new RegExp(`${key}="(.*?)"`));
                 if (quotedMatch) return quotedMatch[1].trim();
                 const simpleMatch = msg.match(new RegExp(`${key}=(.*?)(,|\\s|$)`));
                 return simpleMatch ? simpleMatch[1].trim() : "";
+            };
+
+            // Multi-Key Fallback Logic (v2.9.1)
+            const extractAny = (keys: string[]) => {
+                for (const key of keys) {
+                    const val = extract(key);
+                    if (val && val !== "N/A") return val;
+                }
+                return "";
             };
 
             // Status Heatmap
@@ -49,15 +57,15 @@ export async function GET(request: Request) {
             else if (isExplicitPass) status = 'Passed';
             else status = 'Passed'; 
 
-            // Source Differentiation
-            const iseNode = extract('ConfigServiceNode') || "ISE-Cluster";
-            const nasIp = extract('Device-IP-Address') || extract('NAS-IP-Address') || entry.source || "Unknown";
-            const nasName = extract('Device-Name') || extract('NAS-Identifier') || "Network Device";
-            const adminIp = extract('Remote-Address') || extract('Address') || entry.source || "Unknown";
+            // High-Fidelity Source Differentiation
+            const iseNode = extractAny(['ConfigServiceNode', 'acs_server', 'Server']) || "ISE-Cluster";
+            const nasIp = extractAny(['Device-IP-Address', 'NAS-IP-Address', 'Device_IP_Address']) || entry.source || "Unknown";
+            const nasName = extractAny(['Device-Name', 'NetworkDeviceName', 'Network_Device_Name', 'NAS-Identifier', 'nas-name']) || "Network Device";
+            const adminIp = extractAny(['Remote-Address', 'Address', 'Calling-Station-ID']) || entry.source || "Unknown";
 
             return {
                 timestamp: entry.timestamp || new Date().toISOString(),
-                user_name: extract('User-Name') || extract('User') || "Unknown",
+                user_name: extractAny(['User-Name', 'User', 'Admin-User']) || "Unknown",
                 calling_station_id: adminIp,
                 nas_ip_address: nasIp,
                 server: iseNode,
@@ -66,19 +74,19 @@ export async function GET(request: Request) {
                 failure_reason: status === 'Failed' ? "Authentication Denied" : "Success",
                 device_name: nasName,
                 
-                // Ultra-Deep Forensics (v2.9.0)
+                // Deep Forensics
                 command_set: extract('Command-String') || "N/A",
                 privilege_level: extract('Privilege-Level') || "15",
                 authen_type: extract('Authen-Type') || "Unknown",
                 authen_method: extract('Authen-Method') || "Unknown",
                 service: extract('Service') || "Unknown",
-                identity_group: extract('Identity-Group') || "Default",
+                identity_group: extractAny(['Identity-Group', 'User-Identity-Group']) || "Default",
                 shell_profile: extract('Shell-Profile') || "Default",
                 raw_message: msg
             };
         });
 
-        // Server-Side Search Filter (v2.9.0)
+        // Server-Side Search Filter
         let filteredList = normalizedList;
         if (query && query !== 'recent') {
             filteredList = normalizedList.filter((s: any) => 
