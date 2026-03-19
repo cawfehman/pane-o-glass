@@ -15,7 +15,7 @@ export async function GET(request: Request) {
             return NextResponse.json({ found: false, sessions: [], message: "Log directory not found." });
         }
 
-        // --- Time Threshold Calculation ---
+        // --- Time Window Calculation ---
         const now = new Date();
         const getThreshold = (window: string) => {
             const val = parseInt(window);
@@ -26,9 +26,10 @@ export async function GET(request: Request) {
         };
         const threshold = getThreshold(windowParam);
 
-        // --- Window-Wide Streaming Aggregator (v3.1.0) ---
-        // Decoupled from the 1000-line circular buffer.
-        // Scans ALL relevant daily archives to build both Global and Result-Specific metrics.
+        // --- Forensic De-Duplication Engine (v3.2.0) ---
+        // Uses a Signature Cache (Timestamp + Raw) to ensure 100% metric stability
+        const processedSignatures = new Set<string>();
+        
         const globalCounters: Record<string, Record<string, number>> = {
             user_name: {},
             device_name: {},
@@ -40,13 +41,16 @@ export async function GET(request: Request) {
         const results: any[] = [];
         const maxFeedLimit = query && query !== 'recent' ? 1000 : 200;
 
-        // Helper: Process an entry into global metrics and optionally results
         const processEntry = (entry: any) => {
             const entryTime = new Date(entry.timestamp);
             if (entryTime < threshold) return;
 
+            // Signature Logic (v3.2.0): Eliminate duplicates between recent and daily files
+            const signature = `${entry.timestamp}_${entry.raw}`.slice(0, 512);
+            if (processedSignatures.has(signature)) return;
+            processedSignatures.add(signature);
+
             const msg = entry.raw || "";
-            // Normalization Logic (v3.1.0)
             const extract = (key: string, greedy: boolean = false) => {
                 const quotedMatch = msg.match(new RegExp(`${key}="(.*?)"`));
                 if (quotedMatch) return quotedMatch[1].trim();
@@ -61,17 +65,15 @@ export async function GET(request: Request) {
             const extractAny = (keys: string[], greedy: boolean = false) => {
                 for (const key of keys) {
                     const val = extract(key, greedy);
-                    if (val && val !== "N/A" && val !== "None") {
-                        return val.replace(/^\[\s*/, '').replace(/\s*\]$/, '').trim();
-                    }
+                    if (val && val !== "N/A") return val.replace(/^\[\s*/, '').replace(/\s*\]$/, '').trim();
                 }
                 return "";
             };
 
             const isExplicitFail = msg.includes('Failed') || msg.includes('Denied') || msg.includes('Rejected');
             const user = extractAny(['User-Name', 'User', 'Admin-User']) || "Unknown";
-            const device = extractAny(['Device-Name', 'NetworkDeviceName', 'Network_Device_Name', 'NAS-Identifier', 'nas-name']) || "Network Device";
-            const source = extractAny(['Remote-Address', 'Address', 'Calling-Station-ID', 'Port']) || entry.source || "Unknown";
+            const device = extractAny(['Device-Name', 'NetworkDeviceName', 'Network_Device_Name']) || "Network Device";
+            const source = extractAny(['Remote-Address', 'Address', 'Calling-Station-ID']) || entry.source || "Unknown";
             
             const rawCmdSet = extractAny(['CmdAV', 'CmdSet', 'CommandSet', 'Command-String', 'Command'], true);
             const cleanCommand = (rawCmdSet || "N/A").replace(/^CmdAV=\s*/, '').replace(/^\[\s*/, '').replace(/\s*\]$/, '').trim();
@@ -79,16 +81,15 @@ export async function GET(request: Request) {
             const normalized = {
                 timestamp: entry.timestamp,
                 user_name: user,
-                nas_ip_address: extractAny(['Device-IP-Address', 'NAS-IP-Address', 'Device_IP_Address']) || entry.source || "Unknown",
+                nas_ip_address: entry.source || "Unknown",
                 device_name: device,
                 calling_station_id: source,
                 status: isExplicitFail ? 'Failed' : 'Passed',
                 command_set: cleanCommand,
-                identity_group: extractAny(['Identity-Group', 'User-Identity-Group']) || "Default",
                 raw_message: msg
             };
 
-            // 1. Update Global Window Metrics (Untethered from search results)
+            // 1. Update Global Window Metrics (v3.2.0: Guaranteed unlinked from search)
             globalTotal++;
             if (isExplicitFail) globalFailures++;
             if (user !== "Unknown") globalCounters.user_name[user] = (globalCounters.user_name[user] || 0) + 1;
@@ -106,13 +107,8 @@ export async function GET(request: Request) {
             }
         };
 
-        // --- Data Sources Scanning ---
-        // Scans chronological order (latest first) to build the feed and metrics
-        const historyFiles = fs.readdirSync(LOG_DIR)
-            .filter(f => f.startsWith('tacacs-') && f.endsWith('.json') && f !== 'tacacs-recent.json')
-            .sort().reverse(); // Sort descending (today first)
-
-        // 1. Start with the "Recent Buffer" (JSON)
+        // --- Chronic Scanning Logic ---
+        // 1. Scan Recent Circular Buffer (JSON) - Always most fresh
         if (fs.existsSync(BUFFER_PATH)) {
             try {
                 const data = fs.readFileSync(BUFFER_PATH, 'utf8');
@@ -121,25 +117,24 @@ export async function GET(request: Request) {
             } catch (e) {}
         }
 
-        // 2. Scan Daily Archives (JSONL) until timeframe exceeded
+        // 2. Scan All Historical Archives (JSONL) - Reverse Chronological
+        const historyFiles = fs.readdirSync(LOG_DIR)
+            .filter(f => f.startsWith('tacacs-') && f.endsWith('.json') && f !== 'tacacs-recent.json')
+            .sort().reverse();
+
         for (const file of historyFiles) {
             const dateMatch = file.match(/tacacs-(\d{4}-\d{2}-\d{2})\.json/);
             if (!dateMatch) continue;
             const fileDate = new Date(dateMatch[1]);
-            // If the start of this day is older than the threshold, we might still need some of it.
-            // But if the whole day is older than the (threshold - 1 day), we can stop soon.
-            if (fileDate < new Date(threshold.getTime() - 86400000)) break;
+            // If the day started > 24h before threshold, we can safely stop scanning
+            if (fileDate < new Date(threshold.getTime() - 172800000)) break;
 
             const archivePath = path.join(LOG_DIR, file);
             try {
                 const content = fs.readFileSync(archivePath, 'utf8');
-                const lines = content.split('\n').filter(l => l.trim());
-                // For the feed, we want latest first, so reverse lines
-                lines.reverse().forEach(line => {
-                    try {
-                        const entry = JSON.parse(line);
-                        processEntry(entry);
-                    } catch (lErr) {}
+                const lines = content.split('\n').filter(l => l.trim()).reverse(); 
+                lines.forEach(line => {
+                    try { processEntry(JSON.parse(line)); } catch(lErr) {}
                 });
             } catch (err) {}
         }
