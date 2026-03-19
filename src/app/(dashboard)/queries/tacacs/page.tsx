@@ -181,6 +181,7 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
     );
 };
 
+// --- IRON-CLAD MODIFIED METRIC UI (v3.2.3) ---
 const MetricList = ({ title, items, icon: Icon, color }: any) => (
     <div className="glass-card" style={{ flex: 1, padding: '16px', minWidth: '280px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
@@ -189,10 +190,14 @@ const MetricList = ({ title, items, icon: Icon, color }: any) => (
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {items && items.length > 0 ? items.map((item: any, idx: number) => (
-                <div key={idx} className="metric-row-analytic">
-                    <span className="metric-name-analytic" title={item.name}>{item.name}</span>
-                    <div className="metric-leader-line"></div>
-                    <span className="metric-badge-analytic" style={{ background: `${color}22`, color: color }}>{item.value}</span>
+                <div key={idx} style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'space-between', gap: '4px', width: '100%', minWidth: 0, padding: '4px 0' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '0 1 auto', minWidth: 0, maxWidth: 'calc(100% - 70px)' }} title={item.name}>
+                        {item.name}
+                    </span>
+                    <div style={{ flex: 1, borderBottom: '1px dotted rgba(255,255,255,0.1)', margin: '0 4px', opacity: 0.5, height: '8px' }}></div>
+                    <span style={{ flex: '0 0 auto', fontSize: '0.75rem', fontWeight: '800', padding: '2px 8px', borderRadius: '4px', background: `${color}22`, color: color, minWidth: '42px', textAlign: 'center' }}>
+                        {item.value}
+                    </span>
                 </div>
             )) : (
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '10px' }}>No Data</p>
@@ -270,7 +275,7 @@ export default function TacacsPage() {
                                         padding: '6px 16px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '800', border: 'none', cursor: 'pointer',
                                         background: window === w ? 'var(--accent-primary)' : 'transparent',
                                         color: window === w ? '#000' : 'var(--text-secondary)',
-                                        transition: 'all 0.2s ease'
+                                        transition: 'all 0.2s xase'
                                     }}
                                 >
                                     {w}
@@ -337,12 +342,6 @@ export default function TacacsPage() {
             
             <style jsx>{`
                 .feed-card-compact:hover { background: rgba(255,255,255,0.05) !important; z-index: 10; }
-                
-                .metric-row-analytic { display: flex !important; flex-flow: row nowrap !important; align-items: center !important; justify-content: space-between !important; padding: 4px 0; min-width: 0; }
-                .metric-name-analytic { font-size: 0.85rem; font-weight: 500; color: var(--text-primary); white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; flex: 0 1 auto !important; min-width: 0 !important; max-width: 140px; padding-right: 4px; }
-                .metric-leader-line { flex: 1 !important; border-bottom: 1px dotted rgba(255,255,255,0.1) !important; margin: 0 8px !important; opacity: 0.5; position: relative; top: -3px; }
-                .metric-badge-analytic { font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; min-width: 38px; text-align: center; flex: 0 0 auto !important; }
-
                 .summary-card-analytic { padding: 24px; display: flex; flex-direction: column; justify-content: center; text-align: center; background: rgba(var(--accent-primary-rgb), 0.05); }
                 .command-box-analytic { padding: 12px 14px; background: #000; border-radius: 6px; border: 1px solid #222; margin-top: 12px; display: flex; align-items: center; gap: 10px; }
                 .command-box-analytic code { color: var(--status-success); font-weight: 800; cursor: pointer; font-size: 1rem; }
