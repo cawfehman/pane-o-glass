@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Shield, Search, RefreshCw, Clock, Wifi, User, Activity, Globe, Save, ChevronDown, ChevronUp, Terminal, ShieldCheck, Key, Hash, Layers, Pocket } from 'lucide-react';
+import { Shield, Search, RefreshCw, Clock, Wifi, User, Activity, Globe, Save, ChevronDown, ChevronUp, Terminal, ShieldCheck, Key, Hash, Layers, Pocket, ExternalLink } from 'lucide-react';
 
 interface TacacsEvent {
     timestamp: string;
@@ -24,7 +24,7 @@ interface TacacsEvent {
     raw_message: string;
 }
 
-const TacacsCard = ({ event }: { event: any }) => {
+const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val: string) => void }) => {
     const [showRaw, setShowRaw] = useState(false);
 
     const safeStr = (v: any) => {
@@ -35,9 +35,31 @@ const TacacsCard = ({ event }: { event: any }) => {
 
     const isPass = event.status === "Passed" || event.status === true || event.status === "true";
     const accentColor = isPass ? 'var(--status-success)' : 'var(--status-error)';
-    const bgColor = isPass ? 'rgba(34, 197, 94, 0.05)' : 'rgba(239, 68, 68, 0.05)';
     
     const isAccounting = event.command_set && event.command_set !== "N/A";
+
+    const ClickableText = ({ label, value, icon: Icon }: any) => (
+        <div 
+            onClick={() => onQuickSearch(value)}
+            title={`Click to filter logs for ${value}`}
+            style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px', 
+                fontSize: '0.9rem', 
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+            }}
+            className="hover-bright"
+        >
+            <Icon size={14} color="var(--text-secondary)" />
+            <span style={{ color: 'var(--text-secondary)' }}>{label}:</span>
+            <span style={{ fontWeight: '600', borderBottom: '1px dashed transparent', display: 'flex', alignItems: 'center', gap: '4px' }} className="hover-underline">
+                {value}
+                <ExternalLink size={10} style={{ opacity: 0.5 }} />
+            </span>
+        </div>
+    );
 
     return (
         <div className="glass-card" style={{ 
@@ -49,7 +71,12 @@ const TacacsCard = ({ event }: { event: any }) => {
         }}>
             {/* Header Row: User & Status */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div 
+                    style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
+                    onClick={() => onQuickSearch(event.user_name)}
+                    title={`Click to pivot search to User: ${event.user_name}`}
+                    className="hover-bright"
+                >
                     <div style={{ padding: '8px', background: 'var(--glass-bg)', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
                         <User size={18} color="var(--accent-primary)" />
                     </div>
@@ -70,27 +97,20 @@ const TacacsCard = ({ event }: { event: any }) => {
 
             {/* Device Context Row */}
             <div style={{ display: 'flex', gap: '24px', marginBottom: '16px', padding: '10px 14px', background: 'rgba(0,0,0,0.1)', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' }}>
-                    <Wifi size={14} color="var(--text-secondary)" />
-                    <span style={{ color: 'var(--text-secondary)' }}>Device:</span>
-                    <span style={{ fontWeight: '600' }}>{event.device_name || "Unknown Device"}</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' }}>
-                    <Globe size={14} color="var(--text-secondary)" />
-                    <span style={{ color: 'var(--text-secondary)' }}>Management IP:</span>
-                    <span style={{ fontWeight: '600' }}>{event.nas_ip_address}</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem' }}>
-                    <Pocket size={14} color="var(--text-secondary)" />
-                    <span style={{ color: 'var(--text-secondary)' }}>Source:</span>
-                    <span style={{ fontWeight: '600' }}>{event.calling_station_id}</span>
-                </div>
+                <ClickableText label="Device" value={event.device_name} icon={Wifi} />
+                <ClickableText label="Management IP" value={event.nas_ip_address} icon={Globe} />
+                <ClickableText label="Source" value={event.calling_station_id} icon={Pocket} />
             </div>
 
             {/* Forensic Detail Bar (Badges) */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
                 {safeStr(event.identity_group) && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px', background: 'rgba(var(--accent-primary-rgb), 0.1)', borderRadius: '6px', fontSize: '0.75rem', border: '1px solid var(--glass-border)' }}>
+                    <div 
+                        onClick={() => onQuickSearch(event.identity_group)}
+                        title={`Pivot search by Group: ${event.identity_group}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 10px', background: 'rgba(var(--accent-primary-rgb), 0.1)', borderRadius: '6px', fontSize: '0.75rem', border: '1px solid var(--glass-border)', cursor: 'pointer' }}
+                        className="hover-bright"
+                    >
                         <Shield size={12} color="var(--accent-primary)" />
                         <span style={{ color: 'var(--text-secondary)' }}>Group:</span>
                         <span style={{ fontWeight: '700' }}>{event.identity_group}</span>
@@ -114,6 +134,7 @@ const TacacsCard = ({ event }: { event: any }) => {
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{event.authen_method || "N/A"} / {event.service || "N/A"}</span>
                     <button 
                         onClick={() => setShowRaw(!showRaw)}
+                        title="Toggle raw Cisco Syslog payload"
                         style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px' }}
                     >
                         <Terminal size={14} /> {showRaw ? 'Hide Payload' : 'View Payload'}
@@ -121,18 +142,23 @@ const TacacsCard = ({ event }: { event: any }) => {
                 </div>
             </div>
 
-            {/* Command Set Highlight (Primary for Accounting) */}
+            {/* Command Set Highlight */}
             {isAccounting && (
                 <div style={{ padding: '12px 16px', background: '#000', borderRadius: '8px', border: '1px solid #333', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                         <Activity size={14} color="var(--status-success)" />
                         <span style={{ fontSize: '0.7rem', color: '#666', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '0.05em' }}>Administrative Command Executed</span>
                     </div>
-                    <code style={{ color: 'var(--status-success)', fontSize: '1rem', fontWeight: '800', fontFamily: 'monospace' }}>{event.command_set}</code>
+                    <code 
+                        style={{ color: 'var(--status-success)', fontSize: '1rem', fontWeight: '800', fontFamily: 'monospace', cursor: 'pointer' }}
+                        onClick={() => onQuickSearch(event.command_set)}
+                        title={`Search logs for command: ${event.command_set}`}
+                    >
+                        {event.command_set}
+                    </code>
                 </div>
             )}
 
-            {/* Raw Message (Hidden by Default) */}
             {showRaw && (
                 <div style={{ marginTop: '12px', padding: '16px', background: '#000', borderRadius: '8px', border: '1px solid #222', overflowX: 'auto', animation: 'slideDown 0.2s ease-out' }}>
                     <p style={{ color: '#444', fontSize: '0.7rem', marginBottom: '8px', borderBottom: '1px solid #111', paddingBottom: '4px' }}>CISCO SYSLOG ARCHIVE PAYLOAD</p>
@@ -140,7 +166,6 @@ const TacacsCard = ({ event }: { event: any }) => {
                 </div>
             )}
 
-            {/* Failure Logic */}
             {(!isPass || (event.failure_reason && event.failure_reason !== "Success")) && (
                 <div style={{ marginTop: '12px', padding: '10px 14px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
                     <p style={{ color: 'var(--status-error)', fontSize: '0.85rem', fontWeight: '600' }}>
@@ -178,6 +203,12 @@ export default function TacacsPage() {
         }
     };
 
+    const handleQuickSearch = (val: string) => {
+        setQuery(val);
+        performSearch(val);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
     useEffect(() => {
         performSearch();
     }, []);
@@ -191,13 +222,14 @@ export default function TacacsPage() {
                         TACACS+ Forensic Audit
                     </h1>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>
-                        Linear administrative monitoring. Tracking command accountability and privilege elevations.
+                        Interactive administrative monitoring. Click any field to quickly pivot forensic searches.
                     </p>
                 </div>
                 <button 
                     onClick={() => performSearch(query)}
                     disabled={isSearching}
                     className="glass-button"
+                    title="Refresh forensic feed"
                     style={{ display: 'flex', alignItems: 'center', gap: '8px', height: 'fit-content' }}
                 >
                     <RefreshCw size={18} className={isSearching ? 'animate-spin' : ''} />
@@ -205,36 +237,48 @@ export default function TacacsPage() {
                 </button>
             </div>
 
-            <div className="glass-card" style={{ padding: '32px', marginBottom: '32px' }}>
-                <div style={{ display: 'flex', gap: '16px' }}>
-                    <div style={{ flex: 1, position: 'relative' }}>
-                        <Search style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} size={20} />
-                        <input 
-                            type="text"
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && performSearch(query)}
-                            placeholder="Universal Search (Admin, Device IP, Hostname, CmdSet, or LDAP Group)..."
-                            style={{ 
-                                width: '100%', 
-                                padding: '16px 16px 16px 48px',
-                                background: 'var(--glass-bg)',
-                                border: '1px solid var(--glass-border)',
-                                borderRadius: '12px',
-                                color: 'var(--text-primary)',
-                                fontSize: '1rem',
-                                outline: 'none'
-                            }}
-                        />
+            {/* STICKY SEARCH HEADER (v2.9.3) */}
+            <div style={{ 
+                position: 'sticky', 
+                top: '0px', 
+                zIndex: 100, 
+                padding: '20px 0',
+                background: 'linear-gradient(to bottom, var(--background-page) 80%, transparent)',
+                backdropFilter: 'blur(8px)',
+                marginBottom: '20px'
+            }}>
+                <div className="glass-card" style={{ padding: '24px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
+                    <div style={{ display: 'flex', gap: '16px' }}>
+                        <div style={{ flex: 1, position: 'relative' }}>
+                            <Search style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} size={20} />
+                            <input 
+                                type="text"
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && performSearch(query)}
+                                placeholder="Universal Search (Admin, Device, Command, or Group)..."
+                                style={{ 
+                                    width: '100%', 
+                                    padding: '16px 16px 16px 48px',
+                                    background: 'var(--glass-bg)',
+                                    border: '1px solid var(--glass-border)',
+                                    borderRadius: '12px',
+                                    color: 'var(--text-primary)',
+                                    fontSize: '1rem',
+                                    outline: 'none'
+                                }}
+                            />
+                        </div>
+                        <button 
+                            onClick={() => performSearch(query)}
+                            disabled={isSearching}
+                            className="glass-button primary"
+                            style={{ padding: '0 32px' }}
+                            title="Execute forensic search"
+                        >
+                            {isSearching ? 'Searching...' : 'Search Logs'}
+                        </button>
                     </div>
-                    <button 
-                        onClick={() => performSearch(query)}
-                        disabled={isSearching}
-                        className="glass-button primary"
-                        style={{ padding: '0 32px' }}
-                    >
-                        {isSearching ? 'Analyzing...' : 'Execute Search'}
-                    </button>
                 </div>
             </div>
 
@@ -254,7 +298,7 @@ export default function TacacsPage() {
                     tacacsResult.found && tacacsResult.sessions.length > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {tacacsResult.sessions.map((f: any, idx: number) => (
-                                <TacacsCard key={idx} event={f} />
+                                <TacacsCard key={idx} event={f} onQuickSearch={handleQuickSearch} />
                             ))}
                         </div>
                     ) : (
@@ -274,6 +318,19 @@ export default function TacacsPage() {
                     </div>
                 )}
             </div>
+            
+            <style jsx>{`
+                .hover-bright:hover {
+                    filter: brightness(1.3);
+                }
+                .hover-underline:hover {
+                    text-decoration: underline;
+                }
+                @keyframes slideDown {
+                    from { transform: translateY(-10px); opacity: 0; }
+                    to { transform: translateY(0); opacity: 1; }
+                }
+            `}</style>
         </div>
     );
 }
