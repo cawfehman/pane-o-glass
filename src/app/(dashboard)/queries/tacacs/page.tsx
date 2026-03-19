@@ -181,7 +181,6 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
     );
 };
 
-// --- TABULAR METRIC UI (v3.2.1) ---
 const MetricList = ({ title, items, icon: Icon, color }: any) => (
     <div className="glass-card" style={{ flex: 1, padding: '16px', minWidth: '280px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
@@ -339,10 +338,10 @@ export default function TacacsPage() {
             <style jsx>{`
                 .feed-card-compact:hover { background: rgba(255,255,255,0.05) !important; z-index: 10; }
                 
-                .metric-row-analytic { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; min-width: 0; }
-                .metric-name-analytic { font-size: 0.85rem; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px; }
-                .metric-leader-line { flex: 1; border-bottom: 1px dotted rgba(255,255,255,0.1); margin: 0 10px; opacity: 0.5; position: relative; top: -3px; }
-                .metric-badge-analytic { font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; min-width: 32px; text-align: center; }
+                .metric-row-analytic { display: flex !important; flex-flow: row nowrap !important; align-items: center !important; justify-content: space-between !important; padding: 4px 0; min-width: 0; }
+                .metric-name-analytic { font-size: 0.85rem; font-weight: 500; color: var(--text-primary); white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; flex: 0 1 auto !important; min-width: 0 !important; max-width: 140px; padding-right: 4px; }
+                .metric-leader-line { flex: 1 !important; border-bottom: 1px dotted rgba(255,255,255,0.1) !important; margin: 0 8px !important; opacity: 0.5; position: relative; top: -3px; }
+                .metric-badge-analytic { font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; min-width: 38px; text-align: center; flex: 0 0 auto !important; }
 
                 .summary-card-analytic { padding: 24px; display: flex; flex-direction: column; justify-content: center; text-align: center; background: rgba(var(--accent-primary-rgb), 0.05); }
                 .command-box-analytic { padding: 12px 14px; background: #000; border-radius: 6px; border: 1px solid #222; margin-top: 12px; display: flex; align-items: center; gap: 10px; }
