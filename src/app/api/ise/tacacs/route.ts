@@ -18,12 +18,12 @@ export async function GET(request: Request) {
     const limit = searchParams.get('limit') || "25";
 
     try {
-        const url = process.env.ISE_MNT_URL;
-        const user = process.env.ISE_MNT_USER;
-        const pass = process.env.ISE_MNT_PASS;
+        const url = process.env.ISE_PAN_URL;
+        const user = process.env.ISE_API_USER;
+        const pass = process.env.ISE_API_PASSWORD;
 
         if (!url || !user || !pass) {
-            throw new Error("ISE Monitoring API configuration is missing in server environment.");
+            throw new Error("ISE Credentials not configured in .env");
         }
 
         const isMac = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(query);
@@ -99,8 +99,8 @@ export async function GET(request: Request) {
         });
 
         const sortedList = normalizedList.sort((a: any, b: any) => {
-            const dateA = new Date(String(a.timestamp || 0)).getTime();
-            const dateB = new Date(String(b.timestamp || 0)).getTime();
+            const dateA = new Date(a.timestamp as any || 0).getTime();
+            const dateB = new Date(b.timestamp as any || 0).getTime();
             return dateB - dateA; // Descending
         });
 
