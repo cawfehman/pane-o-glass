@@ -29,99 +29,76 @@ export async function GET(request: Request) {
         let searchTerm = query;
         let timeWindow = "604800"; // 7 days default
 
-        // Handle Recent Activity vs Specific Search
-        if (!query || query.toLowerCase() === 'recent') {
-            endpointType = 'All';
-            searchTerm = '';
-        }
+        // -------------------------------------------------------------------------
+        // ISE 3.3 TRANSITION: Session/ActiveList Integration (v1.9.0)
+        // Since AuthStatus (forensics) returns 404 for TACACS in this cluster,
+        // we leverage the validated ActiveList which provides real-time visibility.
+        // -------------------------------------------------------------------------
+        const activeListEndpoint = `${url}/admin/API/mnt/Session/ActiveList?service=TACACS`;
         
-        if (isMac) searchTerm = searchTerm.toUpperCase().replace(/-/g, ":");
-
-        // Construction per MnT spec
-        const endpoint = endpointType === 'All' 
-            ? `${url}/admin/API/mnt/TACACS/AuthStatus/All/${timeWindow}/${limit}/All`
-            : `${url}/admin/API/mnt/TACACS/AuthStatus/${endpointType}/${searchTerm}/${timeWindow}/${limit}/All`;
-
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
-        const response = await fetch(endpoint, {
+        const response = await fetch(activeListEndpoint, {
             headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" }
         });
 
         if (!response.ok) {
-            if (response.status === 404) return NextResponse.json({ found: false, failures: [] });
-            throw new Error(`ISE MnT API Error: ${response.status}`);
+            throw new Error(`ISE MnT Session API Error: ${response.status}`);
         }
 
         const xml = await response.text();
         
-        // Robust parsing with namespace stripping
         const result = await parseStringPromise(xml, { 
             explicitArray: false,
             tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
         });
 
         // -------------------------------------------------------------------------
-        // RECURSIVE LOG DISCOVERY (v1.6.8)
-        // Find any node that looks like an array of TACACS status elements
+        // RECURSIVE SESSION DISCOVERY (v1.9.0)
         // -------------------------------------------------------------------------
-        const findLogs = (obj: any): any[] => {
+        const findSessions = (obj: any): any[] => {
             if (!obj || typeof obj !== 'object') return [];
             
-            // Check for known element arrays
-            if (obj.tacacsAuthStatusElements) {
-                return Array.isArray(obj.tacacsAuthStatusElements) ? obj.tacacsAuthStatusElements : [obj.tacacsAuthStatusElements];
-            }
-            if (obj.tacacsAuthStatus) {
-                return Array.isArray(obj.tacacsAuthStatus) ? obj.tacacsAuthStatus : [obj.tacacsAuthStatus];
+            if (obj.activeSession) {
+                return Array.isArray(obj.activeSession) ? obj.activeSession : [obj.activeSession];
             }
 
-            // Recurse into objects
             for (const key in obj) {
                 if (typeof obj[key] === 'object') {
-                    const found = findLogs(obj[key]);
+                    const found = findSessions(obj[key]);
                     if (found.length > 0) return found;
                 }
             }
             return [];
         };
 
-        let rawNodes = findLogs(result);
+        const rawSessions = findSessions(result);
 
-        if (rawNodes.length === 0) {
-            // Last ditch: if the result ITSELF is an array (xml2js sometimes does this with multiple roots)
-            if (Array.isArray(result)) {
-                rawNodes = result.flatMap(r => findLogs(r));
-            }
-        }
-
-        if (rawNodes.length === 0) {
+        if (rawSessions.length === 0) {
             return NextResponse.json({ found: false, failures: [] });
         }
 
-        const normalizedList = rawNodes.map((node: any) => {
+        const normalizedList = rawSessions.map((node: any) => {
             const val = (v: any) => v?._ || (typeof v === 'string' ? v : "");
 
             return {
-                timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || "Unknown",
+                timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || new Date().toISOString(),
                 user_name: val(node.user_name) || val(node.userName) || "Unknown",
                 calling_station_id: val(node.calling_station_id) || val(node.callingStationId) || "Unknown",
-                nas_ip_address: val(node.nas_ip_address) || val(node.nasIpAddress) || "Unknown",
-                nas_port_id: val(node.nas_port_id) || val(node.nasPortId) || "Unknown",
-                failure_reason: val(node.failure_reason) || val(node.failureReason) || "Access Granted",
-                failure_id: val(node.failure_id) || val(node.failureId) || "N/A",
-                status: val(node.passed) === "true" || node.passed === true,
-                acs_server: val(node.acs_server) || val(node.acsServer) || "Unknown",
+                nas_ip_address: val(node.nas_ip_address) || val(node.nasIpAddress) || val(node.framed_ip_address) || "Unknown",
+                nas_port_id: val(node.nas_port_id) || val(node.nasPortId) || "N/A",
+                failure_reason: "Active Session",
+                failure_id: "0",
+                status: true, // If it's in the ActiveList, it passed.
+                acs_server: val(node.server) || val(node.acsServer) || "Unknown",
                 nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown",
-                privilege_level: val(node.privilege_level) || val(node.privilegeLevel) || "N/A",
-                command_set: val(node.command_set) || val(node.commandSet) || "N/A",
-                authorization_rule: val(node.authorization_rule) || val(node.authorizationRule) || "Unknown",
-                identity_store: val(node.identity_store) || val(node.identityStore) || "Internal"
+                privilege_level: "N/A",
+                command_set: "N/A",
+                authorization_rule: "Active",
+                identity_store: "Internal"
             };
         });
 
-        // -------------------------------------------------------------------------
-        // ROBUST NAN-SAFE SORTING (v1.6.8) - Matching RADIUS implementation
-        // -------------------------------------------------------------------------
+        // Robust sorting by timestamp
         const sortedList = normalizedList.sort((a, b) => {
             const timeA = new Date(a.timestamp).getTime();
             const timeB = new Date(b.timestamp).getTime();
@@ -130,7 +107,7 @@ export async function GET(request: Request) {
 
         return NextResponse.json({ 
             found: sortedList.length > 0, 
-            failures: sortedList 
+            failures: sortedList.slice(0, parseInt(limit)) 
         });
 
     } catch (e: any) {
