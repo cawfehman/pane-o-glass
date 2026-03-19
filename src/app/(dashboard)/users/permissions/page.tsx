@@ -16,6 +16,7 @@ const TOOLS = [
     { id: 'ise-tacacs', name: 'Cisco ISE TACACS' },
     { id: 'hibp-account', name: 'HIBP Account Security' },
     { id: 'hibp-domain', name: 'HIBP Domain Security' },
+    { id: 'vectra', name: 'Vectra Forensic Analysis' },
 ];
 
 const ROLES = ["ADMIN", "ANALYST", "NETWORK", "DESKTOP", "USER"];
