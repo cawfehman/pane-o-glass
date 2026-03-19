@@ -18,25 +18,29 @@ const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
 const testUser = process.argv[2] || user;
 
 const endpoints = [
-    // CamelCase variants (Common in older 3.x and refined 2.x interfaces)
-    `${urlStr}/admin/API/mnt/AuthStatusTacacs/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/TACACSAuthStatus/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/TACACSAccounting/All/86400/10/All`,
+    // Dashed & Underscored variants (Standard for some ISE 3.3 images)
+    `${urlStr}/admin/API/mnt/TACACS-AuthStatus/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/TACACS_AuthStatus/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/AuthStatus-TACACS/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/AuthStatus_TACACS/All/86400/10/All`,
     
-    // Service-Specific Authorization / Authentication
-    `${urlStr}/admin/API/mnt/TACACS/Authentication/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/TACACS/Authorization/All/86400/10/All`,
+    // Legacy / Unified Probes
+    `${urlStr}/admin/API/mnt/AuthStatus/TACACS/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/AuthStatus/TACACS/${testUser}/86400/10/All`,
     
-    // Identity-Specific CamelCase
-    `${urlStr}/admin/API/mnt/AuthStatusTacacs/User/${testUser}/86400/10/All`,
-    `${urlStr}/admin/API/mnt/TACACSAuthStatus/User/${testUser}/86400/10/All`,
+    // Accounting Variants
+    `${urlStr}/admin/API/mnt/TACACS-Accounting/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/TACACS_Accounting/All/86400/10/All`,
     
-    // Extreme Fallback
-    `${urlStr}/admin/API/mnt/AuthStatus/TACACS/All/86400/10/All`
+    // Simplified Lowercase Discovery
+    `${urlStr}/admin/API/mnt/tacacsauthstatus/All/86400/10/All`,
+    
+    // Verify successful path from Step 6224 as a control
+    `${urlStr}/admin/API/mnt/AuthStatus/MACAddress/All/86400/10/All`
 ];
 
 async function sweep() {
-    console.log(`\n--- ISE MnT CAMELCASE & AUTHORIZATION SWEEPER (v1.7.3) ---`);
+    console.log(`\n--- ISE MnT DASH & UNDERSCORE SWEEPER (v1.7.4) ---`);
     console.log(`Node: ${urlStr}`);
     console.log(`Identity: ${testUser}`);
     
