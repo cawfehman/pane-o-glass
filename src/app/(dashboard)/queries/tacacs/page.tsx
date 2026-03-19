@@ -24,13 +24,14 @@ interface TacacsEvent {
     raw_message: string;
 }
 
-// --- FORENSIC SYNTAX HIGHLIGHTER (v3.0.2) ---
+// --- GREEDY FORENSIC SYNTAX HIGHLIGHTER (v3.0.3) ---
 const CiscoPayloadHighlighter = ({ raw }: { raw: string }) => {
     if (!raw) return null;
 
-    // Regex to identify key=value pairs, handling quotes and brackets
-    // 1: Key, 2: Divider (=), 3: Value (quoted, bracketed, or simple)
-    const regex = /([a-zA-Z0-9_-]+)(=)("(.*?)"|\[(.*?)\]|([^,\s\]]+))/g;
+    // Advanced Regex for Greedy Matching with Positive Lookahead
+    // Supports spaces in keys and values by looking for the NEXT key= signature
+    // 1: Key, 2: Divider (=), 3: Value (quoted, bracketed, or greedy)
+    const regex = /([a-zA-Z0-9_\-\s]+?)(=)("(.*?)"|\[(.*?)\]|(.+?))(?=\s*[a-zA-Z0-9_\-\s]+?=|,|\]|$)/g;
     
     const parts = [];
     let lastIndex = 0;
@@ -184,7 +185,7 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
             {showRaw && (
                 <div className="raw-payload-highlighted">
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', borderBottom: '1px solid #222', paddingBottom: '4px' }}>
-                        <span style={{ fontSize: '0.65rem', color: '#444', fontWeight: 'bold' }}>CISCO ATTRIBUTE-VALUE SYNTAX HIGHLIGHTER</span>
+                        <span style={{ fontSize: '0.65rem', color: '#444', fontWeight: 'bold' }}>CISCO GREEDY FORENSIC HIGHLIGHTER (v3.0.3)</span>
                         <span style={{ fontSize: '0.65rem', color: '#eab308' }}>KEY <span style={{ color: '#666' }}>=</span> <span style={{ color: '#22c55e' }}>VALUE</span></span>
                     </div>
                     <CiscoPayloadHighlighter raw={event.raw_message} />
