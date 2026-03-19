@@ -4,7 +4,7 @@ const path = require('path');
 const zlib = require('zlib');
 const server = dgram.createSocket('udp4');
 
-const PORT = 514;
+const PORT = 1514;
 const HOST = '0.0.0.0';
 const LOG_DIR = path.join(__dirname, '..', 'logs');
 const ACTIVE_DIR = path.join(LOG_DIR, 'active');
