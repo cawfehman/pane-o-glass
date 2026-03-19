@@ -62,6 +62,16 @@ export async function GET(request: Request) {
 
         const xml = await response.text();
         
+        // DEBUG HACK: Write raw XML to a file in the workspace so we can inspect it
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            const debugPath = path.join(process.cwd(), 'debug_tacacs.xml');
+            fs.writeFileSync(debugPath, `URL: ${endpoint}\n\n${xml}`);
+        } catch (e) {
+            console.error("Failed to write debug XML:", e);
+        }
+        
         // Robust parsing matching RADIUS implementation
         const result = await parseStringPromise(xml, { 
             explicitArray: false,
