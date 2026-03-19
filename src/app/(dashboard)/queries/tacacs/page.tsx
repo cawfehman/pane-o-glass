@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Shield, Search, RefreshCw, Clock, Wifi, User, Activity, Globe, Save, ChevronDown, ChevronUp, Terminal } from 'lucide-react';
+import { Shield, Search, RefreshCw, Clock, Wifi, User, Activity, Globe, Save, ChevronDown, ChevronUp, Terminal, ShieldCheck, Key } from 'lucide-react';
 
 interface TacacsEvent {
     timestamp: string;
@@ -17,7 +17,10 @@ interface TacacsEvent {
     command_set: string;
     privilege_level: string;
     authen_type: string;
+    authen_method: string;
     service: string;
+    identity_group: string;
+    shell_profile: string;
     raw_message: string;
 }
 
@@ -25,7 +28,7 @@ const TacacsCard = ({ event }: { event: any }) => {
     const [showRaw, setShowRaw] = useState(false);
 
     const safeStr = (v: any) => {
-        if (v === null || v === undefined) return "N/A";
+        if (v === null || v === undefined || v === "") return "N/A";
         if (typeof v === 'string') return v;
         return String(v);
     };
@@ -87,19 +90,27 @@ const TacacsCard = ({ event }: { event: any }) => {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.85rem' }}>
                         <div>
                             <p style={{ color: 'var(--text-secondary)', marginBottom: '1px' }}>Network Device</p>
-                            <p style={{ fontWeight: '700' }}>{safeStr(event.device_name || event.nas_identifier)}</p>
+                            <p style={{ fontWeight: '700' }}>{safeStr(event.device_name)}</p>
                         </div>
                         <div>
-                            <p style={{ color: 'var(--text-secondary)', marginBottom: '1px' }}>ISE Processing Node</p>
-                            <p style={{ fontWeight: '700', color: 'var(--accent-primary)' }}>{safeStr(event.server || event.acs_server)}</p>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '1px' }}>Identity Group</p>
+                            <p style={{ fontWeight: '700', color: 'var(--accent-primary)' }}>{safeStr(event.identity_group)}</p>
+                        </div>
+                        <div>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '1px' }}>Shell Profile</p>
+                            <p style={{ fontWeight: '700' }}>{safeStr(event.shell_profile)}</p>
                         </div>
                         <div>
                             <p style={{ color: 'var(--text-secondary)', marginBottom: '1px' }}>Privilege Level</p>
                             <p style={{ fontWeight: '700' }}>{safeStr(event.privilege_level)}</p>
                         </div>
                         <div>
-                            <p style={{ color: 'var(--text-secondary)', marginBottom: '1px' }}>Service Type</p>
-                            <p style={{ fontWeight: '700' }}>{safeStr(event.service || event.authen_type)}</p>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '1px' }}>Method / Service</p>
+                            <p style={{ fontSize: '0.8rem' }}>{safeStr(event.authen_method)} / {safeStr(event.service)}</p>
+                        </div>
+                        <div>
+                            <p style={{ color: 'var(--text-secondary)', marginBottom: '1px' }}>ISE Processing Node</p>
+                            <p style={{ fontSize: '0.8rem' }}>{safeStr(event.server)}</p>
                         </div>
                     </div>
                 </div>
@@ -136,14 +147,18 @@ export default function TacacsPage() {
     const [tacacsResult, setTacacsResult] = useState<{ found: boolean, sessions: TacacsEvent[] } | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    const performSearch = async (searchQuery: string = 'recent') => {
+    const performSearch = async (searchQuery: string = '') => {
         setIsSearching(true);
         setError(null);
         try {
-            const res = await fetch(`/api/ise/tacacs?query=${encodeURIComponent(searchQuery)}`);
+            const endpoint = searchQuery 
+                ? `/api/ise/tacacs?query=${encodeURIComponent(searchQuery)}`
+                : `/api/ise/tacacs`;
+            
+            const res = await fetch(endpoint);
             const data = await res.json();
             if (data.error) throw new Error(data.error);
-            const sessions = data.sessions || data.failures || [];
+            const sessions = data.sessions || [];
             setTacacsResult({ ...data, sessions });
         } catch (e: any) {
             setError(e.message);
@@ -153,7 +168,7 @@ export default function TacacsPage() {
     };
 
     useEffect(() => {
-        performSearch('recent');
+        performSearch();
     }, []);
 
     return (
@@ -169,7 +184,7 @@ export default function TacacsPage() {
                     </p>
                 </div>
                 <button 
-                    onClick={() => performSearch()}
+                    onClick={() => performSearch(query)}
                     disabled={isSearching}
                     className="glass-button"
                     style={{ display: 'flex', alignItems: 'center', gap: '8px', height: 'fit-content' }}
@@ -188,7 +203,7 @@ export default function TacacsPage() {
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && performSearch(query)}
-                            placeholder="Search by Admin Username, Device IP, or Command String..."
+                            placeholder="Search by Admin, Device, Command, or Identity Group..."
                             style={{ 
                                 width: '100%', 
                                 padding: '16px 16px 16px 48px',
@@ -235,7 +250,7 @@ export default function TacacsPage() {
                     </div>
                 ) : tacacsResult ? (
                     tacacsResult.found && tacacsResult.sessions.length > 0 ? (
-                        <div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             {tacacsResult.sessions.map((f: any, idx: number) => (
                                 <TacacsCard key={idx} event={f} />
                             ))}

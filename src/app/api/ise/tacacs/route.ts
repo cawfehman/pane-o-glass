@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
-export async function GET() {
+export async function GET(request: Request) {
     try {
+        const { searchParams } = new URL(request.url);
+        const query = (searchParams.get('query') || '').toLowerCase();
+
         const LOG_DIR = path.join(process.cwd(), 'logs');
         const BUFFER_PATH = path.join(LOG_DIR, 'tacacs-recent.json');
 
@@ -21,7 +24,6 @@ export async function GET() {
             buffer = JSON.parse(rawData);
         } catch (parseError) {
             console.error("[RECOVERY] Buffer corrupted, returning empty session list.");
-            // Return found: true but empty sessions to prevent UI crash
             return NextResponse.json({ found: true, sessions: [], recovering: true });
         }
 
@@ -29,10 +31,13 @@ export async function GET() {
         const normalizedList = buffer.map((entry: any) => {
             const msg = entry.raw || "";
             
-            // Deep Forensic Cisco ISE Syslog Parser (v2.8.1)
+            // Quotation-Aware Cisco ISE Syslog Parser (v2.9.0)
+            // Handles: key=value OR key="value with spaces"
             const extract = (key: string) => {
-                const match = msg.match(new RegExp(`${key}=(.*?)(,|\\s|$)`));
-                return match ? match[1].trim() : "";
+                const quotedMatch = msg.match(new RegExp(`${key}="(.*?)"`));
+                if (quotedMatch) return quotedMatch[1].trim();
+                const simpleMatch = msg.match(new RegExp(`${key}=(.*?)(,|\\s|$)`));
+                return simpleMatch ? simpleMatch[1].trim() : "";
             };
 
             // Status Heatmap
@@ -61,20 +66,37 @@ export async function GET() {
                 failure_reason: status === 'Failed' ? "Authentication Denied" : "Success",
                 device_name: nasName,
                 
-                // Deep Forensics
+                // Ultra-Deep Forensics (v2.9.0)
                 command_set: extract('Command-String') || "N/A",
                 privilege_level: extract('Privilege-Level') || "15",
                 authen_type: extract('Authen-Type') || "Unknown",
+                authen_method: extract('Authen-Method') || "Unknown",
                 service: extract('Service') || "Unknown",
+                identity_group: extract('Identity-Group') || "Default",
+                shell_profile: extract('Shell-Profile') || "Default",
                 raw_message: msg
             };
         });
 
-        // Ensure we handle the count correctly
+        // Server-Side Search Filter (v2.9.0)
+        let filteredList = normalizedList;
+        if (query && query !== 'recent') {
+            filteredList = normalizedList.filter((s: any) => 
+                s.user_name.toLowerCase().includes(query) ||
+                s.nas_ip_address.toLowerCase().includes(query) ||
+                s.device_name.toLowerCase().includes(query) ||
+                s.command_set.toLowerCase().includes(query) ||
+                s.raw_message.toLowerCase().includes(query)
+            );
+        }
+
+        // Return latest events first
+        filteredList.reverse();
+
         return NextResponse.json({ 
             found: true, 
-            sessions: normalizedList,
-            count: normalizedList.length
+            sessions: filteredList,
+            count: filteredList.length
         });
 
     } catch (error: any) {
