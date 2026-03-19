@@ -14,25 +14,29 @@ if (!urlStr || !user || !pass) {
 
 const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
 
-// We'll try to find an admin username from the environment or a hardcoded one (the user can override it)
-const testUser = process.argv[2] || user; // Default to the API user itself if it's an admin
+// Default target to test
+const testUser = process.argv[2] || user;
 
 const endpoints = [
-    // Version Check
-    `${urlStr}/admin/API/mnt/Version`,
-    // Identity-based lookups
-    `${urlStr}/admin/API/mnt/TACACS/AuthStatus/User/${testUser}/604800/10/All`,
-    `${urlStr}/admin/API/mnt/AuthStatus/User/${testUser}/604800/10/All`,
-    // Shared AuthStatus (ISE 2.x) - Check if User lookup works even for TACACS
-    `${urlStr}/admin/API/mnt/AuthStatus/MACAddress/All/86400/10/All`,
-    // Check if Service status is active
-    `${urlStr}/admin/API/mnt/Service/Status`
+    // Accounting Paths
+    `${urlStr}/admin/API/mnt/TACACS/Accounting/All/604800/10/All`,
+    `${urlStr}/admin/API/mnt/TACACS/Accounting/User/${testUser}/604800/10/All`,
+    // Identity Segment Variants
+    `${urlStr}/admin/API/mnt/AuthStatus/UserName/${testUser}/604800/10/All`,
+    `${urlStr}/admin/API/mnt/TACACS/AuthStatus/UserName/${testUser}/604800/10/All`,
+    // Shared / Root Level Probes
+    `${urlStr}/admin/API/mnt/AuthStatus/TACACS/All/604800/10/All`,
+    `${urlStr}/admin/API/mnt/TACACS/AuthStatus/MACAddress/All/604800/10/All`,
+    // Singular variant
+    `${urlStr}/admin/API/mnt/TACACSAuthStatus/User/${testUser}/86400/10/All`,
+    // Path discovery
+    `${urlStr}/admin/API/mnt/Session/TACACS/All/86400/10/All`
 ];
 
 async function sweep() {
-    console.log(`\n--- ISE MnT IDENTITY SWEEPER (v1.7.1) ---`);
+    console.log(`\n--- ISE MnT ACCOUNTING & SEGMENT SWEEPER (v1.7.2) ---`);
     console.log(`Node: ${urlStr}`);
-    console.log(`Testing Identity: ${testUser}`);
+    console.log(`Identity: ${testUser}`);
     
     for (const endpoint of endpoints) {
         console.log(`\nTesting: ${endpoint}`);
@@ -48,23 +52,22 @@ async function sweep() {
                 https.get(endpoint, options, (res) => {
                     let body = '';
                     res.on('data', d => body += d);
-                    res.on('end', () => resolve({ status: res.statusCode, body: body.substring(0, 1000) }));
+                    res.on('end', () => resolve({ status: res.statusCode, body }));
                 }).on('error', reject);
             });
             
             console.log(`Status: ${result.status}`);
             if (result.status === 200) {
                 console.log(`SUCCESS! Found data or service response.`);
-                console.log(`Body start: ${result.body}`);
+                console.log(`Body start: ${result.body.substring(0, 1000)}`);
             } else {
-                console.log(`Response: ${result.status} - ${result.body}`);
+                console.log(`Response: ${result.status} - ${result.body.substring(0, 200)}`);
             }
         } catch (e) {
             console.log(`Failed: ${e.message}`);
         }
     }
-    console.log(`\n--- IDENTITY SWEEP COMPLETE ---`);
-    console.log(`Tip: If 404 persists, please provide a different username to test: \n  node scripts/debug-ise-tacacs.js <YOUR_ADMIN_USER>`);
+    console.log(`\n--- SWEEP COMPLETE ---`);
 }
 
 sweep();
