@@ -187,7 +187,12 @@ export async function resetPermissions() {
             { toolId: 'ise', role: 'NETWORK', isEnabled: true },
             { toolId: 'ise-tacacs', role: 'NETWORK', isEnabled: true },
             { toolId: 'hibp-account', role: 'NETWORK', isEnabled: true },
-            { toolId: 'hibp-domain', role: 'NETWORK', isEnabled: false }
+            { toolId: 'hibp-domain', role: 'NETWORK', isEnabled: false },
+            { toolId: 'firewall', role: 'DESKTOP', isEnabled: true },
+            { toolId: 'ise', role: 'DESKTOP', isEnabled: false },
+            { toolId: 'ise-tacacs', role: 'DESKTOP', isEnabled: false },
+            { toolId: 'hibp-account', role: 'DESKTOP', isEnabled: true },
+            { toolId: 'hibp-domain', role: 'DESKTOP', isEnabled: false }
         ];
 
         for (const perm of DEFAULT_PERMISSIONS) {
