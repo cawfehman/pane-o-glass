@@ -24,41 +24,27 @@ interface TacacsEvent {
     raw_message: string;
 }
 
-// --- GREEDY FORENSIC SYNTAX HIGHLIGHTER (v3.0.3) ---
 const CiscoPayloadHighlighter = ({ raw }: { raw: string }) => {
     if (!raw) return null;
-
-    // Advanced Regex for Greedy Matching with Positive Lookahead
-    // Supports spaces in keys and values by looking for the NEXT key= signature
-    // 1: Key, 2: Divider (=), 3: Value (quoted, bracketed, or greedy)
     const regex = /([a-zA-Z0-9_\-\s]+?)(=)("(.*?)"|\[(.*?)\]|(.+?))(?=\s*[a-zA-Z0-9_\-\s]+?=|,|\]|$)/g;
-    
     const parts = [];
     let lastIndex = 0;
     let match;
-
     while ((match = regex.exec(raw)) !== null) {
-        // Push any text before the match (delimiters like spaces or commas)
         if (match.index > lastIndex) {
             parts.push(<span key={`text-${lastIndex}`} style={{ color: '#666' }}>{raw.substring(lastIndex, match.index)}</span>);
         }
-
         const key = match[1];
         const eq = match[2];
         const val = match[3];
-
         parts.push(<span key={`key-${match.index}`} style={{ color: '#eab308', fontWeight: 'bold' }}>{key}</span>);
         parts.push(<span key={`eq-${match.index}`} style={{ color: '#999' }}>{eq}</span>);
         parts.push(<span key={`val-${match.index}`} style={{ color: '#22c55e' }}>{val}</span>);
-
         lastIndex = regex.lastIndex;
     }
-
-    // Push remaining text
     if (lastIndex < raw.length) {
         parts.push(<span key={`tail-${lastIndex}`} style={{ color: '#666' }}>{raw.substring(lastIndex)}</span>);
     }
-
     return <code style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>{parts}</code>;
 };
 
@@ -195,6 +181,7 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
     );
 };
 
+// --- TABULAR METRIC UI (v3.2.1) ---
 const MetricList = ({ title, items, icon: Icon, color }: any) => (
     <div className="glass-card" style={{ flex: 1, padding: '16px', minWidth: '280px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
@@ -205,6 +192,7 @@ const MetricList = ({ title, items, icon: Icon, color }: any) => (
             {items && items.length > 0 ? items.map((item: any, idx: number) => (
                 <div key={idx} className="metric-row-analytic">
                     <span className="metric-name-analytic" title={item.name}>{item.name}</span>
+                    <div className="metric-leader-line"></div>
                     <span className="metric-badge-analytic" style={{ background: `${color}22`, color: color }}>{item.value}</span>
                 </div>
             )) : (
@@ -352,20 +340,17 @@ export default function TacacsPage() {
                 .feed-card-compact:hover { background: rgba(255,255,255,0.05) !important; z-index: 10; }
                 
                 .metric-row-analytic { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; min-width: 0; }
-                .metric-name-analytic { font-size: 0.85rem; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; padding-right: 12px; }
+                .metric-name-analytic { font-size: 0.85rem; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px; }
+                .metric-leader-line { flex: 1; border-bottom: 1px dotted rgba(255,255,255,0.1); margin: 0 10px; opacity: 0.5; position: relative; top: -3px; }
                 .metric-badge-analytic { font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 4px; min-width: 32px; text-align: center; }
 
                 .summary-card-analytic { padding: 24px; display: flex; flex-direction: column; justify-content: center; text-align: center; background: rgba(var(--accent-primary-rgb), 0.05); }
                 .command-box-analytic { padding: 12px 14px; background: #000; border-radius: 6px; border: 1px solid #222; margin-top: 12px; display: flex; align-items: center; gap: 10px; }
                 .command-box-analytic code { color: var(--status-success); font-weight: 800; cursor: pointer; font-size: 1rem; }
-                
                 .raw-payload-highlighted { margin-top: 12px; padding: 16px; background: #080808; border-radius: 8px; border: 1px solid #222; overflow-x: auto; font-family: 'JetBrains Mono', monospace; }
-
                 .badge-clickable { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(var(--accent-primary-rgb), 0.1); border-radius: 6px; font-size: 0.75rem; border: 1px solid var(--glass-border); cursor: pointer; }
                 .text-button { background: none; border: none; color: var(--accent-primary); font-size: 0.75rem; cursor: pointer; display: flex; alignItems: center; gap: 6px; padding: 4px; opacity: 0.8; }
                 .count-badge { font-size: 0.7rem; font-weight: 900; background: var(--accent-primary); color: #000; padding: 2px 10px; border-radius: 4px; }
-                .hover-bright:hover { filter: brightness(1.2); }
-                .hover-underline:hover { text-decoration: underline; }
             `}</style>
         </div>
     );
