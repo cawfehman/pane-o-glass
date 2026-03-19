@@ -29,26 +29,27 @@ for (let i = 0; i < args.length; i++) {
 }
 
 const endpoints = [
-    // 1. Context-Specific Audit/Monitoring Segments (ISE 3.3 Forensic Roots)
-    { url: `${host}/admin/API/mnt/TACACS/Audit/All/86400/10/All`, type: 'XML' },
-    { url: `${host}/admin/API/mnt/TACACS/Monitoring/All/86400/10/All`, type: 'XML' },
+    // 1. "Clean" OpenAPI TACACS (No monitoring/reports segments)
+    { url: `${host}/api/v1/tacacs/authentication-logs`, type: 'JSON' },
+    { url: `${host}/api/v1/tacacs/authorization-logs`, type: 'JSON' },
     
-    // 2. Combined Identifiers (No slash separation - Legacy support)
-    { url: `${host}/admin/API/mnt/TACACSAuthentication/All/86400/10/All`, type: 'XML' },
-    { url: `${host}/admin/API/mnt/TACACSAuthorization/All/86400/10/All`, type: 'XML' },
+    // 2. All-Lowercase Legacy (Common in some 3.x builds)
+    { url: `${host}/admin/api/mnt/tacacs/authstatus/all/86400/10/all`, type: 'XML' },
+    { url: `${host}/admin/api/mnt/tacacs/authstatus/user/${identity}/86400/10/all`, type: 'XML' },
     
-    // 3. Reports Root
-    { url: `${host}/admin/API/mnt/Reports/TACACS_AuthStatus/All/86400/10/All`, type: 'XML' },
+    // 3. Parametric Extraction (Testing the service-type parameter on working root)
+    { url: `${host}/admin/API/mnt/AuthStatus/All/86400/10/All?service=TACACS`, type: 'XML' },
+    { url: `${host}/admin/API/mnt/AuthStatus/All/86400/10/All?type=TACACS`, type: 'XML' },
     
-    // 4. Combined Audit Identifier
-    { url: `${host}/admin/API/mnt/Audit/TACACS_AuthStatus/All/86400/10/All`, type: 'XML' },
+    // 4. Forensics Check
+    { url: `${host}/admin/API/mnt/Forensics/All/86400/10/All`, type: 'XML' },
     
-    // 5. Control Check (RADIUS path that we know works)
+    // 5. Control Check (The one working path)
     { url: `${host}/admin/API/mnt/AuthStatus/MACAddress/All/86400/5/All`, type: 'XML' }
 ];
 
 async function sweep() {
-    console.log(`\n--- ISE 3.3 DISCOVERY: FORENSIC ESCALATION (v1.8.2) ---`);
+    console.log(`\n--- ISE 3.3 DISCOVERY: "CLEAN" OpenAPI (v1.8.3) ---`);
     console.log(`Target Host: ${host}`);
     console.log(`Identity: ${identity}`);
     
@@ -73,7 +74,7 @@ async function sweep() {
                 req.on('timeout', () => { req.destroy(); reject(new Error("Request Timeout (5s)")); });
             });
             
-            console.log(`Status: ${result.status}`);
+            console.log(`Status: ${result.status} [${ep.type}]`);
             if (result.status === 200) {
                 console.log(`SUCCESS! Found data or service response.`);
                 console.log(`Body snippet: ${result.body.substring(0, 500)}`);
