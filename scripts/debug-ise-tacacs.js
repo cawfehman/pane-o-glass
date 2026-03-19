@@ -25,36 +25,37 @@ for (let i = 0; i < args.length; i++) {
     }
 }
 
-const reduxEndpoints = [
-    // 1. Semantic Redux: AuditStatus vs AuthStatus
-    { url: `${host}/admin/API/mnt/TACACS/AuditStatus/All/86400/10/All`, type: 'XML' },
-    { url: `${host}/admin/API/mnt/TACACS/AuthStatus/All/86400/10/All`, type: 'XML' },
+const redundantEndpoints = [
+    // 1. Redundant Prefix (seen in some 3.x deployments)
+    { url: `${host}/admin/API/mnt/TACACS/TacacsAuthStatus/All/86400/10/All`, type: 'XML' },
+    { url: `${host}/admin/API/mnt/TACACS/TacacsAuthorizationStatus/All/86400/10/All`, type: 'XML' },
+    { url: `${host}/admin/API/mnt/TACACS/TacacsAuthenticationStatus/All/86400/10/All`, type: 'XML' },
 
-    // 2. Pluralization Redux: Log vs Logs
-    { url: `${host}/admin/API/mnt/TACACS/Log/All/86400/10/All`, type: 'XML' },
-    { url: `${host}/admin/API/mnt/TACACS/Logs/All/86400/10/All`, type: 'XML' },
+    // 2. Singular Redundant
+    { url: `${host}/admin/API/mnt/TACACS/AuthorizationStatus/All/86400/10/All`, type: 'XML' },
+    { url: `${host}/admin/API/mnt/TACACS/AuthenticationStatus/All/86400/10/All`, type: 'XML' },
 
-    // 3. Entity Redux: Audit vs Activity
-    { url: `${host}/admin/API/mnt/TACACS/Audit/All/86400/10/All`, type: 'XML' },
-    { url: `${host}/admin/API/mnt/TACACS/Activity/All/86400/10/All`, type: 'XML' },
+    // 3. Combined Forensic Entity
+    { url: `${host}/admin/API/mnt/TACACS/DeviceAdmin/All/86400/10/All`, type: 'XML' },
+    { url: `${host}/admin/API/mnt/TACACS/DeviceAdminSession/All/86400/10/All`, type: 'XML' },
 
-    // 4. Case-Sensitive Redux (all lowercase)
-    { url: `${host}/admin/api/mnt/tacacs/auditstatus/all/86400/10/all`, type: 'XML' },
-    { url: `${host}/admin/api/mnt/tacacs/authstatus/all/86400/10/all`, type: 'XML' }
+    // 4. OpenAPI Monitoring (Redux with Segment)
+    { url: `${host}/api/v1/monitoring/tacacs-reports/tacacs-authentication-logs`, type: 'JSON' },
+    { url: `${host}/api/v1/monitoring/tacacs-reports/tacacs-authorization-logs`, type: 'JSON' }
 ];
 
-async function redux() {
-    console.log(`\n--- ISE 3.3 FORENSIC REDUX (v2.1.0) ---`);
+async function runRedundant() {
+    console.log(`\n--- ISE 3.3 REDUNDANT SEMANTIC SHOTGUN (v2.2.0) ---`);
     console.log(`Host: ${host}`);
     
-    for (const ep of reduxEndpoints) {
+    for (const ep of redundantEndpoints) {
         console.log(`\nTesting: ${ep.url}`);
         try {
             const result = await new Promise((resolve, reject) => {
                 const options = {
                     headers: {
                         "Authorization": `Basic ${basicAuth}`,
-                        "Accept": "application/xml"
+                        "Accept": ep.type === 'JSON' ? 'application/json' : 'application/xml'
                     },
                     timeout: 5000,
                     rejectUnauthorized: false
@@ -70,7 +71,7 @@ async function redux() {
             
             console.log(`Status: ${result.status}`);
             if (result.status === 200) {
-                console.log(`🎯 BREAKTHROUGH! SEMANTIC MATCH FOUND!`);
+                console.log(`🎯 BREAKTHROUGH! REDUNDANT MATCH FOUND!`);
                 console.log(`Body snippet: ${result.body.substring(0, 500)}`);
             } else {
                 console.log(`Response: ${result.status} - ${result.body.substring(0, 50) || "Empty"}`);
@@ -79,7 +80,7 @@ async function redux() {
             console.log(`Failed: ${e.message}`);
         }
     }
-    console.log(`\n--- REDUX COMPLETE ---`);
+    console.log(`\n--- REDUNDANT COMPLETE ---`);
 }
 
-redux();
+runRedundant();
