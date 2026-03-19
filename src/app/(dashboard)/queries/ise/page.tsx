@@ -7,41 +7,20 @@ export default function CiscoIsePage() {
     const [loading, setLoading] = useState(false);
     const [endpointResult, setEndpointResult] = useState<any>(null);
     const [historyResult, setHistoryResult] = useState<any>(null);
-    const [tacacsResult, setTacacsResult] = useState<any>(null);
     const [discoveryResult, setDiscoveryResult] = useState<any>(null);
     const [activeView, setActiveView] = useState<"discovery" | "details">("discovery");
-    const [activeTab, setActiveTab] = useState<"live" | "history" | "tacacs">("live");
+    const [activeTab, setActiveTab] = useState<"live" | "history">("live");
     const [error, setError] = useState("");
     
     // RBAC state
-    const [perms, setPerms] = useState<{ise: boolean, tacacs: boolean}>({ ise: false, tacacs: false });
+    const [hasIsePerm, setHasIsePerm] = useState(false);
     const [permsLoading, setPermsLoading] = useState(true);
 
     useEffect(() => {
         const fetchPerms = async () => {
             try {
-                // We use a simple trick: try to fetch the session API with no query
-                // or we could have a dedicated perms endpoint. Since ise-tacacs is already
-                // verified by the sidebar, we'll just check what's available.
-                // For now, I'll simulate or use the session/failures response to detect 403s
-                // but better to have it explicit. I'll just default to 'true' if the page is visible,
-                // but let's be more precise.
-                
-                // Let's just try small probe requests
-                const [iseRes, tacRes] = await Promise.all([
-                    fetch('/api/ise/session?query='), // This will return 400 or 403
-                    fetch('/api/ise/tacacs?query=')   // This will return 400 or 403
-                ]);
-                
-                setPerms({
-                    ise: iseRes.status !== 403,
-                    tacacs: tacRes.status !== 403
-                });
-                
-                // Set default tab based on permission priority
-                if (iseRes.status === 403 && tacRes.status !== 403) {
-                    setActiveTab("tacacs");
-                }
+                const res = await fetch('/api/ise/session?query=');
+                setHasIsePerm(res.status !== 403);
             } catch (e) {
                 console.error("Failed to detect ISE permissions");
             } finally {
@@ -62,21 +41,12 @@ export default function CiscoIsePage() {
         if (!macToDrilldown) {
             setEndpointResult(null);
             setHistoryResult(null);
-            setTacacsResult(null);
             setDiscoveryResult(null);
         }
 
         try {
-            const requests = [];
-            
-            // 1. RADIUS Session (Only if 'ise' perm exists)
-            if (perms.ise) {
-                requests.push(fetch(`/api/ise/session?query=${encodeURIComponent(searchTerm)}`).then(r => r.json()));
-            } else {
-                requests.push(Promise.resolve({ found: false }));
-            }
-
-            const [sessionData] = await Promise.all([requests[0]]);
+            const sessionRes = await fetch(`/api/ise/session?query=${encodeURIComponent(searchTerm)}`);
+            const sessionData = await sessionRes.json();
 
             if (sessionData.found && sessionData.sessions && sessionData.sessions.length > 1 && !macToDrilldown) {
                 setDiscoveryResult(sessionData);
@@ -86,26 +56,9 @@ export default function CiscoIsePage() {
                 setActiveView("details");
                 if (!macToDrilldown) setQuery(searchTerm);
 
-                // Simultaneous Background Fetches
-                const secondaryRequests = [];
-                
-                // 2. RADIUS History
-                if (perms.ise) {
-                    secondaryRequests.push(fetch(`/api/ise/failures?query=${encodeURIComponent(searchTerm)}`).then(r => r.json()));
-                } else {
-                    secondaryRequests.push(Promise.resolve({ found: false }));
-                }
-
-                // 3. TACACS History
-                if (perms.tacacs) {
-                    secondaryRequests.push(fetch(`/api/ise/tacacs?query=${encodeURIComponent(searchTerm)}`).then(r => r.json()));
-                } else {
-                    secondaryRequests.push(Promise.resolve({ found: false }));
-                }
-
-                const [historyData, tacacsData] = await Promise.all(secondaryRequests);
+                const historyRes = await fetch(`/api/ise/failures?query=${encodeURIComponent(searchTerm)}`);
+                const historyData = await historyRes.json();
                 setHistoryResult(historyData);
-                setTacacsResult(tacacsData);
             }
 
         } catch (err: any) {
@@ -115,14 +68,15 @@ export default function CiscoIsePage() {
         }
     };
 
-    if (permsLoading) return <div className="p-8">Authenticating Cisco ISE Security Center...</div>;
+    if (permsLoading) return <div className="p-8">Verifying Cisco ISE access...</div>;
+    if (!hasIsePerm) return <div className="p-8 glass-card m-8 border-l-4 border-red-500 text-red-400">Access Denied: You do not have permission to view RADIUS endpoint forensics.</div>;
 
     return (
         <div className="internal-scroll-layout">
             <div style={{ flexShrink: 0 }}>
                 <h1 style={{ marginBottom: '8px' }}>Cisco ISE Center</h1>
                 <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>
-                    Unified forensics: {perms.ise && "Endpoint RADIUS"} {perms.ise && perms.tacacs && " & "} {perms.tacacs && "Device TACACS+"}.
+                    Unified endpoint forensics: Real-time sessions and 24-hour RADIUS diagnostic history.
                 </p>
 
                 <form onSubmit={(e) => handleSearch(e)} className="glass-card" style={{ display: 'flex', gap: '16px', marginBottom: '32px' }}>
@@ -138,7 +92,7 @@ export default function CiscoIsePage() {
                         {loading ? "Analyzing ISE..." : "Search"}
                     </button>
                     {query && (
-                        <button type="button" onClick={() => { setQuery(""); setDiscoveryResult(null); setEndpointResult(null); setHistoryResult(null); setTacacsResult(null); setActiveView("discovery"); }} className="btn-secondary" style={{ padding: '12px 16px', borderRadius: '8px' }}>
+                        <button type="button" onClick={() => { setQuery(""); setDiscoveryResult(null); setEndpointResult(null); setHistoryResult(null); setActiveView("discovery"); }} className="btn-secondary" style={{ padding: '12px 16px', borderRadius: '8px' }}>
                             Reset
                         </button>
                     )}
@@ -182,18 +136,33 @@ export default function CiscoIsePage() {
                             </button>
                         )}
                         <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0' }}>
-                            {perms.ise && (
-                                <>
-                                    <TabButton active={activeTab === 'live'} label="Live Status" onClick={() => setActiveTab("live")} />
-                                    <TabButton active={activeTab === 'history'} label="24h RADIUS History" onClick={() => setActiveTab("history")} />
-                                </>
-                            )}
-                            {perms.tacacs && (
-                                <TabButton active={activeTab === 'tacacs'} label="TACACS+ Administration" onClick={() => setActiveTab("tacacs")} />
-                            )}
+                            <button 
+                                onClick={() => setActiveTab("live")}
+                                style={{ 
+                                    padding: '12px 24px', 
+                                    background: activeTab === 'live' ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                                    border: 'none', borderBottom: activeTab === 'live' ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                                    color: activeTab === 'live' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                                    cursor: 'pointer', fontWeight: 'bold', marginBottom: '-1px'
+                                }}
+                            >
+                                Live Status
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab("history")}
+                                style={{ 
+                                    padding: '12px 24px', 
+                                    background: activeTab === 'history' ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                                    border: 'none', borderBottom: activeTab === 'history' ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                                    color: activeTab === 'history' ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                                    cursor: 'pointer', fontWeight: 'bold', marginBottom: '-1px'
+                                }}
+                            >
+                                24h Diagnostic History
+                            </button>
                         </div>
 
-                        {activeTab === "live" && perms.ise && (
+                        {activeTab === "live" && (
                             <div>
                                 {!endpointResult ? (
                                     <EmptyState message="No active session found right now." sub="The device may be offline. Check history tabs for recent events." />
@@ -203,7 +172,7 @@ export default function CiscoIsePage() {
                             </div>
                         )}
 
-                        {activeTab === "history" && perms.ise && (
+                        {activeTab === "history" && (
                             <div>
                                 {historyResult && historyResult.found && historyResult.failures ? (
                                     historyResult.failures.map((f: any, idx: number) => <FailureCard key={idx} failure={f} />)
@@ -212,40 +181,10 @@ export default function CiscoIsePage() {
                                 )}
                             </div>
                         )}
-
-                        {activeTab === "tacacs" && perms.tacacs && (
-                            <div>
-                                {tacacsResult && tacacsResult.found && tacacsResult.failures ? (
-                                    tacacsResult.failures.map((f: any, idx: number) => <TacacsCard key={idx} event={f} />)
-                                ) : (
-                                    <EmptyState message="No TACACS+ administration logs found for the last 24 hours." />
-                                )}
-                            </div>
-                        )}
                     </div>
                 )}
             </div>
         </div>
-    );
-}
-
-function TabButton({ active, label, onClick }: { active: boolean, label: string, onClick: () => void }) {
-    return (
-        <button 
-            onClick={onClick}
-            style={{ 
-                padding: '12px 24px', 
-                background: active ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                border: 'none',
-                borderBottom: active ? '2px solid var(--accent-primary)' : '2px solid transparent',
-                color: active ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                marginBottom: '-1px'
-            }}
-        >
-            {label}
-        </button>
     );
 }
 
@@ -272,35 +211,35 @@ function EndpointCard({ session }: { session: any }) {
                         Identity <span style={{ fontSize: '0.7rem', background: 'rgba(59, 130, 246, 0.2)', color: 'var(--accent-primary)', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold' }}>ACTIVE</span>
                     </h4>
                     <p title="The authenticated username or machine name for this session"><strong>Username:</strong> {session.user_name || "N/A"}</p>
-                    <p title="The hardware MAC address of the connecting endpoint (calling_station_id)"><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace' }}>{session.calling_station_id}</span></p>
-                    <p title="The IP address assigned to the endpoint (framed_ip_address)"><strong>IP Address:</strong> <span style={{ fontFamily: 'monospace' }}>{session.framed_ip_address || "N/A"}</span></p>
+                    <p title="The hardware MAC address of the connecting endpoint"><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace' }}>{session.calling_station_id}</span></p>
+                    <p title="The IP address assigned to the endpoint"><strong>IP Address:</strong> <span style={{ fontFamily: 'monospace' }}>{session.framed_ip_address || "N/A"}</span></p>
                 </div>
                 <div>
                     <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Network Location</h4>
-                    <p title="The IP address of the switch, WLC, or firewall the endpoint connects through (nas_ip_address)"><strong>Device IP:</strong> {session.nas_ip_address}</p>
-                    <p title="The physical port or wireless SSID the endpoint is connected to (nas_port_id)"><strong>Port/SSID:</strong> {session.nas_port_id}</p>
-                    <p title="The hostname or identifier of the network access device (nas_identifier)"><strong>Switch:</strong> {session.nas_identifier}</p>
+                    <p title="The IP address of the switch, WLC, or firewall"><strong>Device IP:</strong> {session.nas_ip_address}</p>
+                    <p title="The physical port or wireless SSID"><strong>Port/SSID:</strong> {session.nas_port_id}</p>
+                    <p title="The hostname or identifier of the network access device"><strong>Switch:</strong> {session.nas_identifier}</p>
                 </div>
                 <div>
                     <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Posture State</h4>
-                    <p title="The physical device type that ISE profiled this endpoint as (e.g., Apple-iPhone, Microsoft-Workstation)"><strong>Profile:</strong> <span style={{ color: 'var(--accent-primary)' }}>{session.endpoint_profile || "Unknown"}</span></p>
-                    <p title="The AnyConnect/Secure Client compliance posture status of the endpoint"><strong>Posture:</strong> <span style={{ color: accentColor, fontWeight: 'bold' }}>{session.posture_status || "Unknown"}</span></p>
-                    <span title="The AnyConnect/Secure Client compliance posture status of the endpoint" style={{ fontSize: '0.75rem', background: bgColor, color: accentColor, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>
+                    <p title="The physical device type that ISE profiled this endpoint as"><strong>Profile:</strong> <span style={{ color: 'var(--accent-primary)' }}>{session.endpoint_profile || "Unknown"}</span></p>
+                    <p title="The posture status of the endpoint"><strong>Posture:</strong> <span style={{ color: accentColor, fontWeight: 'bold' }}>{session.posture_status || "Unknown"}</span></p>
+                    <span style={{ fontSize: '0.75rem', background: bgColor, color: accentColor, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>
                         {session.posture_status || "UNKNOWN"}
                     </span>
                 </div>
                 <div>
                     <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>MDM & Compliance</h4>
-                    <p title="Whether the ISE policy node can successfully reach the MDM server to query compliance"><strong>MDM Reachable:</strong> {session.mdm_reachable || "N/A"}</p>
-                    <p title="Whether the MDM server actively reports this device as compliant with corporate policy"><strong>MDM Compliant:</strong> {session.mdm_compliant || "N/A"}</p>
-                    <p title="The unique, hex-encoded Audit Session ID generated by the network access device."><strong>Audit ID:</strong> <span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{session.audit_session_id?.substring(0, 16)}...</span></p>
+                    <p title="Reachability to the MDM server"><strong>MDM Reachable:</strong> {session.mdm_reachable || "N/A"}</p>
+                    <p title="MDM reported compliance status"><strong>MDM Compliant:</strong> {session.mdm_compliant || "N/A"}</p>
+                    <p title="Unique hex Audit Session ID for syslog tracking"><strong>Audit ID:</strong> <span style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{session.audit_session_id?.substring(0, 16)}...</span></p>
                 </div>
             </div>
             <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--border-color)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px', fontSize: '0.9rem' }}>
-                <p title="The exact ISE Authorization Policy Rule that granted this endpoint access"><strong>AuthZ Rule:</strong> {session.authorization_rule || "Unknown"}</p>
-                <p title="The authentication method used, such as dot1x (802.1X), mab (MAC Authentication Bypass), or WebAuth"><strong>Auth Method:</strong> {session.authentication_method || "Unknown"}</p>
-                <p title="The inner EAP protocol used for the secure tunnel (e.g., EAP-TLS, PEAP)"><strong>Auth Protocol:</strong> {session.authentication_protocol || "Unknown"}</p>
-                <p title="The specific Cisco ISE Policy Service Node (PSN) that processed this authentication"><strong>ACS Server:</strong> {session.acs_server || "Unknown"}</p>
+                <p title="The Authorization Policy Rule that granted access"><strong>AuthZ Rule:</strong> {session.authorization_rule || "Unknown"}</p>
+                <p title="The authentication method (dot1x, mab, etc)"><strong>Auth Method:</strong> {session.authentication_method || "Unknown"}</p>
+                <p title="The inner EAP protocol (TLS, PEAP)"><strong>Auth Protocol:</strong> {session.authentication_protocol || "Unknown"}</p>
+                <p title="The specific ISE PSN node that handled this session"><strong>ACS Server:</strong> {session.acs_server || "Unknown"}</p>
             </div>
         </div>
     );
@@ -320,8 +259,8 @@ function FailureCard({ failure }: { failure: any }) {
                         <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                             Historical Status <span style={{ fontSize: '0.7rem', background: bgColor, color: accentColor, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>{isPass ? 'PASS' : 'FAIL'}</span>
                         </h4>
-                        <p title="The exact date and time this authentication event was logged (acs_timestamp)"><strong>Timestamp:</strong> {failure.timestamp !== "Unknown" ? new Date(failure.timestamp).toLocaleString() : "Unknown"}</p>
-                        <p title="The final result or reason code returned by the ISE authorization engine"><strong>Result:</strong> <span style={{ color: accentColor, fontWeight: 'bold' }}>{failure.failure_reason}</span></p>
+                        <p title="The exact time this event was logged"><strong>Timestamp:</strong> {failure.timestamp !== "Unknown" ? new Date(failure.timestamp).toLocaleString() : "Unknown"}</p>
+                        <p title="The final result or reason code"><strong>Result:</strong> <span style={{ color: accentColor, fontWeight: 'bold' }}>{failure.failure_reason}</span></p>
                     </div>
                     <div>
                         <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Identity & Device</h4>
@@ -345,7 +284,7 @@ function FailureCard({ failure }: { failure: any }) {
                 {failure.steps && failure.steps.length > 0 && (
                     <div style={{ marginTop: '24px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
                         <button onClick={() => setExpanded(!expanded)} className="btn-secondary" style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}>
-                            <span title="Click to view the step-by-step diagnostic sequence from the ISE MnT log">{expanded ? 'Hide' : 'Show'} Technical Details ({failure.steps.length} Steps)</span>
+                            <span>{expanded ? 'Hide' : 'Show'} Technical Details ({failure.steps.length} Steps)</span>
                             <span>{expanded ? '▲' : '▼'}</span>
                         </button>
                         {expanded && (
@@ -362,47 +301,6 @@ function FailureCard({ failure }: { failure: any }) {
                         )}
                     </div>
                 )}
-            </div>
-        </div>
-    );
-}
-
-function TacacsCard({ event }: { event: any }) {
-    const isPass = event.status === true;
-    const accentColor = isPass ? '#10b981' : '#ef4444';
-    const bgColor = isPass ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
-
-    return (
-        <div className="glass-card" style={{ marginBottom: '24px', borderLeft: `6px solid ${accentColor}`, padding: '24px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
-                <div>
-                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        TACACS+ Status <span style={{ fontSize: '0.7rem', background: bgColor, color: accentColor, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>{isPass ? 'PASS' : 'FAIL'}</span>
-                    </h4>
-                    <p title="The exact time of the TACACS+ authentication or authorization event"><strong>Timestamp:</strong> {event.timestamp !== "Unknown" ? new Date(event.timestamp).toLocaleString() : "Unknown"}</p>
-                    <p title="The final result returned by the TACACS+ engine"><strong>Result:</strong> <span style={{ color: accentColor, fontWeight: 'bold' }}>{event.failure_reason}</span></p>
-                </div>
-                <div>
-                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Administrator Identity</h4>
-                    <p title="The system administrator username that initiated this TACACS+ event"><strong>Username:</strong> {event.user_name || "N/A"}</p>
-                    <p title="The source MAC address or identifier of the administrative connection"><strong>Client ID:</strong> <span style={{ fontFamily: 'monospace' }}>{event.calling_station_id}</span></p>
-                    <p title="The Identity Store used to validate the credentials (e.g., Active Directory)"><strong>Identity Store:</strong> {event.identity_store || "Unknown"}</p>
-                </div>
-                <div>
-                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Target Device</h4>
-                    <p title="The IP address of the switch, router, or firewall being managed"><strong>Device IP:</strong> {event.nas_ip_address}</p>
-                    <p title="The actual physical or logical port on the target device"><strong>Access Port:</strong> {event.nas_port_id}</p>
-                    <p title="The friendly name assigned to the target device in ISE network resources"><strong>Device Name:</strong> {event.nas_identifier}</p>
-                </div>
-                <div>
-                    <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Action & Privilege</h4>
-                    <p title="The privilege level assigned to the session (typically 1-15)"><strong>Privilege Level:</strong> <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>Level {event.privilege_level}</span></p>
-                    <p title="The specific command set or profile applied to this session"><strong>Command Set:</strong> {event.command_set}</p>
-                    <p title="The ISE Authorization Rule matched for this administrative session"><strong>Matched Rule:</strong> {event.authorization_rule}</p>
-                </div>
-            </div>
-            <div style={{ marginTop: '16px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                <strong>Processing Node:</strong> {event.acs_server} | <strong>Status ID:</strong> {event.failure_id}
             </div>
         </div>
     );
