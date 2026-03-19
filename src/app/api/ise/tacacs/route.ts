@@ -32,14 +32,20 @@ export async function GET(request: Request) {
         // If query is empty or "recent", fetch all events
         if (!query || query.toLowerCase() === 'recent') {
             endpointType = 'All';
-            searchTerm = 'All';
-            timeWindow = "604800"; // Increase to 7 days for recent activity to ensure data visibility
+            searchTerm = ''; // All endpoint does NOT use a searchTerm segment
+            timeWindow = "604800"; // 7 days
         }
         
         // Use uppercase MAC if it's a MAC
         if (isMac) searchTerm = searchTerm.toUpperCase().replace(/-/g, ":");
 
-        const endpoint = `${url}/admin/API/mnt/TACACS/AuthStatus/${endpointType}/${searchTerm}/${timeWindow}/${limit}/All`;
+        // The MnT specification: 
+        // /admin/API/mnt/TACACS/AuthStatus/All/{time}/{number}/All
+        // vs
+        // /admin/API/mnt/TACACS/AuthStatus/{type}/{id}/{time}/{number}/All
+        const endpoint = endpointType === 'All' 
+            ? `${url}/admin/API/mnt/TACACS/AuthStatus/All/${timeWindow}/${limit}/All`
+            : `${url}/admin/API/mnt/TACACS/AuthStatus/${endpointType}/${searchTerm}/${timeWindow}/${limit}/All`;
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         const response = await fetch(endpoint, {
@@ -55,7 +61,6 @@ export async function GET(request: Request) {
         }
 
         const xml = await response.text();
-        console.log(`[TACACS DEBUG] Received XML payload (length: ${xml.length})`);
         
         // Robust parsing matching RADIUS implementation
         const result = await parseStringPromise(xml, { 
@@ -63,9 +68,7 @@ export async function GET(request: Request) {
             tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
         });
 
-        console.log("[TACACS DEBUG] Parsed XML Keys:", Object.keys(result));
-
-        // Broaden discovery for TACACS nodes across all potential namespaces/wrappers
+        // Broaden discovery for TACACS nodes
         const rawList = result?.tacacsAuthStatusOutputList?.tacacsAuthStatusList || 
                          result?.tacacsAuthStatusList?.tacacsAuthStatusElements ||
                          result?.tacacsAuthStatusList || 
@@ -74,14 +77,11 @@ export async function GET(request: Request) {
                          null;
 
         if (!rawList) {
-            console.warn("[TACACS DEBUG] No identifiable log list found in XML result.");
             return NextResponse.json({ found: false, failures: [] });
         }
 
-        // Handle structural variance: might be directly the elements array or a wrapper object
         let nodesArray = Array.isArray(rawList) ? rawList : (rawList.tacacsAuthStatusElements ? (Array.isArray(rawList.tacacsAuthStatusElements) ? rawList.tacacsAuthStatusElements : [rawList.tacacsAuthStatusElements]) : [rawList]);
         
-        // Final flat-map attempt to find tacacsAuthStatusElements inside any candidate node
         const normalizedList = nodesArray.flatMap((n: any) => {
             if (!n) return [];
             const elements = n.tacacsAuthStatusElements || n;
@@ -107,9 +107,6 @@ export async function GET(request: Request) {
             };
         });
 
-        console.log(`[TACACS DEBUG] Normalized ${normalizedList.length} events.`);
-
-        // Sorted by timestamp
         const sortedList = normalizedList.sort((a: any, b: any) => {
             const dateA = new Date(a.timestamp as any || 0).getTime();
             const dateB = new Date(b.timestamp as any || 0).getTime();
