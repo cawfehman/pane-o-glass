@@ -31,20 +31,29 @@ export async function GET(request: Request) {
         const normalizedList = buffer.map((entry: any) => {
             const msg = entry.raw || "";
             
-            // Quotation-Aware Cisco ISE Syslog Parser (v2.9.5)
-            const extract = (key: string) => {
+            // Delimiter-Aware Cisco Syslog Parser (v2.9.6)
+            const extract = (key: string, greedy: boolean = false) => {
+                // 1. Quoted Extraction (Highest Priority)
                 const quotedMatch = msg.match(new RegExp(`${key}="(.*?)"`));
                 if (quotedMatch) return quotedMatch[1].trim();
+
+                // 2. Greedy Extraction (Used for CmdAV inside brackets or commas)
+                // Looks for key=... then stops at next , or ] or end of line.
+                if (greedy) {
+                    const greedyMatch = msg.match(new RegExp(`${key}=(.*?)(,|]|$|$)`));
+                    if (greedyMatch) return greedyMatch[1].trim();
+                }
+
+                // 3. Simple Extraction (Stops at space)
                 const simpleMatch = msg.match(new RegExp(`${key}=(.*?)(,|\\s|$)`));
                 return simpleMatch ? simpleMatch[1].trim() : "";
             };
 
-            // Multi-Key Fallback Logic (v2.9.5)
-            const extractAny = (keys: string[]) => {
+            // Multi-Key Fallback Logic (v2.9.6)
+            const extractAny = (keys: string[], greedy: boolean = false) => {
                 for (const key of keys) {
-                    const val = extract(key);
+                    const val = extract(key, greedy);
                     if (val && val !== "N/A" && val !== "None") {
-                        // Clean up leading/trailing protocol artifacts like brackets
                         return val.replace(/^\[\s*/, '').replace(/\s*\]$/, '').trim();
                     }
                 }
@@ -66,14 +75,13 @@ export async function GET(request: Request) {
             const nasName = extractAny(['Device-Name', 'NetworkDeviceName', 'Network_Device_Name', 'NAS-Identifier', 'nas-name']) || "Network Device";
             const adminIp = extractAny(['Remote-Address', 'Address', 'Calling-Station-ID', 'Port']) || entry.source || "Unknown";
 
-            // NESTED COMMAND EXTRACTION (v2.9.5)
-            // Prioritize CmdAV (Attribute Value) which often contains the actual command string
-            const rawCmdSet = extractAny(['CmdAV', 'CmdSet', 'CommandSet', 'Command-String', 'Command']);
+            // GREEDY COMMAND EXTRACTION (v2.9.6)
+            // Multi-word commands like "show ip int brief" are often space-delimited but comma/bracket terminated.
+            const rawCmdSet = extractAny(['CmdAV', 'CmdSet', 'CommandSet', 'Command-String', 'Command'], true);
             
-            // Heuristic Bracket Cleanup: 
-            // If we got "[ show run ]", strip the brackets and extra spaces
+            // Final Polish: Strip protocol framing
             const cleanCommand = (rawCmdSet || "N/A")
-                .replace(/^\[\s*CmdAV=\s*/, '') // Handle nested CmdAV inside CmdSet bracket
+                .replace(/^CmdAV=\s*/, '')
                 .replace(/^\[\s*/, '') 
                 .replace(/\s*\]$/, '')
                 .trim();
