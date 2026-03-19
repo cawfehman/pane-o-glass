@@ -24,6 +24,43 @@ interface TacacsEvent {
     raw_message: string;
 }
 
+// --- FORENSIC SYNTAX HIGHLIGHTER (v3.0.2) ---
+const CiscoPayloadHighlighter = ({ raw }: { raw: string }) => {
+    if (!raw) return null;
+
+    // Regex to identify key=value pairs, handling quotes and brackets
+    // 1: Key, 2: Divider (=), 3: Value (quoted, bracketed, or simple)
+    const regex = /([a-zA-Z0-9_-]+)(=)("(.*?)"|\[(.*?)\]|([^,\s\]]+))/g;
+    
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(raw)) !== null) {
+        // Push any text before the match (delimiters like spaces or commas)
+        if (match.index > lastIndex) {
+            parts.push(<span key={`text-${lastIndex}`} style={{ color: '#666' }}>{raw.substring(lastIndex, match.index)}</span>);
+        }
+
+        const key = match[1];
+        const eq = match[2];
+        const val = match[3];
+
+        parts.push(<span key={`key-${match.index}`} style={{ color: '#eab308', fontWeight: 'bold' }}>{key}</span>);
+        parts.push(<span key={`eq-${match.index}`} style={{ color: '#999' }}>{eq}</span>);
+        parts.push(<span key={`val-${match.index}`} style={{ color: '#22c55e' }}>{val}</span>);
+
+        lastIndex = regex.lastIndex;
+    }
+
+    // Push remaining text
+    if (lastIndex < raw.length) {
+        parts.push(<span key={`tail-${lastIndex}`} style={{ color: '#666' }}>{raw.substring(lastIndex)}</span>);
+    }
+
+    return <code style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>{parts}</code>;
+};
+
 const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val: string) => void }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showRaw, setShowRaw] = useState(false);
@@ -65,7 +102,6 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
                     justifyContent: 'space-between',
                     cursor: 'pointer',
                     background: isAccounting ? 'rgba(var(--accent-primary-rgb), 0.05)' : 'var(--glass-bg)',
-                    transition: 'all 0.1s ease'
                 }}
             >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flex: 1, minWidth: 0 }}>
@@ -107,15 +143,13 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
                     </div>
                     <div>
                         <span style={{ fontWeight: '800', fontSize: '1.2rem' }}>{event.user_name}</span>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: '8px' }}>Admin Session Analytics</span>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: '8px' }}>Forensic Analytics</span>
                     </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Clock size={14} /> {event.timestamp}
-                    </span>
-                    <button onClick={() => setIsExpanded(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '4px' }} className="hover-bright">
-                        <ChevronUp size={22} />
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{event.timestamp}</span>
+                    <button onClick={() => setIsExpanded(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                        <ChevronUp size={20} />
                     </button>
                 </div>
             </div>
@@ -123,7 +157,7 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '16px', padding: '12px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
                 <ClickableText label="Network Device" value={event.device_name} icon={Wifi} />
                 <ClickableText label="Target IP" value={event.nas_ip_address} icon={Globe} />
-                <ClickableText label="Management Source" value={event.calling_station_id} icon={Pocket} />
+                <ClickableText label="Source" value={event.calling_station_id} icon={Pocket} />
             </div>
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
@@ -135,7 +169,7 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
                 )}
                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <button onClick={() => setShowRaw(!showRaw)} className="text-button">
-                        <Terminal size={14} /> {showRaw ? 'Hide Syslog' : 'Show Cisco Payload'}
+                        <Terminal size={14} /> {showRaw ? 'Hide Payload' : 'Syntax-Highlight Payload'}
                     </button>
                 </div>
             </div>
@@ -148,15 +182,18 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
             )}
 
             {showRaw && (
-                <div className="raw-payload-analytic">
-                    <code style={{ color: '#0f0' }}>{event.raw_message}</code>
+                <div className="raw-payload-highlighted">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', borderBottom: '1px solid #222', paddingBottom: '4px' }}>
+                        <span style={{ fontSize: '0.65rem', color: '#444', fontWeight: 'bold' }}>CISCO ATTRIBUTE-VALUE SYNTAX HIGHLIGHTER</span>
+                        <span style={{ fontSize: '0.65rem', color: '#eab308' }}>KEY <span style={{ color: '#666' }}>=</span> <span style={{ color: '#22c55e' }}>VALUE</span></span>
+                    </div>
+                    <CiscoPayloadHighlighter raw={event.raw_message} />
                 </div>
             )}
         </div>
     );
 };
 
-// --- HIGH-DENSITY METRIC UI (v3.0.1) ---
 const MetricList = ({ title, items, icon: Icon, color }: any) => (
     <div className="glass-card" style={{ flex: 1, padding: '16px', minWidth: '280px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
@@ -236,6 +273,7 @@ export default function TacacsPage() {
                     
                     <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                         <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '4px', border: '1px solid var(--glass-border)' }}>
+                            <Calendar size={14} style={{ margin: '0 8px', color: 'var(--text-secondary)' }} />
                             {['15m', '1h', '12h', '24h', '7d'].map((w) => (
                                 <button
                                     key={w}
@@ -319,7 +357,9 @@ export default function TacacsPage() {
                 .summary-card-analytic { padding: 24px; display: flex; flex-direction: column; justify-content: center; text-align: center; background: rgba(var(--accent-primary-rgb), 0.05); }
                 .command-box-analytic { padding: 12px 14px; background: #000; border-radius: 6px; border: 1px solid #222; margin-top: 12px; display: flex; align-items: center; gap: 10px; }
                 .command-box-analytic code { color: var(--status-success); font-weight: 800; cursor: pointer; font-size: 1rem; }
-                .raw-payload-analytic { margin-top: 12px; padding: 16px; background: #000; border-radius: 8px; border: 1px solid #111; overflow-x: auto; font-family: monospace; }
+                
+                .raw-payload-highlighted { margin-top: 12px; padding: 16px; background: #080808; border-radius: 8px; border: 1px solid #222; overflow-x: auto; font-family: 'JetBrains Mono', monospace; }
+
                 .badge-clickable { display: flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(var(--accent-primary-rgb), 0.1); border-radius: 6px; font-size: 0.75rem; border: 1px solid var(--glass-border); cursor: pointer; }
                 .text-button { background: none; border: none; color: var(--accent-primary); font-size: 0.75rem; cursor: pointer; display: flex; alignItems: center; gap: 6px; padding: 4px; opacity: 0.8; }
                 .count-badge { font-size: 0.7rem; font-weight: 900; background: var(--accent-primary); color: #000; padding: 2px 10px; border-radius: 4px; }
