@@ -3,49 +3,50 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-const urlStr = process.env.ISE_PAN_URL;
 const user = process.env.ISE_API_USER;
 const pass = process.env.ISE_API_PASSWORD;
 
-if (!urlStr || !user || !pass) {
+if (!user || !pass) {
     console.error("ERROR: ISE Credentials not found in .env");
     process.exit(1);
 }
 
 const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
 
-// Default target to test
-const testUser = process.argv[2] || user;
+// Parse Arguments
+const args = process.argv.slice(2);
+let host = process.env.ISE_PAN_URL;
+let identity = user;
+
+for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--host' && args[i+1]) {
+        host = args[i+1];
+        if (!host.startsWith('http')) host = `https://${host}`;
+        i++;
+    } else if (!args[i].startsWith('--')) {
+        identity = args[i];
+    }
+}
 
 const endpoints = [
-    // Mixed Case (Case-sensitivity is common in MnT variations)
-    `${urlStr}/admin/API/mnt/Tacacs/AuthStatus/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/tacacs/AuthStatus/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/TacacsAuthStatus/All/86400/10/All`,
+    // The Standard ISE 3.x TACACS path
+    `${host}/admin/API/mnt/TACACS/AuthStatus/All/86400/10/All`,
+    `${host}/admin/API/mnt/TACACS/AuthStatus/User/${identity}/86400/10/All`,
     
-    // License-based and Internal naming
-    `${urlStr}/admin/API/mnt/DeviceAdminStatus/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/DeviceAdminReport/AuthStatus/All/86400/10/All`,
+    // Unified AuthStatus (RADIUS path - used as Control Check)
+    `${host}/admin/API/mnt/AuthStatus/MACAddress/All/86400/5/All`,
     
-    // Root level variations
-    `${urlStr}/admin/API/mnt/Reports/TACACS/AuthStatus/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/Audit/TACACS/AuthStatus/All/86400/10/All`,
+    // Accounting Check
+    `${host}/admin/API/mnt/TACACS/Accounting/All/86400/10/All`,
     
-    // Parametric Unified Lookups (Extreme discovery)
-    `${urlStr}/admin/API/mnt/AuthStatus/All/604800/10/All?service=TACACS`,
-    `${urlStr}/admin/API/mnt/AuthStatus/All/604800/10/All?type=TACACS`,
-    
-    // Service Health Check
-    `${urlStr}/admin/API/mnt/TACACS/Status`,
-    
-    // Control Check (Always keep this to ensure we haven't lost connectivity)
-    `${urlStr}/admin/API/mnt/AuthStatus/MACAddress/All/86400/5/All`
+    // DeviceAdmin variant
+    `${host}/admin/API/mnt/DeviceAdmin/AuthStatus/All/86400/10/All`
 ];
 
 async function sweep() {
-    console.log(`\n--- ISE MnT "SHOTGUN" CASE SWEEPER (v1.7.6) ---`);
-    console.log(`Node: ${urlStr}`);
-    console.log(`Identity: ${testUser}`);
+    console.log(`\n--- ISE MULTI-NODE MnT VALIDATION (v1.7.8) ---`);
+    console.log(`Target Host: ${host}`);
+    console.log(`Identity: ${identity}`);
     
     for (const endpoint of endpoints) {
         console.log(`\nTesting: ${endpoint}`);
@@ -56,27 +57,34 @@ async function sweep() {
                         "Authorization": `Basic ${basicAuth}`,
                         "Accept": "application/xml"
                     },
+                    timeout: 5000,
                     rejectUnauthorized: false
                 };
-                https.get(endpoint, options, (res) => {
+                const req = https.get(endpoint, options, (res) => {
                     let body = '';
                     res.on('data', d => body += d);
                     res.on('end', () => resolve({ status: res.statusCode, body }));
-                }).on('error', reject);
+                });
+                req.on('error', reject);
+                req.on('timeout', () => {
+                    req.destroy();
+                    reject(new Error("Request Timeout (5s)"));
+                });
             });
             
             console.log(`Status: ${result.status}`);
             if (result.status === 200) {
-                console.log(`SUCCESS! Found data or service response.`);
-                console.log(`Body start: ${result.body.substring(0, 1000)}`);
+                console.log(`SUCCESS! Node is responsive at this path.`);
+                console.log(`Body snippet: ${result.body.substring(0, 500)}`);
             } else {
-                console.log(`Response: ${result.status} - ${result.body.substring(0, 200)}`);
+                console.log(`Response: ${result.status} - ${result.body.substring(0, 100)}`);
             }
         } catch (e) {
             console.log(`Failed: ${e.message}`);
         }
     }
     console.log(`\n--- SWEEP COMPLETE ---`);
+    console.log(`\nTo test another node, run: \n  node scripts/debug-ise-tacacs.js <identity> --host <hostname_or_ip>`);
 }
 
 sweep();
