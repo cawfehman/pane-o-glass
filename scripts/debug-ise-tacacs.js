@@ -18,23 +18,25 @@ const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
 const testUser = process.argv[2] || user;
 
 const endpoints = [
-    // Accounting Paths
-    `${urlStr}/admin/API/mnt/TACACS/Accounting/All/604800/10/All`,
-    `${urlStr}/admin/API/mnt/TACACS/Accounting/User/${testUser}/604800/10/All`,
-    // Identity Segment Variants
-    `${urlStr}/admin/API/mnt/AuthStatus/UserName/${testUser}/604800/10/All`,
-    `${urlStr}/admin/API/mnt/TACACS/AuthStatus/UserName/${testUser}/604800/10/All`,
-    // Shared / Root Level Probes
-    `${urlStr}/admin/API/mnt/AuthStatus/TACACS/All/604800/10/All`,
-    `${urlStr}/admin/API/mnt/TACACS/AuthStatus/MACAddress/All/604800/10/All`,
-    // Singular variant
+    // CamelCase variants (Common in older 3.x and refined 2.x interfaces)
+    `${urlStr}/admin/API/mnt/AuthStatusTacacs/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/TACACSAuthStatus/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/TACACSAccounting/All/86400/10/All`,
+    
+    // Service-Specific Authorization / Authentication
+    `${urlStr}/admin/API/mnt/TACACS/Authentication/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/TACACS/Authorization/All/86400/10/All`,
+    
+    // Identity-Specific CamelCase
+    `${urlStr}/admin/API/mnt/AuthStatusTacacs/User/${testUser}/86400/10/All`,
     `${urlStr}/admin/API/mnt/TACACSAuthStatus/User/${testUser}/86400/10/All`,
-    // Path discovery
-    `${urlStr}/admin/API/mnt/Session/TACACS/All/86400/10/All`
+    
+    // Extreme Fallback
+    `${urlStr}/admin/API/mnt/AuthStatus/TACACS/All/86400/10/All`
 ];
 
 async function sweep() {
-    console.log(`\n--- ISE MnT ACCOUNTING & SEGMENT SWEEPER (v1.7.2) ---`);
+    console.log(`\n--- ISE MnT CAMELCASE & AUTHORIZATION SWEEPER (v1.7.3) ---`);
     console.log(`Node: ${urlStr}`);
     console.log(`Identity: ${testUser}`);
     
