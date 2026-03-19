@@ -15,7 +15,7 @@ export async function GET(request: Request) {
             return NextResponse.json({ found: false, sessions: [], message: "Log directory not found." });
         }
 
-        // --- Time Window Calculation (v3.0.0) ---
+        // --- Time Threshold Calculation ---
         const now = new Date();
         const getThreshold = (window: string) => {
             const val = parseInt(window);
@@ -26,54 +26,30 @@ export async function GET(request: Request) {
         };
         const threshold = getThreshold(windowParam);
 
-        // --- History Loader (v3.0.0) ---
-        // Scans tacacs-recent.json AND daily tacacs-YYYY-MM-DD.json (JSONL format)
-        let rawEntries: any[] = [];
-        
-        // 1. Load Recent Buffer (JSON)
-        if (fs.existsSync(BUFFER_PATH)) {
-            try {
-                const data = fs.readFileSync(BUFFER_PATH, 'utf8');
-                rawEntries = JSON.parse(data);
-            } catch (e) {
-                console.error("Buffer parse error, skipping recent buffer.");
-            }
-        }
+        // --- Window-Wide Streaming Aggregator (v3.1.0) ---
+        // Decoupled from the 1000-line circular buffer.
+        // Scans ALL relevant daily archives to build both Global and Result-Specific metrics.
+        const globalCounters: Record<string, Record<string, number>> = {
+            user_name: {},
+            device_name: {},
+            calling_station_id: {}
+        };
+        let globalTotal = 0;
+        let globalFailures = 0;
 
-        // 2. Load Daily Archives (JSONL) if window > buffer or for metrics accuracy
-        const daysToScan = windowParam.endsWith('d') ? parseInt(windowParam) : 1;
-        for (let i = 0; i <= daysToScan; i++) {
-            const d = new Date(now.getTime() - i * 86400000);
-            const dateStr = d.toISOString().split('T')[0];
-            const archivePath = path.join(LOG_DIR, `tacacs-${dateStr}.json`);
-            
-            if (fs.existsSync(archivePath)) {
-                try {
-                    const content = fs.readFileSync(archivePath, 'utf8');
-                    const lines = content.split('\n').filter(l => l.trim());
-                    lines.forEach(line => {
-                        try {
-                            const entry = JSON.parse(line);
-                            // Avoid duplicates from recent buffer by checking raw msg + timestamp
-                            rawEntries.push(entry);
-                        } catch (lineErr) {}
-                    });
-                } catch (err) {}
-            }
-        }
+        const results: any[] = [];
+        const maxFeedLimit = query && query !== 'recent' ? 1000 : 200;
 
-        // Deduplicate and filter by threshold
-        // Use a Set or Map to track unique raw messages if needed, but for analytics, 
-        // we just filter by time and count.
-        const windowedRaw = rawEntries.filter(e => new Date(e.timestamp) >= threshold);
+        // Helper: Process an entry into global metrics and optionally results
+        const processEntry = (entry: any) => {
+            const entryTime = new Date(entry.timestamp);
+            if (entryTime < threshold) return;
 
-        // --- Normalize & Extractor Engine (v3.0.0) ---
-        const normalize = (entry: any) => {
             const msg = entry.raw || "";
+            // Normalization Logic (v3.1.0)
             const extract = (key: string, greedy: boolean = false) => {
                 const quotedMatch = msg.match(new RegExp(`${key}="(.*?)"`));
                 if (quotedMatch) return quotedMatch[1].trim();
-                // Greedy lookup for space-containing values terminated by , or ]
                 if (greedy) {
                     const greedyMatch = msg.match(new RegExp(`${key}=(.*?)(,|]|$|$)`));
                     if (greedyMatch) return greedyMatch[1].trim();
@@ -93,70 +69,99 @@ export async function GET(request: Request) {
             };
 
             const isExplicitFail = msg.includes('Failed') || msg.includes('Denied') || msg.includes('Rejected');
+            const user = extractAny(['User-Name', 'User', 'Admin-User']) || "Unknown";
+            const device = extractAny(['Device-Name', 'NetworkDeviceName', 'Network_Device_Name', 'NAS-Identifier', 'nas-name']) || "Network Device";
+            const source = extractAny(['Remote-Address', 'Address', 'Calling-Station-ID', 'Port']) || entry.source || "Unknown";
+            
             const rawCmdSet = extractAny(['CmdAV', 'CmdSet', 'CommandSet', 'Command-String', 'Command'], true);
-            const cleanCommand = (rawCmdSet || "N/A")
-                .replace(/^CmdAV=\s*/, '')
-                .replace(/^\[\s*/, '') 
-                .replace(/\s*\]$/, '').trim();
+            const cleanCommand = (rawCmdSet || "N/A").replace(/^CmdAV=\s*/, '').replace(/^\[\s*/, '').replace(/\s*\]$/, '').trim();
 
-            return {
+            const normalized = {
                 timestamp: entry.timestamp,
-                user_name: extractAny(['User-Name', 'User', 'Admin-User']) || "Unknown",
+                user_name: user,
                 nas_ip_address: extractAny(['Device-IP-Address', 'NAS-IP-Address', 'Device_IP_Address']) || entry.source || "Unknown",
-                device_name: extractAny(['Device-Name', 'NetworkDeviceName', 'Network_Device_Name', 'NAS-Identifier', 'nas-name']) || "Network Device",
-                calling_station_id: extractAny(['Remote-Address', 'Address', 'Calling-Station-ID', 'Port']) || entry.source || "Unknown",
+                device_name: device,
+                calling_station_id: source,
                 status: isExplicitFail ? 'Failed' : 'Passed',
                 command_set: cleanCommand,
                 identity_group: extractAny(['Identity-Group', 'User-Identity-Group']) || "Default",
                 raw_message: msg
             };
+
+            // 1. Update Global Window Metrics (Untethered from search results)
+            globalTotal++;
+            if (isExplicitFail) globalFailures++;
+            if (user !== "Unknown") globalCounters.user_name[user] = (globalCounters.user_name[user] || 0) + 1;
+            if (device !== "Network Device") globalCounters.device_name[device] = (globalCounters.device_name[device] || 0) + 1;
+            if (source !== "Unknown") globalCounters.calling_station_id[source] = (globalCounters.calling_station_id[source] || 0) + 1;
+
+            // 2. Update Search Results Feed
+            if (!query || query === 'recent') {
+                if (results.length < maxFeedLimit) results.push(normalized);
+            } else {
+                const searchString = `${normalized.user_name} ${normalized.device_name} ${normalized.command_set} ${normalized.raw_message}`.toLowerCase();
+                if (searchString.includes(query)) {
+                    if (results.length < maxFeedLimit) results.push(normalized);
+                }
+            }
         };
 
-        const normalizedList = windowedRaw.map(normalize);
+        // --- Data Sources Scanning ---
+        // Scans chronological order (latest first) to build the feed and metrics
+        const historyFiles = fs.readdirSync(LOG_DIR)
+            .filter(f => f.startsWith('tacacs-') && f.endsWith('.json') && f !== 'tacacs-recent.json')
+            .sort().reverse(); // Sort descending (today first)
 
-        // --- Aggregation Engine (Top 10s) ---
-        const getTopTen = (arr: any[], key: string) => {
-            const counts: Record<string, number> = {};
-            arr.forEach(item => {
-                const val = item[key];
-                if (val && val !== "Unknown" && val !== "Network Device") {
-                    counts[val] = (counts[val] || 0) + 1;
-                }
-            });
+        // 1. Start with the "Recent Buffer" (JSON)
+        if (fs.existsSync(BUFFER_PATH)) {
+            try {
+                const data = fs.readFileSync(BUFFER_PATH, 'utf8');
+                const recent = JSON.parse(data);
+                recent.reverse().forEach(processEntry);
+            } catch (e) {}
+        }
+
+        // 2. Scan Daily Archives (JSONL) until timeframe exceeded
+        for (const file of historyFiles) {
+            const dateMatch = file.match(/tacacs-(\d{4}-\d{2}-\d{2})\.json/);
+            if (!dateMatch) continue;
+            const fileDate = new Date(dateMatch[1]);
+            // If the start of this day is older than the threshold, we might still need some of it.
+            // But if the whole day is older than the (threshold - 1 day), we can stop soon.
+            if (fileDate < new Date(threshold.getTime() - 86400000)) break;
+
+            const archivePath = path.join(LOG_DIR, file);
+            try {
+                const content = fs.readFileSync(archivePath, 'utf8');
+                const lines = content.split('\n').filter(l => l.trim());
+                // For the feed, we want latest first, so reverse lines
+                lines.reverse().forEach(line => {
+                    try {
+                        const entry = JSON.parse(line);
+                        processEntry(entry);
+                    } catch (lErr) {}
+                });
+            } catch (err) {}
+        }
+
+        const getTopTenFromCounters = (counts: Record<string, number>) => {
             return Object.entries(counts)
                 .sort(([, a], [, b]) => b - a)
                 .slice(0, 10)
                 .map(([name, value]) => ({ name, value }));
         };
 
-        const metrics = {
-            top_usernames: getTopTen(normalizedList, 'user_name'),
-            top_devices: getTopTen(normalizedList, 'device_name'),
-            top_sources: getTopTen(normalizedList, 'calling_station_id'),
-            total_events: normalizedList.length,
-            failures: normalizedList.filter(e => e.status === 'Failed').length
-        };
-
-        // --- Search Filter (Search ALL history if query provided, up to 2000 results) ---
-        let filteredResults = normalizedList;
-        if (query && query !== 'recent') {
-            filteredResults = normalizedList.filter((s: any) => 
-                s.user_name.toLowerCase().includes(query) ||
-                s.device_name.toLowerCase().includes(query) ||
-                s.command_set.toLowerCase().includes(query) ||
-                s.raw_message.toLowerCase().includes(query)
-            );
-        }
-
-        // Return latest events first, limit feed to avoid browser crashes (200 records default)
-        filteredResults.reverse();
-        const feedLimit = query ? 500 : 200;
-
         return NextResponse.json({ 
             found: true, 
-            sessions: filteredResults.slice(0, feedLimit),
-            metrics,
-            count: filteredResults.length
+            sessions: results,
+            metrics: {
+                top_usernames: getTopTenFromCounters(globalCounters.user_name),
+                top_devices: getTopTenFromCounters(globalCounters.device_name),
+                top_sources: getTopTenFromCounters(globalCounters.calling_station_id),
+                total_events: globalTotal,
+                failures: globalFailures
+            },
+            count: results.length
         });
 
     } catch (error: any) {
