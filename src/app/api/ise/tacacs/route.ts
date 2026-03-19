@@ -31,7 +31,7 @@ export async function GET(request: Request) {
         const normalizedList = buffer.map((entry: any) => {
             const msg = entry.raw || "";
             
-            // Quotation-Aware Cisco ISE Syslog Parser (v2.9.4)
+            // Quotation-Aware Cisco ISE Syslog Parser (v2.9.5)
             const extract = (key: string) => {
                 const quotedMatch = msg.match(new RegExp(`${key}="(.*?)"`));
                 if (quotedMatch) return quotedMatch[1].trim();
@@ -39,11 +39,14 @@ export async function GET(request: Request) {
                 return simpleMatch ? simpleMatch[1].trim() : "";
             };
 
-            // Multi-Key Fallback Logic (v2.9.4)
+            // Multi-Key Fallback Logic (v2.9.5)
             const extractAny = (keys: string[]) => {
                 for (const key of keys) {
                     const val = extract(key);
-                    if (val && val !== "N/A" && val !== "None") return val;
+                    if (val && val !== "N/A" && val !== "None") {
+                        // Clean up leading/trailing protocol artifacts like brackets
+                        return val.replace(/^\[\s*/, '').replace(/\s*\]$/, '').trim();
+                    }
                 }
                 return "";
             };
@@ -63,8 +66,17 @@ export async function GET(request: Request) {
             const nasName = extractAny(['Device-Name', 'NetworkDeviceName', 'Network_Device_Name', 'NAS-Identifier', 'nas-name']) || "Network Device";
             const adminIp = extractAny(['Remote-Address', 'Address', 'Calling-Station-ID', 'Port']) || entry.source || "Unknown";
 
-            // UNIVERSAL COMMAND EXTRACTION (v2.9.4)
-            const commandSet = extractAny(['CmdSet', 'CommandSet', 'Command-String', 'Command']);
+            // NESTED COMMAND EXTRACTION (v2.9.5)
+            // Prioritize CmdAV (Attribute Value) which often contains the actual command string
+            const rawCmdSet = extractAny(['CmdAV', 'CmdSet', 'CommandSet', 'Command-String', 'Command']);
+            
+            // Heuristic Bracket Cleanup: 
+            // If we got "[ show run ]", strip the brackets and extra spaces
+            const cleanCommand = (rawCmdSet || "N/A")
+                .replace(/^\[\s*CmdAV=\s*/, '') // Handle nested CmdAV inside CmdSet bracket
+                .replace(/^\[\s*/, '') 
+                .replace(/\s*\]$/, '')
+                .trim();
 
             return {
                 timestamp: entry.timestamp || new Date().toISOString(),
@@ -78,7 +90,7 @@ export async function GET(request: Request) {
                 device_name: nasName,
                 
                 // Deep Forensics
-                command_set: commandSet || "N/A",
+                command_set: cleanCommand,
                 privilege_level: extract('Privilege-Level') || "15",
                 authen_type: extract('Authen-Type') || "Unknown",
                 authen_method: extract('Authen-Method') || "Unknown",
