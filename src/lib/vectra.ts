@@ -8,9 +8,10 @@ const httpsAgent = new https.Agent({
 let cachedToken: string | null = null;
 let tokenExpiry: number = 0;
 
-const VECTRA_URL = process.env.VECTRA_URL;
-const VECTRA_CLIENT_ID = process.env.VECTRA_CLIENT_ID;
-const VECTRA_CLIENT_SECRET = process.env.VECTRA_CLIENT_SECRET;
+const VECTRA_CLIENT_ID = process.env.VECTRA_CLIENT_ID || '';
+const VECTRA_CLIENT_SECRET = process.env.VECTRA_CLIENT_SECRET || '';
+const RAW_URL = (process.env.VECTRA_URL || '').replace(/\/$/, '');
+const VECTRA_URL = RAW_URL.replace(/\/api\/v[0-9.]+$/, '');
 
 async function getVectraToken() {
     if (cachedToken && Date.now() < tokenExpiry) {
