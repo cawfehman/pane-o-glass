@@ -28,10 +28,15 @@ export async function GET() {
                 return match ? match[1].trim() : "";
             };
 
-            // Detect Status based on Cisco Tag
+            // Status Heatmap (v2.7.2)
+            // Cisco use various tags for success: Passed, Authorized, Granted, Accounting
+            const isExplicitFail = msg.includes('Failed') || msg.includes('Denied') || msg.includes('Rejected');
+            const isExplicitPass = msg.includes('Passed') || msg.includes('Authorized') || msg.includes('Granted') || msg.includes('Accounting') || msg.includes('Success');
+
             let status = 'Unknown';
-            if (msg.includes('Passed')) status = 'Passed';
-            if (msg.includes('Failed')) status = 'Failed';
+            if (isExplicitFail) status = 'Failed';
+            else if (isExplicitPass) status = 'Passed';
+            else status = 'Passed'; // Default to Passed for informational/benign logs
 
             // Extract NAS / Server identifiers
             const server = extract('ConfigServiceNode') || entry.source || "ISE-Cluster";
