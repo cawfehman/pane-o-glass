@@ -18,29 +18,32 @@ const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
 const testUser = process.argv[2] || user;
 
 const endpoints = [
-    // DeviceAdmin variants (Cisco's internal TACACS name)
-    `${urlStr}/admin/API/mnt/DeviceAdmin/AuthStatus/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/DeviceAdmin/Accounting/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/AuthStatus/DeviceAdmin/All/86400/10/All`,
+    // Mixed Case (Case-sensitivity is common in MnT variations)
+    `${urlStr}/admin/API/mnt/Tacacs/AuthStatus/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/tacacs/AuthStatus/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/TacacsAuthStatus/All/86400/10/All`,
     
-    // Root Level Probes
-    `${urlStr}/admin/API/mnt/TacacsAudit/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/TacacsCommand/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/TacacsReports/AuthStatus/All/86400/10/All`,
+    // License-based and Internal naming
+    `${urlStr}/admin/API/mnt/DeviceAdminStatus/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/DeviceAdminReport/AuthStatus/All/86400/10/All`,
     
-    // Simplified Segmentation
-    `${urlStr}/admin/API/mnt/Log/TACACS/All/86400/10/All`,
-    `${urlStr}/admin/API/mnt/Audit/TACACS/All/86400/10/All`,
+    // Root level variations
+    `${urlStr}/admin/API/mnt/Reports/TACACS/AuthStatus/All/86400/10/All`,
+    `${urlStr}/admin/API/mnt/Audit/TACACS/AuthStatus/All/86400/10/All`,
     
-    // Authorization Check
-    `${urlStr}/admin/API/mnt/DeviceAdmin/Authorization/All/86400/10/All`,
+    // Parametric Unified Lookups (Extreme discovery)
+    `${urlStr}/admin/API/mnt/AuthStatus/All/604800/10/All?service=TACACS`,
+    `${urlStr}/admin/API/mnt/AuthStatus/All/604800/10/All?type=TACACS`,
     
-    // Control Check (Expected 200)
+    // Service Health Check
+    `${urlStr}/admin/API/mnt/TACACS/Status`,
+    
+    // Control Check (Always keep this to ensure we haven't lost connectivity)
     `${urlStr}/admin/API/mnt/AuthStatus/MACAddress/All/86400/5/All`
 ];
 
 async function sweep() {
-    console.log(`\n--- ISE MnT DEVICEADMIN & ROOT SWEEPER (v1.7.5) ---`);
+    console.log(`\n--- ISE MnT "SHOTGUN" CASE SWEEPER (v1.7.6) ---`);
     console.log(`Node: ${urlStr}`);
     console.log(`Identity: ${testUser}`);
     
