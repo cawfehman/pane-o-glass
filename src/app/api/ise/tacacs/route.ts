@@ -15,14 +15,21 @@ export async function GET() {
             });
         }
 
-        const rawData = fs.readFileSync(BUFFER_PATH, 'utf8');
-        const buffer = JSON.parse(rawData);
+        let buffer = [];
+        try {
+            const rawData = fs.readFileSync(BUFFER_PATH, 'utf8');
+            buffer = JSON.parse(rawData);
+        } catch (parseError) {
+            console.error("[RECOVERY] Buffer corrupted, returning empty session list.");
+            // Return found: true but empty sessions to prevent UI crash
+            return NextResponse.json({ found: true, sessions: [], recovering: true });
+        }
 
         // Normalize Syslog Entries to Dashboard UI format
         const normalizedList = buffer.map((entry: any) => {
-            const msg = entry.raw;
+            const msg = entry.raw || "";
             
-            // Deep Forensic Cisco ISE Syslog Parser (v2.8.0)
+            // Deep Forensic Cisco ISE Syslog Parser (v2.8.1)
             const extract = (key: string) => {
                 const match = msg.match(new RegExp(`${key}=(.*?)(,|\\s|$)`));
                 return match ? match[1].trim() : "";
@@ -39,16 +46,16 @@ export async function GET() {
 
             // Source Differentiation
             const iseNode = extract('ConfigServiceNode') || "ISE-Cluster";
-            const nasIp = extract('Device-IP-Address') || extract('NAS-IP-Address') || entry.source;
+            const nasIp = extract('Device-IP-Address') || extract('NAS-IP-Address') || entry.source || "Unknown";
             const nasName = extract('Device-Name') || extract('NAS-Identifier') || "Network Device";
-            const adminIp = extract('Remote-Address') || extract('Address') || "Unknown";
+            const adminIp = extract('Remote-Address') || extract('Address') || entry.source || "Unknown";
 
             return {
-                timestamp: entry.timestamp,
+                timestamp: entry.timestamp || new Date().toISOString(),
                 user_name: extract('User-Name') || extract('User') || "Unknown",
-                calling_station_id: adminIp, // The Admin's originating IP
-                nas_ip_address: nasIp,      // The Network Device IP
-                server: iseNode,            // The ISE server processing the log
+                calling_station_id: adminIp,
+                nas_ip_address: nasIp,
+                server: iseNode,
                 status: status,
                 nas_port_id: extract('NAS-Port') || "N/A",
                 failure_reason: status === 'Failed' ? "Authentication Denied" : "Success",
@@ -63,6 +70,7 @@ export async function GET() {
             };
         });
 
+        // Ensure we handle the count correctly
         return NextResponse.json({ 
             found: true, 
             sessions: normalizedList,
