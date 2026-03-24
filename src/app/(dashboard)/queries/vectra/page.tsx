@@ -152,6 +152,62 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                         </div>
                     ) : (
                         <>
+                            {/* Primary Attribution & Ownership Section */}
+                            <div style={{ background: 'rgba(56, 189, 248, 0.05)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(56, 189, 248, 0.2)', marginBottom: '24px' }}>
+                                <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--status-info)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '900' }}>
+                                    <UserCheck size={14} />
+                                    Forensic Entity Attribution
+                                </h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                                    {type === 'host' ? (
+                                        <>
+                                            <div className="attribution-box">
+                                                <div className="attr-label">Probable Owner (Modeling)</div>
+                                                <div className="attr-value">
+                                                    {details?.probable_owner ? (
+                                                        <button 
+                                                            className="pivot-link" 
+                                                            onClick={(e) => { e.stopPropagation(); onSearch(details.probable_owner.name); }}
+                                                        >
+                                                            <User size={14} /> {details.probable_owner.name}
+                                                        </button>
+                                                    ) : <span className="attr-none">Identification in progress...</span>}
+                                                </div>
+                                            </div>
+                                            <div className="attribution-box">
+                                                <div className="attr-label">Last Known User (Login)</div>
+                                                <div className="attr-value">
+                                                    {details?.last_account_name ? (
+                                                        <button 
+                                                            className="pivot-link" 
+                                                            onClick={(e) => { e.stopPropagation(); onSearch(details.last_account_name); }}
+                                                        >
+                                                            <Link2 size={14} /> {details.last_account_name}
+                                                        </button>
+                                                    ) : <span className="attr-none">No recent login data</span>}
+                                                </div>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="attribution-box">
+                                                <div className="attr-label">Probable Home (Modeling)</div>
+                                                <div className="attr-value">
+                                                    {details?.probable_home ? (
+                                                        <button 
+                                                            className="pivot-link" 
+                                                            onClick={(e) => { e.stopPropagation(); onSearch(details.probable_home.name); }}
+                                                        >
+                                                            <HardDrive size={14} /> {details.probable_home.name}
+                                                        </button>
+                                                    ) : <span className="attr-none">Modeling primary workstation...</span>}
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
                                 <div className="info-stat">
                                     <Hash size={14} />
@@ -159,7 +215,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                 </div>
                                 <div className="info-stat">
                                     <Activity size={14} />
-                                    <span>Active Detections: <b>{detections.length || 0}</b></span>
+                                    <span>Associated Detections: <b>{detections.length || 0}</b></span>
                                 </div>
                                 {type === 'host' && details?.os && (
                                     <div className="info-stat">
@@ -200,8 +256,8 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
 
                                 <div>
                                     <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        {type === 'host' ? <Users size={14} color="var(--status-info)" /> : <HardDrive size={14} color="var(--accent-primary)" />}
-                                        {type === 'host' ? 'Associated Accounts' : 'Associated Hosts'}
+                                        {type === 'host' ? <Link2 size={14} color="var(--status-info)" /> : <HardDrive size={14} color="var(--accent-primary)" />}
+                                        Behavioral Correlation (Telemetry)
                                     </h4>
                                     <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '12px', border: '1px solid var(--glass-border)', minHeight: '60px' }}>
                                         {correlations.filter(c => c.name && c.name.trim().length > 0).length > 0 ? (
@@ -217,7 +273,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                             </div>
                                         ) : (
                                             <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic' }}>
-                                                No high-confidence associations found in recent telemetry.
+                                                No secondary behavioral links.
                                             </div>
                                         )}
                                     </div>
@@ -234,6 +290,13 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                 .detection-row { padding: 8px 10px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--glass-border); }
                 .correlation-chip { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
                 .correlation-chip:hover { background: var(--accent-primary); color: #000; border-color: var(--accent-primary); }
+                
+                .attribution-box { display: flex; flexDirection: column; gap: 4px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); }
+                .attr-label { font-size: 0.65rem; color: var(--text-muted); textTransform: uppercase; fontWeight: 800; }
+                .attr-value { font-size: 0.9rem; fontWeight: 700; color: var(--text-primary); }
+                .attr-none { opacity: 0.5; font-style: italic; font-weight: 400; }
+                .pivot-link { background: none; border: none; padding: 0; margin: 0; color: var(--status-info); cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 0.9rem; font-weight: 900; transition: color 0.2s; }
+                .pivot-link:hover { color: var(--accent-primary); text-decoration: underline; }
             `}</style>
         </div>
     );
