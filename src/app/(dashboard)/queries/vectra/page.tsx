@@ -208,7 +208,7 @@ export default function VectraPage() {
             const hrFilter = isQuickAction ? highRiskOnly : false;
 
             // PRIORITY ORDERING: -threat ensures the first page always has the critical hits
-            const baseParams = `query=${nameParam}&high_risk_only=${hrFilter}&ordering=-threat`;
+            const baseParams = `query=${nameParam}&high_risk_only=${hrFilter}`;
             const hUrl = `/api/vectra?type=hosts&${baseParams}`;
             const aUrl = `/api/vectra?type=accounts&${baseParams}`;
             
