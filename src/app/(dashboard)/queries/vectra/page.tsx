@@ -80,7 +80,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                     <div style={{ textAlign: 'right', minWidth: '80px' }}>
                         <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: '900' }}>THREAT / CERTAINTY</div>
                         <div style={{ fontSize: '1.2rem', fontWeight: '900', color: threatColor }}>
-                            {data.threat} / {data.certainty}
+                            {data.threat || 0} / {data.certainty || 0}
                         </div>
                     </div>
                     {isExpanded ? <ChevronUp size={20} color="var(--text-muted)" /> : <ChevronDown size={20} color="var(--text-muted)" />}
@@ -106,8 +106,18 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
 
                     <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
                         <button className="badge-action" onClick={() => onSearch(data.name || data.ip)}>
-                            <Search size={12} /> Focus All Activity
+                            <Search size={12} /> Focus All
                         </button>
+                        {data.sensor_name && (
+                            <div className="badge-action" style={{ background: 'rgba(56, 189, 248, 0.1)', cursor: 'default' }}>
+                                <Server size={12} /> {data.sensor_name}
+                            </div>
+                        )}
+                        {data.detection_profile && (
+                            <div className="badge-action" style={{ background: 'rgba(168, 85, 247, 0.1)', cursor: 'default' }}>
+                                <Activity size={12} /> {data.detection_profile}
+                            </div>
+                        )}
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
@@ -170,7 +180,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
             )}
 
             <style jsx>{`
-                .info-stat { display: flex; alignItems: center; gap: 10px; font-size: 0.8rem; color: var(--text-secondary); background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--glass-border); }
+                .info-stat { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--text-secondary); background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--glass-border); }
                 .badge-action { background: rgba(var(--accent-primary-rgb), 0.1); border: 1px solid var(--accent-primary); color: var(--accent-primary); padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
                 .badge-action:hover { background: var(--accent-primary); color: #000; }
                 .detection-row { padding: 10px 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--glass-border); }
@@ -186,14 +196,18 @@ export default function VectraPage() {
     const [accounts, setAccounts] = useState<any[]>([]);
     const [counts, setCounts] = useState({ hosts: 0, accounts: 0, active_detections: 0 });
     const [error, setError] = useState<string | null>(null);
+    const [highRiskOnly, setHighRiskOnly] = useState(true);
 
     const loadVectraData = async (searchQuery: string = query) => {
         setLoading(true);
         setError(null);
         try {
+            const hUrl = `/api/vectra?type=hosts&query=${encodeURIComponent(searchQuery)}&high_risk_only=${highRiskOnly}`;
+            const aUrl = `/api/vectra?type=accounts&query=${encodeURIComponent(searchQuery)}&high_risk_only=${highRiskOnly}`;
+            
             const [hRes, aRes] = await Promise.all([
-                fetch(`/api/vectra?type=hosts&query=${encodeURIComponent(searchQuery)}`),
-                fetch(`/api/vectra?type=accounts&query=${encodeURIComponent(searchQuery)}`)
+                fetch(hUrl),
+                fetch(aUrl)
             ]);
             
             const hData = await hRes.json();
@@ -222,7 +236,7 @@ export default function VectraPage() {
 
     useEffect(() => {
         loadVectraData();
-    }, []);
+    }, [highRiskOnly]);
 
     const handleSearch = (v: string) => {
         setQuery(v);
@@ -253,10 +267,18 @@ export default function VectraPage() {
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>AI-driven host profiling, threat detections, and account compromises.</p>
                     </div>
                     
-                    <button onClick={() => loadVectraData()} disabled={loading} className="glass-button" style={{ padding: '12px 24px', display: 'flex', gap: '10px', alignItems: 'center' }}>
-                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                        Refresh Intelligence
-                    </button>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                        <button onClick={() => loadVectraData()} className="badge-action">
+                            <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh
+                        </button>
+                        <button 
+                            onClick={() => { setHighRiskOnly(!highRiskOnly); }} 
+                            className="badge-action"
+                            style={{ background: highRiskOnly ? 'var(--status-error)' : 'rgba(255,255,255,0.05)', color: '#fff' }}
+                        >
+                            <Shield size={14} /> {highRiskOnly ? "High Risk Only" : "All Entities"}
+                        </button>
+                    </div>
                 </div>
 
                 <div className="glass-card" style={{ padding: '12px 20px', background: 'rgba(255,255,255,0.02)' }}>

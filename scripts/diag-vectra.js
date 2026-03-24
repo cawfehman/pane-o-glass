@@ -13,6 +13,9 @@ async function test() {
     console.log('Env Keys:', Object.keys(process.env).filter(k => k.startsWith('VECTRA')));
     console.log('URL:', VECTRA_URL);
     
+    // Safety delay
+    await new Promise(r => setTimeout(r, 2000));
+
     try {
         const auth = await axios.post(`${VECTRA_URL}/oauth2/token`, 
             'grant_type=client_credentials&scope=read', 
@@ -24,32 +27,18 @@ async function test() {
         const token = auth.data.access_token;
         console.log('Auth: SUCCESS');
 
-        const versions = ['v3.4'];
-        for (const v of versions) {
-            try {
-                // Test 1: Ordering
-                const res1 = await axios.get(`${VECTRA_URL}/api/${v}/hosts?ordering=-last_detection_timestamp`, { 
-                    httpsAgent: agent, 
-                    headers: { Authorization: 'Bearer ' + token } 
-                });
-                console.log(`PROBE ordering: SUCCESS - Count: ${res1.data.count}`);
-
-                // Test 2: min_threat
-                const res2 = await axios.get(`${VECTRA_URL}/api/${v}/hosts?min_threat=0`, { 
-                    httpsAgent: agent, 
-                    headers: { Authorization: 'Bearer ' + token } 
-                });
-                console.log(`PROBE min_threat: SUCCESS - Count: ${res2.data.count}`);
-
-                // Test 3: empty search
-                const res3 = await axios.get(`${VECTRA_URL}/api/${v}/hosts?name=`, { 
-                    httpsAgent: agent, 
-                    headers: { Authorization: 'Bearer ' + token } 
-                });
-                console.log(`PROBE name=(empty): SUCCESS - Count: ${res3.data.count}`);
-            } catch (e) {
-                console.log(`PROBE FAILED - ${e.message} - ${JSON.stringify(e.response?.data || '')}`);
+        // Single request, no limit parameter, trying 'state=active' to find scored hosts
+        try {
+            const res = await axios.get(`${VECTRA_URL}/api/v3.4/hosts?state=active`, { 
+                httpsAgent: agent, 
+                headers: { Authorization: 'Bearer ' + token } 
+            });
+            console.log(`VERSION v3.4: SUCCESS - Count: ${res.data.count}`);
+            if (res.data.results && res.data.results.length > 0) {
+                console.log('FULL_HOST_JSON:', JSON.stringify(res.data.results[0], null, 2));
             }
+        } catch (e) {
+            console.log(`PROBE FAILED - ${e.message} - ${JSON.stringify(e.response?.data || '')}`);
         }
     } catch (e) {
         console.log('Auth: FAILED -', e.response?.data || e.message);

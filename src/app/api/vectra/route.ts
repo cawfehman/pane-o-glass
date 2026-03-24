@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
     const type = searchParams.get('type') || 'hosts';
     const query = searchParams.get('query') || '';
     const hostId = searchParams.get('host_id');
+    const highRiskOnly = searchParams.get('high_risk_only') === 'true';
+    const ordering = searchParams.get('ordering') || '-last_detection_timestamp';
 
     try {
         let data;
@@ -37,7 +39,11 @@ export async function GET(req: NextRequest) {
                 break;
             case 'hosts':
             default:
-                data = await getVectraHosts({ name: query });
+                data = await getVectraHosts({ 
+                    name: query, 
+                    highRiskOnly, 
+                    ordering: query ? undefined : '-threat' // Sort by threat if not searching by name
+                });
                 break;
         }
 

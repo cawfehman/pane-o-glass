@@ -54,10 +54,9 @@ async function getVectraToken() {
 export async function getVectraHosts(params: any = {}) {
     const token = await getVectraToken();
     const queryParams: any = {
-        ordering: '-last_detection_timestamp',
+        ordering: params.ordering || '-last_detection_timestamp',
     };
     
-    // Only add name if it's not empty string
     if (params.name) queryParams.name = params.name;
 
     try {
@@ -66,6 +65,15 @@ export async function getVectraHosts(params: any = {}) {
             headers: { Authorization: `Bearer ${token}` },
             params: queryParams
         });
+        
+        // Manual filter for higher fidelity if requested
+        if (params.highRiskOnly) {
+            return {
+                ...response.data,
+                results: response.data.results.filter((h: any) => h.threat > 0 || h.certainty > 0)
+            };
+        }
+
         return response.data;
     } catch (error: any) {
         console.error("Error fetching Vectra hosts:", error.response?.data || error.message);
