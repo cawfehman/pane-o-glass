@@ -70,7 +70,9 @@ export async function getVectraHosts(params: any = {}) {
         if (params.highRiskOnly) {
             return {
                 ...response.data,
-                results: response.data.results.filter((h: any) => h.threat > 0 || h.certainty > 0)
+                results: response.data.results.filter((h: any) => 
+                    (h.threat > 0 || h.t_score > 0 || h.certainty > 0 || h.c_score > 0)
+                )
             };
         }
 

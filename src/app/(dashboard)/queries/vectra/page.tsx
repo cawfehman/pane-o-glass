@@ -35,8 +35,12 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
         }
     }, [isExpanded]);
 
-    const threatColor = data.threat > 50 ? 'var(--status-error)' : data.threat > 20 ? 'var(--status-warning)' : 'var(--status-success)';
-    const isActive = (data.threat > 0 || data.certainty > 0);
+    // SCHEMA-AGNOSTIC SCORE DETECTION
+    const threat = data.threat ?? data.t_score ?? 0;
+    const certainty = data.certainty ?? data.c_score ?? 0;
+    
+    const threatColor = threat > 50 ? 'var(--status-error)' : threat > 20 ? 'var(--status-warning)' : 'var(--status-success)';
+    const isActive = (threat > 0 || certainty > 0);
 
     return (
         <div className="glass-card" style={{ 
@@ -69,7 +73,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                     <div style={{ textAlign: 'right', minWidth: '80px' }}>
                         <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: '900' }}>THREAT / CERTAINTY</div>
                         <div style={{ fontSize: '1.2rem', fontWeight: '900', color: isActive ? threatColor : 'var(--text-muted)' }}>
-                            {data.threat || 0} / {data.certainty || 0}
+                            {threat} / {certainty}
                         </div>
                     </div>
                     {isExpanded ? <ChevronUp size={20} color="var(--text-muted)" /> : <ChevronDown size={20} color="var(--text-muted)" />}
@@ -124,7 +128,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                                 <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{det.last_timestamp}</span>
                                             </div>
                                             <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', opacity: 0.8 }}>
-                                                Category: {det.category} • Severity: {det.threat}
+                                                Category: {det.category} • Severity: {det.threat || det.t_score || 0}
                                             </div>
                                         </div>
                                     ))}
@@ -198,7 +202,7 @@ export default function VectraPage() {
         } else if (isIPOrHost) {
             effectiveType = 'hosts';
         } else if (searchQuery.length > 0) {
-            effectiveType = 'all'; // Let it find both for ambiguous strings
+            effectiveType = 'all'; 
         }
         
         setSearchType(effectiveType);
@@ -207,7 +211,7 @@ export default function VectraPage() {
             const nameParam = isQuickAction ? '' : encodeURIComponent(searchQuery);
             const hrFilter = isQuickAction ? highRiskOnly : false;
 
-            // PRIORITY ORDERING: -threat ensures the first page always has the critical hits
+            // PRIORITY ORDERING CALIBRATION
             const baseParams = `query=${nameParam}&high_risk_only=${hrFilter}`;
             const hUrl = `/api/vectra?type=hosts&${baseParams}`;
             const aUrl = `/api/vectra?type=accounts&${baseParams}`;
@@ -226,7 +230,6 @@ export default function VectraPage() {
                 return;
             }
 
-            // ENFORCE STRICT TOP 10 if quick action
             let hostsFinal = hData.results || [];
             let accountsFinal = aData.results || [];
 
@@ -241,7 +244,7 @@ export default function VectraPage() {
             setCounts({
                 hosts: hData.count || (hostsFinal.length),
                 accounts: aData.count || (accountsFinal.length),
-                active_detections: hostsFinal.reduce((acc: number, h: any) => acc + (h.threat > 0 ? 1 : 0), 0)
+                active_detections: hostsFinal.reduce((acc: number, h: any) => acc + ((h.threat || h.t_score || 0) > 0 ? 1 : 0), 0)
             });
         } catch (e) {
             console.error(e);
