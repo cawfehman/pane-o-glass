@@ -199,7 +199,10 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                         {correlations.length > 0 ? (
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                                 {correlations.map((c, i) => (
-                                                    <button key={i} className="correlation-chip" onClick={() => onSearch(c.name)}>
+                                                    <button key={i} className="correlation-chip" onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onSearch(c.name);
+                                                    }}>
                                                         <Link2 size={12} /> {c.name}
                                                     </button>
                                                 ))}
