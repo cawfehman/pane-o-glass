@@ -40,7 +40,31 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
             console.log(`[FORENSIC] Telemetry for ${data.name}:`, rawDetections);
             setDetections(rawDetections);
 
-            // 3. Deep Correlation Extraction
+            // 3. Heuristic Identity Synthesis (Forensic Calculation)
+            const accCounts: Record<string, {count: number, score: number}> = {};
+            rawDetections.forEach((det: any) => {
+                const name = det.account || det.account_name || det.account_info?.name;
+                if (name && typeof name === 'string' && name.length > 2) {
+                    accCounts[name] = { 
+                        count: (accCounts[name]?.count || 0) + 1,
+                        score: Math.max(accCounts[name]?.score || 0, det.threat || det.t_score || 0)
+                    };
+                }
+            });
+
+            const sortedAccs = Object.entries(accCounts).sort((a,b) => b[1].count - a[1].count || b[1].score - a[1].score);
+            const synthesizedOwner = sortedAccs.length > 0 ? sortedAccs[0][0] : null;
+
+            // Update fullData with synthesis if null
+            if (!fullData.probable_owner && (synthesizedOwner || fullData.last_account_name)) {
+                fullData._is_ident_synthesized = true;
+                fullData.probable_owner = { 
+                    name: synthesizedOwner || fullData.last_account_name,
+                    id: null 
+                };
+            }
+
+            // 4. Deep Correlation Extraction
             const links: any[] = [];
             const seen = new Set<string>();
 
@@ -49,7 +73,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                 links.push({ name: fullData.probable_owner.name, type: 'account' });
                 seen.add(fullData.probable_owner.name);
             }
-            if (fullData.last_account_name) {
+            if (fullData.last_account_name && !seen.has(fullData.last_account_name)) {
                 links.push({ name: fullData.last_account_name, type: 'account' });
                 seen.add(fullData.last_account_name);
             }
@@ -70,13 +94,13 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                 });
 
                 // Host Candidates
-                const hosts = [
+                const hostCand = [
                     det.host, 
                     det.host_name, 
                     ...(det.dst_hosts?.map((h: any) => h.name) || []),
                     ...(det.src_hosts?.map((h: any) => h.name) || [])
                 ];
-                hosts.forEach(cand => {
+                hostCand.forEach(cand => {
                     const name = typeof cand === 'string' ? cand : cand?.name;
                     if (name && name.length > 2 && !seen.has(name) && name !== data.name) {
                         links.push({ name, type: 'host' });
@@ -86,6 +110,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
             });
 
             setCorrelations(links);
+            setDetails({...fullData}); 
         } catch (e) {
             console.error("Forensic Enrichment Failed:", e);
         } finally {
@@ -161,15 +186,24 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                     {type === 'host' ? (
                                         <>
                                             <div className="attribution-box">
-                                                <div className="attr-label">Probable Owner (Modeling)</div>
+                                                <div className="attr-label">
+                                                    {details?._is_ident_synthesized ? 'Probable Owner (Telemetry)' : 'Probable Owner (Modeling)'}
+                                                </div>
                                                 <div className="attr-value">
                                                     {details?.probable_owner ? (
-                                                        <button 
-                                                            className="pivot-link" 
-                                                            onClick={(e) => { e.stopPropagation(); onSearch(details.probable_owner.name); }}
-                                                        >
-                                                            <User size={14} /> {details.probable_owner.name}
-                                                        </button>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <button 
+                                                                className="pivot-link" 
+                                                                onClick={(e) => { e.stopPropagation(); onSearch(details.probable_owner.name); }}
+                                                            >
+                                                                <User size={14} /> {details.probable_owner.name}
+                                                            </button>
+                                                            {details._is_ident_synthesized && (
+                                                                <span style={{ fontSize: '0.6rem', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>
+                                                                    LEAD
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     ) : <span className="attr-none">Identification in progress...</span>}
                                                 </div>
                                             </div>

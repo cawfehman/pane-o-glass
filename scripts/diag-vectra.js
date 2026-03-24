@@ -27,41 +27,27 @@ async function test() {
         const token = auth.data.access_token;
         console.log('Auth: SUCCESS');
 
-        // Probe 1: Full Account Detection Inspection
+        // Probe 1: Attribution Modeling Discovery
         try {
-            // Pick a high score account
-            const aRes = await axios.get(`${VECTRA_URL}/api/v3.4/accounts?ordering=-t_score&limit=1`, { 
+            const hRes = await axios.get(`${VECTRA_URL}/api/v3.4/hosts?ordering=-t_score&limit=5`, { 
                 httpsAgent: agent, 
                 headers: { Authorization: 'Bearer ' + token } 
             });
-            if (aRes.data.results && aRes.data.results.length > 0) {
-                const acc = aRes.data.results[0];
-                console.log(`--- Deep Account Inspection: ${acc.name} (${acc.id}) ---`);
-                
-                const dRes = await axios.get(`${VECTRA_URL}/api/v3.4/detections?account_id=${acc.id}`, { 
+            console.log(`--- High Score Host Attribution Probe ---`);
+            for (const h of hRes.data.results) {
+                const details = await axios.get(`${VECTRA_URL}/api/v3.4/hosts/${h.id}`, { 
                     httpsAgent: agent, 
                     headers: { Authorization: 'Bearer ' + token } 
                 });
-                
-                console.log('Detection Count:', dRes.data.count);
-                if (dRes.data.results && dRes.data.results.length > 0) {
-                    const det = dRes.data.results[0];
-                    console.log('DETECTION_KEYS:', Object.keys(det).sort().join(', '));
-                    console.log('SAMPLE:', JSON.stringify(det, null, 2));
-                    
-                    // Probe specifically for attribution fields
-                    console.log('ATTRIBUTION_TEST:', {
-                        host: det.host,
-                        host_name: det.host_name,
-                        src_host: det.src_host,
-                        dst_hosts: det.dst_hosts,
-                        account: det.account,
-                        account_name: det.account_name
-                    });
-                }
+                const d = details.data;
+                console.log(`Host: ${d.name} (${d.id}) | Score: ${d.t_score}`);
+                console.log(`  - probable_owner:`, d.probable_owner);
+                console.log(`  - assignment:`, d.assignment);
+                console.log(`  - last_account_name:`, d.last_account_name);
+                console.log(`  - detection_profile:`, d.detection_profile);
             }
         } catch (e) {
-            console.log(`ACCOUNT PROBE FAILED - ${e.message}`);
+            console.log(`ATTRIBUTION PROBE FAILED - ${e.message}`);
         }
     } catch (e) {
         console.log('Auth: FAILED -', e.response?.data || e.message);
