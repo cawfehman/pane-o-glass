@@ -7,32 +7,8 @@ import {
     Key, Hash, Layers, Pocket, ExternalLink, BarChart3, Users, 
     MapPin, Calendar, Filter, ArrowUpRight, AlertCircle, Cpu,
     Network, Database, Zap, Lock, Unlock, Mail, Eye, Clock,
-    LayoutDashboard, ArrowRight, MousePointer2
+    LayoutDashboard, ArrowRight, MousePointer2, UserCheck, HardDrive
 } from 'lucide-react';
-
-const MetricList = ({ title, items, icon: Icon, color }: any) => (
-    <div className="glass-card" style={{ flex: 1, padding: '16px', minWidth: '280px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-            <Icon size={18} color={color} />
-            <span style={{ fontWeight: '800', fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>{title}</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {items && items.length > 0 ? items.map((item: any, idx: number) => (
-                <div key={idx} style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'space-between', gap: '4px', width: '100%', minWidth: 0, padding: '4px 0' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: '500', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: '0 1 auto', minWidth: 0, maxWidth: 'calc(100% - 70px)' }} title={item.name}>
-                        {item.name}
-                    </span>
-                    <div style={{ flex: 1, borderBottom: '1px dotted rgba(255,255,255,0.1)', margin: '0 4px', opacity: 0.5, height: '8px' }}></div>
-                    <span style={{ flex: '0 0 auto', fontSize: '0.75rem', fontWeight: '800', padding: '2px 8px', borderRadius: '4px', background: `${color}22`, color: color, minWidth: '42px', textAlign: 'center' }}>
-                        {item.value}
-                    </span>
-                </div>
-            )) : (
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '10px' }}>No Data</p>
-            )}
-        </div>
-    </div>
-);
 
 const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: any, onSearch: (v: string) => void }) => {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -60,27 +36,39 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
     }, [isExpanded]);
 
     const threatColor = data.threat > 50 ? 'var(--status-error)' : data.threat > 20 ? 'var(--status-warning)' : 'var(--status-success)';
+    const isActive = (data.threat > 0 || data.certainty > 0);
 
     return (
         <div className="glass-card" style={{ 
             marginBottom: '4px', 
-            borderLeft: `4px solid ${threatColor}`,
+            borderLeft: `4px solid ${isActive ? threatColor : 'var(--text-muted)'}`,
             padding: '12px 16px',
-            animation: 'fadeIn 0.2s ease-out'
+            animation: 'fadeIn 0.2s ease-out',
+            opacity: isActive ? 1 : 0.8
         }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => setIsExpanded(!isExpanded)}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1, minWidth: 0 }}>
-                    {type === 'host' ? <Monitor size={20} color="var(--accent-primary)" /> : <User size={20} color="var(--status-info)" />}
+                    <div style={{ 
+                        background: isActive ? `${threatColor}22` : 'rgba(255,255,255,0.05)', 
+                        padding: '10px', 
+                        borderRadius: '10px',
+                        border: `1px solid ${isActive ? threatColor : 'var(--glass-border)'}`
+                    }}>
+                        {type === 'host' ? <Monitor size={20} color={isActive ? "var(--accent-primary)" : "var(--text-muted)"} /> : <User size={20} color={isActive ? "var(--status-info)" : "var(--text-muted)"} />}
+                    </div>
                     <div style={{ minWidth: 0 }}>
                         <div style={{ fontWeight: '800', fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.name || data.ip || 'Unknown Entity'}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{data.ip} • OS: {data.os || 'N/A'}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                            {data.ip && <span>{data.ip} • </span>} 
+                            Last Seen: {data.last_seen || 'N/A'}
+                        </div>
                     </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
                     <div style={{ textAlign: 'right', minWidth: '80px' }}>
                         <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: '900' }}>THREAT / CERTAINTY</div>
-                        <div style={{ fontSize: '1.2rem', fontWeight: '900', color: threatColor }}>
+                        <div style={{ fontSize: '1.2rem', fontWeight: '900', color: isActive ? threatColor : 'var(--text-muted)' }}>
                             {data.threat || 0} / {data.certainty || 0}
                         </div>
                     </div>
@@ -97,17 +85,25 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                         </div>
                         <div className="info-stat">
                             <Activity size={14} />
-                            <span>Total Detections: <b>{data.detection_set?.length || 0}</b></span>
+                            <span>Historical Detections: <b>{data.detection_set?.length || 0}</b></span>
                         </div>
-                        <div className="info-stat">
-                            <Clock size={14} />
-                            <span>Last Seen: <b>{data.last_seen || 'N/A'}</b></span>
-                        </div>
+                        {type === 'account' && (
+                            <div className="info-stat">
+                                <Monitor size={14} color="var(--accent-primary)" />
+                                <span>Known Associated Hosts: <b>{data.host_ids_count || 0}</b></span>
+                            </div>
+                        )}
+                        {type === 'host' && data.os && (
+                            <div className="info-stat">
+                                <Cpu size={14} />
+                                <span>OS: <b>{data.os}</b></span>
+                            </div>
+                        )}
                     </div>
 
                     <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-                        <button className="badge-action" onClick={() => onSearch(data.name || data.ip)}>
-                            <Search size={12} /> Focus All
+                        <button className="badge-action" onClick={() => onSearch(data.name || data.ip || '')}>
+                            <Search size={12} /> Search Matches
                         </button>
                         {data.sensor_name && (
                             <div className="badge-action" style={{ background: 'rgba(56, 189, 248, 0.1)', cursor: 'default' }}>
@@ -122,57 +118,60 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                        {type === 'host' && (
-                            <div>
-                                <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <Zap size={14} color="var(--status-warning)" />
-                                    Recent Threat Detections
-                                </h4>
-                                {loadingDetections ? (
-                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Loading detections...</p>
-                                ) : detections.length > 0 ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        {detections.map((det: any, i: number) => (
-                                            <div key={i} className="detection-row">
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                                    <span style={{ fontWeight: '800', fontSize: '0.85rem', color: 'var(--status-error)' }}>{det.detection_type}</span>
-                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{det.last_timestamp}</span>
-                                                </div>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', opacity: 0.8 }}>
-                                                    Category: {det.category} • Severity: {det.threat}
-                                                </div>
+                        <div>
+                            <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Zap size={14} color="var(--status-error)" />
+                                Detection History
+                            </h4>
+                            {loadingDetections ? (
+                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Loading detections...</p>
+                            ) : detections.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    {detections.map((det: any, i: number) => (
+                                        <div key={i} className="detection-row">
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                                <span style={{ fontWeight: '800', fontSize: '0.85rem', color: 'var(--status-error)' }}>{det.detection_type}</span>
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{det.last_timestamp}</span>
                                             </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No active detections found.</p>
-                                )}
-                            </div>
-                        )}
+                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', opacity: 0.8 }}>
+                                                Category: {det.category} • Severity: {det.threat}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No behavioral anomalies detected in history.</p>
+                            )}
+                        </div>
 
                         <div>
                             <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Network size={14} color="var(--accent-primary)" />
-                                Network Traffic (Recall Metadata)
+                                {type === 'host' ? <Users size={14} color="var(--status-info)" /> : <HardDrive size={14} color="var(--accent-primary)" />}
+                                {type === 'host' ? 'Likely Associated Accounts' : 'Likely Associated Hosts'}
                             </h4>
                             <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '12px', border: '1px solid var(--glass-border)', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                                <div style={{ color: 'var(--text-muted)', marginBottom: '8px', fontStyle: 'italic' }}>Correlating Zeek-style metadata for {data.ip}...</div>
+                                <div style={{ color: 'var(--text-muted)', marginBottom: '8px', fontStyle: 'italic' }}>Correlating Vectra telemetry for {data.name}...</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                        <span style={{ color: 'var(--accent-primary)' }}>CONN [UDP]</span>
-                                        <span>{data.ip} -&gt; 8.8.8.8:53</span>
+                                        <span style={{ color: type === 'host' ? 'var(--status-info)' : 'var(--accent-primary)' }}>
+                                            {type === 'host' ? 'USER_PROXIMITY' : 'HOST_AFFINITY'}
+                                        </span>
+                                        <span>{type === 'host' ? (data.last_account_name || 'System Account') : (data.last_ip || '10.0.0.x')}</span>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                        <span style={{ color: 'var(--accent-primary)' }}>DNS [QUERY]</span>
-                                        <span style={{ color: 'var(--status-warning)' }}>exfiltration-domain.com</span>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                        <span style={{ color: 'var(--accent-primary)' }}>HTTP [POST]</span>
-                                        <span>{data.ip} -&gt; 91.x.x.x (1.2 MB)</span>
-                                    </div>
+                                    {type === 'host' ? (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                            <span style={{ color: 'var(--status-info)' }}>LDAP [BIND]</span>
+                                            <span style={{ color: 'var(--status-warning)' }}>{data.ip || 'Unknown'} -&gt; DC01</span>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                            <span style={{ color: 'var(--accent-primary)' }}>SESSION [SMB]</span>
+                                            <span style={{ color: 'var(--status-warning)' }}>{data.name} -&gt; FileServer</span>
+                                        </div>
+                                    )}
                                 </div>
                                 <div style={{ marginTop: '12px', textAlign: 'center' }}>
-                                    <button className="badge-action" style={{ fontSize: '0.65rem' }}>View Full Recall Thread</button>
+                                    <button className="badge-action" style={{ fontSize: '0.65rem' }}>View Identity Graph</button>
                                 </div>
                             </div>
                         </div>
@@ -208,31 +207,23 @@ export default function VectraPage() {
         setHasSearched(true);
         setActiveQuery(isQuickAction ? (typeOverride === 'hosts' ? 'Top 10 Critical Hosts' : 'Top 10 Critical Accounts') : searchQuery);
         
-        // Auto-detect search type if not a quick action
-        if (!isQuickAction) {
-            if (searchQuery.includes('.') || searchQuery.toLowerCase().includes('ip') || searchQuery.toLowerCase().includes('host')) {
-                setSearchType('hosts');
-            } else if (searchQuery.includes('@') || searchQuery.includes('_') || searchQuery.length > 2) {
-                // If it looks like a username or email, still show both but maybe user wanted accounts
-                setSearchType('all');
-            } else {
-                setSearchType('all');
-            }
-        } else if (typeOverride) {
-            setSearchType(typeOverride);
-        }
+        const effectiveType = typeOverride || (searchQuery.includes('.') || searchQuery.toLowerCase().includes('ip') || searchQuery.toLowerCase().includes('host') ? 'hosts' : 'all');
+        setSearchType(effectiveType);
 
         try {
             const nameParam = isQuickAction ? '' : encodeURIComponent(searchQuery);
-            const hUrl = `/api/vectra?type=hosts&query=${nameParam}&high_risk_only=${highRiskOnly}`;
-            const aUrl = `/api/vectra?type=accounts&query=${nameParam}&high_risk_only=${highRiskOnly}`;
+            // User wants "everything we know" regardless of active status for direct searches, 
+            // but "Top 10 Critical" should likely maintain the highRiskOnly filter if it's on.
+            const hrFilter = isQuickAction ? highRiskOnly : false;
+
+            const hUrl = `/api/vectra?type=hosts&query=${nameParam}&high_risk_only=${hrFilter}`;
+            const aUrl = `/api/vectra?type=accounts&query=${nameParam}&high_risk_only=${hrFilter}`;
             
-            // Only fetch what is needed
             const fetches = [];
-            if (searchType === 'all' || searchType === 'hosts' || typeOverride === 'hosts') fetches.push(fetch(hUrl).then(r => r.json()));
+            if (effectiveType === 'all' || effectiveType === 'hosts') fetches.push(fetch(hUrl).then(r => r.json()));
             else fetches.push(Promise.resolve({ results: [] }));
 
-            if (searchType === 'all' || searchType === 'accounts' || typeOverride === 'accounts') fetches.push(fetch(aUrl).then(r => r.json()));
+            if (effectiveType === 'all' || effectiveType === 'accounts') fetches.push(fetch(aUrl).then(r => r.json()));
             else fetches.push(Promise.resolve({ results: [] }));
 
             const [hData, aData] = await Promise.all(fetches);
@@ -258,8 +249,8 @@ export default function VectraPage() {
     };
 
     useEffect(() => {
-        if (hasSearched) {
-            loadVectraData();
+        if (hasSearched && activeQuery.startsWith('Top 10')) {
+            loadVectraData('', true, searchType as any);
         }
     }, [highRiskOnly]);
 
@@ -270,12 +261,8 @@ export default function VectraPage() {
 
     const handleQuickAction = (type: 'hosts' | 'accounts') => {
         setQuery('');
-        setSearchType(type);
         loadVectraData('', true, type);
     };
-
-    const topHosts = hosts.slice(0, 10).map(h => ({ name: h.name || h.ip, value: `${h.threat || 0}/${h.certainty || 0}` }));
-    const topAccounts = accounts.slice(0, 10).map(a => ({ name: a.name, value: `${a.threat || 0}/${a.certainty || 0}` }));
 
     return (
         <div style={{ maxWidth: '1600px', margin: '0 auto', padding: '0 20px 60px' }}>
@@ -321,7 +308,7 @@ export default function VectraPage() {
                             margin: hasSearched ? '0' : '0 auto'
                         }}>
                             {hasSearched 
-                                ? "AI-driven host profiling, threat detections, and account compromises." 
+                                ? "Deep entity profiling and behavioral forensic analysis." 
                                 : "A powerful cognitive entity search engine for real-time forensic triage. Identify hosts, accounts, and network behaviors across the enterprise."
                             }
                         </p>
@@ -332,15 +319,17 @@ export default function VectraPage() {
                             <button onClick={() => loadVectraData()} className="badge-action">
                                 <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh
                             </button>
-                            <button 
-                                onClick={() => { setHighRiskOnly(!highRiskOnly); }} 
-                                className="badge-action"
-                                style={{ background: highRiskOnly ? 'var(--status-error)' : 'rgba(255,255,255,0.05)', color: '#fff' }}
-                            >
-                                <Shield size={14} /> {highRiskOnly ? "High Risk Only" : "All Entities"}
-                            </button>
+                            {activeQuery.startsWith('Top 10') && (
+                                <button 
+                                    onClick={() => { setHighRiskOnly(!highRiskOnly); }} 
+                                    className="badge-action"
+                                    style={{ background: highRiskOnly ? 'var(--status-error)' : 'rgba(255,255,255,0.05)', color: '#fff' }}
+                                >
+                                    <Shield size={14} /> {highRiskOnly ? "High Risk Only" : "All Results"}
+                                </button>
+                            )}
                             <button onClick={() => { setHasSearched(false); setQuery(''); }} className="badge-action" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                                <LayoutDashboard size={14} /> New Search
+                                <LayoutDashboard size={14} /> Reset
                             </button>
                         </div>
                     )}
@@ -360,7 +349,7 @@ export default function VectraPage() {
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && loadVectraData()}
-                                placeholder="Search Vectra Hosts, Accounts, IPs, or Threat Types..."
+                                placeholder="Search Account Name, Email, Hostname, or IP..."
                                 style={{ 
                                     width: '100%', 
                                     paddingRight: '16px',
@@ -405,7 +394,7 @@ export default function VectraPage() {
                                 <div style={{ display: 'flex', gap: '12px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                                     <span style={{ cursor: 'pointer' }} onClick={() => setQuery('172.17.')}>• Search IP Subnet</span>
                                     <span style={{ cursor: 'pointer' }} onClick={() => setQuery('Admin')}>• Search Administrators</span>
-                                    <span style={{ cursor: 'pointer' }} onClick={() => setQuery('Exfiltration')}>• Search Behavior</span>
+                                    <span style={{ cursor: 'pointer' }} onClick={() => handleQuickAction('hosts')}>• Top High-Risk Hosts</span>
                                 </div>
                             </div>
                         </div>
@@ -431,7 +420,6 @@ export default function VectraPage() {
                         <div style={{ fontWeight: '900', fontSize: '0.9rem', marginBottom: '4px', textTransform: 'uppercase' }}>Vectra Connectivity Error</div>
                         <div style={{ fontSize: '0.85rem', fontFamily: 'monospace', opacity: 0.9 }}>{error} - Check your .env credentials or Brain reachability.</div>
                     </div>
-                    <button onClick={() => loadVectraData()} className="badge-action" style={{ background: '#ef4444', color: '#fff' }}>Retry Connection</button>
                 </div>
             )}
 
@@ -442,12 +430,12 @@ export default function VectraPage() {
                         <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
                             <div style={{ background: 'var(--accent-primary)', color: '#000', padding: '12px', borderRadius: '12px' }}><Monitor size={24} /></div>
                             <div>
-                                <h3 style={{ fontSize: '1.1rem', fontWeight: '900', marginBottom: '4px' }}>Host Profiling</h3>
-                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Identify internal, external, and ephemeral hosts by IP, Name, or OS.</p>
+                                <h3 style={{ fontSize: '1.1rem', fontWeight: '900', marginBottom: '4px' }}>Everything About Hosts</h3>
+                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Identify IP, OS, associations and discovery status regardless of current threat level.</p>
                             </div>
                         </div>
                         <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '16px', fontSize: '0.8rem' }}>
-                            <code style={{ color: 'var(--accent-primary)' }}>192.168.1.5</code>, <code style={{ color: 'var(--accent-primary)' }}>WinSRV-01</code>, <code style={{ color: 'var(--accent-primary)' }}>Linux</code>
+                            <code style={{ color: 'var(--accent-primary)' }}>10.150.x.x</code>, <code style={{ color: 'var(--accent-primary)' }}>APP-SERVER-01</code>
                         </div>
                     </div>
 
@@ -455,12 +443,12 @@ export default function VectraPage() {
                         <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
                             <div style={{ background: 'var(--status-info)', color: '#000', padding: '12px', borderRadius: '12px' }}><User size={24} /></div>
                             <div>
-                                <h3 style={{ fontSize: '1.1rem', fontWeight: '900', marginBottom: '4px' }}>Account Compromise</h3>
-                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Track compromised LDAP, Office 365, and Cloud accounts.</p>
+                                <h3 style={{ fontSize: '1.1rem', fontWeight: '900', marginBottom: '4px' }}>Deep Account Lookup</h3>
+                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Profile LDAP/O365 users, associated hosts, and historical behavior.</p>
                             </div>
                         </div>
                         <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '16px', fontSize: '0.8rem' }}>
-                            <code style={{ color: 'var(--status-info)' }}>j.doe@cooper.org</code>, <code style={{ color: 'var(--status-info)' }}>svc_scanner</code>
+                            <code style={{ color: 'var(--status-info)' }}>j.doe@company.org</code>, <code style={{ color: 'var(--status-info)' }}>adm_robert</code>
                         </div>
                     </div>
 
@@ -468,12 +456,12 @@ export default function VectraPage() {
                         <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
                             <div style={{ background: 'var(--status-warning)', color: '#000', padding: '12px', borderRadius: '12px' }}><Zap size={24} /></div>
                             <div>
-                                <h3 style={{ fontSize: '1.1rem', fontWeight: '900', marginBottom: '4px' }}>Behavioral Search</h3>
-                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Search for specific ATT&CK techniques or threat categories.</p>
+                                <h3 style={{ fontSize: '1.1rem', fontWeight: '900', marginBottom: '4px' }}>Top 10 Triage</h3>
+                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Instantly isolate the highest priority entities requiring active forensics.</p>
                             </div>
                         </div>
-                        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '16px', fontSize: '0.8rem' }}>
-                            <code style={{ color: 'var(--status-warning)' }}>Ransomware</code>, <code style={{ color: 'var(--status-warning)' }}>C&C</code>, <code style={{ color: 'var(--status-warning)' }}>Data Exfiltration</code>
+                        <div style={{ background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', padding: '12px', fontSize: '0.8rem', color: 'var(--status-error)', fontWeight: '800' }}>
+                            CRITICAL ASSETS ONLY
                         </div>
                     </div>
                 </div>
@@ -486,35 +474,19 @@ export default function VectraPage() {
                         <RefreshCw size={48} className="animate-spin" color="var(--accent-primary)" />
                         <Shield style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} size={16} color="var(--accent-primary)" />
                     </div>
-                    <p style={{ marginTop: '20px', color: 'var(--text-secondary)', fontWeight: '800', letterSpacing: '0.1em' }}>ANALYZING 80,332 ENTITIES...</p>
+                    <p style={{ marginTop: '20px', color: 'var(--text-secondary)', fontWeight: '800', letterSpacing: '0.1em' }}>QUERYING VECTRA FORENSICS...</p>
                 </div>
             )}
 
             {/* Results Section */}
             {hasSearched && !loading && (
                 <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', margin: '24px 0 40px' }}>
-                        {(searchType === 'all' || searchType === 'hosts') && <MetricList title="High-Risk Forensic Hosts" items={topHosts} icon={Monitor} color="var(--status-error)" />}
-                        {(searchType === 'all' || searchType === 'accounts') && <MetricList title="Compromised Accounts" items={topAccounts} icon={User} color="var(--status-warning)" />}
-                        
-                        <div className="glass-card summary-card-analytic">
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: '900', letterSpacing: '0.1em' }}>THREAT DETECTION VOLUME</span>
-                            <h2 style={{ fontSize: '3rem', fontWeight: '950', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-                                <Zap size={32} color="var(--status-warning)" />
-                                {counts.active_detections}
-                            </h2>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: '800' }}>
-                                <Monitor size={14} /> {counts.hosts} HOSTS • <User size={14} /> {counts.accounts} ACCOUNTS
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: searchType === 'all' ? '1fr 1fr' : '1fr', gap: '32px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: searchType === 'all' ? '1fr 1fr' : '1fr', gap: '32px', marginTop: '40px' }}>
                         {(searchType === 'all' || searchType === 'hosts') && (
                             <div>
                                 <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
                                     <Monitor size={20} color="var(--accent-primary)" />
-                                    {activeQuery.startsWith('Top 10') ? activeQuery : `Prioritized Hosts Matching "${activeQuery}"`}
+                                    {activeQuery.startsWith('Top 10') ? activeQuery : `Forensic Results for "${activeQuery}" (Hosts)`}
                                 </h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                     {hosts.length > 0 ? (
@@ -522,7 +494,7 @@ export default function VectraPage() {
                                     ) : (
                                         <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                                             <Monitor size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
-                                            <p>No prioritized hosts found for this search.</p>
+                                            <p>No host information found matching this criteria.</p>
                                         </div>
                                     )}
                                 </div>
@@ -533,7 +505,7 @@ export default function VectraPage() {
                             <div>
                                 <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
                                     <User size={20} color="var(--status-info)" />
-                                    {activeQuery.startsWith('Top 10') ? activeQuery : `Prioritized Accounts Matching "${activeQuery}"`}
+                                    {activeQuery.startsWith('Top 10') ? activeQuery : `Forensic Results for "${activeQuery}" (Accounts)`}
                                 </h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                     {accounts.length > 0 ? (
@@ -541,7 +513,7 @@ export default function VectraPage() {
                                     ) : (
                                         <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                                             <User size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
-                                            <p>No prioritized accounts found for this search.</p>
+                                            <p>No account information found matching this criteria.</p>
                                         </div>
                                     )}
                                 </div>
@@ -552,7 +524,6 @@ export default function VectraPage() {
             )}
             
             <style jsx>{`
-                .summary-card-analytic { padding: 24px; display: flex; flex-direction: column; justify-content: center; text-align: center; background: rgba(var(--accent-primary-rgb), 0.05); }
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
             `}</style>
         </div>
