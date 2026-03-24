@@ -105,16 +105,6 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                         <button className="badge-action" onClick={() => onSearch(data.name || data.ip || '')}>
                             <Search size={12} /> Search Matches
                         </button>
-                        {data.sensor_name && (
-                            <div className="badge-action" style={{ background: 'rgba(56, 189, 248, 0.1)', cursor: 'default' }}>
-                                <Server size={12} /> {data.sensor_name}
-                            </div>
-                        )}
-                        {data.detection_profile && (
-                            <div className="badge-action" style={{ background: 'rgba(168, 85, 247, 0.1)', cursor: 'default' }}>
-                                <Activity size={12} /> {data.detection_profile}
-                            </div>
-                        )}
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
@@ -150,7 +140,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                 {type === 'host' ? 'Likely Associated Accounts' : 'Likely Associated Hosts'}
                             </h4>
                             <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '12px', border: '1px solid var(--glass-border)', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                                <div style={{ color: 'var(--text-muted)', marginBottom: '8px', fontStyle: 'italic' }}>Correlating Vectra telemetry for {data.name}...</div>
+                                <div style={{ color: 'var(--text-muted)', marginBottom: '8px', fontStyle: 'italic' }}>Correlating Vectra telemetry for {data.name || 'Entity'}...</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                                         <span style={{ color: type === 'host' ? 'var(--status-info)' : 'var(--accent-primary)' }}>
@@ -158,20 +148,9 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                         </span>
                                         <span>{type === 'host' ? (data.last_account_name || 'System Account') : (data.last_ip || '10.0.0.x')}</span>
                                     </div>
-                                    {type === 'host' ? (
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                            <span style={{ color: 'var(--status-info)' }}>LDAP [BIND]</span>
-                                            <span style={{ color: 'var(--status-warning)' }}>{data.ip || 'Unknown'} -&gt; DC01</span>
-                                        </div>
-                                    ) : (
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                            <span style={{ color: 'var(--accent-primary)' }}>SESSION [SMB]</span>
-                                            <span style={{ color: 'var(--status-warning)' }}>{data.name} -&gt; FileServer</span>
-                                        </div>
-                                    )}
-                                </div>
-                                <div style={{ marginTop: '12px', textAlign: 'center' }}>
-                                    <button className="badge-action" style={{ fontSize: '0.65rem' }}>View Identity Graph</button>
+                                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', paddingTop: '4px' }}>
+                                        {data.host_ids_count ? `${data.host_ids_count} linked entities found.` : 'Precision correlation in progress...'}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -207,13 +186,24 @@ export default function VectraPage() {
         setHasSearched(true);
         setActiveQuery(isQuickAction ? (typeOverride === 'hosts' ? 'Top 10 Critical Hosts' : 'Top 10 Critical Accounts') : searchQuery);
         
-        const effectiveType = typeOverride || (searchQuery.includes('.') || searchQuery.toLowerCase().includes('ip') || searchQuery.toLowerCase().includes('host') ? 'hosts' : 'all');
+        let effectiveType: 'all' | 'hosts' | 'accounts' = 'all';
+        if (typeOverride) {
+            effectiveType = typeOverride;
+        } else if (searchQuery.includes('@')) {
+            // It's an email - definitely an account
+            effectiveType = 'accounts';
+        } else if (searchQuery.includes('.') && !searchQuery.includes('@')) {
+            // It has a dot but no @ - likely an IP or Hostname
+            effectiveType = 'hosts';
+        } else if (searchQuery.length > 0) {
+            // If it's a generic word, we let it be 'all' or default to accounts if it's name-like
+            effectiveType = (searchQuery.toLowerCase().includes('host') || searchQuery.toLowerCase().includes('server')) ? 'hosts' : 'all';
+        }
+        
         setSearchType(effectiveType);
 
         try {
             const nameParam = isQuickAction ? '' : encodeURIComponent(searchQuery);
-            // User wants "everything we know" regardless of active status for direct searches, 
-            // but "Top 10 Critical" should likely maintain the highRiskOnly filter if it's on.
             const hrFilter = isQuickAction ? highRiskOnly : false;
 
             const hUrl = `/api/vectra?type=hosts&query=${nameParam}&high_risk_only=${hrFilter}`;
@@ -233,13 +223,22 @@ export default function VectraPage() {
                 return;
             }
 
-            setHosts(hData.results || []);
-            setAccounts(aData.results || []);
+            // ENFORCE STRICT TOP 10 if quick action
+            let hostsFinal = hData.results || [];
+            let accountsFinal = aData.results || [];
+
+            if (isQuickAction) {
+                hostsFinal = hostsFinal.slice(0, 10);
+                accountsFinal = accountsFinal.slice(0, 10);
+            }
+
+            setHosts(hostsFinal);
+            setAccounts(accountsFinal);
             
             setCounts({
-                hosts: hData.count || (hData.results?.length || 0),
-                accounts: aData.count || (aData.results?.length || 0),
-                active_detections: hData.results?.reduce((acc: number, h: any) => acc + (h.detection_set?.length || 0), 0) || 0
+                hosts: hData.count || (hostsFinal.length),
+                accounts: aData.count || (accountsFinal.length),
+                active_detections: hostsFinal.reduce((acc: number, h: any) => acc + (h.detection_set?.length || 0), 0) || 0
             });
         } catch (e) {
             console.error(e);
@@ -389,14 +388,6 @@ export default function VectraPage() {
                                     </button>
                                 </div>
                             </div>
-                            <div style={{ textAlign: 'left', flex: '1 1 200px' }}>
-                                <div style={{ fontSize: '0.7rem', fontWeight: '900', color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase' }}>Search Guides</div>
-                                <div style={{ display: 'flex', gap: '12px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                                    <span style={{ cursor: 'pointer' }} onClick={() => setQuery('172.17.')}>• Search IP Subnet</span>
-                                    <span style={{ cursor: 'pointer' }} onClick={() => setQuery('Admin')}>• Search Administrators</span>
-                                    <span style={{ cursor: 'pointer' }} onClick={() => handleQuickAction('hosts')}>• Top High-Risk Hosts</span>
-                                </div>
-                            </div>
                         </div>
                     )}
                 </div>
@@ -449,19 +440,6 @@ export default function VectraPage() {
                         </div>
                         <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '16px', fontSize: '0.8rem' }}>
                             <code style={{ color: 'var(--status-info)' }}>j.doe@company.org</code>, <code style={{ color: 'var(--status-info)' }}>adm_robert</code>
-                        </div>
-                    </div>
-
-                    <div className="glass-card" style={{ padding: '24px', textAlign: 'left' }}>
-                        <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
-                            <div style={{ background: 'var(--status-warning)', color: '#000', padding: '12px', borderRadius: '12px' }}><Zap size={24} /></div>
-                            <div>
-                                <h3 style={{ fontSize: '1.1rem', fontWeight: '900', marginBottom: '4px' }}>Top 10 Triage</h3>
-                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Instantly isolate the highest priority entities requiring active forensics.</p>
-                            </div>
-                        </div>
-                        <div style={{ background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', padding: '12px', fontSize: '0.8rem', color: 'var(--status-error)', fontWeight: '800' }}>
-                            CRITICAL ASSETS ONLY
                         </div>
                     </div>
                 </div>
