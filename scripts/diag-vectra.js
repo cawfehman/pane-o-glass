@@ -27,44 +27,27 @@ async function test() {
         const token = auth.data.access_token;
         console.log('Auth: SUCCESS');
 
-        // Probe 1: Fetch a specific detection from EFT01's set
-        // EFT01 (ID: 2565426) has detection ID 434676
+        // Target: EFT01 (Hostname)
         try {
-            const res = await axios.get(`${VECTRA_URL}/api/v3.4/detections/434676`, { 
+            console.log('Targeting Hostname: EFT01');
+            const res = await axios.get(`${VECTRA_URL}/api/v3.4/detections?name=EFT01&limit=5`, { 
                 httpsAgent: agent, 
                 headers: { Authorization: 'Bearer ' + token } 
             });
-            console.log('--- Detection 434676 Payload ---');
-            console.log(JSON.stringify({
-                id: res.data.id,
-                type: res.data.detection_type,
-                host: res.data.host,
-                src_ip: res.data.src_ip,
-                account: res.data.account,
-                account_id: res.data.account_id,
-                tags: res.data.tags
-            }, null, 2));
-        } catch (e) {
-            console.log(`DETECTION PROBE FAILED - ${e.message}`);
-        }
-
-        // Probe 2: Fetch a high-threat account
-        try {
-            const res = await axios.get(`${VECTRA_URL}/api/v3.4/accounts?ordering=-t_score`, { 
-                httpsAgent: agent, 
-                headers: { Authorization: 'Bearer ' + token } 
-            });
+            console.log('--- Detection Pivot via Name ---');
+            console.log(`DETECTIONS: SUCCESS - Count: ${res.data.count}`);
             if (res.data.results && res.data.results.length > 0) {
-                const acc = res.data.results[0];
-                const fullAcc = await axios.get(`${VECTRA_URL}/api/v3.4/accounts/${acc.id}`, { 
-                    httpsAgent: agent, 
-                    headers: { Authorization: 'Bearer ' + token } 
+                const d = res.data.results[0];
+                console.log('DETECTION_SAMPLE:', {
+                    id: d.id,
+                    type: d.detection_type,
+                    host: d.host,
+                    account: d.account,
+                    account_id: d.account_id
                 });
-                console.log('\n--- High-Threat Account Payload ---');
-                console.log(JSON.stringify(fullAcc.data, null, 2));
             }
         } catch (e) {
-            console.log(`ACCOUNT PROBE FAILED - ${e.message}`);
+            console.log(`DETECTION NAME PROBE FAILED - ${e.message} - ${JSON.stringify(e.response?.data || '')}`);
         }
     } catch (e) {
         console.log('Auth: FAILED -', e.response?.data || e.message);

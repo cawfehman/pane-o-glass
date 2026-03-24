@@ -32,30 +32,44 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
             const links: {name: string, type: string, id?: string}[] = [];
             const seen = new Set<string>();
 
-            if (type === 'host' && fullData.detection_set) {
-                fullData.detection_set.forEach((det: any) => {
-                    if (det.account && !seen.has(det.account)) {
-                        links.push({ name: det.account, type: 'account' });
-                        seen.add(det.account);
-                    }
-                    if (det.grouped_details) {
-                        det.grouped_details.forEach((g: any) => {
-                            if (g.accounts) g.accounts.forEach((acc: any) => {
-                                if (acc.name && !seen.has(acc.name)) {
-                                    links.push({ name: acc.name, type: 'account', id: acc.id });
-                                    seen.add(acc.name);
-                                }
-                            });
-                        });
-                    }
-                });
-            } else if (type === 'account') {
-                if (fullData.probable_home?.name) {
+            // 1. Direct Schema Associations (Fastest/Strongest)
+            if (type === 'host') {
+                if (fullData.probable_owner && !seen.has(fullData.probable_owner.name)) {
+                    links.push({ name: fullData.probable_owner.name, type: 'account', id: fullData.probable_owner.id });
+                    seen.add(fullData.probable_owner.name);
+                }
+                if (fullData.last_account_name && !seen.has(fullData.last_account_name)) {
+                    links.push({ name: fullData.last_account_name, type: 'account' });
+                    seen.add(fullData.last_account_name);
+                }
+            } else {
+                if (fullData.probable_home?.name && !seen.has(fullData.probable_home.name)) {
                     links.push({ name: fullData.probable_home.name, type: 'host', id: fullData.probable_home.id });
                     seen.add(fullData.probable_home.name);
                 }
-                if (fullData.detection_set) {
-                    fullData.detection_set.forEach((det: any) => {
+                if (fullData.associated_accounts) {
+                    fullData.associated_accounts.forEach((acc: any) => {
+                        if (acc.name && !seen.has(acc.name)) {
+                            links.push({ name: acc.name, type: 'account', id: acc.id });
+                            seen.add(acc.name);
+                        }
+                    });
+                }
+            }
+
+            // 2. Telemetry-based Associations (Detection Deep Scan)
+            if (fullData.detection_set) {
+                fullData.detection_set.forEach((det: any) => {
+                    // Skip if it's just a URI string (standard for v3.4 hosts)
+                    if (typeof det === 'string') return;
+
+                    if (type === 'host') {
+                        if (det.account && !seen.has(det.account)) {
+                            links.push({ name: det.account, type: 'account' });
+                            seen.add(det.account);
+                        }
+                    } else {
+                        // For Account, check detection hosts
                         if (det.grouped_details) {
                             det.grouped_details.forEach((g: any) => {
                                 if (g.hosts) g.hosts.forEach((h: any) => {
@@ -66,8 +80,8 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                 });
                             });
                         }
-                    });
-                }
+                    }
+                });
             }
             setCorrelations(links);
         } catch (e) {
