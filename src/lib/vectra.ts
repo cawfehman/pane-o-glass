@@ -26,7 +26,9 @@ async function getVectraToken() {
         const response = await axios.post(`${VECTRA_URL}/oauth2/token`, 
             new URLSearchParams({
                 grant_type: 'client_credentials',
-                scope: 'read'
+                scope: 'read',
+                client_id: VECTRA_CLIENT_ID,
+                client_secret: VECTRA_CLIENT_SECRET
             }), 
             {
                 httpsAgent,
