@@ -6,7 +6,8 @@ import {
     Globe, Server, ChevronDown, ChevronUp, Terminal, ShieldCheck, 
     Key, Hash, Layers, Pocket, ExternalLink, BarChart3, Users, 
     MapPin, Calendar, Filter, ArrowUpRight, AlertCircle, Cpu,
-    Network, Database, Zap, Lock, Unlock, Mail, Eye, Clock
+    Network, Database, Zap, Lock, Unlock, Mail, Eye, Clock,
+    LayoutDashboard, ArrowRight, MousePointer2
 } from 'lucide-react';
 
 const MetricList = ({ title, items, icon: Icon, color }: any) => (
@@ -192,18 +193,22 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
 export default function VectraPage() {
     const [query, setQuery] = useState('');
     const [loading, setLoading] = useState(false);
+    const [hasSearched, setHasSearched] = useState(false);
     const [hosts, setHosts] = useState<any[]>([]);
     const [accounts, setAccounts] = useState<any[]>([]);
     const [counts, setCounts] = useState({ hosts: 0, accounts: 0, active_detections: 0 });
     const [error, setError] = useState<string | null>(null);
     const [highRiskOnly, setHighRiskOnly] = useState(true);
 
-    const loadVectraData = async (searchQuery: string = query) => {
+    const loadVectraData = async (searchQuery: string = query, isQuickAction: boolean = false) => {
         setLoading(true);
         setError(null);
+        setHasSearched(true);
         try {
-            const hUrl = `/api/vectra?type=hosts&query=${encodeURIComponent(searchQuery)}&high_risk_only=${highRiskOnly}`;
-            const aUrl = `/api/vectra?type=accounts&query=${encodeURIComponent(searchQuery)}&high_risk_only=${highRiskOnly}`;
+            // If it's a quick action (Top 10), we don't send the name query, but we keep highRiskOnly
+            const nameParam = isQuickAction ? '' : encodeURIComponent(searchQuery);
+            const hUrl = `/api/vectra?type=hosts&query=${nameParam}&high_risk_only=${highRiskOnly}`;
+            const aUrl = `/api/vectra?type=accounts&query=${nameParam}&high_risk_only=${highRiskOnly}`;
             
             const [hRes, aRes] = await Promise.all([
                 fetch(hUrl),
@@ -235,12 +240,20 @@ export default function VectraPage() {
     };
 
     useEffect(() => {
-        loadVectraData();
+        if (hasSearched) {
+            loadVectraData();
+        }
     }, [highRiskOnly]);
 
     const handleSearch = (v: string) => {
         setQuery(v);
         loadVectraData(v);
+    };
+
+    const handleQuickAction = (type: 'hosts' | 'accounts') => {
+        // For quick actions, we clear the query and fetch the top scoring entities
+        setQuery('');
+        loadVectraData('', true);
     };
 
     const topHosts = hosts.slice(0, 10).map(h => ({ name: h.name || h.ip, value: `${h.threat || 0}/${h.certainty || 0}` }));
@@ -249,55 +262,140 @@ export default function VectraPage() {
     return (
         <div style={{ maxWidth: '1600px', margin: '0 auto', padding: '0 20px 60px' }}>
             
+            {/* Header / Search Experience */}
             <div style={{ 
-                position: 'sticky', 
+                position: hasSearched ? 'sticky' : 'relative', 
                 top: '0px', 
                 zIndex: 100, 
-                padding: '30px 0 20px',
-                background: 'linear-gradient(to bottom, var(--background-page) 90%, transparent)',
-                backdropFilter: 'blur(16px)',
-                borderBottom: '1px solid rgba(255,255,255,0.05)'
+                padding: hasSearched ? '30px 0 20px' : '60px 0 40px',
+                background: hasSearched ? 'linear-gradient(to bottom, var(--background-page) 90%, transparent)' : 'transparent',
+                backdropFilter: hasSearched ? 'blur(16px)' : 'none',
+                borderBottom: hasSearched ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                transition: 'all 0.5s ease-in-out',
+                textAlign: hasSearched ? 'left' : 'center'
             }}>
-                <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                        <h1 style={{ fontSize: '2.2rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '14px' }}>
-                            <Network size={36} color="var(--accent-primary)" />
+                <div style={{ 
+                    marginBottom: '30px', 
+                    display: 'flex', 
+                    flexDirection: hasSearched ? 'row' : 'column',
+                    justifyContent: 'space-between', 
+                    alignItems: hasSearched ? 'center' : 'center',
+                    gap: hasSearched ? '20px' : '16px'
+                }}>
+                    <div style={{ flex: 1 }}>
+                        <h1 style={{ 
+                            fontSize: hasSearched ? '2.2rem' : '3.5rem', 
+                            fontWeight: '950', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: hasSearched ? 'flex-start' : 'center',
+                            gap: '18px',
+                            marginBottom: hasSearched ? '4px' : '12px',
+                            transition: 'all 0.4s ease'
+                        }}>
+                            <Network size={hasSearched ? 36 : 54} color="var(--accent-primary)" />
                             Vectra Forensic Analysis
                         </h1>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>AI-driven host profiling, threat detections, and account compromises.</p>
+                        <p style={{ 
+                            color: 'var(--text-secondary)', 
+                            fontSize: hasSearched ? '0.95rem' : '1.2rem',
+                            maxWidth: '800px',
+                            margin: hasSearched ? '0' : '0 auto'
+                        }}>
+                            {hasSearched 
+                                ? "AI-driven host profiling, threat detections, and account compromises." 
+                                : "A powerful cognitive entity search engine for real-time forensic triage. Identify hosts, accounts, and network behaviors across the enterprise."
+                            }
+                        </p>
                     </div>
                     
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                        <button onClick={() => loadVectraData()} className="badge-action">
-                            <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh
-                        </button>
-                        <button 
-                            onClick={() => { setHighRiskOnly(!highRiskOnly); }} 
-                            className="badge-action"
-                            style={{ background: highRiskOnly ? 'var(--status-error)' : 'rgba(255,255,255,0.05)', color: '#fff' }}
-                        >
-                            <Shield size={14} /> {highRiskOnly ? "High Risk Only" : "All Entities"}
-                        </button>
-                    </div>
+                    {hasSearched && (
+                        <div style={{ display: 'flex', gap: '12px' }}>
+                            <button onClick={() => loadVectraData()} className="badge-action">
+                                <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh
+                            </button>
+                            <button 
+                                onClick={() => { setHighRiskOnly(!highRiskOnly); }} 
+                                className="badge-action"
+                                style={{ background: highRiskOnly ? 'var(--status-error)' : 'rgba(255,255,255,0.05)', color: '#fff' }}
+                            >
+                                <Shield size={14} /> {highRiskOnly ? "High Risk Only" : "All Entities"}
+                            </button>
+                            <button onClick={() => setHasSearched(false)} className="badge-action" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                                <LayoutDashboard size={14} /> Reset
+                            </button>
+                        </div>
+                    )}
                 </div>
 
-                <div className="glass-card" style={{ padding: '12px 20px', background: 'rgba(255,255,255,0.02)' }}>
-                    <div style={{ display: 'flex', gap: '16px' }}>
-                        <div style={{ flex: 1, position: 'relative' }}>
-                            <Search style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} size={18} />
+                <div className="glass-card" style={{ 
+                    padding: hasSearched ? '12px 20px' : '32px', 
+                    background: 'rgba(255,255,255,0.02)',
+                    maxWidth: hasSearched ? 'none' : '900px',
+                    margin: hasSearched ? '0' : '0 auto'
+                }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
+                        <div style={{ flex: 1, position: 'relative', minWidth: '300px' }}>
+                            <Search style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} size={hasSearched ? 18 : 22} />
                             <input 
                                 type="text"
                                 value={query}
                                 onChange={(e) => setQuery(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && loadVectraData()}
                                 placeholder="Search Vectra Hosts, Accounts, IPs, or Threat Types..."
-                                style={{ width: '100%', padding: '14px 16px 14px 48px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '10px', color: 'var(--text-primary)', outline: 'none' }}
+                                style={{ 
+                                    width: '100%', 
+                                    paddingRight: '16px',
+                                    paddingLeft: hasSearched ? '48px' : '54px',
+                                    paddingTop: hasSearched ? '14px' : '18px',
+                                    paddingBottom: hasSearched ? '14px' : '18px',
+                                    background: 'var(--glass-bg)', 
+                                    border: '1px solid var(--glass-border)', 
+                                    borderRadius: '12px', 
+                                    color: 'var(--text-primary)', 
+                                    outline: 'none',
+                                    fontSize: hasSearched ? '1rem' : '1.1rem'
+                                }}
                             />
                         </div>
+                        {!hasSearched && (
+                            <button 
+                                onClick={() => loadVectraData()}
+                                className="glass-button" 
+                                style={{ padding: '0 40px', borderRadius: '12px', background: 'var(--accent-primary)', color: '#000', fontWeight: '900', border: 'none' }}
+                            >
+                                START SEARCH
+                            </button>
+                        )}
                     </div>
+
+                    {!hasSearched && (
+                        <div style={{ marginTop: '24px', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '20px' }}>
+                            <div style={{ textAlign: 'left', flex: '1 1 200px' }}>
+                                <div style={{ fontSize: '0.7rem', fontWeight: '900', color: 'var(--accent-primary)', marginBottom: '8px', textTransform: 'uppercase' }}>Quick Action Triage</div>
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button onClick={() => handleQuickAction('hosts')} className="badge-action" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--status-error)', color: 'var(--status-error)' }}>
+                                        <Zap size={14} /> Top 10 Critical Hosts
+                                    </button>
+                                    <button onClick={() => handleQuickAction('accounts')} className="badge-action" style={{ background: 'rgba(56, 189, 248, 0.1)', borderColor: 'var(--status-info)', color: 'var(--status-info)' }}>
+                                        <User size={14} /> Top 10 Critical Accounts
+                                    </button>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: 'left', flex: '1 1 200px' }}>
+                                <div style={{ fontSize: '0.7rem', fontWeight: '900', color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase' }}>Search Guides</div>
+                                <div style={{ display: 'flex', gap: '12px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                    <span style={{ cursor: 'pointer' }} onClick={() => setQuery('172.17.')}>• Search IP Subnet</span>
+                                    <span style={{ cursor: 'pointer' }} onClick={() => setQuery('Admin')}>• Search Administrators</span>
+                                    <span style={{ cursor: 'pointer' }} onClick={() => setQuery('Exfiltration')}>• Search Behavior</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
+            {/* Error Message */}
             {error && (
                 <div style={{ 
                     marginBottom: '24px', 
@@ -319,68 +417,121 @@ export default function VectraPage() {
                 </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', margin: '24px 0 40px' }}>
-                <MetricList title="High-Risk Forensic Hosts" items={topHosts} icon={Monitor} color="var(--status-error)" />
-                <MetricList title="Compromised Accounts" items={topAccounts} icon={User} color="var(--status-warning)" />
-                
-                <div className="glass-card summary-card-analytic">
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: '900', letterSpacing: '0.1em' }}>THREAT DETECTION VOLUME</span>
-                    <h2 style={{ fontSize: '3rem', fontWeight: '950', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
-                        <Zap size={32} color="var(--status-warning)" />
-                        {counts.active_detections}
-                    </h2>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: '800' }}>
-                        <Monitor size={14} /> {counts.hosts} HOSTS • <User size={14} /> {counts.accounts} ACCOUNTS
+            {/* Search Prompt Landing (If not searched) */}
+            {!hasSearched && !loading && (
+                <div style={{ marginTop: '40px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px' }}>
+                    <div className="glass-card" style={{ padding: '24px', textAlign: 'left' }}>
+                        <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
+                            <div style={{ background: 'var(--accent-primary)', color: '#000', padding: '12px', borderRadius: '12px' }}><Monitor size={24} /></div>
+                            <div>
+                                <h3 style={{ fontSize: '1.1rem', fontWeight: '900', marginBottom: '4px' }}>Host Profiling</h3>
+                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Identify internal, external, and ephemeral hosts by IP, Name, or OS.</p>
+                            </div>
+                        </div>
+                        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '16px', fontSize: '0.8rem' }}>
+                            <code style={{ color: 'var(--accent-primary)' }}>192.168.1.5</code>, <code style={{ color: 'var(--accent-primary)' }}>WinSRV-01</code>, <code style={{ color: 'var(--accent-primary)' }}>Linux</code>
+                        </div>
+                    </div>
+
+                    <div className="glass-card" style={{ padding: '24px', textAlign: 'left' }}>
+                        <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
+                            <div style={{ background: 'var(--status-info)', color: '#000', padding: '12px', borderRadius: '12px' }}><User size={24} /></div>
+                            <div>
+                                <h3 style={{ fontSize: '1.1rem', fontWeight: '900', marginBottom: '4px' }}>Account Compromise</h3>
+                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Track compromised LDAP, Office 365, and Cloud accounts.</p>
+                            </div>
+                        </div>
+                        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '16px', fontSize: '0.8rem' }}>
+                            <code style={{ color: 'var(--status-info)' }}>j.doe@cooper.org</code>, <code style={{ color: 'var(--status-info)' }}>svc_scanner</code>
+                        </div>
+                    </div>
+
+                    <div className="glass-card" style={{ padding: '24px', textAlign: 'left' }}>
+                        <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
+                            <div style={{ background: 'var(--status-warning)', color: '#000', padding: '12px', borderRadius: '12px' }}><Zap size={24} /></div>
+                            <div>
+                                <h3 style={{ fontSize: '1.1rem', fontWeight: '900', marginBottom: '4px' }}>Behavioral Search</h3>
+                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Search for specific ATT&CK techniques or threat categories.</p>
+                            </div>
+                        </div>
+                        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '16px', fontSize: '0.8rem' }}>
+                            <code style={{ color: 'var(--status-warning)' }}>Ransomware</code>, <code style={{ color: 'var(--status-warning)' }}>C&C</code>, <code style={{ color: 'var(--status-warning)' }}>Data Exfiltration</code>
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
-                <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
-                        <Monitor size={20} color="var(--accent-primary)" />
-                        Prioritized Hosts
-                    </h3>
-                    {loading ? (
-                        <div style={{ padding: '40px', textAlign: 'center' }}><RefreshCw className="animate-spin" /></div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            {hosts.length > 0 ? (
-                                hosts.map((h, i) => <EntityCard key={i} type="host" data={h} onSearch={handleSearch} />)
-                            ) : (
-                                <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                    <Monitor size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
-                                    <p>No prioritized hosts found in this environment.</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
+            {/* Loading State */}
+            {loading && (
+                <div style={{ padding: '100px', textAlign: 'center' }}>
+                    <div style={{ display: 'inline-block', position: 'relative' }}>
+                        <RefreshCw size={48} className="animate-spin" color="var(--accent-primary)" />
+                        <Shield style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }} size={16} color="var(--accent-primary)" />
+                    </div>
+                    <p style={{ marginTop: '20px', color: 'var(--text-secondary)', fontWeight: '800', letterSpacing: '0.1em' }}>ANALYZING 80,332 ENTITIES...</p>
                 </div>
+            )}
 
-                <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
-                        <User size={20} color="var(--status-info)" />
-                        Prioritized Accounts
-                    </h3>
-                    {loading ? (
-                        <div style={{ padding: '40px', textAlign: 'center' }}><RefreshCw className="animate-spin" /></div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            {accounts.length > 0 ? (
-                                accounts.map((a, i) => <EntityCard key={i} type="account" data={a} onSearch={handleSearch} />)
-                            ) : (
-                                <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                    <User size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
-                                    <p>No prioritized accounts found in this environment.</p>
-                                </div>
-                            )}
+            {/* Results Section */}
+            {hasSearched && !loading && (
+                <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', margin: '24px 0 40px' }}>
+                        <MetricList title="High-Risk Forensic Hosts" items={topHosts} icon={Monitor} color="var(--status-error)" />
+                        <MetricList title="Compromised Accounts" items={topAccounts} icon={User} color="var(--status-warning)" />
+                        
+                        <div className="glass-card summary-card-analytic">
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: '900', letterSpacing: '0.1em' }}>THREAT DETECTION VOLUME</span>
+                            <h2 style={{ fontSize: '3rem', fontWeight: '950', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                                <Zap size={32} color="var(--status-warning)" />
+                                {counts.active_detections}
+                            </h2>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '0.8rem', fontWeight: '800' }}>
+                                <Monitor size={14} /> {counts.hosts} HOSTS • <User size={14} /> {counts.accounts} ACCOUNTS
+                            </div>
                         </div>
-                    )}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
+                        <div>
+                            <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
+                                <Monitor size={20} color="var(--accent-primary)" />
+                                Prioritized Hosts
+                            </h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                {hosts.length > 0 ? (
+                                    hosts.map((h, i) => <EntityCard key={i} type="host" data={h} onSearch={handleSearch} />)
+                                ) : (
+                                    <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                        <Monitor size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
+                                        <p>No prioritized hosts found for this search.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div>
+                            <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
+                                <User size={20} color="var(--status-info)" />
+                                Prioritized Accounts
+                            </h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                {accounts.length > 0 ? (
+                                    accounts.map((a, i) => <EntityCard key={i} type="account" data={a} onSearch={handleSearch} />)
+                                ) : (
+                                    <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                        <User size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
+                                        <p>No prioritized accounts found for this search.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
+            )}
             
             <style jsx>{`
                 .summary-card-analytic { padding: 24px; display: flex; flex-direction: column; justify-content: center; text-align: center; background: rgba(var(--accent-primary-rgb), 0.05); }
+                @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
             `}</style>
         </div>
     );
