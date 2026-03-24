@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
                 data = await getVectraHosts({ 
                     name: query, 
                     highRiskOnly, 
-                    ordering: query ? undefined : '-threat' // Sort by threat if not searching by name
+                    ordering: query ? undefined : '-t_score'
                 });
                 break;
         }
