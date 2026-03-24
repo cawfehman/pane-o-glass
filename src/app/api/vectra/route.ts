@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     const query = searchParams.get('query') || '';
     const hostId = searchParams.get('host_id');
     const highRiskOnly = searchParams.get('high_risk_only') === 'true';
-    const ordering = searchParams.get('ordering') || '-last_detection_timestamp';
+    const ordering = searchParams.get('ordering') || '-threat';
 
     try {
         let data;
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
                 data = await getVectraDetections(hostId ? { host_id: hostId } : { name: query });
                 break;
             case 'accounts':
-                data = await getVectraAccounts({ name: query });
+                data = await getVectraAccounts({ name: query, ordering });
                 break;
             case 'metadata':
                 data = await searchVectraMetadata(query);

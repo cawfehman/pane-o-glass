@@ -184,20 +184,21 @@ export default function VectraPage() {
         setLoading(true);
         setError(null);
         setHasSearched(true);
+        
+        const isEmail = searchQuery.includes('@');
+        const isIPOrHost = (searchQuery.includes('.') && !isEmail);
+        
         setActiveQuery(isQuickAction ? (typeOverride === 'hosts' ? 'Top 10 Critical Hosts' : 'Top 10 Critical Accounts') : searchQuery);
         
         let effectiveType: 'all' | 'hosts' | 'accounts' = 'all';
         if (typeOverride) {
             effectiveType = typeOverride;
-        } else if (searchQuery.includes('@')) {
-            // It's an email - definitely an account
+        } else if (isEmail) {
             effectiveType = 'accounts';
-        } else if (searchQuery.includes('.') && !searchQuery.includes('@')) {
-            // It has a dot but no @ - likely an IP or Hostname
+        } else if (isIPOrHost) {
             effectiveType = 'hosts';
         } else if (searchQuery.length > 0) {
-            // If it's a generic word, we let it be 'all' or default to accounts if it's name-like
-            effectiveType = (searchQuery.toLowerCase().includes('host') || searchQuery.toLowerCase().includes('server')) ? 'hosts' : 'all';
+            effectiveType = 'all'; // Let it find both for ambiguous strings
         }
         
         setSearchType(effectiveType);
@@ -206,8 +207,10 @@ export default function VectraPage() {
             const nameParam = isQuickAction ? '' : encodeURIComponent(searchQuery);
             const hrFilter = isQuickAction ? highRiskOnly : false;
 
-            const hUrl = `/api/vectra?type=hosts&query=${nameParam}&high_risk_only=${hrFilter}`;
-            const aUrl = `/api/vectra?type=accounts&query=${nameParam}&high_risk_only=${hrFilter}`;
+            // PRIORITY ORDERING: -threat ensures the first page always has the critical hits
+            const baseParams = `query=${nameParam}&high_risk_only=${hrFilter}&ordering=-threat`;
+            const hUrl = `/api/vectra?type=hosts&${baseParams}`;
+            const aUrl = `/api/vectra?type=accounts&${baseParams}`;
             
             const fetches = [];
             if (effectiveType === 'all' || effectiveType === 'hosts') fetches.push(fetch(hUrl).then(r => r.json()));
@@ -238,7 +241,7 @@ export default function VectraPage() {
             setCounts({
                 hosts: hData.count || (hostsFinal.length),
                 accounts: aData.count || (accountsFinal.length),
-                active_detections: hostsFinal.reduce((acc: number, h: any) => acc + (h.detection_set?.length || 0), 0) || 0
+                active_detections: hostsFinal.reduce((acc: number, h: any) => acc + (h.threat > 0 ? 1 : 0), 0)
             });
         } catch (e) {
             console.error(e);
@@ -306,10 +309,7 @@ export default function VectraPage() {
                             maxWidth: '800px',
                             margin: hasSearched ? '0' : '0 auto'
                         }}>
-                            {hasSearched 
-                                ? "Deep entity profiling and behavioral forensic analysis." 
-                                : "A powerful cognitive entity search engine for real-time forensic triage. Identify hosts, accounts, and network behaviors across the enterprise."
-                            }
+                            Deep entity profiling and behavioral forensic analysis.
                         </p>
                     </div>
                     

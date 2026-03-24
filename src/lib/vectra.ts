@@ -54,10 +54,11 @@ async function getVectraToken() {
 export async function getVectraHosts(params: any = {}) {
     const token = await getVectraToken();
     const queryParams: any = {
-        ordering: params.ordering || '-last_detection_timestamp',
+        ordering: params.ordering || '-threat',
     };
     
     if (params.name) queryParams.name = params.name;
+    if (params.min_threat) queryParams.min_threat = params.min_threat;
 
     try {
         const response = await axios.get(`${VECTRA_URL}/api/v3.4/hosts`, {
@@ -106,7 +107,7 @@ export async function getVectraDetections(params: any = {}) {
 export async function getVectraAccounts(params: any = {}) {
     const token = await getVectraToken();
     const queryParams: any = {
-        ordering: '-last_detection_timestamp',
+        ordering: params.ordering || '-threat',
     };
 
     if (params.name) queryParams.name = params.name;
