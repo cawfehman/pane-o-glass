@@ -7,38 +7,84 @@ import {
     Key, Hash, Layers, Pocket, ExternalLink, BarChart3, Users, 
     MapPin, Calendar, Filter, ArrowUpRight, AlertCircle, Cpu,
     Network, Database, Zap, Lock, Unlock, Mail, Eye, Clock,
-    LayoutDashboard, ArrowRight, MousePointer2, UserCheck, HardDrive
+    LayoutDashboard, ArrowRight, MousePointer2, UserCheck, HardDrive,
+    UserPlus, Link2
 } from 'lucide-react';
 
 const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: any, onSearch: (v: string) => void }) => {
     const [isExpanded, setIsExpanded] = useState(false);
-    const [detections, setDetections] = useState<any[]>([]);
-    const [loadingDetections, setLoadingDetections] = useState(false);
+    const [details, setDetails] = useState<any>(null);
+    const [loadingDetails, setLoadingDetails] = useState(false);
+    const [correlations, setCorrelations] = useState<{name: string, type: string, id?: string}[]>([]);
 
-    const loadDetections = async () => {
-        if (detections.length > 0) return;
-        setLoadingDetections(true);
+    const loadDetails = async () => {
+        if (details) return;
+        setLoadingDetails(true);
         try {
-            const res = await fetch(`/api/vectra?type=detections&host_id=${data.id}`);
-            const json = await res.json();
-            setDetections(json.results || []);
+            const url = type === 'host' 
+                ? `/api/vectra?type=host_details&host_id=${data.id}` 
+                : `/api/vectra?type=account_details&account_id=${data.id}`;
+            const res = await fetch(url);
+            const fullData = await res.json();
+            setDetails(fullData);
+
+            // EXTRACT CORRELATIONS (Schema-specific for v3.4)
+            const links: {name: string, type: string, id?: string}[] = [];
+            const seen = new Set<string>();
+
+            if (type === 'host' && fullData.detection_set) {
+                fullData.detection_set.forEach((det: any) => {
+                    if (det.account && !seen.has(det.account)) {
+                        links.push({ name: det.account, type: 'account' });
+                        seen.add(det.account);
+                    }
+                    if (det.grouped_details) {
+                        det.grouped_details.forEach((g: any) => {
+                            if (g.accounts) g.accounts.forEach((acc: any) => {
+                                if (acc.name && !seen.has(acc.name)) {
+                                    links.push({ name: acc.name, type: 'account', id: acc.id });
+                                    seen.add(acc.name);
+                                }
+                            });
+                        });
+                    }
+                });
+            } else if (type === 'account') {
+                if (fullData.probable_home?.name) {
+                    links.push({ name: fullData.probable_home.name, type: 'host', id: fullData.probable_home.id });
+                    seen.add(fullData.probable_home.name);
+                }
+                if (fullData.detection_set) {
+                    fullData.detection_set.forEach((det: any) => {
+                        if (det.grouped_details) {
+                            det.grouped_details.forEach((g: any) => {
+                                if (g.hosts) g.hosts.forEach((h: any) => {
+                                    if (h.name && !seen.has(h.name)) {
+                                        links.push({ name: h.name, type: 'host', id: h.id });
+                                        seen.add(h.name);
+                                    }
+                                });
+                            });
+                        }
+                    });
+                }
+            }
+            setCorrelations(links);
         } catch (e) {
             console.error(e);
         } finally {
-            setLoadingDetections(false);
+            setLoadingDetails(false);
         }
     };
 
     useEffect(() => {
-        if (isExpanded && type === 'host') {
-            loadDetections();
+        if (isExpanded) {
+            loadDetails();
         }
     }, [isExpanded]);
 
-    // SCHEMA-AGNOSTIC SCORE DETECTION
     const threat = data.threat ?? data.t_score ?? 0;
     const certainty = data.certainty ?? data.c_score ?? 0;
-    
     const threatColor = threat > 50 ? 'var(--status-error)' : threat > 20 ? 'var(--status-warning)' : 'var(--status-success)';
     const isActive = (threat > 0 || certainty > 0);
 
@@ -82,91 +128,86 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
 
             {isExpanded && (
                 <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-                        <div className="info-stat">
-                            <Hash size={14} />
-                            <span>Vectra ID: <b>{data.id}</b></span>
+                    {loadingDetails ? (
+                        <div style={{ padding: '20px', textAlign: 'center' }}>
+                            <RefreshCw size={24} className="animate-spin" color="var(--accent-primary)" />
+                            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '8px' }}>Correlating forensic metadata...</p>
                         </div>
-                        <div className="info-stat">
-                            <Activity size={14} />
-                            <span>Historical Detections: <b>{data.detection_set?.length || 0}</b></span>
-                        </div>
-                        {type === 'account' && (
-                            <div className="info-stat">
-                                <Monitor size={14} color="var(--accent-primary)" />
-                                <span>Known Associated Hosts: <b>{data.host_ids_count || 0}</b></span>
+                    ) : (
+                        <>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                                <div className="info-stat">
+                                    <Hash size={14} />
+                                    <span>Vectra ID: <b>{data.id}</b></span>
+                                </div>
+                                <div className="info-stat">
+                                    <Activity size={14} />
+                                    <span>Historical Detections: <b>{details?.detection_set?.length || 0}</b></span>
+                                </div>
+                                {type === 'host' && details?.os && (
+                                    <div className="info-stat">
+                                        <Cpu size={14} />
+                                        <span>OS: <b>{details.os}</b></span>
+                                    </div>
+                                )}
                             </div>
-                        )}
-                        {type === 'host' && data.os && (
-                            <div className="info-stat">
-                                <Cpu size={14} />
-                                <span>OS: <b>{data.os}</b></span>
-                            </div>
-                        )}
-                    </div>
 
-                    <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-                        <button className="badge-action" onClick={() => onSearch(data.name || data.ip || '')}>
-                            <Search size={12} /> Search Matches
-                        </button>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                        <div>
-                            <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Zap size={14} color="var(--status-error)" />
-                                Detection History
-                            </h4>
-                            {loadingDetections ? (
-                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Loading detections...</p>
-                            ) : detections.length > 0 ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    {detections.map((det: any, i: number) => (
-                                        <div key={i} className="detection-row">
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                                <span style={{ fontWeight: '800', fontSize: '0.85rem', color: 'var(--status-error)' }}>{det.detection_type}</span>
-                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{det.last_timestamp}</span>
-                                            </div>
-                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', opacity: 0.8 }}>
-                                                Category: {det.category} • Severity: {det.threat || det.t_score || 0}
-                                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                                <div>
+                                    <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <Zap size={14} color="var(--status-error)" />
+                                        Recent Detections
+                                    </h4>
+                                    {details?.detection_set?.length > 0 ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            {details.detection_set.slice(0, 3).map((det: any, i: number) => (
+                                                <div key={i} className="detection-row">
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                                                        <span style={{ fontWeight: '800', fontSize: '0.8rem', color: 'var(--status-error)' }}>{det.detection_type}</span>
+                                                    </div>
+                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                                                        {det.category} • Score: {det.threat || det.t_score || 0}
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
+                                    ) : (
+                                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No behavioral anomalies detected.</p>
+                                    )}
                                 </div>
-                            ) : (
-                                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No behavioral anomalies detected in history.</p>
-                            )}
-                        </div>
 
-                        <div>
-                            <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                {type === 'host' ? <Users size={14} color="var(--status-info)" /> : <HardDrive size={14} color="var(--accent-primary)" />}
-                                {type === 'host' ? 'Likely Associated Accounts' : 'Likely Associated Hosts'}
-                            </h4>
-                            <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '12px', border: '1px solid var(--glass-border)', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-                                <div style={{ color: 'var(--text-muted)', marginBottom: '8px', fontStyle: 'italic' }}>Correlating Vectra telemetry for {data.name || 'Entity'}...</div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                        <span style={{ color: type === 'host' ? 'var(--status-info)' : 'var(--accent-primary)' }}>
-                                            {type === 'host' ? 'USER_PROXIMITY' : 'HOST_AFFINITY'}
-                                        </span>
-                                        <span>{type === 'host' ? (data.last_account_name || 'System Account') : (data.last_ip || '10.0.0.x')}</span>
-                                    </div>
-                                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', paddingTop: '4px' }}>
-                                        {data.host_ids_count ? `${data.host_ids_count} linked entities found.` : 'Precision correlation in progress...'}
+                                <div>
+                                    <h4 style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-secondary)', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        {type === 'host' ? <Users size={14} color="var(--status-info)" /> : <HardDrive size={14} color="var(--accent-primary)" />}
+                                        {type === 'host' ? 'Associated Accounts' : 'Associated Hosts'}
+                                    </h4>
+                                    <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '12px', border: '1px solid var(--glass-border)' }}>
+                                        {correlations.length > 0 ? (
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                                {correlations.map((c, i) => (
+                                                    <button key={i} className="correlation-chip" onClick={() => onSearch(c.name)}>
+                                                        <Link2 size={12} /> {c.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontStyle: 'italic' }}>
+                                                No high-confidence associations found in recent telemetry.
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
+                        </>
+                    )}
                 </div>
             )}
 
             <style jsx>{`
                 .info-stat { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--text-secondary); background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--glass-border); }
-                .badge-action { background: rgba(var(--accent-primary-rgb), 0.1); border: 1px solid var(--accent-primary); color: var(--accent-primary); padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
-                .badge-action:hover { background: var(--accent-primary); color: #000; }
-                .detection-row { padding: 10px 12px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--glass-border); }
+                .detection-row { padding: 8px 10px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--glass-border); }
+                .correlation-chip { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
+                .correlation-chip:hover { background: var(--accent-primary); color: #000; border-color: var(--accent-primary); }
             `}</style>
         </div>
     );
@@ -211,7 +252,6 @@ export default function VectraPage() {
             const nameParam = isQuickAction ? '' : encodeURIComponent(searchQuery);
             const hrFilter = isQuickAction ? highRiskOnly : false;
 
-            // PRIORITY ORDERING CALIBRATION
             const baseParams = `query=${nameParam}&high_risk_only=${hrFilter}`;
             const hUrl = `/api/vectra?type=hosts&${baseParams}`;
             const aUrl = `/api/vectra?type=accounts&${baseParams}`;
@@ -471,7 +511,7 @@ export default function VectraPage() {
                                 </h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                     {hosts.length > 0 ? (
-                                        hosts.map((h, i) => <EntityCard key={i} type="host" data={h} onSearch={handleSearch} />)
+                                        hosts.map((h, i) => <EntityCard key={h.id || i} type="host" data={h} onSearch={handleSearch} />)
                                     ) : (
                                         <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                                             <Monitor size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
@@ -490,7 +530,7 @@ export default function VectraPage() {
                                 </h3>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                     {accounts.length > 0 ? (
-                                        accounts.map((a, i) => <EntityCard key={i} type="account" data={a} onSearch={handleSearch} />)
+                                        accounts.map((a, i) => <EntityCard key={a.id || i} type="account" data={a} onSearch={handleSearch} />)
                                     ) : (
                                         <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
                                             <User size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
@@ -506,6 +546,12 @@ export default function VectraPage() {
             
             <style jsx>{`
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+                .info-stat { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--text-secondary); background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--glass-border); }
+                .badge-action { background: rgba(var(--accent-primary-rgb), 0.1); border: 1px solid var(--accent-primary); color: var(--accent-primary); padding: 4px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
+                .badge-action:hover { background: var(--accent-primary); color: #000; }
+                .detection-row { padding: 8px 10px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--glass-border); }
+                .correlation-chip { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
+                .correlation-chip:hover { background: var(--accent-primary); color: #000; border-color: var(--accent-primary); }
             `}</style>
         </div>
     );

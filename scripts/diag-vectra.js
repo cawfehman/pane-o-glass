@@ -27,23 +27,44 @@ async function test() {
         const token = auth.data.access_token;
         console.log('Auth: SUCCESS');
 
-        // Probe 1: ordering=-t_score on HOSTS
+        // Probe 1: Fetch a specific detection from EFT01's set
+        // EFT01 (ID: 2565426) has detection ID 434676
         try {
-            const res = await axios.get(`${VECTRA_URL}/api/v3.4/hosts?ordering=-t_score`, { 
+            const res = await axios.get(`${VECTRA_URL}/api/v3.4/detections/434676`, { 
                 httpsAgent: agent, 
                 headers: { Authorization: 'Bearer ' + token } 
             });
-            console.log(`PROBE T_SCORE: SUCCESS - Count: ${res.data.count}`);
+            console.log('--- Detection 434676 Payload ---');
+            console.log(JSON.stringify({
+                id: res.data.id,
+                type: res.data.detection_type,
+                host: res.data.host,
+                src_ip: res.data.src_ip,
+                account: res.data.account,
+                account_id: res.data.account_id,
+                tags: res.data.tags
+            }, null, 2));
+        } catch (e) {
+            console.log(`DETECTION PROBE FAILED - ${e.message}`);
+        }
+
+        // Probe 2: Fetch a high-threat account
+        try {
+            const res = await axios.get(`${VECTRA_URL}/api/v3.4/accounts?ordering=-t_score`, { 
+                httpsAgent: agent, 
+                headers: { Authorization: 'Bearer ' + token } 
+            });
             if (res.data.results && res.data.results.length > 0) {
-                console.log('--- Top 10 Scored Hosts ---');
-                res.data.results.slice(0, 10).forEach(h => {
-                    console.log(`- ${h.name} [ID: ${h.id}] | T: ${h.t_score} / C: ${h.c_score}`);
+                const acc = res.data.results[0];
+                const fullAcc = await axios.get(`${VECTRA_URL}/api/v3.4/accounts/${acc.id}`, { 
+                    httpsAgent: agent, 
+                    headers: { Authorization: 'Bearer ' + token } 
                 });
-            } else {
-                console.log('PROBE T_SCORE: No results returned.');
+                console.log('\n--- High-Threat Account Payload ---');
+                console.log(JSON.stringify(fullAcc.data, null, 2));
             }
         } catch (e) {
-            console.log(`PROBE T_SCORE FAILED - ${e.message} - ${JSON.stringify(e.response?.data || '')}`);
+            console.log(`ACCOUNT PROBE FAILED - ${e.message}`);
         }
     } catch (e) {
         console.log('Auth: FAILED -', e.response?.data || e.message);

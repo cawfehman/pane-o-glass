@@ -126,6 +126,34 @@ export async function getVectraAccounts(params: any = {}) {
     }
 }
 
+export async function getVectraAccountDetails(id: string) {
+    const token = await getVectraToken();
+    try {
+        const response = await axios.get(`${VECTRA_URL}/api/v3.4/accounts/${id}`, {
+            httpsAgent,
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        return response.data;
+    } catch (error: any) {
+        console.error("Error fetching Vectra account details:", error.response?.data || error.message);
+        return null;
+    }
+}
+
+export async function getVectraHostDetails(id: string) {
+    const token = await getVectraToken();
+    try {
+        const response = await axios.get(`${VECTRA_URL}/api/v3.4/hosts/${id}`, {
+            httpsAgent,
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        return response.data;
+    } catch (error: any) {
+        console.error("Error fetching Vectra host details:", error.response?.data || error.message);
+        return null;
+    }
+}
+
 /**
  * Vectra Recall Metadata Search
  * Piecing together network traffic for a host or IP.

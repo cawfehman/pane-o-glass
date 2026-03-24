@@ -4,6 +4,8 @@ import {
     getVectraHosts, 
     getVectraDetections, 
     getVectraAccounts, 
+    getVectraHostDetails,
+    getVectraAccountDetails,
     searchVectraMetadata 
 } from "@/lib/vectra";
 import { hasPermission } from "@/app/actions/permissions";
@@ -36,6 +38,12 @@ export async function GET(req: NextRequest) {
                 break;
             case 'metadata':
                 data = await searchVectraMetadata(query);
+                break;
+            case 'host_details':
+                data = await getVectraHostDetails(hostId!);
+                break;
+            case 'account_details':
+                data = await getVectraAccountDetails(searchParams.get('account_id')!);
                 break;
             case 'hosts':
             default:
