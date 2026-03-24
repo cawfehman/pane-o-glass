@@ -59,7 +59,8 @@ export async function getVectraHosts(params: any = {}) {
             headers: { Authorization: `Bearer ${token}` },
             params: {
                 ordering: '-last_detection_timestamp',
-                state: 'active',
+                min_threat: 0,
+                min_certainty: 0,
                 ...params
             }
         });
@@ -78,7 +79,8 @@ export async function getVectraDetections(params: any = {}) {
             headers: { Authorization: `Bearer ${token}` },
             params: {
                 ordering: '-last_timestamp',
-                state: 'active',
+                min_threat: 0,
+                min_certainty: 0,
                 ...params
             }
         });
@@ -97,7 +99,8 @@ export async function getVectraAccounts(params: any = {}) {
             headers: { Authorization: `Bearer ${token}` },
             params: {
                 ordering: '-last_detection_timestamp',
-                state: 'active',
+                min_threat: 0,
+                min_certainty: 0,
                 ...params
             }
         });

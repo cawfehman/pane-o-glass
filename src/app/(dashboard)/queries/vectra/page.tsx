@@ -229,8 +229,8 @@ export default function VectraPage() {
         loadVectraData(v);
     };
 
-    const topHosts = hosts.slice(0, 10).map(h => ({ name: h.name || h.ip, value: `${h.threat}/${h.certainty}` }));
-    const topAccounts = accounts.slice(0, 10).map(a => ({ name: a.name, value: `${a.threat}/${a.certainty}` }));
+    const topHosts = hosts.slice(0, 10).map(h => ({ name: h.name || h.ip, value: `${h.threat || 0}/${h.certainty || 0}` }));
+    const topAccounts = accounts.slice(0, 10).map(a => ({ name: a.name, value: `${a.threat || 0}/${a.certainty || 0}` }));
 
     return (
         <div style={{ maxWidth: '1600px', margin: '0 auto', padding: '0 20px 60px' }}>
@@ -323,7 +323,14 @@ export default function VectraPage() {
                         <div style={{ padding: '40px', textAlign: 'center' }}><RefreshCw className="animate-spin" /></div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            {hosts.map((h, i) => <EntityCard key={i} type="host" data={h} onSearch={handleSearch} />)}
+                            {hosts.length > 0 ? (
+                                hosts.map((h, i) => <EntityCard key={i} type="host" data={h} onSearch={handleSearch} />)
+                            ) : (
+                                <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                    <Monitor size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
+                                    <p>No prioritized hosts found in this environment.</p>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -337,7 +344,14 @@ export default function VectraPage() {
                         <div style={{ padding: '40px', textAlign: 'center' }}><RefreshCw className="animate-spin" /></div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            {accounts.map((a, i) => <EntityCard key={i} type="account" data={a} onSearch={handleSearch} />)}
+                            {accounts.length > 0 ? (
+                                accounts.map((a, i) => <EntityCard key={i} type="account" data={a} onSearch={handleSearch} />)
+                            ) : (
+                                <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                    <User size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
+                                    <p>No prioritized accounts found in this environment.</p>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
