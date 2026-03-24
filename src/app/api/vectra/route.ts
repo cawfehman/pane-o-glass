@@ -31,7 +31,10 @@ export async function GET(req: NextRequest) {
         let data;
         switch (type) {
             case 'detections':
-                data = await getVectraDetections(hostId ? { host_id: hostId } : { name: query });
+                data = await getVectraDetections({ 
+                    host_id: hostId || undefined, 
+                    name: query || undefined 
+                });
                 break;
             case 'accounts':
                 data = await getVectraAccounts({ name: query, ordering });

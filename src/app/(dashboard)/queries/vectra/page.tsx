@@ -14,6 +14,7 @@ import {
 const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: any, onSearch: (v: string) => void }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [details, setDetails] = useState<any>(null);
+    const [detections, setDetections] = useState<any[]>([]);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [correlations, setCorrelations] = useState<{name: string, type: string, id?: string}[]>([]);
 
@@ -21,18 +22,28 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
         if (details) return;
         setLoadingDetails(true);
         try {
-            const url = type === 'host' 
+            // 1. Fetch Details
+            const dUrl = type === 'host' 
                 ? `/api/vectra?type=host_details&host_id=${data.id}` 
                 : `/api/vectra?type=account_details&account_id=${data.id}`;
-            const res = await fetch(url);
-            const fullData = await res.json();
+            const dRes = await fetch(dUrl);
+            const fullData = await dRes.json();
             setDetails(fullData);
 
-            // EXTRACT CORRELATIONS (Schema-specific for v3.4)
+            // 2. Fetch High-Fidelity Detections (Bypassing URI-only links in Host set)
+            const detUrl = type === 'host'
+                ? `/api/vectra?type=detections&host_id=${data.id}`
+                : `/api/vectra?type=detections&query=${encodeURIComponent(data.name)}`; // Using name pivot for accounts
+            const detRes = await fetch(detUrl);
+            const detData = await detRes.json();
+            const detResults = detData.results || [];
+            setDetections(detResults);
+
+            // 3. EXTRACT CORRELATIONS
             const links: {name: string, type: string, id?: string}[] = [];
             const seen = new Set<string>();
 
-            // 1. Direct Schema Associations (Fastest/Strongest)
+            // Direct Schema Associations
             if (type === 'host') {
                 if (fullData.probable_owner && !seen.has(fullData.probable_owner.name)) {
                     links.push({ name: fullData.probable_owner.name, type: 'account', id: fullData.probable_owner.id });
@@ -57,32 +68,24 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                 }
             }
 
-            // 2. Telemetry-based Associations (Detection Deep Scan)
-            if (fullData.detection_set) {
-                fullData.detection_set.forEach((det: any) => {
-                    // Skip if it's just a URI string (standard for v3.4 hosts)
-                    if (typeof det === 'string') return;
-
-                    if (type === 'host') {
-                        if (det.account && !seen.has(det.account)) {
-                            links.push({ name: det.account, type: 'account' });
-                            seen.add(det.account);
-                        }
-                    } else {
-                        // For Account, check detection hosts
-                        if (det.grouped_details) {
-                            det.grouped_details.forEach((g: any) => {
-                                if (g.hosts) g.hosts.forEach((h: any) => {
-                                    if (h.name && !seen.has(h.name)) {
-                                        links.push({ name: h.name, type: 'host', id: h.id });
-                                        seen.add(h.name);
-                                    }
-                                });
-                            });
-                        }
+            // Pivot Detection-based correlation
+            detResults.forEach((det: any) => {
+                if (type === 'host') {
+                    // Extract Account from Host detection
+                    const accName = det.account || det.account_name;
+                    if (accName && !seen.has(accName)) {
+                        links.push({ name: accName, type: 'account' });
+                        seen.add(accName);
                     }
-                });
-            }
+                } else {
+                    // Extract Host from Account detection
+                    const hName = det.host || det.host_name;
+                    if (hName && !seen.has(hName)) {
+                        links.push({ name: hName, type: 'host' });
+                        seen.add(hName);
+                    }
+                }
+            });
             setCorrelations(links);
         } catch (e) {
             console.error(e);
@@ -156,7 +159,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                 </div>
                                 <div className="info-stat">
                                     <Activity size={14} />
-                                    <span>Historical Detections: <b>{details?.detection_set?.length || 0}</b></span>
+                                    <span>Active Detections: <b>{detections.length || 0}</b></span>
                                 </div>
                                 {type === 'host' && details?.os && (
                                     <div className="info-stat">
@@ -172,15 +175,15 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                         <Zap size={14} color="var(--status-error)" />
                                         Recent Detections
                                     </h4>
-                                    {details?.detection_set?.length > 0 ? (
+                                    {detections.length > 0 ? (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                            {details.detection_set.slice(0, 3).map((det: any, i: number) => (
+                                            {detections.slice(0, 5).map((det: any, i: number) => (
                                                 <div key={i} className="detection-row">
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
-                                                        <span style={{ fontWeight: '800', fontSize: '0.8rem', color: 'var(--status-error)' }}>{det.detection_type}</span>
+                                                        <span style={{ fontWeight: '800', fontSize: '0.8rem', color: 'var(--status-error)' }}>{det.detection_type || det.type || 'Anomalous Behavior'}</span>
                                                     </div>
                                                     <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-                                                        {det.category} • Score: {det.threat || det.t_score || 0}
+                                                        {det.category || 'Forensic Metadata'} • Score: {det.threat || det.t_score || 0}
                                                     </div>
                                                 </div>
                                             ))}
@@ -195,7 +198,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                         {type === 'host' ? <Users size={14} color="var(--status-info)" /> : <HardDrive size={14} color="var(--accent-primary)" />}
                                         {type === 'host' ? 'Associated Accounts' : 'Associated Hosts'}
                                     </h4>
-                                    <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '12px', border: '1px solid var(--glass-border)' }}>
+                                    <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '12px', border: '1px solid var(--glass-border)', minHeight: '60px' }}>
                                         {correlations.length > 0 ? (
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                                 {correlations.map((c, i) => (
@@ -221,6 +224,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
             )}
 
             <style jsx>{`
+                @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
                 .info-stat { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--text-secondary); background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--glass-border); }
                 .detection-row { padding: 8px 10px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--glass-border); }
                 .correlation-chip { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
@@ -246,6 +250,7 @@ export default function VectraPage() {
         setLoading(true);
         setError(null);
         setHasSearched(true);
+        setQuery(searchQuery); // Ensure input state is synced
         
         const isEmail = searchQuery.includes('@');
         const isIPOrHost = (searchQuery.includes('.') && !isEmail);
@@ -317,7 +322,6 @@ export default function VectraPage() {
     }, [highRiskOnly]);
 
     const handleSearch = (v: string) => {
-        setQuery(v);
         loadVectraData(v);
     };
 

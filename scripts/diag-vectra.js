@@ -27,27 +27,34 @@ async function test() {
         const token = auth.data.access_token;
         console.log('Auth: SUCCESS');
 
-        // Target: EFT01 (Hostname)
+        // Probe 1: Account ID filtering
         try {
-            console.log('Targeting Hostname: EFT01');
-            const res = await axios.get(`${VECTRA_URL}/api/v3.4/detections?name=EFT01&limit=5`, { 
+            const aRes = await axios.get(`${VECTRA_URL}/api/v3.4/accounts?ordering=-t_score&limit=1`, { 
                 httpsAgent: agent, 
                 headers: { Authorization: 'Bearer ' + token } 
             });
-            console.log('--- Detection Pivot via Name ---');
-            console.log(`DETECTIONS: SUCCESS - Count: ${res.data.count}`);
-            if (res.data.results && res.data.results.length > 0) {
-                const d = res.data.results[0];
-                console.log('DETECTION_SAMPLE:', {
-                    id: d.id,
-                    type: d.detection_type,
-                    host: d.host,
-                    account: d.account,
-                    account_id: d.account_id
+            if (aRes.data.results && aRes.data.results.length > 0) {
+                const accId = aRes.data.results[0].id;
+                console.log(`Targeting Account ID: ${accId}`);
+                const dRes = await axios.get(`${VECTRA_URL}/api/v3.4/detections?account_id=${accId}`, { 
+                    httpsAgent: agent, 
+                    headers: { Authorization: 'Bearer ' + token } 
                 });
+                console.log(`PROBE account_id: SUCCESS - Count: ${dRes.data.count}`);
+                if (dRes.data.results && dRes.data.results.length > 0) {
+                    const det = dRes.data.results[0];
+                    console.log('Detection Keys:', Object.keys(det).join(', '));
+                    console.log('Property Mapping Test:', {
+                        type: det.detection_type,
+                        cat: det.category,
+                        acc: det.account,
+                        acc_name: det.account_name,
+                        host: det.host
+                    });
+                }
             }
         } catch (e) {
-            console.log(`DETECTION NAME PROBE FAILED - ${e.message} - ${JSON.stringify(e.response?.data || '')}`);
+            console.log(`PROBE account_id FAILED - ${e.message} - ${JSON.stringify(e.response?.data || '')}`);
         }
     } catch (e) {
         console.log('Auth: FAILED -', e.response?.data || e.message);
