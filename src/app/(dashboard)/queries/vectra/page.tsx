@@ -179,8 +179,13 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                             {detections.slice(0, 5).map((det: any, i: number) => (
                                                 <div key={i} className="detection-row">
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2px' }}>
                                                         <span style={{ fontWeight: '800', fontSize: '0.8rem', color: 'var(--status-error)' }}>{det.detection_type || det.type || 'Anomalous Behavior'}</span>
+                                                        {det.last_timestamp && (
+                                                            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                <Clock size={10} /> {new Date(det.last_timestamp).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
                                                         {det.category || 'Forensic Metadata'} • Score: {det.threat || det.t_score || 0}
@@ -199,9 +204,9 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                         {type === 'host' ? 'Associated Accounts' : 'Associated Hosts'}
                                     </h4>
                                     <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '12px', border: '1px solid var(--glass-border)', minHeight: '60px' }}>
-                                        {correlations.length > 0 ? (
+                                        {correlations.filter(c => c.name && c.name.trim().length > 0).length > 0 ? (
                                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                                {correlations.map((c, i) => (
+                                                {correlations.filter(c => c.name && c.name.trim().length > 0).map((c, i) => (
                                                     <button key={i} className="correlation-chip" onClick={(e) => {
                                                         e.stopPropagation();
                                                         onSearch(c.name);
