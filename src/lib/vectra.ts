@@ -53,16 +53,18 @@ async function getVectraToken() {
 
 export async function getVectraHosts(params: any = {}) {
     const token = await getVectraToken();
+    const queryParams: any = {
+        ordering: '-last_detection_timestamp',
+    };
+    
+    // Only add name if it's not empty string
+    if (params.name) queryParams.name = params.name;
+
     try {
         const response = await axios.get(`${VECTRA_URL}/api/v3.4/hosts`, {
             httpsAgent,
             headers: { Authorization: `Bearer ${token}` },
-            params: {
-                ordering: '-last_detection_timestamp',
-                min_threat: 0,
-                min_certainty: 0,
-                ...params
-            }
+            params: queryParams
         });
         return response.data;
     } catch (error: any) {
@@ -73,16 +75,18 @@ export async function getVectraHosts(params: any = {}) {
 
 export async function getVectraDetections(params: any = {}) {
     const token = await getVectraToken();
+    const queryParams: any = {
+        ordering: '-last_timestamp',
+    };
+
+    if (params.name) queryParams.name = params.name;
+    if (params.host_id) queryParams.host_id = params.host_id;
+
     try {
         const response = await axios.get(`${VECTRA_URL}/api/v3.4/detections`, {
             httpsAgent,
             headers: { Authorization: `Bearer ${token}` },
-            params: {
-                ordering: '-last_timestamp',
-                min_threat: 0,
-                min_certainty: 0,
-                ...params
-            }
+            params: queryParams
         });
         return response.data;
     } catch (error: any) {
@@ -93,16 +97,17 @@ export async function getVectraDetections(params: any = {}) {
 
 export async function getVectraAccounts(params: any = {}) {
     const token = await getVectraToken();
+    const queryParams: any = {
+        ordering: '-last_detection_timestamp',
+    };
+
+    if (params.name) queryParams.name = params.name;
+
     try {
         const response = await axios.get(`${VECTRA_URL}/api/v3.4/accounts`, {
             httpsAgent,
             headers: { Authorization: `Bearer ${token}` },
-            params: {
-                ordering: '-last_detection_timestamp',
-                min_threat: 0,
-                min_certainty: 0,
-                ...params
-            }
+            params: queryParams
         });
         return response.data;
     } catch (error: any) {
