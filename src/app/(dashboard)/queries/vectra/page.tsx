@@ -19,7 +19,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
     const [correlations, setCorrelations] = useState<{name: string, type: string, id?: string}[]>([]);
 
     const loadDetails = async () => {
-        if (details) return;
+        if (details && detections.length > 0) return;
         setLoadingDetails(true);
         try {
             // 1. Fetch Details
@@ -30,65 +30,64 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
             const fullData = await dRes.json();
             setDetails(fullData);
 
-            // 2. Fetch High-Fidelity Detections (Bypassing URI-only links in Host set)
+            // 2. Fetch High-Fidelity Detections
             const detUrl = type === 'host'
                 ? `/api/vectra?type=detections&host_id=${data.id}`
-                : `/api/vectra?type=detections&query=${encodeURIComponent(data.name)}`; // Using name pivot for accounts
+                : `/api/vectra?type=detections&query=${encodeURIComponent(data.name)}`; 
             const detRes = await fetch(detUrl);
             const detData = await detRes.json();
-            const detResults = detData.results || [];
-            setDetections(detResults);
+            const rawDetections = detData.results || [];
+            console.log(`[FORENSIC] Telemetry for ${data.name}:`, rawDetections);
+            setDetections(rawDetections);
 
-            // 3. EXTRACT CORRELATIONS
-            const links: {name: string, type: string, id?: string}[] = [];
+            // 3. Deep Correlation Extraction
+            const links: any[] = [];
             const seen = new Set<string>();
 
-            // Direct Schema Associations
-            if (type === 'host') {
-                if (fullData.probable_owner && !seen.has(fullData.probable_owner.name)) {
-                    links.push({ name: fullData.probable_owner.name, type: 'account', id: fullData.probable_owner.id });
-                    seen.add(fullData.probable_owner.name);
-                }
-                if (fullData.last_account_name && !seen.has(fullData.last_account_name)) {
-                    links.push({ name: fullData.last_account_name, type: 'account' });
-                    seen.add(fullData.last_account_name);
-                }
-            } else {
-                if (fullData.probable_home?.name && !seen.has(fullData.probable_home.name)) {
-                    links.push({ name: fullData.probable_home.name, type: 'host', id: fullData.probable_home.id });
-                    seen.add(fullData.probable_home.name);
-                }
-                if (fullData.associated_accounts) {
-                    fullData.associated_accounts.forEach((acc: any) => {
-                        if (acc.name && !seen.has(acc.name)) {
-                            links.push({ name: acc.name, type: 'account', id: acc.id });
-                            seen.add(acc.name);
-                        }
-                    });
-                }
+            // Schema Associations
+            if (fullData.probable_owner?.name) {
+                links.push({ name: fullData.probable_owner.name, type: 'account' });
+                seen.add(fullData.probable_owner.name);
+            }
+            if (fullData.last_account_name) {
+                links.push({ name: fullData.last_account_name, type: 'account' });
+                seen.add(fullData.last_account_name);
+            }
+            if (fullData.probable_home?.name) {
+                links.push({ name: fullData.probable_home.name, type: 'host' });
+                seen.add(fullData.probable_home.name);
             }
 
-            // Pivot Detection-based correlation
-            detResults.forEach((det: any) => {
-                if (type === 'host') {
-                    // Extract Account from Host detection
-                    const accName = det.account || det.account_name;
-                    if (accName && !seen.has(accName)) {
-                        links.push({ name: accName, type: 'account' });
-                        seen.add(accName);
+            // Behavioral Traversal
+            rawDetections.forEach((det: any) => {
+                // Account Candidates
+                [det.account, det.account_name, det.account_info?.name].forEach(cand => {
+                    const name = typeof cand === 'string' ? cand : cand?.name;
+                    if (name && name.length > 2 && !seen.has(name)) {
+                        links.push({ name, type: 'account' });
+                        seen.add(name);
                     }
-                } else {
-                    // Extract Host from Account detection
-                    const hName = det.host || det.host_name;
-                    if (hName && !seen.has(hName)) {
-                        links.push({ name: hName, type: 'host' });
-                        seen.add(hName);
+                });
+
+                // Host Candidates
+                const hosts = [
+                    det.host, 
+                    det.host_name, 
+                    ...(det.dst_hosts?.map((h: any) => h.name) || []),
+                    ...(det.src_hosts?.map((h: any) => h.name) || [])
+                ];
+                hosts.forEach(cand => {
+                    const name = typeof cand === 'string' ? cand : cand?.name;
+                    if (name && name.length > 2 && !seen.has(name) && name !== data.name) {
+                        links.push({ name, type: 'host' });
+                        seen.add(name);
                     }
-                }
+                });
             });
+
             setCorrelations(links);
         } catch (e) {
-            console.error(e);
+            console.error("Forensic Enrichment Failed:", e);
         } finally {
             setLoadingDetails(false);
         }
@@ -234,19 +233,21 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                     {detections.length > 0 ? (
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                             {detections.slice(0, 5).map((det: any, i: number) => (
-                                                <div key={i} className="detection-row">
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2px' }}>
-                                                        <span style={{ fontWeight: '800', fontSize: '0.8rem', color: 'var(--status-error)' }}>{det.detection_type || det.type || 'Anomalous Behavior'}</span>
-                                                        {det.last_timestamp && (
-                                                            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                <Clock size={10} /> {new Date(det.last_timestamp).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
+                                                    <div key={i} className="detection-row">
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2px' }}>
+                                                            <span style={{ fontWeight: '800', fontSize: '0.8rem', color: 'var(--status-error)' }}>
+                                                                {det.detection_type || det.type || det.category || 'Anomalous Behavior'}
                                                             </span>
-                                                        )}
+                                                            {det.last_timestamp && (
+                                                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                    <Clock size={10} /> {new Date(det.last_timestamp).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                                                            {det.category || 'Forensic Metadata'} • Score: {det.threat || det.t_score || 0}
+                                                        </div>
                                                     </div>
-                                                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-                                                        {det.category || 'Forensic Metadata'} • Score: {det.threat || det.t_score || 0}
-                                                    </div>
-                                                </div>
                                             ))}
                                         </div>
                                     ) : (
