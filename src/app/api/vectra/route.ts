@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     const query = searchParams.get('query') || '';
     const hostId = searchParams.get('host_id');
     const highRiskOnly = searchParams.get('high_risk_only') === 'true';
-    const ordering = searchParams.get('ordering') || '-threat';
+    const ordering = searchParams.get('ordering') || '-t_score';
 
     try {
         let data;
