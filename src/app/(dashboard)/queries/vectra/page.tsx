@@ -194,29 +194,48 @@ export default function VectraPage() {
     const [query, setQuery] = useState('');
     const [loading, setLoading] = useState(false);
     const [hasSearched, setHasSearched] = useState(false);
+    const [searchType, setSearchType] = useState<'all' | 'hosts' | 'accounts'>('all');
+    const [activeQuery, setActiveQuery] = useState('');
     const [hosts, setHosts] = useState<any[]>([]);
     const [accounts, setAccounts] = useState<any[]>([]);
     const [counts, setCounts] = useState({ hosts: 0, accounts: 0, active_detections: 0 });
     const [error, setError] = useState<string | null>(null);
     const [highRiskOnly, setHighRiskOnly] = useState(true);
 
-    const loadVectraData = async (searchQuery: string = query, isQuickAction: boolean = false) => {
+    const loadVectraData = async (searchQuery: string = query, isQuickAction: boolean = false, typeOverride?: 'hosts' | 'accounts') => {
         setLoading(true);
         setError(null);
         setHasSearched(true);
+        setActiveQuery(isQuickAction ? (typeOverride === 'hosts' ? 'Top 10 Critical Hosts' : 'Top 10 Critical Accounts') : searchQuery);
+        
+        // Auto-detect search type if not a quick action
+        if (!isQuickAction) {
+            if (searchQuery.includes('.') || searchQuery.toLowerCase().includes('ip') || searchQuery.toLowerCase().includes('host')) {
+                setSearchType('hosts');
+            } else if (searchQuery.includes('@') || searchQuery.includes('_') || searchQuery.length > 2) {
+                // If it looks like a username or email, still show both but maybe user wanted accounts
+                setSearchType('all');
+            } else {
+                setSearchType('all');
+            }
+        } else if (typeOverride) {
+            setSearchType(typeOverride);
+        }
+
         try {
-            // If it's a quick action (Top 10), we don't send the name query, but we keep highRiskOnly
             const nameParam = isQuickAction ? '' : encodeURIComponent(searchQuery);
             const hUrl = `/api/vectra?type=hosts&query=${nameParam}&high_risk_only=${highRiskOnly}`;
             const aUrl = `/api/vectra?type=accounts&query=${nameParam}&high_risk_only=${highRiskOnly}`;
             
-            const [hRes, aRes] = await Promise.all([
-                fetch(hUrl),
-                fetch(aUrl)
-            ]);
-            
-            const hData = await hRes.json();
-            const aData = await aRes.json();
+            // Only fetch what is needed
+            const fetches = [];
+            if (searchType === 'all' || searchType === 'hosts' || typeOverride === 'hosts') fetches.push(fetch(hUrl).then(r => r.json()));
+            else fetches.push(Promise.resolve({ results: [] }));
+
+            if (searchType === 'all' || searchType === 'accounts' || typeOverride === 'accounts') fetches.push(fetch(aUrl).then(r => r.json()));
+            else fetches.push(Promise.resolve({ results: [] }));
+
+            const [hData, aData] = await Promise.all(fetches);
             
             if (hData.error || aData.error) {
                 setError(hData.error || aData.error);
@@ -226,7 +245,6 @@ export default function VectraPage() {
             setHosts(hData.results || []);
             setAccounts(aData.results || []);
             
-            // Derive counts
             setCounts({
                 hosts: hData.count || (hData.results?.length || 0),
                 accounts: aData.count || (aData.results?.length || 0),
@@ -251,9 +269,9 @@ export default function VectraPage() {
     };
 
     const handleQuickAction = (type: 'hosts' | 'accounts') => {
-        // For quick actions, we clear the query and fetch the top scoring entities
         setQuery('');
-        loadVectraData('', true);
+        setSearchType(type);
+        loadVectraData('', true, type);
     };
 
     const topHosts = hosts.slice(0, 10).map(h => ({ name: h.name || h.ip, value: `${h.threat || 0}/${h.certainty || 0}` }));
@@ -321,8 +339,8 @@ export default function VectraPage() {
                             >
                                 <Shield size={14} /> {highRiskOnly ? "High Risk Only" : "All Entities"}
                             </button>
-                            <button onClick={() => setHasSearched(false)} className="badge-action" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                                <LayoutDashboard size={14} /> Reset
+                            <button onClick={() => { setHasSearched(false); setQuery(''); }} className="badge-action" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                                <LayoutDashboard size={14} /> New Search
                             </button>
                         </div>
                     )}
@@ -476,8 +494,8 @@ export default function VectraPage() {
             {hasSearched && !loading && (
                 <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', margin: '24px 0 40px' }}>
-                        <MetricList title="High-Risk Forensic Hosts" items={topHosts} icon={Monitor} color="var(--status-error)" />
-                        <MetricList title="Compromised Accounts" items={topAccounts} icon={User} color="var(--status-warning)" />
+                        {(searchType === 'all' || searchType === 'hosts') && <MetricList title="High-Risk Forensic Hosts" items={topHosts} icon={Monitor} color="var(--status-error)" />}
+                        {(searchType === 'all' || searchType === 'accounts') && <MetricList title="Compromised Accounts" items={topAccounts} icon={User} color="var(--status-warning)" />}
                         
                         <div className="glass-card summary-card-analytic">
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: '900', letterSpacing: '0.1em' }}>THREAT DETECTION VOLUME</span>
@@ -491,40 +509,44 @@ export default function VectraPage() {
                         </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
-                        <div>
-                            <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
-                                <Monitor size={20} color="var(--accent-primary)" />
-                                Prioritized Hosts
-                            </h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                {hosts.length > 0 ? (
-                                    hosts.map((h, i) => <EntityCard key={i} type="host" data={h} onSearch={handleSearch} />)
-                                ) : (
-                                    <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                        <Monitor size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
-                                        <p>No prioritized hosts found for this search.</p>
-                                    </div>
-                                )}
+                    <div style={{ display: 'grid', gridTemplateColumns: searchType === 'all' ? '1fr 1fr' : '1fr', gap: '32px' }}>
+                        {(searchType === 'all' || searchType === 'hosts') && (
+                            <div>
+                                <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
+                                    <Monitor size={20} color="var(--accent-primary)" />
+                                    {activeQuery.startsWith('Top 10') ? activeQuery : `Prioritized Hosts Matching "${activeQuery}"`}
+                                </h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    {hosts.length > 0 ? (
+                                        hosts.map((h, i) => <EntityCard key={i} type="host" data={h} onSearch={handleSearch} />)
+                                    ) : (
+                                        <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                            <Monitor size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
+                                            <p>No prioritized hosts found for this search.</p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
+                        )}
 
-                        <div>
-                            <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
-                                <User size={20} color="var(--status-info)" />
-                                Prioritized Accounts
-                            </h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                {accounts.length > 0 ? (
-                                    accounts.map((a, i) => <EntityCard key={i} type="account" data={a} onSearch={handleSearch} />)
-                                ) : (
-                                    <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                        <User size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
-                                        <p>No prioritized accounts found for this search.</p>
-                                    </div>
-                                )}
+                        {(searchType === 'all' || searchType === 'accounts') && (
+                            <div>
+                                <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
+                                    <User size={20} color="var(--status-info)" />
+                                    {activeQuery.startsWith('Top 10') ? activeQuery : `Prioritized Accounts Matching "${activeQuery}"`}
+                                </h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                    {accounts.length > 0 ? (
+                                        accounts.map((a, i) => <EntityCard key={i} type="account" data={a} onSearch={handleSearch} />)
+                                    ) : (
+                                        <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                            <User size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
+                                            <p>No prioritized accounts found for this search.</p>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 </div>
             )}
