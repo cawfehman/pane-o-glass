@@ -323,14 +323,14 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
                 .info-stat { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--text-secondary); background: rgba(255,255,255,0.02); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--glass-border); }
                 .detection-row { padding: 8px 10px; background: rgba(0,0,0,0.2); border-radius: 6px; border: 1px solid var(--glass-border); }
-                .correlation-chip { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; }
+                .correlation-chip { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-primary); padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
                 .correlation-chip:hover { background: var(--accent-primary); color: #000; border-color: var(--accent-primary); }
                 
-                .attribution-box { display: flex; flexDirection: column; gap: 4px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); }
-                .attr-label { font-size: 0.65rem; color: var(--text-muted); textTransform: uppercase; fontWeight: 800; }
-                .attr-value { font-size: 0.9rem; fontWeight: 700; color: var(--text-primary); }
+                .attribution-box { display: flex; flexDirection: column; gap: 4px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); overflow: hidden; }
+                .attr-label { font-size: 0.65rem; color: var(--text-muted); textTransform: uppercase; fontWeight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                .attr-value { font-size: 0.9rem; fontWeight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
                 .attr-none { opacity: 0.5; font-style: italic; font-weight: 400; }
-                .pivot-link { background: none; border: none; padding: 0; margin: 0; color: var(--status-info); cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 0.9rem; font-weight: 900; transition: color 0.2s; }
+                .pivot-link { background: none; border: none; padding: 0; margin: 0; color: var(--status-info); cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 0.9rem; font-weight: 900; transition: color 0.2s; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
                 .pivot-link:hover { color: var(--accent-primary); text-decoration: underline; }
             `}</style>
         </div>
@@ -360,9 +360,12 @@ export default function VectraPage() {
         
         setActiveQuery(isQuickAction ? (typeOverride === 'hosts' ? 'Top 10 Critical Hosts' : 'Top 10 Critical Accounts') : searchQuery);
         
-        let effectiveType: 'all' | 'hosts' | 'accounts' = 'all';
+        let effectiveType: 'all' | 'hosts' | 'accounts' = searchType;
         if (typeOverride) {
             effectiveType = typeOverride;
+        } else if (isQuickAction) {
+            // Keep current for refresh
+            effectiveType = searchType;
         } else if (isEmail) {
             effectiveType = 'accounts';
         } else if (isIPOrHost) {
@@ -625,10 +628,16 @@ export default function VectraPage() {
 
             {/* Results Section */}
             {hasSearched && !loading && (
-                <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: searchType === 'all' ? '1fr 1fr' : '1fr', gap: '32px', marginTop: '40px' }}>
+                <div style={{ animation: 'fadeIn 0.4s ease-out', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+                    <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: searchType === 'all' ? 'repeat(auto-fit, minmax(400px, 1fr))' : '1fr', 
+                        gap: '24px', 
+                        marginTop: '40px',
+                        minWidth: 0
+                    }}>
                         {(searchType === 'all' || searchType === 'hosts') && (
-                            <div>
+                            <div style={{ minWidth: 0 }}>
                                 <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
                                     <Monitor size={20} color="var(--accent-primary)" />
                                     {activeQuery.startsWith('Top 10') ? activeQuery : `Forensic Results for "${activeQuery}" (Hosts)`}
@@ -647,7 +656,7 @@ export default function VectraPage() {
                         )}
 
                         {(searchType === 'all' || searchType === 'accounts') && (
-                            <div>
+                            <div style={{ minWidth: 0 }}>
                                 <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
                                     <User size={20} color="var(--status-info)" />
                                     {activeQuery.startsWith('Top 10') ? activeQuery : `Forensic Results for "${activeQuery}" (Accounts)`}
