@@ -27,27 +27,38 @@ async function test() {
         const token = auth.data.access_token;
         console.log('Auth: SUCCESS');
 
-        // Probe 1: Attribution Modeling Discovery
+        // Probe 1: Account Schema Discovery (High-Fidelity)
         try {
-            const hRes = await axios.get(`${VECTRA_URL}/api/v3.4/hosts?ordering=-t_score&limit=5`, { 
+            const aRes = await axios.get(`${VECTRA_URL}/api/v3.4/accounts?ordering=-t_score&limit=5`, { 
                 httpsAgent: agent, 
                 headers: { Authorization: 'Bearer ' + token } 
             });
-            console.log(`--- High Score Host Attribution Probe ---`);
-            for (const h of hRes.data.results) {
-                const details = await axios.get(`${VECTRA_URL}/api/v3.4/hosts/${h.id}`, { 
+            console.log(`--- High Score Account Telemetry Probe ---`);
+            for (const acc of aRes.data.results) {
+                const details = await axios.get(`${VECTRA_URL}/api/v3.4/accounts/${acc.id}`, { 
                     httpsAgent: agent, 
                     headers: { Authorization: 'Bearer ' + token } 
                 });
                 const d = details.data;
-                console.log(`Host: ${d.name} (${d.id}) | Score: ${d.t_score}`);
-                console.log(`  - probable_owner:`, d.probable_owner);
-                console.log(`  - assignment:`, d.assignment);
-                console.log(`  - last_account_name:`, d.last_account_name);
-                console.log(`  - detection_profile:`, d.detection_profile);
+                console.log(`Account: ${d.name} (${d.id}) | Score: ${d.t_score}`);
+                console.log(`  - last_seen:`, d.last_seen || d.last_timestamp || d.last_login);
+                console.log(`  - KEYS:`, Object.keys(d).sort().join(', '));
+
+                // Probe Detections
+                const detRes = await axios.get(`${VECTRA_URL}/api/v3.4/detections?account_id=${acc.id}`, { 
+                    httpsAgent: agent, 
+                    headers: { Authorization: 'Bearer ' + token } 
+                });
+                console.log(`  - detections (via account_id):`, detRes.data.count);
+                
+                const detQuery = await axios.get(`${VECTRA_URL}/api/v3.4/detections?query=${encodeURIComponent(d.name)}`, { 
+                    httpsAgent: agent, 
+                    headers: { Authorization: 'Bearer ' + token } 
+                });
+                console.log(`  - detections (via query):`, detQuery.data.count);
             }
         } catch (e) {
-            console.log(`ATTRIBUTION PROBE FAILED - ${e.message}`);
+            console.log(`ACCOUNT PROBE FAILED - ${e.message}`);
         }
     } catch (e) {
         console.log('Auth: FAILED -', e.response?.data || e.message);

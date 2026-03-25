@@ -39,7 +39,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
             // 2. Fetch High-Fidelity Detections
             const detUrl = type === 'host'
                 ? `/api/vectra?type=detections&host_id=${data.id}`
-                : `/api/vectra?type=detections&query=${encodeURIComponent(data.name)}`; 
+                : `/api/vectra?type=detections&account_id=${data.id}`; 
             const detRes = await fetch(detUrl);
             const detData = await detRes.json();
             const rawDetections = detData.results || [];
@@ -155,7 +155,9 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                     </div>
                     <div style={{ minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={{ fontWeight: '800', fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.name || data.ip || 'Unknown Entity'}</div>
+                            <div style={{ fontWeight: '800', fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {details?.name || data.name || data.ip || 'Unknown Entity'}
+                            </div>
                             <a 
                                 href={getPortalUrl(type, data.id)} 
                                 target="_blank" 
@@ -169,7 +171,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                         </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                             {data.ip && <span>{data.ip} • </span>} 
-                            Last Seen: {data.last_seen || 'N/A'}
+                            Last Seen: {details?.last_seen || details?.last_timestamp || data.last_seen || 'N/A'}
                         </div>
                     </div>
                 </div>
