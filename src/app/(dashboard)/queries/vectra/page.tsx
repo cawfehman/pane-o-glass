@@ -18,6 +18,12 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [correlations, setCorrelations] = useState<{name: string, type: string, id?: string}[]>([]);
 
+    const getPortalUrl = (type: 'host' | 'account' | 'detection', id: string | number) => {
+        const baseUrl = 'https://207017482210.uw2.portal.vectra.ai';
+        if (type === 'detection') return `${baseUrl}/detections/${id}`;
+        return `${baseUrl}/${type}s/${id}`;
+    };
+
     const loadDetails = async () => {
         if (details && detections.length > 0) return;
         setLoadingDetails(true);
@@ -148,7 +154,19 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                         {type === 'host' ? <Monitor size={20} color={isActive ? "var(--accent-primary)" : "var(--text-muted)"} /> : <User size={20} color={isActive ? "var(--status-info)" : "var(--text-muted)"} />}
                     </div>
                     <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: '800', fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.name || data.ip || 'Unknown Entity'}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ fontWeight: '800', fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{data.name || data.ip || 'Unknown Entity'}</div>
+                            <a 
+                                href={getPortalUrl(type, data.id)} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}
+                                onClick={(e) => e.stopPropagation()}
+                                title="View in Vectra Portal"
+                            >
+                                <ExternalLink size={14} />
+                            </a>
+                        </div>
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
                             {data.ip && <span>{data.ip} • </span>} 
                             Last Seen: {data.last_seen || 'N/A'}
@@ -269,9 +287,20 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                             {detections.slice(0, 5).map((det: any, i: number) => (
                                                     <div key={i} className="detection-row">
                                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2px' }}>
-                                                            <span style={{ fontWeight: '800', fontSize: '0.8rem', color: 'var(--status-error)' }}>
-                                                                {det.detection_type || det.type || det.category || 'Anomalous Behavior'}
-                                                            </span>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <span style={{ fontWeight: '800', fontSize: '0.8rem', color: 'var(--status-error)' }}>
+                                                                    {det.detection_type || det.type || det.category || 'Anomalous Behavior'}
+                                                                </span>
+                                                                <a 
+                                                                    href={getPortalUrl('detection', det.id)} 
+                                                                    target="_blank" 
+                                                                    rel="noopener noreferrer"
+                                                                    style={{ color: 'rgba(239, 68, 68, 0.4)', display: 'flex', alignItems: 'center' }}
+                                                                    title="Jump to Detection"
+                                                                >
+                                                                    <ArrowUpRight size={12} />
+                                                                </a>
+                                                            </div>
                                                             {det.last_timestamp && (
                                                                 <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                                     <Clock size={10} /> {new Date(det.last_timestamp).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}
