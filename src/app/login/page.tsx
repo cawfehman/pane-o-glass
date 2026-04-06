@@ -1,7 +1,7 @@
 "use client";
 
 import { signIn } from "next-auth/react"
-import { useState, Suspense } from "react"
+import { useState, Suspense, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 
 export default function LoginPage() {
@@ -21,6 +21,18 @@ function LoginContent() {
     const searchParams = useSearchParams();
     const isTimeout = searchParams.get("timeout") === "true";
 
+    // Proactive Refresh: If the user stays on the login page for 20 minutes, 
+    // force a reload to keep the CSRF token fresh.
+    useEffect(() => {
+        const refreshTimer = setTimeout(() => {
+            if (!isLoading) {
+                window.location.reload();
+            }
+        }, 20 * 60 * 1000); // 20 minutes
+
+        return () => clearTimeout(refreshTimer);
+    }, [isLoading]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError(false);
@@ -34,6 +46,20 @@ function LoginContent() {
             });
 
             if (res?.error) {
+                // If the error seems related to a stale session/CSRF (often signaled by status 401/403 or specific codes),
+                // we'll notify the user and force a reload.
+                if (res.error === "CredentialsSignin" || res.error === "CallbackRouteError" || res.status === 401) {
+                    // Check if they've been here a while and might have a stale CSRF
+                    setError(true);
+                    setPassword("");
+                    
+                    // We'll give it one second to show the error, then force a reload to get a fresh token
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                    return;
+                }
+
                 setError(true);
                 setPassword("");
                 setTimeout(() => setError(false), 2000);
@@ -42,9 +68,11 @@ function LoginContent() {
                 router.refresh();
             }
         } catch (err) {
+            console.error("Login submission error:", err);
             setError(true);
             setPassword("");
-            setTimeout(() => setError(false), 2000);
+            // For catch-all errors, a reload is usually the safest rescue
+            setTimeout(() => window.location.reload(), 1500);
         } finally {
             setIsLoading(false);
         }
