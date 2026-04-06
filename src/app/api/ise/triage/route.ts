@@ -24,10 +24,13 @@ export async function GET(req: Request) {
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
-        // 3. Fetch all auth status records for the last 24 hours, limited to 100 results
-        const endpoint = `${url}/admin/API/mnt/AuthStatus/All/86400/100/All`;
+        // 3. Fetch all auth status records for the last 1 hour (3600s) for speed, limited to 100 results
+        const endpoint = `${url}/admin/API/mnt/AuthStatus/All/3600/100/All`;
+        const startTime = Date.now();
+        
         const response = await fetch(endpoint, {
-            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" }
+            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
+            // Add a signal/timeout if possible, but for now we rely on the faster 1hr window
         });
 
         if (!response.ok) {
@@ -40,19 +43,15 @@ export async function GET(req: Request) {
             tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
         });
         
-        // Debug Log for Triage
-        console.log(`ISE Triage: Received ${xmlText.length} bytes of XML from MnT.`);
-
         const rawNodes = data.authStatusOutputList?.authStatusList || data.authStatusList || data.authStatus;
         if (!rawNodes) {
-            console.warn("ISE Triage: No AuthStatus nodes found in MnT response.");
-            return NextResponse.json({ found: false, failures: [] });
+            return NextResponse.json({ found: false, failures: [], totalInSample: 0 });
         }
         
         const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
         
-        // 4. Map and enrich with robust parsing
-        const mappedResults = await Promise.all(nodesArray.map(async (n: any) => {
+        // 4. Map results WITHOUT LDAP enrichment for speed (Drill-down will enrich)
+        const mappedResults = nodesArray.map((n: any) => {
             const node = n.authStatusElements || n;
             const val = (v: any) => v?._ || v || "";
 
@@ -60,7 +59,6 @@ export async function GET(req: Request) {
             const passedVal = val(node.passed);
             const failureReason = val(node.failure_reason) || val(node.failureReason);
             
-            // Robust status check: handles "true", true, or empty reason
             const isSuccess = passedVal === "true" || passedVal === true || (!failureReason && passedVal !== "false");
 
             return {
@@ -69,18 +67,19 @@ export async function GET(req: Request) {
                 calling_station_id: val(node.calling_station_id) || val(node.callingStationId) || "Unknown",
                 failure_reason: failureReason || (isSuccess ? "Passed" : "Unknown Failure"),
                 status: isSuccess,
-                nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown",
-                ad: userName && userName !== "Unknown" ? await getUserDetails(userName) : null
+                nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown"
             };
-        }));
+        });
 
         const failuresOnly = mappedResults.filter(f => !f.status);
+        const duration = Date.now() - startTime;
 
         return NextResponse.json({ 
             found: mappedResults.length > 0, 
             failures: failuresOnly.slice(0, 20),
             totalInSample: mappedResults.length,
-            failureCount: failuresOnly.length
+            failureCount: failuresOnly.length,
+            processingTime: `${duration}ms`
         });
 
     } catch (e: any) {
