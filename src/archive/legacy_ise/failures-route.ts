@@ -4,7 +4,6 @@ import { logAudit } from '@/lib/audit';
 import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
 import { fetchIseSession } from '@/lib/ise';
-import { getUserDetails } from '@/lib/ldap';
 
 export async function GET(req: Request) {
     const session = await auth();
@@ -120,14 +119,7 @@ export async function GET(req: Request) {
                 };
             });
             
-            const enrichedFailures = await Promise.all(mappedResults.map(async (f: any) => {
-                return {
-                    ...f,
-                    ad: f.user_name && f.user_name !== "Unknown" ? await getUserDetails(f.user_name) : null
-                };
-            }));
-            
-            const events = enrichedFailures.sort((a, b) => {
+            const events = mappedResults.sort((a, b) => {
                 const timeA = new Date(a.timestamp).getTime();
                 const timeB = new Date(b.timestamp).getTime();
                 return isNaN(timeB) ? -1 : (isNaN(timeA) ? 1 : timeB - timeA);

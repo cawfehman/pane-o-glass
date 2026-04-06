@@ -72,3 +72,49 @@ export async function authenticateWithAD(username: string, password: string): Pr
         }
     }
 }
+/**
+ * Fetches specific user details (department, title, etc.) for session enrichment.
+ * Does NOT perform user authentication, uses service account bind only.
+ */
+export async function getUserDetails(username: string) {
+    const url = process.env.AD_URL;
+    const bindDN = process.env.AD_BIND_DN;
+    const bindPassword = process.env.AD_BIND_PASSWORD;
+    const baseDN = process.env.AD_BASE_DN;
+    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
+
+    if (!url || !bindDN || !bindPassword || !baseDN) {
+        return null;
+    }
+
+    const client = new Client({
+        url,
+        tlsOptions: url.startsWith("ldaps") ? { rejectUnauthorized } : undefined,
+    });
+
+    try {
+        await client.bind(bindDN, bindPassword);
+        
+        const { searchEntries } = await client.search(baseDN, {
+            filter: `(|(sAMAccountName=${username})(userPrincipalName=${username}))`,
+            scope: "sub",
+            attributes: ["displayName", "department", "title", "telephoneNumber", "mail"],
+        });
+
+        if (searchEntries.length === 0) return null;
+
+        const entry = searchEntries[0];
+        return {
+            displayName: String(entry.displayName || ""),
+            department: String(entry.department || ""),
+            title: String(entry.title || ""),
+            phone: String(entry.telephoneNumber || ""),
+            email: String(entry.mail || ""),
+        };
+    } catch (err: any) {
+        console.error("LDAP Enrichment Error:", err.message);
+        return null;
+    } finally {
+        try { await client.unbind(); } catch (e) { }
+    }
+}
