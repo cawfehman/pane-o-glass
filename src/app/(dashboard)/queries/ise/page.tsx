@@ -38,14 +38,16 @@ export default function CiscoIsePage() {
     useEffect(() => {
         if (hasIsePerm) {
             setTriageLoading(true);
-            fetch('/api/ise/triage')
+            fetch('/api/ise/triage', { cache: 'no-store' })
                 .then(res => res.json())
                 .then(data => {
                     setTriageData(data);
-                    setTriageLoading(false);
                 })
                 .catch(err => {
                     console.error("Failed to load triage data", err);
+                    setTriageData({ error: "Network Timeout" });
+                })
+                .finally(() => {
                     setTriageLoading(false);
                 });
         }
@@ -188,7 +190,7 @@ export default function CiscoIsePage() {
                         <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
                             <h3 style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                                Recent Forensic Signals (Last 1 Hour)
+                                Recent Forensic Signals (Last 5 Minutes)
                             </h3>
                             
                             {!triageData ? (

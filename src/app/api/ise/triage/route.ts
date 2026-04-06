@@ -24,42 +24,47 @@ export async function GET(req: Request) {
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
-        // 3. Fetch the most recent records using the 3.3-compatible MACAddress/All path
-        const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/All/3600/100/All`;
+        // 3. PERFORMANCE OPTIMIZATION: 5-minute 'Live Signal' window for stability
+        const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/All/300/40/All`;
         const startTime = Date.now();
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s absolute timeout
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s absolute timeout for stability
 
         try {
             const response = await fetch(endpoint, {
                 headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
-                signal: controller.signal
+                signal: controller.signal,
+                cache: 'no-store' // Ensure we always get live data
             });
             clearTimeout(timeoutId);
 
             if (!response.ok) {
+                if (response.status === 404) {
+                    throw new Error("Triage Feed Unavailable: Service node role restriction.");
+                }
                 throw new Error(`ISE MnT API Error: ${response.status}`);
             }
 
             const xmlText = await response.text();
+            if (!xmlText || xmlText.length < 50) {
+                return NextResponse.json({ found: false, failures: [], totalInSample: 0 });
+            }
+
             const data = await parseStringPromise(xmlText, { 
                 explicitArray: false,
                 tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
             });
             
-            // ROBUST TRAVERSAL: Point directly to the authStatus array within the list container
             const container = data.authStatusOutputList?.authStatusList || data.authStatusList;
             const rawNodes = container?.authStatus;
             
-            // If rawNodes is missing or just metadata (xml2js sometimes keeps attributes), return empty
             if (!rawNodes) {
                 return NextResponse.json({ found: false, failures: [], totalInSample: 0 });
             }
             
             const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
             
-            // 4. Map results WITHOUT LDAP enrichment for speed (Drill-down will enrich)
             const mappedResults = nodesArray
                 .map((n: any) => {
                     const node = n.authStatusElements || n;
@@ -97,12 +102,12 @@ export async function GET(req: Request) {
         } catch (error: any) {
             clearTimeout(timeoutId);
             if (error.name === 'AbortError') {
-                throw new Error("ISE Triage timeout: Monitoring node response delayed.");
+                return NextResponse.json({ error: "ISE Triage Timeout: The monitoring database is under heavy load. Please try again in a few seconds." }, { status: 504 });
             }
             throw error;
         }
 
     } catch (e: any) {
-        return NextResponse.json({ error: e.message }, { status: 500 });
+        return NextResponse.json({ error: e.message || "Failed to synchronize forensics" }, { status: 500 });
     }
 }
