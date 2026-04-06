@@ -24,63 +24,76 @@ export async function GET(req: Request) {
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
-        // 3. Fetch all auth status records for the last 1 hour (3600s) for speed, limited to 100 results
-        const endpoint = `${url}/admin/API/mnt/AuthStatus/All/3600/100/All`;
+        // 3. Fetch the most recent records using the 3.3-compatible MACAddress/All path
+        const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/All/3600/100/All`;
         const startTime = Date.now();
         
-        const response = await fetch(endpoint, {
-            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
-            // Add a signal/timeout if possible, but for now we rely on the faster 1hr window
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s absolute timeout
 
-        if (!response.ok) {
-            throw new Error(`ISE MnT API Error: ${response.status}`);
-        }
+        try {
+            const response = await fetch(endpoint, {
+                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
 
-        const xmlText = await response.text();
-        const data = await parseStringPromise(xmlText, { 
-            explicitArray: false,
-            tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
-        });
-        
-        const rawNodes = data.authStatusOutputList?.authStatusList || data.authStatusList || data.authStatus;
-        if (!rawNodes) {
-            return NextResponse.json({ found: false, failures: [], totalInSample: 0 });
-        }
-        
-        const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
-        
-        // 4. Map results WITHOUT LDAP enrichment for speed (Drill-down will enrich)
-        const mappedResults = nodesArray.map((n: any) => {
-            const node = n.authStatusElements || n;
-            const val = (v: any) => v?._ || v || "";
+            if (!response.ok) {
+                throw new Error(`ISE MnT API Error: ${response.status}`);
+            }
 
-            const userName = val(node.user_name) || val(node.userName);
-            const passedVal = val(node.passed);
-            const failureReason = val(node.failure_reason) || val(node.failureReason);
+            const xmlText = await response.text();
+            const data = await parseStringPromise(xmlText, { 
+                explicitArray: false,
+                tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
+            });
             
-            const isSuccess = passedVal === "true" || passedVal === true || (!failureReason && passedVal !== "false");
+            const rawNodes = data.authStatusOutputList?.authStatusList || data.authStatusList || data.authStatus;
+            if (!rawNodes) {
+                return NextResponse.json({ found: false, failures: [], totalInSample: 0 });
+            }
+            
+            const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
+            
+            // 4. Map results WITHOUT LDAP enrichment for speed (Drill-down will enrich)
+            const mappedResults = nodesArray.map((n: any) => {
+                const node = n.authStatusElements || n;
+                const val = (v: any) => v?._ || v || "";
 
-            return {
-                timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || "Unknown",
-                user_name: userName || "Unknown",
-                calling_station_id: val(node.calling_station_id) || val(node.callingStationId) || "Unknown",
-                failure_reason: failureReason || (isSuccess ? "Passed" : "Unknown Failure"),
-                status: isSuccess,
-                nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown"
-            };
-        });
+                const userName = val(node.user_name) || val(node.userName);
+                const passedVal = val(node.passed);
+                const failureReason = val(node.failure_reason) || val(node.failureReason);
+                
+                const isSuccess = passedVal === "true" || passedVal === true || (!failureReason && passedVal !== "false");
 
-        const failuresOnly = mappedResults.filter(f => !f.status);
-        const duration = Date.now() - startTime;
+                return {
+                    timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || "Unknown",
+                    user_name: userName || "Unknown",
+                    calling_station_id: val(node.calling_station_id) || val(node.callingStationId) || "Unknown",
+                    failure_reason: failureReason || (isSuccess ? "Passed" : "Unknown Failure"),
+                    status: isSuccess,
+                    nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown"
+                };
+            });
 
-        return NextResponse.json({ 
-            found: mappedResults.length > 0, 
-            failures: failuresOnly.slice(0, 20),
-            totalInSample: mappedResults.length,
-            failureCount: failuresOnly.length,
-            processingTime: `${duration}ms`
-        });
+            const failuresOnly = mappedResults.filter(f => !f.status);
+            const duration = Date.now() - startTime;
+
+            return NextResponse.json({ 
+                found: mappedResults.length > 0, 
+                failures: failuresOnly.slice(0, 20),
+                totalInSample: mappedResults.length,
+                failureCount: failuresOnly.length,
+                processingTime: `${duration}ms`
+            });
+
+        } catch (error: any) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                throw new Error("ISE Triage timeout: Monitoring node response delayed.");
+            }
+            throw error;
+        }
 
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
