@@ -24,8 +24,8 @@ export async function GET(req: Request) {
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
-        // Fetch all auth status records for the last 24 hours (86400 seconds), limited to 50 results
-        const endpoint = `${url}/admin/API/mnt/AuthStatus/All/86400/50/All`;
+        // 3. Fetch all auth status records for the last 24 hours, limited to 100 results
+        const endpoint = `${url}/admin/API/mnt/AuthStatus/All/86400/100/All`;
         const response = await fetch(endpoint, {
             headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" }
         });
@@ -40,24 +40,35 @@ export async function GET(req: Request) {
             tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
         });
         
+        // Debug Log for Triage
+        console.log(`ISE Triage: Received ${xmlText.length} bytes of XML from MnT.`);
+
         const rawNodes = data.authStatusOutputList?.authStatusList || data.authStatusList || data.authStatus;
-        if (!rawNodes) return NextResponse.json({ found: false, failures: [] });
+        if (!rawNodes) {
+            console.warn("ISE Triage: No AuthStatus nodes found in MnT response.");
+            return NextResponse.json({ found: false, failures: [] });
+        }
         
         const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
         
-        // Map and enrich
+        // 4. Map and enrich with robust parsing
         const mappedResults = await Promise.all(nodesArray.map(async (n: any) => {
             const node = n.authStatusElements || n;
             const val = (v: any) => v?._ || v || "";
 
             const userName = val(node.user_name) || val(node.userName);
+            const passedVal = val(node.passed);
+            const failureReason = val(node.failure_reason) || val(node.failureReason);
             
+            // Robust status check: handles "true", true, or empty reason
+            const isSuccess = passedVal === "true" || passedVal === true || (!failureReason && passedVal !== "false");
+
             return {
                 timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || "Unknown",
                 user_name: userName || "Unknown",
                 calling_station_id: val(node.calling_station_id) || val(node.callingStationId) || "Unknown",
-                failure_reason: val(node.failure_reason) || val(node.failureReason) || "Passed",
-                status: val(node.passed) === "true",
+                failure_reason: failureReason || (isSuccess ? "Passed" : "Unknown Failure"),
+                status: isSuccess,
                 nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown",
                 ad: userName && userName !== "Unknown" ? await getUserDetails(userName) : null
             };
@@ -66,8 +77,8 @@ export async function GET(req: Request) {
         const failuresOnly = mappedResults.filter(f => !f.status);
 
         return NextResponse.json({ 
-            found: true, 
-            failures: failuresOnly.slice(0, 15),
+            found: mappedResults.length > 0, 
+            failures: failuresOnly.slice(0, 20),
             totalInSample: mappedResults.length,
             failureCount: failuresOnly.length
         });

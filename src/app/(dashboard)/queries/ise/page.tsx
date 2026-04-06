@@ -196,6 +196,11 @@ export default function CiscoIsePage() {
                                     <p style={{ color: 'var(--text-secondary)' }}>Synchronizing global failure telemetry...</p>
                                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '8px' }}>Polling ISE Monitoring & Troubleshooting nodes.</p>
                                 </div>
+                            ) : triageData.error ? (
+                                <div style={{ padding: '40px', textAlign: 'center', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                                    <p style={{ color: '#ef4444', marginBottom: '16px' }}><strong>Triage Sync Failed:</strong> {triageData.error}</p>
+                                    <button onClick={() => { setTriageData(null); setTriageLoading(true); }} className="btn-secondary" style={{ fontSize: '0.8rem' }}>Retry Sync</button>
+                                </div>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     {triageData.failures && triageData.failures.length > 0 ? (
@@ -212,12 +217,17 @@ export default function CiscoIsePage() {
                                                 </div>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                     <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{f.calling_station_id} · {f.nas_identifier}</span>
-                                                    <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold' }}>{f.failure_reason?.substring(0, 30)}...</span>
+                                                    <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold' }}>{f.failure_reason?.substring(0, 30)}{f.failure_reason?.length > 30 ? '...' : ''}</span>
                                                 </div>
                                             </div>
                                         ))
                                     ) : (
-                                        <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>No global RADIUS failures detected in the specified sample window.</p>
+                                        <div style={{ padding: '60px', textAlign: 'center', background: 'rgba(16, 185, 129, 0.05)', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.1)' }}>
+                                            <svg style={{ marginBottom: '16px', color: '#10b981' }} width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                                            <p style={{ color: '#10b981', fontWeight: 'bold' }}>Identity Health: Optimal</p>
+                                            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px' }}>No global RADIUS failures detected in the current triage sample.</p>
+                                            <button onClick={() => { setTriageData(null); setTriageLoading(true); }} className="btn-secondary" style={{ marginTop: '20px', fontSize: '0.75rem' }}>Refresh Feed</button>
+                                        </div>
                                     )}
                                 </div>
                             )}
