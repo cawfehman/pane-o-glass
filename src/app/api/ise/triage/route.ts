@@ -48,7 +48,11 @@ export async function GET(req: Request) {
                 tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
             });
             
-            const rawNodes = data.authStatusOutputList?.authStatusList || data.authStatusList || data.authStatus;
+            // ROBUST TRAVERSAL: Point directly to the authStatus array within the list container
+            const container = data.authStatusOutputList?.authStatusList || data.authStatusList;
+            const rawNodes = container?.authStatus;
+            
+            // If rawNodes is missing or just metadata (xml2js sometimes keeps attributes), return empty
             if (!rawNodes) {
                 return NextResponse.json({ found: false, failures: [], totalInSample: 0 });
             }
@@ -56,25 +60,28 @@ export async function GET(req: Request) {
             const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
             
             // 4. Map results WITHOUT LDAP enrichment for speed (Drill-down will enrich)
-            const mappedResults = nodesArray.map((n: any) => {
-                const node = n.authStatusElements || n;
-                const val = (v: any) => v?._ || v || "";
+            const mappedResults = nodesArray
+                .map((n: any) => {
+                    const node = n.authStatusElements || n;
+                    const val = (v: any) => v?._ || v || "";
 
-                const userName = val(node.user_name) || val(node.userName);
-                const passedVal = val(node.passed);
-                const failureReason = val(node.failure_reason) || val(node.failureReason);
-                
-                const isSuccess = passedVal === "true" || passedVal === true || (!failureReason && passedVal !== "false");
+                    const userName = val(node.user_name) || val(node.userName);
+                    const mac = val(node.calling_station_id) || val(node.callingStationId);
+                    const passedVal = val(node.passed);
+                    const failureReason = val(node.failure_reason) || val(node.failureReason);
+                    
+                    const isSuccess = passedVal === "true" || passedVal === true || (!failureReason && passedVal !== "false");
 
-                return {
-                    timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || "Unknown",
-                    user_name: userName || "Unknown",
-                    calling_station_id: val(node.calling_station_id) || val(node.callingStationId) || "Unknown",
-                    failure_reason: failureReason || (isSuccess ? "Passed" : "Unknown Failure"),
-                    status: isSuccess,
-                    nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown"
-                };
-            });
+                    return {
+                        timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || "Unknown",
+                        user_name: userName || "Unknown",
+                        calling_station_id: mac || "Unknown",
+                        failure_reason: failureReason || (isSuccess ? "Passed" : "Unknown Failure"),
+                        status: isSuccess,
+                        nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown"
+                    };
+                })
+                .filter(res => res.calling_station_id !== "Unknown" || res.user_name !== "Unknown");
 
             const failuresOnly = mappedResults.filter(f => !f.status);
             const duration = Date.now() - startTime;
