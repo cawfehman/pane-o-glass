@@ -8,8 +8,13 @@ export default function DomainSecurityPage() {
     const [availableDomains, setAvailableDomains] = useState<{ DomainName: string }[]>([]);
     const [domainLoading, setDomainLoading] = useState(false);
     const [domainError, setDomainError] = useState("");
-    const [domainResults, setDomainResults] = useState<{ hasBreaches: boolean, aliases: Record<string, string[]> } | null>(null);
+    const [domainResults, setDomainResults] = useState<{ 
+        hasBreaches: boolean, 
+        aliases: Record<string, string[]>, 
+        adEnrichment: Record<string, any> 
+    } | null>(null);
     const [activeView, setActiveView] = useState<"all" | "breaches" | "summary" | null>(null);
+    const [expandedAlias, setExpandedAlias] = useState<string | null>(null);
 
     // Breaches Metadata (loaded once)
     const [allBreachesMeta, setAllBreachesMeta] = useState<Record<string, any>>({});
@@ -164,6 +169,39 @@ export default function DomainSecurityPage() {
         return mapped.sort((a, b) => b.count - a.count).slice(0, limit);
     };
 
+    const downloadCSV = () => {
+        if (!domainResults) return;
+        
+        const headers = ["Email", "AD Name", "AD Status", "Locked", "Title", "Department", "Description", "Password Last Set", "Breach Count", "Breaches"];
+        const rows = Object.entries(domainResults.aliases).map(([alias, breaches]) => {
+            const email = `${alias}@${domainStr}`.toLowerCase();
+            const ad = domainResults.adEnrichment[email] || {};
+            return [
+                email,
+                ad.displayName || "N/A",
+                ad.email ? (ad.enabled ? "Active" : "Disabled") : "Not in AD",
+                ad.email ? (ad.locked ? "Locked" : "Unlocked") : "N/A",
+                ad.title || "N/A",
+                ad.department || "N/A",
+                ad.description || "N/A",
+                ad.pwdLastSet || "N/A",
+                breaches.length,
+                breaches.join("; ")
+            ];
+        });
+
+        const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `hibp_domain_report_${domainStr}_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div className="internal-scroll-layout">
             <div style={{ flexShrink: 0, marginBottom: '32px' }}>
@@ -281,24 +319,94 @@ export default function DomainSecurityPage() {
                                     {/* VIEW 1: All Aliases */}
                                     {activeView === 'all' && (
                                         <>
-                                            <div style={{ flexShrink: 0, padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1rem' }}>
+                                            <div style={{ flexShrink: 0, padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <strong>{Object.keys(domainResults.aliases).length} Impacted Email Aliases Found</strong>
+                                                <button onClick={downloadCSV} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '0.75rem' }}>Export Enriched CSV</button>
                                             </div>
-                                            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem', overflowY: 'auto', paddingRight: '0.5rem' }}>
-                                                {Object.entries(domainResults.aliases).map(([alias, breachList]: [string, any]) => (
-                                                    <div key={alias} style={{ background: 'var(--bg-dark)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                                                            <strong style={{ fontSize: '1.1rem', color: 'var(--text-primary)' }}>{alias}@{domainStr}</strong>
+                                            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr', gap: '1rem', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                                                {Object.entries(domainResults.aliases).map(([alias, breachList]: [string, any]) => {
+                                                    const email = `${alias}@${domainStr}`.toLowerCase();
+                                                    const ad = domainResults.adEnrichment[email];
+                                                    const isExpanded = expandedAlias === alias;
+                                                    
+                                                    let borderStyle = '1px solid var(--border-color)';
+                                                    let bgStyle = 'var(--bg-dark)';
+                                                    if (ad) {
+                                                        borderStyle = ad.enabled ? '1px solid rgba(234, 179, 8, 0.5)' : '1px solid rgba(239, 68, 68, 0.5)';
+                                                        bgStyle = ad.enabled ? 'rgba(234, 179, 8, 0.05)' : 'rgba(239, 68, 68, 0.05)';
+                                                    }
+
+                                                    return (
+                                                        <div 
+                                                            key={alias} 
+                                                            onClick={() => setExpandedAlias(isExpanded ? null : alias)}
+                                                            style={{ 
+                                                                background: bgStyle, 
+                                                                padding: '1rem', 
+                                                                borderRadius: 'var(--radius-sm)', 
+                                                                border: borderStyle,
+                                                                cursor: 'pointer',
+                                                                transition: 'all 0.2s ease',
+                                                                position: 'relative'
+                                                            }}
+                                                        >
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                <div>
+                                                                    <strong style={{ fontSize: '1.1rem', color: ad ? (ad.enabled ? '#eab308' : '#f87171') : 'var(--text-primary)' }}>
+                                                                        {alias}@{domainStr}
+                                                                        {ad && (
+                                                                            <span style={{ fontSize: '0.7rem', marginLeft: '10px', padding: '2px 8px', borderRadius: '4px', background: ad.enabled ? 'rgba(234,179,8,0.2)' : 'rgba(239,68,68,0.2)', color: ad.enabled ? '#fde047' : '#fca5a5', textTransform: 'uppercase', verticalAlign: 'middle' }}>
+                                                                                {ad.enabled ? 'Active' : 'Disabled'} {ad.locked ? '(Locked)' : ''}
+                                                                            </span>
+                                                                        )}
+                                                                    </strong>
+                                                                </div>
+                                                                <div style={{ color: 'var(--text-muted)' }}>{isExpanded ? '▲' : '▼'}</div>
+                                                            </div>
+
+                                                            {!isExpanded && (
+                                                                <div style={{ fontSize: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '10px' }}>
+                                                                    {breachList.map((breachName: string) => (
+                                                                        <span key={breachName} style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '4px', color: 'var(--text-secondary)' }}>
+                                                                            {breachName}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+
+                                                            {isExpanded && (
+                                                                <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem' }}>
+                                                                    <div>
+                                                                        <h5 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Active Directory Identity</h5>
+                                                                        <p style={{ margin: '4px 0', fontSize: '0.9rem' }}><strong>Name:</strong> {ad?.displayName || "N/A"}</p>
+                                                                        <p style={{ margin: '4px 0', fontSize: '0.9rem' }}><strong>Title:</strong> {ad?.title || "N/A"}</p>
+                                                                        <p style={{ margin: '4px 0', fontSize: '0.9rem' }}><strong>Dept:</strong> {ad?.department || "N/A"}</p>
+                                                                    </div>
+                                                                    <div>
+                                                                        <h5 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Account Status</h5>
+                                                                        <p style={{ margin: '4px 0', fontSize: '0.9rem' }}><strong>Enabled:</strong> {ad ? (ad.enabled ? 'Yes' : 'No') : 'N/A'}</p>
+                                                                        <p style={{ margin: '4px 0', fontSize: '0.9rem' }}><strong>Locked:</strong> {ad ? (ad.locked ? 'Yes' : 'No') : 'N/A'}</p>
+                                                                        <p style={{ margin: '4px 0', fontSize: '0.9rem' }}><strong>Pwd Last Set:</strong> {ad?.pwdLastSet || "N/A"}</p>
+                                                                    </div>
+                                                                    <div style={{ gridColumn: '1 / -1' }}>
+                                                                        <h5 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Description</h5>
+                                                                        <p style={{ margin: '4px 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{ad?.description || "No description provided."}</p>
+                                                                    </div>
+                                                                    <div style={{ gridColumn: '1 / -1' }}>
+                                                                        <h5 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Breach History</h5>
+                                                                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                                                            {breachList.map((breachName: string) => (
+                                                                                <span key={breachName} style={{ background: 'rgba(239,68,68,0.2)', padding: '4px 10px', borderRadius: '12px', color: '#fca5a5', fontSize: '0.75rem' }}>
+                                                                                    {breachName}
+                                                                                </span>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                        <div style={{ fontSize: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                                            {breachList.map((breachName: string) => (
-                                                                <span key={breachName} style={{ background: 'rgba(239,68,68,0.2)', padding: '4px 10px', borderRadius: '12px', color: '#fca5a5' }}>
-                                                                    {breachName}
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </>
                                     )}
@@ -365,18 +473,34 @@ export default function DomainSecurityPage() {
                                             </div>
 
                                             <div>
-                                                <h4 style={{ color: 'var(--text-primary)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)' }}>Top 25 Most Compromised Aliases</h4>
+                                                <h4 style={{ color: 'var(--text-primary)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    Top 25 Most Compromised Aliases
+                                                    <button onClick={downloadCSV} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.7rem' }}>Download Full Report</button>
+                                                </h4>
                                                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '8px' }}>
-                                                    {getTopAliases(25).map((aliasObj, idx) => (
-                                                        <div key={aliasObj.alias} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-surface-hover)', padding: '8px 16px', borderRadius: 'var(--radius-sm)' }}>
-                                                            <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                {aliasObj.alias}@{domainStr}
-                                                            </span>
-                                                            <span style={{ background: 'var(--bg-dark)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.8rem', color: '#fca5a5', whiteSpace: 'nowrap' }}>
-                                                                In {aliasObj.count} breaches
-                                                            </span>
-                                                        </div>
-                                                    ))}
+                                                    {getTopAliases(25).map((aliasObj, idx) => {
+                                                        const email = `${aliasObj.alias}@${domainStr}`.toLowerCase();
+                                                        const ad = domainResults.adEnrichment[email];
+                                                        
+                                                        let bg = 'var(--bg-surface-hover)';
+                                                        let color = 'var(--text-primary)';
+                                                        if (ad) {
+                                                            bg = ad.enabled ? 'rgba(234, 179, 8, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+                                                            color = ad.enabled ? '#eab308' : '#f87171';
+                                                        }
+
+                                                        return (
+                                                            <div key={aliasObj.alias} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: bg, padding: '8px 16px', borderRadius: 'var(--radius-sm)' }}>
+                                                                <span style={{ color: color, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                    {aliasObj.alias}@{domainStr}
+                                                                    {ad && <span style={{ fontSize: '0.65rem', marginLeft: '8px', opacity: 0.8 }}>({ad.enabled ? 'Active' : 'Disabled'})</span>}
+                                                                </span>
+                                                                <span style={{ background: 'var(--bg-dark)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.8rem', color: '#fca5a5', whiteSpace: 'nowrap' }}>
+                                                                    In {aliasObj.count} breaches
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
                                             </div>
                                         </div>

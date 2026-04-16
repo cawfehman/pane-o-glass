@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/app/actions/permissions";
+import { getBulkUserDetails } from "@/lib/ldap";
 
 export async function POST(request: Request) {
     try {
@@ -57,10 +58,17 @@ export async function POST(request: Request) {
         // 200 = Found domain breaches
         // Format: { "alias1": ["Breach1", "Breach2"], "alias2": ["Breach2"] }
         const data = await response.json();
+        const aliases = Object.keys(data);
+        const domainClean = domain.trim().toLowerCase();
+        const emailsToLookup = aliases.map(a => `${a}@${domainClean}`);
+        
+        // Enrich with AD status
+        const adEnrichment = await getBulkUserDetails(emailsToLookup);
 
         return NextResponse.json({
             hasBreaches: true,
-            aliases: data
+            aliases: data,
+            adEnrichment
         });
 
     } catch (error: any) {

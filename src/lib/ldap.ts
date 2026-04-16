@@ -118,3 +118,75 @@ export async function getUserDetails(username: string) {
         try { await client.unbind(); } catch (e) { }
     }
 }
+/**
+ * Fetches details for multiple users in batches to optimize LDAP performance.
+ */
+export async function getBulkUserDetails(emails: string[]) {
+    const url = process.env.AD_URL;
+    const bindDN = process.env.AD_BIND_DN;
+    const bindPassword = process.env.AD_BIND_PASSWORD;
+    const baseDN = process.env.AD_BASE_DN;
+    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
+
+    if (!url || !bindDN || !bindPassword || !baseDN || emails.length === 0) {
+        return {};
+    }
+
+    const client = new Client({
+        url,
+        tlsOptions: url.startsWith("ldaps") ? { rejectUnauthorized } : undefined,
+    });
+
+    const results: Record<string, any> = {};
+
+    try {
+        await client.bind(bindDN, bindPassword);
+
+        // Batch size of 50 to avoid LDAP filter length limits
+        for (let i = 0; i < emails.length; i += 50) {
+            const batch = emails.slice(i, i + 50);
+            const filter = `(|${batch.map(e => `(mail=${e})`).join("")})`;
+
+            const { searchEntries } = await client.search(baseDN, {
+                filter,
+                scope: "sub",
+                attributes: ["displayName", "department", "title", "mail", "userAccountControl", "lockoutTime", "description", "pwdLastSet"],
+            });
+
+            searchEntries.forEach(entry => {
+                const email = String(entry.mail || "").toLowerCase();
+                if (!email) return;
+
+                const uac = Number(entry.userAccountControl || 0);
+                const lockout = String(entry.lockoutTime || "0");
+                const pwdLastSet = String(entry.pwdLastSet || "0");
+
+                // AD Timestamp conversion (100-nanosecond intervals since Jan 1, 1601)
+                let pwdLastSetDate = "Never";
+                if (pwdLastSet !== "0") {
+                    const ticks = BigInt(pwdLastSet);
+                    const epochTicks = BigInt("116444736000000000"); // ticks from 1601 to 1970
+                    const unixMs = Number((ticks - epochTicks) / BigInt(10000));
+                    pwdLastSetDate = new Date(unixMs).toLocaleString();
+                }
+
+                results[email] = {
+                    displayName: String(entry.displayName || ""),
+                    department: String(entry.department || ""),
+                    title: String(entry.title || ""),
+                    description: String(entry.description || ""),
+                    enabled: !(uac & 2),
+                    locked: lockout !== "0",
+                    pwdLastSet: pwdLastSetDate,
+                    email: email
+                };
+            });
+        }
+    } catch (err: any) {
+        console.error("LDAP Bulk Enrichment Error:", err.message);
+    } finally {
+        try { await client.unbind(); } catch (e) { }
+    }
+
+    return results;
+}
