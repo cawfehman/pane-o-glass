@@ -218,8 +218,8 @@ export default function PermissionsPage() {
                 )}
 
                 {showResetModal && (
-                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
-                        <div className="glass-card" style={{ maxWidth: '450px', width: '100%', padding: '24px', border: '1px solid var(--accent-primary)' }}>
+                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
+                        <div style={{ maxWidth: '450px', width: '100%', padding: '24px', border: '1px solid var(--accent-primary)', background: '#0a0a0a', borderRadius: 'var(--radius-md)', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
                             <h3 style={{ marginBottom: '8px' }}>Reset Role Defaults</h3>
                             <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '24px' }}>
                                 Select the roles you wish to reset to their original system defaults. Other roles will remain unchanged.
