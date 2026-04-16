@@ -161,11 +161,18 @@ export async function getInternalLogs() {
     return combinedLogs || "No logs found.";
 }
 
-export async function resetPermissions() {
+export async function resetPermissions(targetRoles?: string[]) {
     const session = await ensureAdmin();
+    const rolesToReset = targetRoles ? targetRoles.map(r => r.toUpperCase()) : null;
 
     try {
-        await prisma.toolPermission.deleteMany({});
+        if (rolesToReset) {
+            await prisma.toolPermission.deleteMany({
+                where: { role: { in: rolesToReset } }
+            });
+        } else {
+            await prisma.toolPermission.deleteMany({});
+        }
 
         const DEFAULT_PERMISSIONS = [
             { toolId: 'firewall', role: 'ADMIN', isEnabled: true },
@@ -206,11 +213,19 @@ export async function resetPermissions() {
             { toolId: 'vectra', role: 'SYSTEMS', isEnabled: false }
         ];
 
-        for (const perm of DEFAULT_PERMISSIONS) {
+        const filteredPermissions = rolesToReset 
+            ? DEFAULT_PERMISSIONS.filter(p => rolesToReset.includes(p.role))
+            : DEFAULT_PERMISSIONS;
+
+        for (const perm of filteredPermissions) {
             await prisma.toolPermission.create({ data: perm });
         }
 
-        await logAudit("PERMISSION_RESET", "Admin reset all tool permissions to defaults", session?.user?.id);
+        const auditMsg = rolesToReset 
+            ? `Admin reset tool permissions for roles: ${rolesToReset.join(', ')}`
+            : "Admin reset all tool permissions to defaults";
+
+        await logAudit("PERMISSION_RESET", auditMsg, session?.user?.id);
         revalidatePath("/", "layout");
         return { success: true };
     } catch (error) {
