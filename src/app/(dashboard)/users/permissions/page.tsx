@@ -19,7 +19,7 @@ const TOOLS = [
     { id: 'vectra', name: 'Vectra Forensic Analysis' },
 ];
 
-const ROLES = ["ADMIN", "ANALYST", "NETWORK", "DESKTOP", "USER"];
+const ROLES = ["ADMIN", "ANALYST", "NETWORK", "DESKTOP", "SYSTEMS", "USER"];
 
 export default function PermissionsPage() {
     const router = useRouter();

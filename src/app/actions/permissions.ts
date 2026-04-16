@@ -197,7 +197,13 @@ export async function resetPermissions() {
             { toolId: 'ise', role: 'DESKTOP', isEnabled: false },
             { toolId: 'ise-tacacs', role: 'DESKTOP', isEnabled: false },
             { toolId: 'hibp-account', role: 'DESKTOP', isEnabled: true },
-            { toolId: 'hibp-domain', role: 'DESKTOP', isEnabled: false }
+            { toolId: 'hibp-domain', role: 'DESKTOP', isEnabled: false },
+            { toolId: 'firewall', role: 'SYSTEMS', isEnabled: false },
+            { toolId: 'ise', role: 'SYSTEMS', isEnabled: false },
+            { toolId: 'ise-tacacs', role: 'SYSTEMS', isEnabled: false },
+            { toolId: 'hibp-account', role: 'SYSTEMS', isEnabled: true },
+            { toolId: 'hibp-domain', role: 'SYSTEMS', isEnabled: true },
+            { toolId: 'vectra', role: 'SYSTEMS', isEnabled: false }
         ];
 
         for (const perm of DEFAULT_PERMISSIONS) {

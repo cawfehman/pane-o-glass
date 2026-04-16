@@ -98,6 +98,7 @@ export default function UserForm({
                     <option value="ANALYST">Analyst</option>
                     <option value="NETWORK">Network</option>
                     <option value="DESKTOP">Desktop</option>
+                    <option value="SYSTEMS">Systems</option>
                     <option value="ADMIN">Admin</option>
                 </select>
             </div>

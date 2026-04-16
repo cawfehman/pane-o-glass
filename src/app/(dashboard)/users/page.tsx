@@ -59,8 +59,16 @@ export default async function UsersPage() {
                                                 padding: '4px 8px',
                                                 borderRadius: '12px',
                                                 fontSize: '0.75rem',
-                                                backgroundColor: user.role === 'ADMIN' ? 'rgba(59, 130, 246, 0.2)' : user.role === 'ANALYST' ? 'rgba(168, 85, 247, 0.2)' : 'var(--bg-surface-hover)',
-                                                color: user.role === 'ADMIN' ? 'var(--accent-primary)' : user.role === 'ANALYST' ? 'rgb(192, 132, 252)' : 'var(--text-secondary)'
+                                                backgroundColor: 
+                                                    user.role === 'ADMIN' ? 'rgba(59, 130, 246, 0.2)' : 
+                                                    user.role === 'ANALYST' ? 'rgba(168, 85, 247, 0.2)' : 
+                                                    user.role === 'SYSTEMS' ? 'rgba(20, 184, 166, 0.2)' :
+                                                    'var(--bg-surface-hover)',
+                                                color: 
+                                                    user.role === 'ADMIN' ? 'var(--accent-primary)' : 
+                                                    user.role === 'ANALYST' ? 'rgb(192, 132, 252)' : 
+                                                    user.role === 'SYSTEMS' ? 'rgb(45, 212, 191)' :
+                                                    'var(--text-secondary)'
                                             }}>
                                                 {user.role}
                                             </span>

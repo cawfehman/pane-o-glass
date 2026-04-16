@@ -20,6 +20,7 @@ export async function GET() {
             { username: 'test-user', role: 'USER' },
             { username: 'test-analyst', role: 'ANALYST' },
             { username: 'test-network', role: 'NETWORK' },
+            { username: 'test-systems', role: 'SYSTEMS' },
         ];
 
         const seededUsers = [];
