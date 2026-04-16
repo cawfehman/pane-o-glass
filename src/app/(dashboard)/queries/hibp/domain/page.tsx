@@ -350,230 +350,230 @@ export default function DomainSecurityPage() {
                 {activeTab === 'domain' && (
                     <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '2rem', minHeight: 0, overflowY: 'auto', paddingRight: '4px' }}>
 
-                {/* --- DOMAIN SEARCH CARD --- */}
-                <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ flexShrink: 0 }}>
-                        <h3 style={{ marginBottom: '16px' }}>Domain Breach Check</h3>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-                            Retrieves compromised email aliases for verified domains on your HIBP account.
-                        </p>
+                        {/* --- DOMAIN SEARCH CARD --- */}
+                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ flexShrink: 0 }}>
+                                <h3 style={{ marginBottom: '16px' }}>Domain Breach Check</h3>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+                                    Retrieves compromised email aliases for verified domains on your HIBP account.
+                                </p>
 
-                        <div style={{ marginBottom: '1.5rem' }}>
-                            <div className="input-group">
-                                <label htmlFor="domainStr">Verified Domain</label>
-                                {availableDomains.length === 0 ? (
-                                    <input type="text" disabled placeholder="Fetching verified domains..." />
-                                ) : (
-                                    <select
-                                        id="domainStr"
-                                        value={domainStr}
-                                        onChange={(e) => {
-                                            setDomainStr(e.target.value);
-                                            setDomainResults(null);
-                                            setActiveView(null);
-                                        }}
-                                        style={{
-                                            width: '100%',
-                                            padding: '12px',
-                                            backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                                            border: '1px solid var(--border-color)',
-                                            borderRadius: 'var(--radius-sm)',
-                                            color: 'var(--text-primary)',
-                                            fontSize: '1rem',
-                                            transition: 'all 0.2s ease',
-                                            outline: 'none',
-                                        }}
-                                    >
-                                        {availableDomains.map(d => (
-                                            <option key={d.DomainName} value={d.DomainName} style={{ background: 'var(--bg-dark)' }}>
-                                                {d.DomainName}
-                                            </option>
-                                        ))}
-                                    </select>
-                                )}
-                            </div>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '2rem' }}>
-                            <button
-                                type="button"
-                                className="btn-primary"
-                                style={{
-                                    background: activeView === 'all' ? 'var(--accent-secondary)' : 'var(--bg-surface-hover)',
-                                    borderColor: activeView === 'all' ? 'var(--accent-secondary)' : 'var(--border-color)',
-                                    color: activeView === 'all' ? '#fff' : 'var(--text-secondary)',
-                                    padding: '8px 4px', fontSize: '0.8rem'
-                                }}
-                                onClick={() => triggerView("all")}
-                                disabled={domainLoading || availableDomains.length === 0}
-                            >
-                                {domainLoading && activeView === 'all' ? "Loading..." : "All Impacted Emails"}
-                            </button>
-                            <button
-                                type="button"
-                                className="btn-primary"
-                                style={{
-                                    background: activeView === 'breaches' ? 'var(--accent-secondary)' : 'var(--bg-surface-hover)',
-                                    borderColor: activeView === 'breaches' ? 'var(--accent-secondary)' : 'var(--border-color)',
-                                    color: activeView === 'breaches' ? '#fff' : 'var(--text-secondary)',
-                                    padding: '8px 4px', fontSize: '0.8rem'
-                                }}
-                                onClick={() => triggerView("breaches")}
-                                disabled={domainLoading || availableDomains.length === 0}
-                            >
-                                {domainLoading && activeView === 'breaches' ? "Loading..." : "View Domain Breaches"}
-                            </button>
-                            <button
-                                type="button"
-                                className="btn-primary"
-                                style={{
-                                    background: activeView === 'summary' ? 'var(--accent-secondary)' : 'var(--bg-surface-hover)',
-                                    borderColor: activeView === 'summary' ? 'var(--accent-secondary)' : 'var(--border-color)',
-                                    color: activeView === 'summary' ? '#fff' : 'var(--text-secondary)',
-                                    padding: '8px 4px', fontSize: '0.8rem'
-                                }}
-                                onClick={() => triggerView("summary")}
-                                disabled={domainLoading || availableDomains.length === 0}
-                            >
-                                {domainLoading && activeView === 'summary' ? "Loading..." : "Executive Summary"}
-                            </button>
-                        </div>
-                    </div>
-
-                    {domainError && (
-                        <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444' }}>
-                            <strong>Error:</strong> {domainError}
-                        </div>
-                    )}
-
-                    {domainResults && activeView && (
-                        <div style={{ marginTop: '1rem', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                            {!domainResults.hasBreaches ? (
-                                <div style={{ padding: '1rem', backgroundColor: 'rgba(34,197,94,0.1)', color: '#22c55e', borderRadius: 'var(--radius-md)', border: '1px solid #22c55e' }}>
-                                    <strong>Clean!</strong> No known breaches found for any email addresses on {domainStr}.
-                                </div>
-                            ) : (
-                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-
-                                    {/* VIEW 1: All Aliases */}
-                                    {activeView === 'all' && (
-                                        <>
-                                            <div style={{ flexShrink: 0, padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <strong>{Object.keys(domainResults.aliases).length} Impacted Email Aliases Found</strong>
-                                                <button onClick={() => downloadCSV()} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '0.75rem' }}>Export Enriched CSV</button>
-                                            </div>
-                                            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr', gap: '1rem', overflowY: 'auto', paddingRight: '0.5rem' }}>
-                                                {Object.entries(domainResults.aliases).map(([alias, breachList]: [string, any]) => (
-                                                    <EmailRecord key={alias} alias={alias} breachList={breachList} />
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                    <div className="input-group">
+                                        <label htmlFor="domainStr">Verified Domain</label>
+                                        {availableDomains.length === 0 ? (
+                                            <input type="text" disabled placeholder="Fetching verified domains..." />
+                                        ) : (
+                                            <select
+                                                id="domainStr"
+                                                value={domainStr}
+                                                onChange={(e) => {
+                                                    setDomainStr(e.target.value);
+                                                    setDomainResults(null);
+                                                    setActiveView(null);
+                                                }}
+                                                style={{
+                                                    width: '100%',
+                                                    padding: '12px',
+                                                    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                                    border: '1px solid var(--border-color)',
+                                                    borderRadius: 'var(--radius-sm)',
+                                                    color: 'var(--text-primary)',
+                                                    fontSize: '1rem',
+                                                    transition: 'all 0.2s ease',
+                                                    outline: 'none',
+                                                }}
+                                            >
+                                                {availableDomains.map(d => (
+                                                    <option key={d.DomainName} value={d.DomainName} style={{ background: 'var(--bg-dark)' }}>
+                                                        {d.DomainName}
+                                                    </option>
                                                 ))}
-                                            </div>
-                                        </>
-                                    )}
+                                            </select>
+                                        )}
+                                    </div>
+                                </div>
 
-                                    {/* VIEW 2: Unique Domain Breaches */}
-                                    {activeView === 'breaches' && (
-                                        <>
-                                            <div style={{ flexShrink: 0, padding: '1rem', backgroundColor: 'rgba(56,189,248,0.1)', color: '#38bdf8', borderRadius: 'var(--radius-md)', border: '1px solid #38bdf8', marginBottom: '1rem' }}>
-                                                <strong>{getBreachCounts().length} Unique Breaches Affecting {domainStr}</strong>
-                                            </div>
-                                            <div style={{ flex: 1, overflowY: 'auto' }}>
-                                                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', background: 'var(--bg-dark)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
-                                                    <thead className="sticky-header">
-                                                        <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', background: 'var(--bg-surface-hover)' }}>
-                                                            <th style={{ padding: '12px 16px' }}>Breach Name</th>
-                                                            <th
-                                                                style={{ padding: '12px 16px', cursor: 'pointer', userSelect: 'none' }}
-                                                                onClick={() => handleSort('date')}
-                                                            >
-                                                                Date {sortConfig.key === 'date' ? (sortConfig.desc ? '↓' : '↑') : ''}
-                                                            </th>
-                                                            <th
-                                                                style={{ padding: '12px 16px', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}
-                                                                onClick={() => handleSort('count')}
-                                                            >
-                                                                Impacted Emails {sortConfig.key === 'count' ? (sortConfig.desc ? '↓' : '↑') : ''}
-                                                            </th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {getBreachCounts().map((b) => (
-                                                            <tr key={b.name} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                                <td style={{ padding: '12px 16px', fontWeight: 500, color: 'var(--accent-primary)' }}>{b.name}</td>
-                                                                <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{b.date}</td>
-                                                                <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                                                                    <span style={{ background: 'rgba(239,68,68,0.2)', padding: '4px 10px', borderRadius: '12px', color: '#fca5a5', fontSize: '0.85rem' }}>
-                                                                        {b.count}
-                                                                    </span>
-                                                                </td>
-                                                            </tr>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '2rem' }}>
+                                    <button
+                                        type="button"
+                                        className="btn-primary"
+                                        style={{
+                                            background: activeView === 'all' ? 'var(--accent-secondary)' : 'var(--bg-surface-hover)',
+                                            borderColor: activeView === 'all' ? 'var(--accent-secondary)' : 'var(--border-color)',
+                                            color: activeView === 'all' ? '#fff' : 'var(--text-secondary)',
+                                            padding: '8px 4px', fontSize: '0.8rem'
+                                        }}
+                                        onClick={() => triggerView("all")}
+                                        disabled={domainLoading || availableDomains.length === 0}
+                                    >
+                                        {domainLoading && activeView === 'all' ? "Loading..." : "All Impacted Emails"}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="btn-primary"
+                                        style={{
+                                            background: activeView === 'breaches' ? 'var(--accent-secondary)' : 'var(--bg-surface-hover)',
+                                            borderColor: activeView === 'breaches' ? 'var(--accent-secondary)' : 'var(--border-color)',
+                                            color: activeView === 'breaches' ? '#fff' : 'var(--text-secondary)',
+                                            padding: '8px 4px', fontSize: '0.8rem'
+                                        }}
+                                        onClick={() => triggerView("breaches")}
+                                        disabled={domainLoading || availableDomains.length === 0}
+                                    >
+                                        {domainLoading && activeView === 'breaches' ? "Loading..." : "View Domain Breaches"}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="btn-primary"
+                                        style={{
+                                            background: activeView === 'summary' ? 'var(--accent-secondary)' : 'var(--bg-surface-hover)',
+                                            borderColor: activeView === 'summary' ? 'var(--accent-secondary)' : 'var(--border-color)',
+                                            color: activeView === 'summary' ? '#fff' : 'var(--text-secondary)',
+                                            padding: '8px 4px', fontSize: '0.8rem'
+                                        }}
+                                        onClick={() => triggerView("summary")}
+                                        disabled={domainLoading || availableDomains.length === 0}
+                                    >
+                                        {domainLoading && activeView === 'summary' ? "Loading..." : "Executive Summary"}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {domainError && (
+                                <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444' }}>
+                                    <strong>Error:</strong> {domainError}
+                                </div>
+                            )}
+
+                            {domainResults && activeView && (
+                                <div style={{ marginTop: '1rem', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                                    {!domainResults.hasBreaches ? (
+                                        <div style={{ padding: '1rem', backgroundColor: 'rgba(34,197,94,0.1)', color: '#22c55e', borderRadius: 'var(--radius-md)', border: '1px solid #22c55e' }}>
+                                            <strong>Clean!</strong> No known breaches found for any email addresses on {domainStr}.
+                                        </div>
+                                    ) : (
+                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+
+                                            {/* VIEW 1: All Aliases */}
+                                            {activeView === 'all' && (
+                                                <>
+                                                    <div style={{ flexShrink: 0, padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <strong>{Object.keys(domainResults.aliases).length} Impacted Email Aliases Found</strong>
+                                                        <button onClick={() => downloadCSV()} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '0.75rem' }}>Export Enriched CSV</button>
+                                                    </div>
+                                                    <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr', gap: '1rem', overflowY: 'auto', paddingRight: '0.5rem' }}>
+                                                        {Object.entries(domainResults.aliases).map(([alias, breachList]: [string, any]) => (
+                                                            <EmailRecord key={alias} alias={alias} breachList={breachList} />
                                                         ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </>
-                                    )}
+                                                    </div>
+                                                </>
+                                            )}
 
-                                    {/* VIEW 3: Executive Summary */}
-                                    {activeView === 'summary' && (
-                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2rem', overflowY: 'auto', paddingRight: '8px' }}>
-                                            <div>
-                                                <h4 style={{ color: 'var(--text-primary)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)' }}>Top 10 Worst Breaches</h4>
-                                                <div style={{ display: 'grid', gap: '8px' }}>
-                                                    {getBreachCounts().slice(0, 10).map((b, idx) => (
-                                                        <div key={b.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-dark)', padding: '8px 16px', borderRadius: 'var(--radius-sm)' }}>
-                                                            <span style={{ color: 'var(--text-secondary)' }}>
-                                                                <span style={{ color: 'var(--text-muted)', marginRight: '8px' }}>#{idx + 1}</span>
-                                                                {b.name} <span style={{ fontSize: '0.8rem', marginLeft: '6px', color: 'var(--text-muted)' }}>({b.date})</span>
-                                                            </span>
-                                                            <span style={{ fontWeight: 600, color: '#fca5a5' }}>{b.count} org accounts</span>
+                                            {/* VIEW 2: Unique Domain Breaches */}
+                                            {activeView === 'breaches' && (
+                                                <>
+                                                    <div style={{ flexShrink: 0, padding: '1rem', backgroundColor: 'rgba(56,189,248,0.1)', color: '#38bdf8', borderRadius: 'var(--radius-md)', border: '1px solid #38bdf8', marginBottom: '1rem' }}>
+                                                        <strong>{getBreachCounts().length} Unique Breaches Affecting {domainStr}</strong>
+                                                    </div>
+                                                    <div style={{ flex: 1, overflowY: 'auto' }}>
+                                                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', background: 'var(--bg-dark)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+                                                            <thead className="sticky-header">
+                                                                <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', background: 'var(--bg-surface-hover)' }}>
+                                                                    <th style={{ padding: '12px 16px' }}>Breach Name</th>
+                                                                    <th
+                                                                        style={{ padding: '12px 16px', cursor: 'pointer', userSelect: 'none' }}
+                                                                        onClick={() => handleSort('date')}
+                                                                    >
+                                                                        Date {sortConfig.key === 'date' ? (sortConfig.desc ? '↓' : '↑') : ''}
+                                                                    </th>
+                                                                    <th
+                                                                        style={{ padding: '12px 16px', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}
+                                                                        onClick={() => handleSort('count')}
+                                                                    >
+                                                                        Impacted Emails {sortConfig.key === 'count' ? (sortConfig.desc ? '↓' : '↑') : ''}
+                                                                    </th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {getBreachCounts().map((b) => (
+                                                                    <tr key={b.name} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                                        <td style={{ padding: '12px 16px', fontWeight: 500, color: 'var(--accent-primary)' }}>{b.name}</td>
+                                                                        <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{b.date}</td>
+                                                                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                                                                            <span style={{ background: 'rgba(239,68,68,0.2)', padding: '4px 10px', borderRadius: '12px', color: '#fca5a5', fontSize: '0.85rem' }}>
+                                                                                {b.count}
+                                                                            </span>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {/* VIEW 3: Executive Summary */}
+                                            {activeView === 'summary' && (
+                                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2rem', overflowY: 'auto', paddingRight: '8px' }}>
+                                                    <div>
+                                                        <h4 style={{ color: 'var(--text-primary)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)' }}>Top 10 Worst Breaches</h4>
+                                                        <div style={{ display: 'grid', gap: '8px' }}>
+                                                            {getBreachCounts().slice(0, 10).map((b, idx) => (
+                                                                <div key={b.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-dark)', padding: '8px 16px', borderRadius: 'var(--radius-sm)' }}>
+                                                                    <span style={{ color: 'var(--text-secondary)' }}>
+                                                                        <span style={{ color: 'var(--text-muted)', marginRight: '8px' }}>#{idx + 1}</span>
+                                                                        {b.name} <span style={{ fontSize: '0.8rem', marginLeft: '6px', color: 'var(--text-muted)' }}>({b.date})</span>
+                                                                    </span>
+                                                                    <span style={{ fontWeight: 600, color: '#fca5a5' }}>{b.count} org accounts</span>
+                                                                </div>
+                                                            ))}
                                                         </div>
-                                                    ))}
-                                                </div>
-                                            </div>
+                                                    </div>
 
-                                            <div>
-                                                <h4 style={{ color: 'var(--text-primary)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    Top 25 Most Compromised Aliases
-                                                    <button onClick={downloadCSV} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.7rem' }}>Download Full Report</button>
-                                                </h4>
-                                                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '8px' }}>
-                                                    {getTopAliases(25).map((aliasObj, idx) => {
-                                                        const email = `${aliasObj.alias}@${domainStr}`.toLowerCase();
-                                                        const ad = domainResults.adEnrichment[email];
-                                                        
-                                                        let bg = 'var(--bg-surface-hover)';
-                                                        let color = 'var(--text-primary)';
-                                                        if (ad) {
-                                                            bg = ad.enabled ? 'rgba(234, 179, 8, 0.1)' : 'rgba(239, 68, 68, 0.1)';
-                                                            color = ad.enabled ? '#eab308' : '#f87171';
-                                                        }
+                                                    <div>
+                                                        <h4 style={{ color: 'var(--text-primary)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                            Top 25 Most Compromised Aliases
+                                                            <button onClick={() => downloadCSV()} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.7rem' }}>Download Full Report</button>
+                                                        </h4>
+                                                        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '8px' }}>
+                                                            {getTopAliases(25).map((aliasObj, idx) => {
+                                                                const email = `${aliasObj.alias}@${domainStr}`.toLowerCase();
+                                                                const ad = domainResults.adEnrichment[email];
+                                                                
+                                                                let bg = 'var(--bg-surface-hover)';
+                                                                let color = 'var(--text-primary)';
+                                                                if (ad) {
+                                                                    bg = ad.enabled ? 'rgba(234, 179, 8, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+                                                                    color = ad.enabled ? '#eab308' : '#f87171';
+                                                                }
 
-                                                        return (
-                                                            <div key={aliasObj.alias} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: bg, padding: '8px 16px', borderRadius: 'var(--radius-sm)' }}>
-                                                                <span style={{ color: color, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                                    {aliasObj.alias}@{domainStr}
-                                                                    {ad && <span style={{ fontSize: '0.65rem', marginLeft: '8px', opacity: 0.8 }}>({ad.enabled ? 'Active' : 'Disabled'})</span>}
-                                                                </span>
-                                                                <span style={{ background: 'var(--bg-dark)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.8rem', color: '#fca5a5', whiteSpace: 'nowrap' }}>
-                                                                    In {aliasObj.count} breaches
-                                                                </span>
-                                                            </div>
-                                                        );
-                                                    })}
+                                                                return (
+                                                                    <div key={aliasObj.alias} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: bg, padding: '8px 16px', borderRadius: 'var(--radius-sm)' }}>
+                                                                        <span style={{ color: color, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                            {aliasObj.alias}@{domainStr}
+                                                                            {ad && <span style={{ fontSize: '0.65rem', marginLeft: '8px', opacity: 0.8 }}>({ad.enabled ? 'Active' : 'Disabled'})</span>}
+                                                                        </span>
+                                                                        <span style={{ background: 'var(--bg-dark)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.8rem', color: '#fca5a5', whiteSpace: 'nowrap' }}>
+                                                                            In {aliasObj.count} breaches
+                                                                        </span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            )}
                                         </div>
                                     )}
-
                                 </div>
                             )}
                         </div>
-                    )}
-                </div>
-            )}
+                    </div>
+                )}
 
-            {activeTab === 'breach' && (
-                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '2rem', minHeight: 0, overflowY: 'auto', paddingRight: '4px' }}>
+                {activeTab === 'breach' && (
+                    <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '2rem', minHeight: 0, overflowY: 'auto', paddingRight: '4px' }}>
                         {/* --- BREACH NAME SEARCH CARD --- */}
                         <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
                             <div style={{ flexShrink: 0 }}>
@@ -730,10 +730,6 @@ export default function DomainSecurityPage() {
                         </div>
                     </div>
                 )}
-
-            </div>
-    </div>
-
             </div>
         </div>
     );
