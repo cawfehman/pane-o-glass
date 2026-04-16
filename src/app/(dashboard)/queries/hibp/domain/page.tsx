@@ -569,8 +569,11 @@ export default function DomainSecurityPage() {
                             )}
                         </div>
                     )}
-                              {activeTab === 'breach' && (
-                    <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '2rem', minHeight: 0, overflowY: 'auto', paddingRight: '4px' }}>
+                </div>
+            )}
+
+            {activeTab === 'breach' && (
+                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '2rem', minHeight: 0, overflowY: 'auto', paddingRight: '4px' }}>
                         {/* --- BREACH NAME SEARCH CARD --- */}
                         <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
                             <div style={{ flexShrink: 0 }}>
