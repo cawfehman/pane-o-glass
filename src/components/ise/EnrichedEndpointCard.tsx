@@ -71,9 +71,10 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px', marginTop: '24px', fontSize: '0.9rem' }}>
                     <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                         <h4 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '12px' }}>Infrastructure Integration</h4>
-                        <p title="The switch, WLC, or firewall handling this session" style={{ marginBottom: '4px' }}><strong>Switch:</strong> {session.nas_identifier || "Unknown"}</p>
+                        <p title="The switch, WLC, or firewall handling this session" style={{ marginBottom: '4px' }}><strong>NAD:</strong> {session.nas_identifier || "Unknown"}</p>
                         <p title="The IP assigned to the access device" style={{ marginBottom: '4px' }}><strong>NAD IP:</strong> {session.nas_ip_address || "Unknown"}</p>
-                        <p title="Physical port or wireless SSID" style={{ marginBottom: '4px' }}><strong>Interface:</strong> {session.nas_port_id || "Unknown"}</p>
+                        <p title="The SSID for wireless connections" style={{ marginBottom: '4px' }}><strong>SSID:</strong> <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>{session.wlan_ssid || "N/A"}</span></p>
+                        <p title="The specific Access Point Name" style={{ marginBottom: '4px' }}><strong>AP Name:</strong> {session.access_point_name || "N/A"}</p>
                     </div>
                     <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                         <h4 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '12px' }}>Cisco Policy Engine</h4>

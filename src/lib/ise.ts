@@ -134,7 +134,9 @@ export async function fetchIseSession(query: string) {
                 mdm_compliant: sessionNode.mdm_compliant?._ || sessionNode.mdm_compliant || sessionNode.mdmCompliant || "Unknown",
                 audit_session_id: sessionNode.audit_session_id?._ || sessionNode.audit_session_id || sessionNode.auditSessionId || "Unknown",
                 acs_server: sessionNode.acs_server?._ || sessionNode.acs_server || sessionNode.acsServer || "Unknown",
-                endpoint_policy: sessionNode.endpoint_policy?._ || sessionNode.endpoint_policy || sessionNode.endpointPolicy || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || "Unknown"
+                endpoint_policy: sessionNode.endpoint_policy?._ || sessionNode.endpoint_policy || sessionNode.endpointPolicy || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || "Unknown",
+                wlan_ssid: sessionNode.wlan_ssid?._ || sessionNode.wlan_ssid || sessionNode.wlanSsid || (sessionNode.called_station_id?.includes(':') ? sessionNode.called_station_id.split(':').pop() : "N/A"),
+                access_point_name: sessionNode.access_point_name?._ || sessionNode.access_point_name || sessionNode.accessPointName || "N/A"
             };
         });
 

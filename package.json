@@ -8,9 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "deploy": "npm run deploy:patch",
-    "deploy:patch": "npm version patch && git push production master --follow-tags",
-    "deploy:minor": "npm version minor && git push production master --follow-tags",
-    "deploy:major": "npm version major && git push production master --follow-tags"
+    "deploy:patch": "npm version patch && git push origin main --follow-tags && git push production main --follow-tags",
+    "deploy:minor": "npm version minor && git push origin main --follow-tags && git push production main --follow-tags",
+    "deploy:major": "npm version major && git push origin main --follow-tags && git push production main --follow-tags"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

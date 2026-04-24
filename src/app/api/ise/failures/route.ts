@@ -116,6 +116,8 @@ export async function GET(req: Request) {
                     identity_group: val(node.identity_group) || val(node.identityGroup) || "Unknown",
                     authorization_rule: val(node.authorization_rule) || val(node.authorizationRule) || "Unknown",
                     auth_policy: val(node.authentication_policy) || val(node.authenticationPolicy) || val(node.auth_policy) || "Unknown",
+                    wlan_ssid: val(node.wlan_ssid) || val(node.wlanSsid) || (val(node.called_station_id).includes(':') ? val(node.called_station_id).split(':').pop() : "N/A"),
+                    access_point_name: val(node.access_point_name) || val(node.accessPointName) || "N/A",
                     steps
                 };
             });
