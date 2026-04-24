@@ -103,8 +103,13 @@ export async function GET(req: Request) {
 
                     const calledStationId = otherAttrs['Called-Station-ID'] || val(node.called_station_id) || "";
                     let extractedSsid = "N/A";
+                    let extractedApIdentity = val(node.network_device_name) || otherAttrs['NAS-Identifier'] || "N/A";
+
                     if (calledStationId.includes(':')) {
-                        extractedSsid = calledStationId.split(':').pop() || "N/A";
+                        const parts = calledStationId.split(':');
+                        extractedSsid = parts.pop() || "N/A";
+                        const firstPart = parts.join(':');
+                        if (firstPart) extractedApIdentity = firstPart;
                     }
 
                     let steps: any[] = [];
@@ -135,7 +140,7 @@ export async function GET(req: Request) {
                         authorization_rule: val(node.authorization_rule) || val(node.authorizationRule) || "Unknown",
                         auth_policy: val(node.authentication_policy) || val(node.authenticationPolicy) || val(node.auth_policy) || "Unknown",
                         wlan_ssid: val(node.wlan_ssid) || val(node.wlanSsid) || extractedSsid,
-                        access_point_name: val(node.access_point_name) || val(node.accessPointName) || val(node.network_device_name) || otherAttrs['NAS-Identifier'] || "N/A",
+                        access_point_name: extractedApIdentity,
                         steps
                     };
                 });

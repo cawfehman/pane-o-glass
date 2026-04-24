@@ -127,8 +127,13 @@ export async function fetchIseSession(query: string) {
 
             const calledStationId = otherAttrs['Called-Station-ID'] || sessionNode.called_station_id?._ || sessionNode.called_station_id || "";
             let extractedSsid = "N/A";
+            let extractedApIdentity = sessionNode.network_device_name?._ || sessionNode.network_device_name || otherAttrs['NAS-Identifier'] || "N/A";
+
             if (calledStationId.includes(':')) {
-                extractedSsid = calledStationId.split(':').pop() || "N/A";
+                const parts = calledStationId.split(':');
+                extractedSsid = parts.pop() || "N/A";
+                const firstPart = parts.join(':');
+                if (firstPart) extractedApIdentity = firstPart;
             }
 
             return {
@@ -154,7 +159,7 @@ export async function fetchIseSession(query: string) {
                 acs_server: sessionNode.acs_server?._ || sessionNode.acs_server || sessionNode.acsServer || "Unknown",
                 endpoint_policy: sessionNode.endpoint_policy?._ || sessionNode.endpoint_policy || sessionNode.endpointPolicy || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || "Unknown",
                 wlan_ssid: sessionNode.wlan_ssid?._ || sessionNode.wlan_ssid || sessionNode.wlanSsid || extractedSsid,
-                access_point_name: sessionNode.access_point_name?._ || sessionNode.access_point_name || sessionNode.accessPointName || sessionNode.network_device_name?._ || sessionNode.network_device_name || otherAttrs['NAS-Identifier'] || "N/A"
+                access_point_name: extractedApIdentity
             };
         });
 
