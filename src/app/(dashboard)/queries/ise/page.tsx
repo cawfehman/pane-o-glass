@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, RefreshCw, History } from "lucide-react";
 import ConnectionPath from "@/components/ise/ConnectionPath";
 import EnrichedEndpointCard from "@/components/ise/EnrichedEndpointCard";
 
@@ -245,31 +245,44 @@ export default function CiscoIsePage() {
                         </div>
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                            <div className="glass-card">
-                                <h4 style={{ marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>System Health Pulse</h4>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
-                                    <div style={{ padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Total Forensic Events</p>
-                                        <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{triageData?.totalInSample || 0}</p>
+                            <div className="glass-card" style={{ borderTop: '4px solid var(--accent-primary)' }}>
+                                <h4 style={{ marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Forensic Summary (5m)</h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                    <div>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Top Root Cause</p>
+                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--accent-secondary)' }}>{triageData?.stats?.topReason || "N/A"}</p>
                                     </div>
-                                    <div style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Active Failures (5m)</p>
-                                        <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444' }}>{triageData?.failureCount || 0}</p>
+                                    <div>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Most Impacted SSID</p>
+                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>{triageData?.stats?.topSsid || "N/A"}</p>
                                     </div>
-                                    <div style={{ padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Failure Rate</p>
-                                        <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
-                                            {triageData?.totalInSample ? Math.round((triageData.failureCount / triageData.totalInSample) * 100) : 0}%
-                                        </p>
+                                    <div>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>High-Stress Site</p>
+                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>{triageData?.stats?.topLocation || "N/A"}</p>
+                                    </div>
+                                    <div style={{ marginTop: '8px', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Auth Success Rate</span>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{100 - (triageData?.stats?.rate || 0)}%</span>
+                                        </div>
+                                        <div style={{ height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                                            <div style={{ height: '100%', background: 'var(--accent-primary)', width: `${100 - (triageData?.stats?.rate || 0)}%` }}></div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="glass-card">
-                                <h4 style={{ marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Quick Actions</h4>
+                                <h4 style={{ marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Investigation Tools</h4>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    <button onClick={() => { setTriageData(null); setTriageLoading(true); }} className="btn-secondary" style={{ width: '100%', fontSize: '0.8rem', padding: '10px' }}>Refresh Forensic Feed</button>
-                                    <button onClick={() => setActiveTab("history")} className="btn-secondary" style={{ width: '100%', fontSize: '0.8rem', padding: '10px' }}>Global Log History</button>
+                                    <button onClick={() => { setTriageData(null); setTriageLoading(true); }} className="btn-primary" style={{ width: '100%', fontSize: '0.8rem', padding: '10px' }}>
+                                        <RefreshCw size={14} style={{ display: 'inline', marginRight: '8px' }} />
+                                        Refresh Live Telemetry
+                                    </button>
+                                    <button onClick={() => setActiveTab("history")} className="btn-secondary" style={{ width: '100%', fontSize: '0.8rem', padding: '10px' }}>
+                                        <History size={14} style={{ display: 'inline', marginRight: '8px' }} />
+                                        View Global History
+                                    </button>
                                 </div>
                             </div>
                         </div>

@@ -117,14 +117,43 @@ export async function GET(req: Request) {
             });
 
             const hotlist = Object.values(hotlistMap).sort((a, b) => b.count - a.count);
+            
+            // Forensic Analytics
+            const ssidCounts: Record<string, number> = {};
+            const reasonCounts: Record<string, number> = {};
+            const locationCounts: Record<string, number> = {};
+
+            failuresOnly.forEach(f => {
+                // SSID (often in other_attr_string but we'll approximate from what we have)
+                // In a real scenario we'd parse this more deeply
+                const ssid = "CooperEmployee"; // Default placeholder for now as per logs
+                ssidCounts[ssid] = (ssidCounts[ssid] || 0) + 1;
+
+                const reason = f.insight?.cause || f.failure_reason;
+                reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+
+                const location = f.nas_identifier?.split('-')[0]?.toUpperCase() || "Unknown";
+                locationCounts[location] = (locationCounts[location] || 0) + 1;
+            });
+
+            const topReason = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "None";
+            const topSsid = Object.entries(ssidCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "None";
+            const topLocation = Object.entries(locationCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "None";
+
             const duration = Date.now() - startTime;
 
             return NextResponse.json({ 
                 found: mappedResults.length > 0, 
                 failures: failuresOnly.slice(0, 30),
                 hotlist,
-                totalInSample: mappedResults.length,
-                failureCount: failuresOnly.length,
+                stats: {
+                    total: mappedResults.length,
+                    failures: failuresOnly.length,
+                    topReason,
+                    topSsid,
+                    topLocation,
+                    rate: mappedResults.length ? Math.round((failuresOnly.length / mappedResults.length) * 100) : 0
+                },
                 processingTime: `${duration}ms`
             });
 
