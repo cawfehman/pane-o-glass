@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
 
 export default function CiscoIseFailuresPage() {
     const [query, setQuery] = useState("");
@@ -141,8 +142,20 @@ function FailureCard({ failure }: { failure: any }) {
         <div className="glass-card" style={{ 
             marginBottom: '24px', 
             borderLeft: `6px solid ${accentColor}`, 
-            padding: '0' 
+            padding: '0',
+            overflow: 'hidden'
         }}>
+            {!isPass && failure.insight && (
+                <div style={{ padding: '12px 24px', background: 'rgba(239, 68, 68, 0.1)', borderBottom: '1px solid rgba(239, 68, 68, 0.1)' }}>
+                    <p style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <AlertCircle size={18} />
+                        Triage Insight: {failure.insight.cause}
+                    </p>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                        <strong>Resolution Suggestion:</strong> {failure.insight.suggestion}
+                    </p>
+                </div>
+            )}
             <div style={{ padding: '24px' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
                     <div>
@@ -169,6 +182,8 @@ function FailureCard({ failure }: { failure: any }) {
                         <p title="The username or machine identity attempted"><strong>Username:</strong> {failure.user_name || "N/A"}</p>
                         <p title="The hardware MAC address of the endpoint"><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace' }}>{failure.calling_station_id}</span></p>
                         <p title="The profiled device type from ISE"><strong>Profile:</strong> <span style={{ color: 'var(--accent-primary)' }}>{failure.endpoint_profile || "Unknown"}</span></p>
+                        <p title="Identity Policy Matched"><strong>ID Policy:</strong> {failure.auth_policy}</p>
+                        <p title="Authorization Rule Matched"><strong>AZN Rule:</strong> {failure.authorization_rule}</p>
                     </div>
 
                     <div>

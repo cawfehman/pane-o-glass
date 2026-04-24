@@ -112,6 +112,9 @@ export async function GET(req: Request) {
                         if (firstPart) extractedApIdentity = firstPart;
                     }
 
+                    const failureId = val(node.failure_id) || val(node.failureId) || "";
+                    const insight = getFailureInsight(failureId);
+
                     let steps: any[] = [];
                     const stepsList = node.execution_steps?.step || node.steps?.step;
                     if (stepsList) {
@@ -129,7 +132,8 @@ export async function GET(req: Request) {
                         nas_ip_address: val(node.nas_ip_address) || val(node.nasIpAddress) || "Unknown",
                         nas_port_id: val(node.nas_port_id) || val(node.nasPortId) || "Unknown",
                         failure_reason: val(node.failure_reason) || val(node.failureReason) || "Passed/Active",
-                        failure_id: val(node.failure_id) || val(node.failureId) || "N/A",
+                        failure_id: failureId,
+                        insight,
                         status: val(node.passed) === "true" || node.passed === true || (!val(node.failure_reason) && val(node.passed) !== "false"),
                         authentication_method: val(node.authentication_method) || val(node.authenticationMethod) || "Unknown",
                         authentication_protocol: val(node.authentication_protocol) || val(node.authenticationProtocol) || "Unknown",
@@ -137,13 +141,31 @@ export async function GET(req: Request) {
                         nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown",
                         endpoint_profile: val(node.endpoint_profile) || val(node.endpointProfile) || "Unknown",
                         identity_group: val(node.identity_group) || val(node.identityGroup) || "Unknown",
-                        authorization_rule: val(node.authorization_rule) || val(node.authorizationRule) || "Unknown",
-                        auth_policy: val(node.authentication_policy) || val(node.authenticationPolicy) || val(node.auth_policy) || "Unknown",
+                        authorization_rule: otherAttrs['AuthorizationPolicyMatchedRule'] || val(node.authorization_rule) || val(node.authorizationRule) || "Unknown",
+                        auth_policy: otherAttrs['IdentityPolicyMatchedRule'] || val(node.authentication_policy) || val(node.authenticationPolicy) || val(node.auth_policy) || "Unknown",
                         wlan_ssid: val(node.wlan_ssid) || val(node.wlanSsid) || extractedSsid,
                         access_point_name: extractedApIdentity,
                         steps
                     };
                 });
+
+const ISE_FAILURE_MAP: Record<string, { cause: string; suggestion: string }> = {
+    "11001": { cause: "User not found in Active Directory", suggestion: "Verify the username spelling or check if the account exists in the target AD domain." },
+    "11006": { cause: "AD Connectivity Error", suggestion: "ISE is having trouble talking to the Domain Controller. Check AD Join status." },
+    "11507": { cause: "Password Expired", suggestion: "The user's password has expired in AD. They must reset it before they can connect." },
+    "12313": { cause: "No Client Certificate Found", suggestion: "The device did not present a certificate. Verify that the computer/user certificate is installed." },
+    "12511": { cause: "Untrusted Certificate", suggestion: "The certificate presented by the client is not trusted by ISE. Check the Root CA chain." },
+    "22040": { cause: "Wrong Password", suggestion: "The user entered an incorrect password." },
+    "22056": { cause: "Account Disabled", suggestion: "The user's account is disabled in Active Directory." },
+    "22058": { cause: "Account Locked", suggestion: "The user's account is locked in AD due to too many failed attempts." },
+    "22061": { cause: "Account Expired", suggestion: "The user's account has reached its expiration date in AD." },
+    "5400": { cause: "RADIUS Timeout", suggestion: "The client stopped responding to RADIUS requests. Often caused by poor wireless signal." }
+};
+
+function getFailureInsight(id: string) {
+    return ISE_FAILURE_MAP[id] || { cause: "Unknown Policy/System Failure", suggestion: "Review the technical execution steps below for more details." };
+}
+
             
             const enrichedFailures = await Promise.all(mappedResults.map(async (f: any) => {
                 return {
