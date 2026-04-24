@@ -132,7 +132,10 @@ export async function GET(req: Request) {
                 const reason = f.insight?.cause || f.failure_reason;
                 reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
 
-                const location = f.nas_identifier?.split('-')[0]?.toUpperCase() || "Unknown";
+                // Site Code: Strictly first 3 characters as per physical location convention
+                const location = f.nas_identifier && f.nas_identifier !== "Unknown" 
+                    ? f.nas_identifier.substring(0, 3).toUpperCase() 
+                    : "Unknown";
                 locationCounts[location] = (locationCounts[location] || 0) + 1;
             });
 
