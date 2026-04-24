@@ -173,3 +173,20 @@ export async function fetchIseSession(query: string) {
         throw new Error(e.message || "Failed to communicate with Cisco ISE MnT API");
     }
 }
+
+export const ISE_FAILURE_MAP: Record<string, { cause: string; suggestion: string }> = {
+    "11001": { cause: "User not found in Active Directory", suggestion: "Verify the username spelling or check if the account exists in the target AD domain." },
+    "11006": { cause: "AD Connectivity Error", suggestion: "ISE is having trouble talking to the Domain Controller. Check AD Join status." },
+    "11507": { cause: "Password Expired", suggestion: "The user's password has expired in AD. They must reset it before they can connect." },
+    "12313": { cause: "No Client Certificate Found", suggestion: "The device did not present a certificate. Verify that the computer/user certificate is installed." },
+    "12511": { cause: "Untrusted Certificate", suggestion: "The certificate presented by the client is not trusted by ISE. Check the Root CA chain." },
+    "22040": { cause: "Wrong Password", suggestion: "The user entered an incorrect password." },
+    "22056": { cause: "Account Disabled", suggestion: "The user's account is disabled in Active Directory." },
+    "22058": { cause: "Account Locked", suggestion: "The user's account is locked in AD due to too many failed attempts." },
+    "22061": { cause: "Account Expired", suggestion: "The user's account has reached its expiration date in AD." },
+    "5400": { cause: "RADIUS Timeout", suggestion: "The client stopped responding to RADIUS requests. Often caused by poor wireless signal." }
+};
+
+export function getFailureInsight(id: string) {
+    return ISE_FAILURE_MAP[id] || { cause: "Unknown Policy/System Failure", suggestion: "Review the technical execution steps for more details." };
+}

@@ -4,6 +4,7 @@ import { logAudit } from '@/lib/audit';
 import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
 import { getUserDetails } from '@/lib/ldap';
+import { getFailureInsight } from '@/lib/ise';
 
 export async function GET(req: Request) {
     try {
@@ -74,6 +75,7 @@ export async function GET(req: Request) {
                     const mac = val(node.calling_station_id) || val(node.callingStationId);
                     const passedVal = val(node.passed);
                     const failureReason = val(node.failure_reason) || val(node.failureReason);
+                    const failureId = val(node.failure_id) || val(node.failureId);
                     
                     const isSuccess = passedVal === "true" || passedVal === true || (!failureReason && passedVal !== "false");
 
@@ -82,6 +84,8 @@ export async function GET(req: Request) {
                         user_name: userName || "Unknown",
                         calling_station_id: mac || "Unknown",
                         failure_reason: failureReason || (isSuccess ? "Passed" : "Unknown Failure"),
+                        failure_id: failureId,
+                        insight: isSuccess ? null : getFailureInsight(failureId),
                         status: isSuccess,
                         nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown"
                     };
@@ -89,11 +93,36 @@ export async function GET(req: Request) {
                 .filter(res => res.calling_station_id !== "Unknown" || res.user_name !== "Unknown");
 
             const failuresOnly = mappedResults.filter(f => !f.status);
+            
+            // Group by User/Device for "Hotlist"
+            const hotlistMap: Record<string, any> = {};
+            failuresOnly.forEach(f => {
+                const key = f.user_name !== "Unknown" ? f.user_name : f.calling_station_id;
+                if (!hotlistMap[key]) {
+                    hotlistMap[key] = {
+                        identity: key,
+                        displayName: f.user_name,
+                        mac: f.calling_station_id,
+                        count: 0,
+                        latestTimestamp: f.timestamp,
+                        reason: f.failure_reason,
+                        insight: f.insight,
+                        nas: f.nas_identifier
+                    };
+                }
+                hotlistMap[key].count++;
+                if (new Date(f.timestamp) > new Date(hotlistMap[key].latestTimestamp)) {
+                    hotlistMap[key].latestTimestamp = f.timestamp;
+                }
+            });
+
+            const hotlist = Object.values(hotlistMap).sort((a, b) => b.count - a.count);
             const duration = Date.now() - startTime;
 
             return NextResponse.json({ 
                 found: mappedResults.length > 0, 
-                failures: failuresOnly.slice(0, 20),
+                failures: failuresOnly.slice(0, 30),
+                hotlist,
                 totalInSample: mappedResults.length,
                 failureCount: failuresOnly.length,
                 processingTime: `${duration}ms`

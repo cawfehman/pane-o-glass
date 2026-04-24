@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { AlertCircle } from "lucide-react";
 import ConnectionPath from "@/components/ise/ConnectionPath";
 import EnrichedEndpointCard from "@/components/ise/EnrichedEndpointCard";
 
@@ -186,17 +187,17 @@ export default function CiscoIsePage() {
                 
                 {/* Triage Dashboard Tab */}
                 {activeTab === "dashboard" && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '700px 1fr', gap: '24px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '24px' }}>
                         <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
-                            <h3 style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                                Recent Forensic Signals (Last 5 Minutes)
+                            <h3 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <AlertCircle size={20} color="#ef4444" />
+                                Current Lockout Hotlist (Last 5 Minutes)
                             </h3>
                             
                             {!triageData ? (
                                 <div style={{ padding: '60px', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed var(--border-color)' }}>
                                     <p style={{ color: 'var(--text-secondary)' }}>Synchronizing global failure telemetry...</p>
-                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '8px' }}>Polling ISE Monitoring & Troubleshooting nodes.</p>
+                                    <div className="spinner-small" style={{ margin: '16px auto' }}></div>
                                 </div>
                             ) : triageData.error ? (
                                 <div style={{ padding: '40px', textAlign: 'center', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
@@ -204,53 +205,72 @@ export default function CiscoIsePage() {
                                     <button onClick={() => { setTriageData(null); setTriageLoading(true); }} className="btn-secondary" style={{ fontSize: '0.8rem' }}>Retry Sync</button>
                                 </div>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    {triageData.failures && triageData.failures.length > 0 ? (
-                                        triageData.failures.map((f: any, idx: number) => (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                    {triageData.hotlist && triageData.hotlist.length > 0 ? (
+                                        triageData.hotlist.map((item: any, idx: number) => (
                                             <div 
                                                 key={idx} 
                                                 className="glass-card hover-glow" 
-                                                style={{ padding: '12px 16px', borderLeft: '4px solid #ef4444', background: 'rgba(255,255,255,0.02)', cursor: 'pointer', transition: 'all 0.2s' }}
-                                                onClick={() => { setQuery(f.calling_station_id); handleSearch(undefined, f.calling_station_id); }}
+                                                style={{ padding: '16px', borderLeft: '4px solid #ef4444', background: 'rgba(255,255,255,0.02)', cursor: 'pointer', transition: 'all 0.2s' }}
+                                                onClick={() => { setQuery(item.mac); handleSearch(undefined, item.mac); }}
                                             >
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                                    <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{f.ad?.displayName || f.user_name}</span>
-                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(f.timestamp).toLocaleTimeString()}</span>
-                                                </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{f.calling_station_id} · {f.nas_identifier}</span>
-                                                    <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 'bold' }}>{f.failure_reason?.substring(0, 30)}{f.failure_reason?.length > 30 ? '...' : ''}</span>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                    <div>
+                                                        <h4 style={{ fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                                                            {item.displayName !== "Unknown" ? item.displayName : item.mac}
+                                                            {item.count > 1 && <span style={{ marginLeft: '12px', fontSize: '0.75rem', padding: '2px 8px', background: '#ef4444', color: 'white', borderRadius: '12px' }}>{item.count} Failures</span>}
+                                                        </h4>
+                                                        <p style={{ fontSize: '0.85rem', color: 'var(--accent-secondary)', fontWeight: 'bold', marginBottom: '8px' }}>
+                                                            {item.insight?.cause || item.reason}
+                                                        </p>
+                                                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                                            <strong>Latest:</strong> {new Date(item.latestTimestamp).toLocaleTimeString()} · <strong>AP/NAD:</strong> {item.nas}
+                                                        </p>
+                                                    </div>
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        <button className="btn-secondary" style={{ fontSize: '0.7rem', padding: '4px 8px' }}>Drill Down &rarr;</button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))
                                     ) : (
                                         <div style={{ padding: '60px', textAlign: 'center', background: 'rgba(16, 185, 129, 0.05)', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.1)' }}>
                                             <svg style={{ marginBottom: '16px', color: '#10b981' }} width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                                            <p style={{ color: '#10b981', fontWeight: 'bold' }}>Identity Health: Optimal</p>
-                                            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px' }}>No global RADIUS failures detected in the current triage sample.</p>
-                                            <button onClick={() => { setTriageData(null); setTriageLoading(true); }} className="btn-secondary" style={{ marginTop: '20px', fontSize: '0.75rem' }}>Refresh Feed</button>
+                                            <p style={{ color: '#10b981', fontWeight: 'bold' }}>Authentication Health: Optimal</p>
+                                            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px' }}>No high-frequency RADIUS failures detected in the current window.</p>
                                         </div>
                                     )}
                                 </div>
                             )}
                         </div>
                         
-                        <div className="glass-card">
-                            <h3 style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 1 1-7.6-11.7 8.38 8.38 0 0 1 3.8.9"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                                Quick Start: Common Procedures
-                            </h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                {[
-                                    { label: "New Employee Dot1x Troubleshooting", desc: "Identify AD linkage and certificate errors" },
-                                    { label: "IoT Device Profiling Check", desc: "Verify MAB rules and device grouping" },
-                                    { label: "High Risk Device Lockdown", desc: "Correlate Vectra detections with ISE posture" }
-                                ].map((item, i) => (
-                                    <div key={i} style={{ padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                                        <h4 style={{ fontSize: '0.95rem', marginBottom: '4px', color: 'var(--accent-primary)' }}>{item.label}</h4>
-                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{item.desc}</p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                            <div className="glass-card">
+                                <h4 style={{ marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>System Health Pulse</h4>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
+                                    <div style={{ padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Total Forensic Events</p>
+                                        <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{triageData?.totalInSample || 0}</p>
                                     </div>
-                                ))}
+                                    <div style={{ padding: '16px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Active Failures (5m)</p>
+                                        <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#ef4444' }}>{triageData?.failureCount || 0}</p>
+                                    </div>
+                                    <div style={{ padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Failure Rate</p>
+                                        <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
+                                            {triageData?.totalInSample ? Math.round((triageData.failureCount / triageData.totalInSample) * 100) : 0}%
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="glass-card">
+                                <h4 style={{ marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Quick Actions</h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <button onClick={() => { setTriageData(null); setTriageLoading(true); }} className="btn-secondary" style={{ width: '100%', fontSize: '0.8rem', padding: '10px' }}>Refresh Forensic Feed</button>
+                                    <button onClick={() => setActiveTab("history")} className="btn-secondary" style={{ width: '100%', fontSize: '0.8rem', padding: '10px' }}>Global Log History</button>
+                                </div>
                             </div>
                         </div>
                     </div>
