@@ -86,41 +86,59 @@ export async function GET(req: Request) {
 
         if (searchType === "mac") {
             const nodes = await fetchAuthStatus(formattedQuery);
-            const mappedResults = nodes.map((node: any) => {
-                const val = (v: any) => v?._ || v || "";
+                const mappedResults = nodes.map((node: any) => {
+                    const val = (v: any) => v?._ || v || "";
 
-                let steps: any[] = [];
-                const stepsList = node.execution_steps?.step || node.steps?.step;
-                if (stepsList) {
-                    const stepArr = Array.isArray(stepsList) ? stepsList : [stepsList];
-                    steps = stepArr.map((s: any) => ({
-                        id: val(s.id),
-                        description: val(s.description)
-                    }));
-                }
+                    // Deep parse other_attr_string for hidden fields like SSID
+                    const otherAttrs: Record<string, string> = {};
+                    const rawAttrs = val(node.other_attr_string);
+                    if (rawAttrs) {
+                        rawAttrs.split(':!:').forEach((pair: string) => {
+                            const [key, ...valParts] = pair.split('=');
+                            if (key && valParts.length > 0) {
+                                otherAttrs[key.trim()] = valParts.join('=').trim();
+                            }
+                        });
+                    }
 
-                return {
-                    timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || val(node.timestamp) || "Unknown",
-                    user_name: val(node.user_name) || val(node.userName) || "Unknown",
-                    calling_station_id: val(node.calling_station_id) || val(node.callingStationId) || val(node.mac_address) || val(node.macAddress) || "Unknown",
-                    nas_ip_address: val(node.nas_ip_address) || val(node.nasIpAddress) || "Unknown",
-                    nas_port_id: val(node.nas_port_id) || val(node.nasPortId) || "Unknown",
-                    failure_reason: val(node.failure_reason) || val(node.failureReason) || "Passed/Active",
-                    failure_id: val(node.failure_id) || val(node.failureId) || "N/A",
-                    status: val(node.passed) === "true" || node.passed === true || (!val(node.failure_reason) && val(node.passed) !== "false"),
-                    authentication_method: val(node.authentication_method) || val(node.authenticationMethod) || "Unknown",
-                    authentication_protocol: val(node.authentication_protocol) || val(node.authenticationProtocol) || "Unknown",
-                    acs_server: val(node.acs_server) || val(node.acsServer) || "Unknown",
-                    nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown",
-                    endpoint_profile: val(node.endpoint_profile) || val(node.endpointProfile) || "Unknown",
-                    identity_group: val(node.identity_group) || val(node.identityGroup) || "Unknown",
-                    authorization_rule: val(node.authorization_rule) || val(node.authorizationRule) || "Unknown",
-                    auth_policy: val(node.authentication_policy) || val(node.authenticationPolicy) || val(node.auth_policy) || "Unknown",
-                    wlan_ssid: val(node.wlan_ssid) || val(node.wlanSsid) || (val(node.called_station_id).includes(':') ? val(node.called_station_id).split(':').pop() : "N/A"),
-                    access_point_name: val(node.access_point_name) || val(node.accessPointName) || "N/A",
-                    steps
-                };
-            });
+                    const calledStationId = otherAttrs['Called-Station-ID'] || val(node.called_station_id) || "";
+                    let extractedSsid = "N/A";
+                    if (calledStationId.includes(':')) {
+                        extractedSsid = calledStationId.split(':').pop() || "N/A";
+                    }
+
+                    let steps: any[] = [];
+                    const stepsList = node.execution_steps?.step || node.steps?.step;
+                    if (stepsList) {
+                        const stepArr = Array.isArray(stepsList) ? stepsList : [stepsList];
+                        steps = stepArr.map((s: any) => ({
+                            id: val(s.id),
+                            description: val(s.description)
+                        }));
+                    }
+
+                    return {
+                        timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || val(node.timestamp) || "Unknown",
+                        user_name: val(node.user_name) || val(node.userName) || "Unknown",
+                        calling_station_id: val(node.calling_station_id) || val(node.callingStationId) || val(node.mac_address) || val(node.macAddress) || "Unknown",
+                        nas_ip_address: val(node.nas_ip_address) || val(node.nasIpAddress) || "Unknown",
+                        nas_port_id: val(node.nas_port_id) || val(node.nasPortId) || "Unknown",
+                        failure_reason: val(node.failure_reason) || val(node.failureReason) || "Passed/Active",
+                        failure_id: val(node.failure_id) || val(node.failureId) || "N/A",
+                        status: val(node.passed) === "true" || node.passed === true || (!val(node.failure_reason) && val(node.passed) !== "false"),
+                        authentication_method: val(node.authentication_method) || val(node.authenticationMethod) || "Unknown",
+                        authentication_protocol: val(node.authentication_protocol) || val(node.authenticationProtocol) || "Unknown",
+                        acs_server: val(node.acs_server) || val(node.acsServer) || "Unknown",
+                        nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown",
+                        endpoint_profile: val(node.endpoint_profile) || val(node.endpointProfile) || "Unknown",
+                        identity_group: val(node.identity_group) || val(node.identityGroup) || "Unknown",
+                        authorization_rule: val(node.authorization_rule) || val(node.authorizationRule) || "Unknown",
+                        auth_policy: val(node.authentication_policy) || val(node.authenticationPolicy) || val(node.auth_policy) || "Unknown",
+                        wlan_ssid: val(node.wlan_ssid) || val(node.wlanSsid) || extractedSsid,
+                        access_point_name: val(node.access_point_name) || val(node.accessPointName) || val(node.network_device_name) || otherAttrs['NAS-Identifier'] || "N/A",
+                        steps
+                    };
+                });
             
             const enrichedFailures = await Promise.all(mappedResults.map(async (f: any) => {
                 return {

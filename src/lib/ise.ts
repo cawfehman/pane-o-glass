@@ -113,6 +113,24 @@ export async function fetchIseSession(query: string) {
         const mappedSessions = detailedSessions.map((sessionNode: any) => {
             const timestamp = sessionNode.acs_timestamp?._ || sessionNode.acs_timestamp || sessionNode.acsTimestamp || "Unknown";
 
+            // Deep parse other_attr_string for hidden fields like SSID
+            const otherAttrs: Record<string, string> = {};
+            const rawAttrs = sessionNode.other_attr_string?._ || sessionNode.other_attr_string || "";
+            if (rawAttrs) {
+                rawAttrs.split(':!:').forEach((pair: string) => {
+                    const [key, ...valParts] = pair.split('=');
+                    if (key && valParts.length > 0) {
+                        otherAttrs[key.trim()] = valParts.join('=').trim();
+                    }
+                });
+            }
+
+            const calledStationId = otherAttrs['Called-Station-ID'] || sessionNode.called_station_id?._ || sessionNode.called_station_id || "";
+            let extractedSsid = "N/A";
+            if (calledStationId.includes(':')) {
+                extractedSsid = calledStationId.split(':').pop() || "N/A";
+            }
+
             return {
                 user_name: sessionNode.user_name?._ || sessionNode.user_name || sessionNode.userName,
                 calling_station_id: sessionNode.calling_station_id?._ || sessionNode.calling_station_id || sessionNode.callingStationId,
@@ -135,8 +153,8 @@ export async function fetchIseSession(query: string) {
                 audit_session_id: sessionNode.audit_session_id?._ || sessionNode.audit_session_id || sessionNode.auditSessionId || "Unknown",
                 acs_server: sessionNode.acs_server?._ || sessionNode.acs_server || sessionNode.acsServer || "Unknown",
                 endpoint_policy: sessionNode.endpoint_policy?._ || sessionNode.endpoint_policy || sessionNode.endpointPolicy || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || "Unknown",
-                wlan_ssid: sessionNode.wlan_ssid?._ || sessionNode.wlan_ssid || sessionNode.wlanSsid || (sessionNode.called_station_id?.includes(':') ? sessionNode.called_station_id.split(':').pop() : "N/A"),
-                access_point_name: sessionNode.access_point_name?._ || sessionNode.access_point_name || sessionNode.accessPointName || "N/A"
+                wlan_ssid: sessionNode.wlan_ssid?._ || sessionNode.wlan_ssid || sessionNode.wlanSsid || extractedSsid,
+                access_point_name: sessionNode.access_point_name?._ || sessionNode.access_point_name || sessionNode.accessPointName || sessionNode.network_device_name?._ || sessionNode.network_device_name || otherAttrs['NAS-Identifier'] || "N/A"
             };
         });
 
