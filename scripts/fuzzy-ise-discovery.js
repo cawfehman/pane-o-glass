@@ -10,18 +10,15 @@ async function fuzzyDiscover() {
     const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
     const agent = new https.Agent({ rejectUnauthorized: false });
 
-    // Fuzzy variations for ISE 3.3
+    // Test both the working path with a HUGE window, and other variations
     const endpoints = [
-        "/admin/API/mnt/Session/AuthStatus/All/3600/10/All",
-        "/admin/API/mnt/Session/AuthenticationStatus/All/3600/10/All",
-        "/admin/API/mnt/Session/FailureReasons",
-        "/admin/API/mnt/Log/AuthStatus/All/3600/10/All",
-        "/admin/API/mnt/AuthenticationStatus/All/3600/10/All",
-        "/admin/API/mnt/AuthStatus/MACAddress/All/3600/10/All",
-        "/admin/API/mnt/Log/Authentication/All/3600/10/All"
+        "/admin/API/mnt/AuthStatus/MACAddress/All/86400/20/All", // 24 Hours
+        "/admin/API/mnt/AuthStatus/MACAddress/All/3600/20/All",  // 1 Hour
+        "/admin/API/mnt/AuthStatus/MACAddress/All/0/20/All",     // Last N records (0 window)
+        "/admin/API/mnt/Session/ActiveList"                      // Baseline
     ];
 
-    console.log("Starting Fuzzy Telemetry Discovery...");
+    console.log("Starting Deep Data Discovery...");
 
     for (const ep of endpoints) {
         const fullUrl = `${url}${ep}`;
@@ -34,10 +31,16 @@ async function fuzzyDiscover() {
                     "X-ERS-Internal-User": "true"
                 },
                 httpsAgent: agent,
-                timeout: 5000
+                timeout: 10000
             });
-            console.log(`  [SUCCESS!!] Status: ${response.status}`);
-            process.exit(0); // Stop once we find the winner
+            
+            const dataLen = response.data.length;
+            const hasData = response.data.includes("<authStatus") || response.data.includes("<activeSession");
+            console.log(`  [SUCCESS] Status: ${response.status} | Data Length: ${dataLen} | Has Records: ${hasData}`);
+            if (hasData && !ep.includes('ActiveList')) {
+                console.log("FOUND DATA! Sample:");
+                console.log(response.data.substring(0, 500));
+            }
         } catch (e) {
             console.log(`  [FAILED] Status: ${e.response?.status || "ERROR"}`);
         }
