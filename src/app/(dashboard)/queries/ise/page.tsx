@@ -34,25 +34,37 @@ export default function CiscoIsePage() {
 
     const [triageData, setTriageData] = useState<any>(null);
     const [triageLoading, setTriageLoading] = useState(false);
+    const [triageStatus, setTriageStatus] = useState("");
 
     // Initial Triage Load
     useEffect(() => {
-        if (hasIsePerm) {
+        const loadTriage = async () => {
+            if (!hasIsePerm && permsLoading) return;
+            if (!hasIsePerm) return;
+
             setTriageLoading(true);
-            fetch('/api/ise/triage', { cache: 'no-store' })
-                .then(res => res.json())
-                .then(data => {
+            setTriageStatus("Synchronizing with ISE MnT nodes...");
+            
+            try {
+                const res = await fetch('/api/ise/triage', { cache: 'no-store' });
+                const data = await res.json();
+                
+                if (data.error) {
+                    setTriageData({ error: data.error });
+                } else {
                     setTriageData(data);
-                })
-                .catch(err => {
-                    console.error("Failed to load triage data", err);
-                    setTriageData({ error: "Network Timeout" });
-                })
-                .finally(() => {
-                    setTriageLoading(false);
-                });
-        }
-    }, [hasIsePerm]);
+                }
+            } catch (err: any) {
+                console.error("Failed to load triage data", err);
+                setTriageData({ error: "ISE Connection Timeout" });
+            } finally {
+                setTriageLoading(false);
+                setTriageStatus("");
+            }
+        };
+
+        loadTriage();
+    }, [hasIsePerm, permsLoading]);
 
     const handleSearch = async (e?: React.FormEvent, macToDrilldown?: string) => {
         if (e) e.preventDefault();
@@ -194,17 +206,28 @@ export default function CiscoIsePage() {
                                 Current Lockout Hotlist (Last 5 Minutes)
                             </h3>
                             
-                            {!triageData ? (
+                            {triageLoading && !triageData && (
                                 <div style={{ padding: '60px', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed var(--border-color)' }}>
-                                    <p style={{ color: 'var(--text-secondary)' }}>Synchronizing global failure telemetry...</p>
-                                    <div className="spinner-small" style={{ margin: '16px auto' }}></div>
+                                    <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>{triageStatus || "Synchronizing global failure telemetry..."}</p>
+                                    <div style={{ width: '100%', maxWidth: '300px', height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', margin: '0 auto', overflow: 'hidden', position: 'relative' }}>
+                                        <div className="shimmer" style={{ 
+                                            position: 'absolute', top: 0, left: 0, height: '100%', width: '100%', 
+                                            background: 'linear-gradient(90deg, transparent, var(--accent-primary), transparent)',
+                                            animation: 'shimmer-move 1.5s infinite linear'
+                                        }}></div>
+                                    </div>
+                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '16px' }}>Polling ISE Monitoring & Troubleshooting nodes.</p>
                                 </div>
-                            ) : triageData.error ? (
+                            )}
+
+                            {!triageLoading && triageData?.error && (
                                 <div style={{ padding: '40px', textAlign: 'center', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
                                     <p style={{ color: '#ef4444', marginBottom: '16px' }}><strong>Triage Sync Failed:</strong> {triageData.error}</p>
                                     <button onClick={() => { setTriageData(null); setTriageLoading(true); }} className="btn-secondary" style={{ fontSize: '0.8rem' }}>Retry Sync</button>
                                 </div>
-                            ) : (
+                            )}
+
+                            {!triageLoading && triageData && !triageData.error && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                     {triageData.hotlist && triageData.hotlist.length > 0 ? (
                                         triageData.hotlist.map((item: any, idx: number) => (
