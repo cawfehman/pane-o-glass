@@ -10,9 +10,9 @@ async function testMac() {
     const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
     const agent = new https.Agent({ rejectUnauthorized: false });
 
-    // Use a MAC address we KNOW is active from your previous script output
-    const targetMac = "6C:7E:67:D1:30:B6";
-    const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/${targetMac}/86400/1/All`;
+    // Use a MAC address we KNOW is active from your Live Logs
+    const targetMac = "F6:2C:31:2A:E8:D3";
+    const endpoint = `https://ise-adm02.chsmail.root.cooperhealth.edu/admin/API/mnt/AuthStatus/MACAddress/${targetMac}/86400/1/All`;
 
     console.log(`Testing specific MAC: ${targetMac}`);
     console.log(`Endpoint: ${endpoint}`);
