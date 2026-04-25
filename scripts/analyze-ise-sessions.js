@@ -39,31 +39,29 @@ async function analyzeSessions() {
         console.table(psns);
 
         // Scan ALL sessions to find the Newest and Oldest
-        const allIds = xml.match(/<audit_session_id>(.{8})/g) || [];
+        // Format is: [IP Prefix (8 chars)][Unique/Time (8 chars)][...]
+        const allIds = xml.match(/<audit_session_id>(.{16})/g) || [];
         let newest = 0;
         let oldest = Infinity;
 
         allIds.forEach(m => {
-            const hex = m.replace('<audit_session_id>', '');
+            const hex = m.replace('<audit_session_id>', '').substring(8, 16);
             const time = parseInt(hex, 16);
             if (time > newest) newest = time;
             if (time < oldest) oldest = time;
         });
 
         if (newest > 0) {
-            const newestDate = new Date(newest * 1000);
-            const oldestDate = new Date(oldest * 1000);
-            console.log(`\nDeployment Timeline Check:`);
-            console.log(`  Oldest Active Session: ${oldestDate.toISOString()}`);
-            console.log(`  Newest Active Session: ${newestDate.toISOString()}`);
+            console.log(`\nDeployment Timeline Check (Raw Counters):`);
+            console.log(`  Oldest Counter: ${oldest}`);
+            console.log(`  Newest Counter: ${newest}`);
             
-            const now = new Date();
-            const diffDays = Math.floor((now - newestDate) / (1000 * 60 * 60 * 24));
-            if (diffDays > 0) {
-                console.log(`\n!!! CRITICAL: The "Newest" session is ${diffDays} days old !!!`);
-                console.log(`    This means ISE has not recorded a new session since ${newestDate.toDateString()}.`);
-            } else {
-                console.log(`\nSuccess: Found sessions from today!`);
+            // In ISE, this counter is often 'seconds since service start' or a sequence
+            const diff = newest - oldest;
+            console.log(`  Span of sessions: ${diff} units (Seconds or Sequence)`);
+            
+            if (diff === 0 && allIds.length > 100) {
+                console.log("\n!!! WARNING: All 14,000 sessions have the SAME timestamp. Database might be frozen. !!!");
             }
         }
 
