@@ -18,14 +18,18 @@ export async function GET(req: Request) {
             return NextResponse.json({ error: 'Identity Access Denied (ISE Role Required)' }, { status: 403 });
         }
 
-        const url = process.env.ISE_PAN_URL;
+        const rawUrl = process.env.ISE_PAN_URL;
         const user = process.env.ISE_API_USER;
         const pass = process.env.ISE_API_PASSWORD;
 
-        if (!url || !user || !pass) {
-            console.error(`[ISE TRIAGE] Configuration missing. URL: ${!!url}, User: ${!!user}, Pass: ${!!pass}`);
+        if (!rawUrl || !user || !pass) {
+            console.error(`[ISE TRIAGE] Configuration missing. URL: ${!!rawUrl}, User: ${!!user}, Pass: ${!!pass}`);
             throw new Error("ISE MnT API Credentials not configured in .env");
         }
+
+        // Normalize URL: Remove trailing slash to prevent double-slashes in endpoint
+        const url = rawUrl.endsWith('/') ? rawUrl.slice(0, -1) : rawUrl;
+
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
@@ -53,8 +57,8 @@ export async function GET(req: Request) {
             process.env.NODE_TLS_REJECT_UNAUTHORIZED = "1";
 
             if (!response.ok) {
-                console.error(`[ISE TRIAGE] MnT API returned error status: ${response.status}`);
-                throw new Error(`ISE MnT API Error (HTTP ${response.status})`);
+                console.error(`[ISE TRIAGE] MnT API returned error status: ${response.status} for URL: ${endpoint}`);
+                throw new Error(`ISE MnT API Communication Error (HTTP ${response.status}) for path: ${endpoint}`);
             }
 
             const xmlText = await response.text();
