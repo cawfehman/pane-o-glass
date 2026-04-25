@@ -209,7 +209,7 @@ export default function CiscoIsePage() {
                         <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
                             <h3 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <AlertCircle size={20} color="#ef4444" />
-                                Current Lockout Hotlist (Last 5 Minutes)
+                                Current Lockout Hotlist (Last 60 Minutes)
                             </h3>
                             
                             {triageLoading && !triageData && (
@@ -275,7 +275,7 @@ export default function CiscoIsePage() {
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             <div className="glass-card" style={{ borderTop: '4px solid var(--accent-primary)' }}>
-                                <h4 style={{ marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Forensic Summary (5m)</h4>
+                                <h4 style={{ marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Forensic Summary (60m)</h4>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                     <div>
                                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Active Authentications</p>

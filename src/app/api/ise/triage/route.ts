@@ -29,22 +29,28 @@ export async function GET(req: Request) {
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
-        // 3. PERFORMANCE OPTIMIZATION: 60-minute window for troubleshooting (3600s)
-        const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/All/3600/100/All`;
-        console.log(`[ISE TRIAGE] Polling MnT Endpoint (60m Window): ${endpoint}`);
+        // 3. PERFORMANCE OPTIMIZATION: Use the endpoint from the working test script
+        const endpoint = `${url}/admin/API/mnt/AuthStatus/All/3600/100/All`;
+        console.log(`[ISE TRIAGE] Polling Working Endpoint: ${endpoint}`);
         
         const startTime = Date.now();
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s for larger sample
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
 
         try {
+            // Bypass SSL for this specific internal fetch if needed
+            process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
             const response = await fetch(endpoint, {
                 headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
                 signal: controller.signal,
                 cache: 'no-store'
             });
             clearTimeout(timeoutId);
+
+            // Restore security after fetch (good practice)
+            process.env.NODE_TLS_REJECT_UNAUTHORIZED = "1";
 
             if (!response.ok) {
                 console.error(`[ISE TRIAGE] MnT API returned error status: ${response.status}`);
