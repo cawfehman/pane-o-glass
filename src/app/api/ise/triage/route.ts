@@ -32,35 +32,58 @@ export async function GET(req: Request) {
 
 
         const basicAuth = Buffer.from(`${user.trim()}:${pass.trim()}`).toString('base64');
-        console.log(`[ISE TRIAGE] Auth Header Length: ${basicAuth.length} chars (Normalized)`);
         
-        // 3. PERFORMANCE OPTIMIZATION: Use the most universal 'LastNRecords' endpoint
-        const endpoint = `${url}/admin/API/mnt/AuthStatus/LastNRecords/All/50/All`;
-        console.log(`[ISE TRIAGE] Polling Universal Endpoint: ${endpoint}`);
-        
-        const startTime = Date.now();
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        // 3. PERFORMANCE OPTIMIZATION: Try both 'API' and 'api' paths (ISE 3.3 casing quirk)
+        const pathsToTest = [
+            `${url}/admin/API/mnt/AuthStatus/LastNRecords/All/50/All`,
+            `${url}/admin/api/mnt/AuthStatus/LastNRecords/All/50/All`
+        ];
 
-        try {
-            // Bypass SSL for this specific internal fetch if needed
-            process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+        let lastResponse: Response | null = null;
+        let lastEndpoint = "";
 
-            const response = await fetch(endpoint, {
-                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
-                signal: controller.signal,
-                cache: 'no-store'
-            });
-            clearTimeout(timeoutId);
+        // Bypass SSL for internal fetch
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
-            // Restore security after fetch (good practice)
-            process.env.NODE_TLS_REJECT_UNAUTHORIZED = "1";
-
-            if (!response.ok) {
-                console.error(`[ISE TRIAGE] MnT API returned error status: ${response.status} for URL: ${endpoint}`);
-                throw new Error(`ISE MnT API Communication Error (HTTP ${response.status}) for path: ${endpoint}`);
+        for (const endpoint of pathsToTest) {
+            console.log(`[ISE TRIAGE] Testing Endpoint: ${endpoint}`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            
+            try {
+                const response = await fetch(endpoint, {
+                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
+                    signal: controller.signal,
+                    cache: 'no-store'
+                });
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
+                    lastResponse = response;
+                    lastEndpoint = endpoint;
+                    break;
+                }
+                lastResponse = response;
+                lastEndpoint = endpoint;
+            } catch (err) {
+                clearTimeout(timeoutId);
+                console.error(`[ISE TRIAGE] Fetch failed for ${endpoint}:`, err);
             }
+        }
+
+        // Restore security
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = "1";
+
+        if (!lastResponse || !lastResponse.ok) {
+            const status = lastResponse?.status || "TIMEOUT";
+            const server = lastResponse?.headers.get('server') || 'Unknown';
+            console.error(`[ISE TRIAGE] All endpoints failed. Last Status: ${status}, Server: ${server}`);
+            throw new Error(`ISE MnT API Unavailable (HTTP ${status}). Server Type: ${server}. Path: ${lastEndpoint}`);
+        }
+
+        const response = lastResponse;
+        const endpoint = lastEndpoint;
+
 
             const xmlText = await response.text();
             console.log(`[ISE TRIAGE] Raw XML Snippet: ${xmlText.substring(0, 300)}...`);
