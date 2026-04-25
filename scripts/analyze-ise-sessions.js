@@ -38,13 +38,19 @@ async function analyzeSessions() {
         console.log("\nSession Distribution by PSN:");
         console.table(psns);
 
-        // Check for any mention of RADIUS vs PassiveID
-        // In the ActiveList, we look for tags that indicate the method
-        const hasRadius = xml.includes('RADIUS') || xml.includes('Dot1x');
-        const hasPassive = xml.includes('PassiveID') || xml.includes('Passive');
-        
-        console.log(`\nEvidence of RADIUS: ${hasRadius}`);
-        console.log(`Evidence of PassiveID: ${hasPassive}`);
+        // Decode the first session ID to check the date
+        const firstIdMatch = xml.match(/<audit_session_id>(.{8})/);
+        if (firstIdMatch) {
+            const hexTime = firstIdMatch[1];
+            const unixTime = parseInt(hexTime, 16);
+            const date = new Date(unixTime * 1000);
+            console.log(`\nDetected Session Timestamp: ${date.toISOString()} (from hex: ${hexTime})`);
+            
+            const now = new Date();
+            if (now.getFullYear() - date.getFullYear() > 1) {
+                console.log("!!! WARNING: These sessions appear to be from YEARS ago (Stale/Ghost sessions) !!!");
+            }
+        }
 
     } catch (e) {
         console.error(`Analysis failed: ${e.message}`);
