@@ -29,9 +29,9 @@ export async function GET(req: Request) {
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
-        // 3. PERFORMANCE OPTIMIZATION: Use the endpoint from the working test script
-        const endpoint = `${url}/admin/API/mnt/AuthStatus/All/3600/100/All`;
-        console.log(`[ISE TRIAGE] Polling Working Endpoint: ${endpoint}`);
+        // 3. PERFORMANCE OPTIMIZATION: Use the EXACT endpoint from test-ise-triage.js
+        const endpoint = `${url}/admin/API/mnt/AuthStatus/All/86400/50/All`;
+        console.log(`[ISE TRIAGE] Polling Working Endpoint (24h): ${endpoint}`);
         
         const startTime = Date.now();
         
