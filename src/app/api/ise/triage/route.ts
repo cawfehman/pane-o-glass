@@ -5,6 +5,8 @@ import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
 import { getUserDetails } from '@/lib/ldap';
 import { getFailureInsight } from '@/lib/ise';
+import axios from 'axios';
+import https from 'https';
 
 export async function GET(req: Request) {
     try {
@@ -37,45 +39,40 @@ export async function GET(req: Request) {
             `${url}/admin/api/mnt/AuthStatus/LastNRecords/All/50/All`
         ];
 
-        let lastResponse: Response | null = null;
+        let lastResponse: any = null;
         let lastEndpoint = "";
-
-        // Bypass SSL for internal fetch
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+        const agent = new https.Agent({ rejectUnauthorized: false });
 
         for (const endpoint of pathsToTest) {
-            console.log(`[ISE TRIAGE] Testing Endpoint: ${endpoint}`);
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            console.log(`[ISE TRIAGE] Testing Endpoint (Axios): ${endpoint}`);
             
             try {
-                const response = await fetch(endpoint, {
-                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
-                    signal: controller.signal,
-                    cache: 'no-store'
+                const response = await axios.get(endpoint, {
+                    headers: { 
+                        "Authorization": `Basic ${basicAuth}`, 
+                        "Accept": "application/xml",
+                        "User-Agent": "axios/1.6.2" // Explicitly impersonate the script
+                    },
+                    httpsAgent: agent,
+                    timeout: 10000,
+                    validateStatus: () => true // Don't throw on 404/500, we handle it
                 });
-                clearTimeout(timeoutId);
                 
-                if (response.ok) {
+                if (response.status === 200) {
                     lastResponse = response;
                     lastEndpoint = endpoint;
                     break;
                 }
                 lastResponse = response;
                 lastEndpoint = endpoint;
-            } catch (err) {
-                clearTimeout(timeoutId);
-                console.error(`[ISE TRIAGE] Fetch failed for ${endpoint}:`, err);
+            } catch (err: any) {
+                console.error(`[ISE TRIAGE] Axios failed for ${endpoint}:`, err.message);
             }
         }
 
-        // Restore security
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = "1";
-
-        if (!lastResponse || !lastResponse.ok) {
+        if (!lastResponse || lastResponse.status !== 200) {
             const status = lastResponse?.status || "TIMEOUT";
-            const server = lastResponse?.headers.get('server') || 'Unknown';
-            console.error(`[ISE TRIAGE] All endpoints failed. Last Status: ${status}, Server: ${server}`);
+            const server = lastResponse?.headers['server'] || 'Unknown Proxy';
             throw new Error(`ISE MnT API Unavailable (HTTP ${status}). Server Type: ${server}. Path: ${lastEndpoint}`);
         }
 
@@ -83,7 +80,7 @@ export async function GET(req: Request) {
         const endpoint = lastEndpoint;
         const startTime = Date.now();
 
-        const xmlText = await response.text();
+        const xmlText = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
         console.log(`[ISE TRIAGE] Raw Response Snippet (First 500 chars): ${xmlText.substring(0, 500)}`);
 
         if (!xmlText || xmlText.length < 50) {
@@ -92,8 +89,9 @@ export async function GET(req: Request) {
 
         // HTML INTERCEPTION CHECK: If the server returned HTML (e.g. from a proxy/F5), stop and report
         if (xmlText.trim().toLowerCase().startsWith('<!doctype html') || xmlText.trim().toLowerCase().startsWith('<html')) {
-            console.error(`[ISE TRIAGE] Intercepted by HTML Error Page from: ${response.headers.get('server') || 'Unknown Proxy'}`);
-            throw new Error(`ISE MnT API Intercepted: The server returned an HTML page instead of XML. This usually means a Load Balancer (F5/Netscaler) is blocking the /admin/API path.`);
+            const server = response.headers['server'] || 'Unknown Proxy';
+            console.error(`[ISE TRIAGE] Intercepted by HTML Error Page from: ${server}`);
+            throw new Error(`ISE MnT API Intercepted by ${server}: The server returned an HTML page instead of XML. This usually means a Load Balancer (F5/Netscaler) is blocking the /admin/API path.`);
         }
 
         const data = await parseStringPromise(xmlText, { 
