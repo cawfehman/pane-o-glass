@@ -29,14 +29,14 @@ export async function GET(req: Request) {
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
-        // 3. PERFORMANCE OPTIMIZATION: 5-minute 'Live Signal' window for stability
-        const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/All/300/40/All`;
-        console.log(`[ISE TRIAGE] Polling MnT Endpoint: ${endpoint}`);
+        // 3. PERFORMANCE OPTIMIZATION: 60-minute window for troubleshooting (3600s)
+        const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/All/3600/100/All`;
+        console.log(`[ISE TRIAGE] Polling MnT Endpoint (60m Window): ${endpoint}`);
         
         const startTime = Date.now();
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000); // Increased to 12s for heavy load
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s for larger sample
 
         try {
             const response = await fetch(endpoint, {
@@ -48,15 +48,14 @@ export async function GET(req: Request) {
 
             if (!response.ok) {
                 console.error(`[ISE TRIAGE] MnT API returned error status: ${response.status}`);
-                if (response.status === 404) {
-                    throw new Error("Triage Feed Unavailable: Ensure this ISE node has the 'Monitoring' role enabled.");
-                }
-                throw new Error(`ISE MnT API Communication Error (HTTP ${response.status})`);
+                throw new Error(`ISE MnT API Error (HTTP ${response.status})`);
             }
 
             const xmlText = await response.text();
+            console.log(`[ISE TRIAGE] Raw XML Snippet: ${xmlText.substring(0, 300)}...`);
+
             if (!xmlText || xmlText.length < 50) {
-                return NextResponse.json({ found: false, failures: [], totalInSample: 0 });
+                return NextResponse.json({ found: false, failures: [], stats: { total: 0 } });
             }
 
             const data = await parseStringPromise(xmlText, { 
@@ -64,14 +63,26 @@ export async function GET(req: Request) {
                 tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
             });
             
-            const container = data.authStatusOutputList?.authStatusList || data.authStatusList;
-            const rawNodes = container?.authStatus;
+            // Tag-Agnostic Node Discovery: Scan for authStatus nodes anywhere in the tree
+            const findNodes = (obj: any): any[] => {
+                if (!obj || typeof obj !== 'object') return [];
+                if (obj.authStatus) return Array.isArray(obj.authStatus) ? obj.authStatus : [obj.authStatus];
+                
+                for (const key in obj) {
+                    const found = findNodes(obj[key]);
+                    if (found.length > 0) return found;
+                }
+                return [];
+            };
+
+            const rawNodes = findNodes(data);
+            console.log(`[ISE TRIAGE] Discovered ${rawNodes.length} raw authentication nodes.`);
             
-            if (!rawNodes) {
-                return NextResponse.json({ found: false, failures: [], totalInSample: 0 });
+            if (rawNodes.length === 0) {
+                return NextResponse.json({ found: false, failures: [], stats: { total: 0 } });
             }
             
-            const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
+            const nodesArray = rawNodes;
             
             const mappedResults = nodesArray
                 .map((n: any) => {
