@@ -9,10 +9,13 @@ import { getFailureInsight } from '@/lib/ise';
 export async function GET(req: Request) {
     try {
         const session = await auth();
+        console.log(`[ISE TRIAGE] Initiating forensic sync for user: ${session?.user?.email || 'Anonymous'}`);
+        
         const role = (session?.user as any)?.role;
 
         if (!session?.user || !(await hasPermission(role, 'ise'))) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+            console.warn(`[ISE TRIAGE] Permission denied for role: ${role}`);
+            return NextResponse.json({ error: 'Identity Access Denied (ISE Role Required)' }, { status: 403 });
         }
 
         const url = process.env.ISE_PAN_URL;
@@ -20,31 +23,35 @@ export async function GET(req: Request) {
         const pass = process.env.ISE_API_PASSWORD;
 
         if (!url || !user || !pass) {
-            throw new Error("ISE Credentials not configured");
+            console.error(`[ISE TRIAGE] Configuration missing. URL: ${!!url}, User: ${!!user}, Pass: ${!!pass}`);
+            throw new Error("ISE MnT API Credentials not configured in .env");
         }
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
         // 3. PERFORMANCE OPTIMIZATION: 5-minute 'Live Signal' window for stability
         const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/All/300/40/All`;
+        console.log(`[ISE TRIAGE] Polling MnT Endpoint: ${endpoint}`);
+        
         const startTime = Date.now();
         
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s absolute timeout for stability
+        const timeoutId = setTimeout(() => controller.abort(), 12000); // Increased to 12s for heavy load
 
         try {
             const response = await fetch(endpoint, {
                 headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
                 signal: controller.signal,
-                cache: 'no-store' // Ensure we always get live data
+                cache: 'no-store'
             });
             clearTimeout(timeoutId);
 
             if (!response.ok) {
+                console.error(`[ISE TRIAGE] MnT API returned error status: ${response.status}`);
                 if (response.status === 404) {
-                    throw new Error("Triage Feed Unavailable: Service node role restriction.");
+                    throw new Error("Triage Feed Unavailable: Ensure this ISE node has the 'Monitoring' role enabled.");
                 }
-                throw new Error(`ISE MnT API Error: ${response.status}`);
+                throw new Error(`ISE MnT API Communication Error (HTTP ${response.status})`);
             }
 
             const xmlText = await response.text();
