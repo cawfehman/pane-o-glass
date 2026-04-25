@@ -31,11 +31,12 @@ export async function GET(req: Request) {
         const url = rawUrl.endsWith('/') ? rawUrl.slice(0, -1) : rawUrl;
 
 
-        const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
+        const basicAuth = Buffer.from(`${user.trim()}:${pass.trim()}`).toString('base64');
+        console.log(`[ISE TRIAGE] Auth Header Length: ${basicAuth.length} chars (Normalized)`);
         
-        // 3. PERFORMANCE OPTIMIZATION: Use the EXACT endpoint from test-ise-triage.js
-        const endpoint = `${url}/admin/API/mnt/AuthStatus/All/86400/50/All`;
-        console.log(`[ISE TRIAGE] Polling Working Endpoint (24h): ${endpoint}`);
+        // 3. PERFORMANCE OPTIMIZATION: Use the most universal 'LastNRecords' endpoint
+        const endpoint = `${url}/admin/API/mnt/AuthStatus/LastNRecords/All/50/All`;
+        console.log(`[ISE TRIAGE] Polling Universal Endpoint: ${endpoint}`);
         
         const startTime = Date.now();
         
