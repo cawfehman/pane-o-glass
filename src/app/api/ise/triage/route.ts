@@ -44,18 +44,19 @@ export async function GET(req: Request) {
         const agent = new https.Agent({ rejectUnauthorized: false });
 
         for (const endpoint of pathsToTest) {
-            console.log(`[ISE TRIAGE] Testing Endpoint (Axios): ${endpoint}`);
+            console.log(`[ISE TRIAGE] Testing Endpoint (Direct-NoProxy): ${endpoint}`);
             
             try {
                 const response = await axios.get(endpoint, {
                     headers: { 
                         "Authorization": `Basic ${basicAuth}`, 
                         "Accept": "application/xml",
-                        "User-Agent": "axios/1.6.2" // Explicitly impersonate the script
+                        "User-Agent": "axios/1.6.2"
                     },
                     httpsAgent: agent,
                     timeout: 10000,
-                    validateStatus: () => true // Don't throw on 404/500, we handle it
+                    proxy: false, // FORCE BYPASS ALL SYSTEM PROXIES
+                    validateStatus: () => true
                 });
                 
                 if (response.status === 200) {
@@ -90,8 +91,11 @@ export async function GET(req: Request) {
         // HTML INTERCEPTION CHECK: If the server returned HTML (e.g. from a proxy/F5), stop and report
         if (xmlText.trim().toLowerCase().startsWith('<!doctype html') || xmlText.trim().toLowerCase().startsWith('<html')) {
             const server = response.headers['server'] || 'Unknown Proxy';
-            console.error(`[ISE TRIAGE] Intercepted by HTML Error Page from: ${server}`);
-            throw new Error(`ISE MnT API Intercepted by ${server}: The server returned an HTML page instead of XML. This usually means a Load Balancer (F5/Netscaler) is blocking the /admin/API path.`);
+            const titleMatch = xmlText.match(/<title>(.*?)<\/title>/i);
+            const title = titleMatch ? titleMatch[1] : 'No Title';
+            
+            console.error(`[ISE TRIAGE] Intercepted by HTML: "${title}" from ${server}`);
+            throw new Error(`ISE MnT API Intercepted by "${title}" (${server}): The server returned an HTML page. This usually means a proxy is blocking the path.`);
         }
 
         const data = await parseStringPromise(xmlText, { 
