@@ -13,9 +13,10 @@ async function testTriage() {
     }
 
     const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
-    const endpoint = `${url}/admin/API/mnt/AuthStatus/All/86400/50/All`;
+    const endpoint = `${url}/admin/API/mnt/AuthStatus/LastNRecords/All/50/All`;
 
-    console.log(`Checking endpoint: ${endpoint}`);
+    console.log(`Checking URL: ${url}`);
+    console.log(`Checking full endpoint: ${endpoint}`);
 
     try {
         const response = await axios.get(endpoint, {
