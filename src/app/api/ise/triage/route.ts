@@ -71,6 +71,16 @@ export async function GET(req: Request) {
                     const node = n.authStatusElements || n;
                     const val = (v: any) => v?._ || v || "";
 
+                    // Deep Parse Attributes
+                    const otherAttrString = val(node.other_attr_string) || val(node.otherAttrString) || "";
+                    const otherAttrs: Record<string, string> = {};
+                    if (otherAttrString) {
+                        otherAttrString.split(':!:').forEach(attr => {
+                            const [k, v] = attr.split('=');
+                            if (k && v) otherAttrs[k] = v;
+                        });
+                    }
+
                     const userName = val(node.user_name) || val(node.userName);
                     const mac = val(node.calling_station_id) || val(node.callingStationId);
                     const passedVal = val(node.passed);
@@ -78,6 +88,18 @@ export async function GET(req: Request) {
                     const failureId = val(node.failure_id) || val(node.failureId);
                     
                     const isSuccess = passedVal === "true" || passedVal === true || (!failureReason && passedVal !== "false");
+
+                    // Extract SSID and AP from Called-Station-ID
+                    const calledStationId = otherAttrs['Called-Station-ID'] || val(node.called_station_id) || "";
+                    let extractedSsid = "N/A";
+                    let extractedApIdentity = val(node.network_device_name) || otherAttrs['NAS-Identifier'] || "N/A";
+
+                    if (calledStationId.includes(':')) {
+                        const parts = calledStationId.split(':');
+                        extractedSsid = parts.pop() || "N/A";
+                        const firstPart = parts.join(':');
+                        if (firstPart) extractedApIdentity = firstPart;
+                    }
 
                     return {
                         timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || "Unknown",
@@ -87,7 +109,8 @@ export async function GET(req: Request) {
                         failure_id: failureId,
                         insight: isSuccess ? null : getFailureInsight(failureId),
                         status: isSuccess,
-                        nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown"
+                        nas_identifier: extractedApIdentity,
+                        wlan_ssid: extractedSsid
                     };
                 })
                 .filter(res => res.calling_station_id !== "Unknown" || res.user_name !== "Unknown");
@@ -124,16 +147,14 @@ export async function GET(req: Request) {
             const locationCounts: Record<string, number> = {};
 
             failuresOnly.forEach(f => {
-                // SSID (often in other_attr_string but we'll approximate from what we have)
-                // In a real scenario we'd parse this more deeply
-                const ssid = "CooperEmployee"; // Default placeholder for now as per logs
+                const ssid = f.wlan_ssid && f.wlan_ssid !== "N/A" ? f.wlan_ssid : "Unknown SSID";
                 ssidCounts[ssid] = (ssidCounts[ssid] || 0) + 1;
 
                 const reason = f.insight?.cause || f.failure_reason;
                 reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
 
-                // Site Code: Strictly first 3 characters as per physical location convention
-                const location = f.nas_identifier && f.nas_identifier !== "Unknown" 
+                // Site Code: First 3 characters of the AP name or WLC hostname
+                const location = f.nas_identifier && f.nas_identifier !== "N/A" && f.nas_identifier !== "Unknown" 
                     ? f.nas_identifier.substring(0, 3).toUpperCase() 
                     : "Unknown";
                 locationCounts[location] = (locationCounts[location] || 0) + 1;
