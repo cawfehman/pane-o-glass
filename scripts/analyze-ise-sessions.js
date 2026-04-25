@@ -38,17 +38,32 @@ async function analyzeSessions() {
         console.log("\nSession Distribution by PSN:");
         console.table(psns);
 
-        // Decode the first session ID to check the date
-        const firstIdMatch = xml.match(/<audit_session_id>(.{8})/);
-        if (firstIdMatch) {
-            const hexTime = firstIdMatch[1];
-            const unixTime = parseInt(hexTime, 16);
-            const date = new Date(unixTime * 1000);
-            console.log(`\nDetected Session Timestamp: ${date.toISOString()} (from hex: ${hexTime})`);
+        // Scan ALL sessions to find the Newest and Oldest
+        const allIds = xml.match(/<audit_session_id>(.{8})/g) || [];
+        let newest = 0;
+        let oldest = Infinity;
+
+        allIds.forEach(m => {
+            const hex = m.replace('<audit_session_id>', '');
+            const time = parseInt(hex, 16);
+            if (time > newest) newest = time;
+            if (time < oldest) oldest = time;
+        });
+
+        if (newest > 0) {
+            const newestDate = new Date(newest * 1000);
+            const oldestDate = new Date(oldest * 1000);
+            console.log(`\nDeployment Timeline Check:`);
+            console.log(`  Oldest Active Session: ${oldestDate.toISOString()}`);
+            console.log(`  Newest Active Session: ${newestDate.toISOString()}`);
             
             const now = new Date();
-            if (now.getFullYear() - date.getFullYear() > 1) {
-                console.log("!!! WARNING: These sessions appear to be from YEARS ago (Stale/Ghost sessions) !!!");
+            const diffDays = Math.floor((now - newestDate) / (1000 * 60 * 60 * 24));
+            if (diffDays > 0) {
+                console.log(`\n!!! CRITICAL: The "Newest" session is ${diffDays} days old !!!`);
+                console.log(`    This means ISE has not recorded a new session since ${newestDate.toDateString()}.`);
+            } else {
+                console.log(`\nSuccess: Found sessions from today!`);
             }
         }
 
