@@ -3,7 +3,7 @@ const https = require('https');
 require('dotenv').config();
 
 async function probeId() {
-    const url = process.env.ISE_PAN_URL;
+    const url = process.argv[2] || process.env.ISE_PAN_URL;
     const user = process.env.ISE_API_USER;
     const pass = process.env.ISE_API_PASSWORD;
 
