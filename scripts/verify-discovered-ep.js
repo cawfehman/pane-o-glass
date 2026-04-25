@@ -3,8 +3,9 @@ const https = require('https');
 require('dotenv').config();
 
 async function verifyData() {
-    // ALLOW OVERRIDING URL FROM COMMAND LINE
+    // ALLOW OVERRIDING URL AND TIME WINDOW FROM COMMAND LINE
     const url = process.argv[2] || process.env.ISE_PAN_URL;
+    const window = process.argv[3] || "3600";
     const user = process.env.ISE_API_USER;
     const pass = process.env.ISE_API_PASSWORD;
 
@@ -12,7 +13,7 @@ async function verifyData() {
     const agent = new https.Agent({ rejectUnauthorized: false });
 
     // The path that returned 200 OK
-    const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/All/3600/10/All`;
+    const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/All/${window}/10/All`;
 
     console.log(`Verifying data content from: ${endpoint}`);
 
