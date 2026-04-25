@@ -31,7 +31,8 @@ export async function GET(req: Request) {
 
         // Normalize URL: Remove trailing slash to prevent double-slashes in endpoint
         const url = rawUrl.endsWith('/') ? rawUrl.slice(0, -1) : rawUrl;
-        const basicAuth = Buffer.from(`${user.trim()}:${pass.trim()}`).toString('base64');
+        // No trim - use exactly what is in .env
+        const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
         // 3. PERFORMANCE OPTIMIZATION: Try both 'API' and 'api' paths (ISE 3.3 casing quirk)
         const pathsToTest = [
@@ -44,18 +45,20 @@ export async function GET(req: Request) {
         const agent = new https.Agent({ rejectUnauthorized: false });
 
         for (const endpoint of pathsToTest) {
-            console.log(`[ISE TRIAGE] Testing Endpoint (Direct-NoProxy): ${endpoint}`);
+            console.log(`[ISE TRIAGE] Testing Endpoint (Axios-Final): ${endpoint}`);
             
             try {
                 const response = await axios.get(endpoint, {
                     headers: { 
                         "Authorization": `Basic ${basicAuth}`, 
                         "Accept": "application/xml",
+                        "X-ERS-Internal-User": "true",
+                        "X-Requested-With": "XMLHttpRequest",
                         "User-Agent": "axios/1.6.2"
                     },
                     httpsAgent: agent,
-                    timeout: 10000,
-                    proxy: false, // FORCE BYPASS ALL SYSTEM PROXIES
+                    timeout: 15000,
+                    proxy: false,
                     validateStatus: () => true
                 });
                 
