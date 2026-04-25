@@ -21,16 +21,22 @@ export async function GET(req: Request) {
         }
 
         const rawUrl = process.env.ISE_PAN_URL;
-        const user = process.env.ISE_API_USER;
-        const pass = process.env.ISE_API_PASSWORD;
+        const rawUser = process.env.ISE_API_USER;
+        const rawPass = process.env.ISE_API_PASSWORD;
 
-        if (!rawUrl || !user || !pass) {
-            console.error(`[ISE TRIAGE] Configuration missing. URL: ${!!rawUrl}, User: ${!!user}, Pass: ${!!pass}`);
+        if (!rawUrl || !rawUser || !rawPass) {
+            console.error(`[ISE TRIAGE] Configuration missing. URL: ${!!rawUrl}, User: ${!!rawUser}, Pass: ${!!rawPass}`);
             throw new Error("ISE MnT API Credentials not configured in .env");
         }
 
-        // Normalize URL: Remove trailing slash to prevent double-slashes in endpoint
-        const url = rawUrl.endsWith('/') ? rawUrl.slice(0, -1) : rawUrl;
+        // Quote-Resilience: Strip leading/trailing double quotes that might be in the .env file
+        const urlClean = rawUrl.replace(/^"|"$/g, '').endsWith('/') ? rawUrl.replace(/^"|"$/g, '').slice(0, -1) : rawUrl.replace(/^"|"$/g, '');
+        const user = rawUser.replace(/^"|"$/g, '');
+        const pass = rawPass.replace(/^"|"$/g, '');
+        const url = urlClean;
+
+        console.log(`[ISE TRIAGE] Using Cleaned URL: ${url}`);
+        console.log(`[ISE TRIAGE] User: ${user} (Length: ${user.length})`);
         // No trim - use exactly what is in .env
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
