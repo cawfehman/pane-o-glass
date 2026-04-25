@@ -84,10 +84,16 @@ export async function GET(req: Request) {
         const startTime = Date.now();
 
         const xmlText = await response.text();
-        console.log(`[ISE TRIAGE] Raw XML Snippet: ${xmlText.substring(0, 300)}...`);
+        console.log(`[ISE TRIAGE] Raw Response Snippet (First 500 chars): ${xmlText.substring(0, 500)}`);
 
         if (!xmlText || xmlText.length < 50) {
             return NextResponse.json({ found: false, failures: [], stats: { total: 0 } });
+        }
+
+        // HTML INTERCEPTION CHECK: If the server returned HTML (e.g. from a proxy/F5), stop and report
+        if (xmlText.trim().toLowerCase().startsWith('<!doctype html') || xmlText.trim().toLowerCase().startsWith('<html')) {
+            console.error(`[ISE TRIAGE] Intercepted by HTML Error Page from: ${response.headers.get('server') || 'Unknown Proxy'}`);
+            throw new Error(`ISE MnT API Intercepted: The server returned an HTML page instead of XML. This usually means a Load Balancer (F5/Netscaler) is blocking the /admin/API path.`);
         }
 
         const data = await parseStringPromise(xmlText, { 
