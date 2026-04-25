@@ -40,10 +40,9 @@ export async function GET(req: Request) {
         // No trim - use exactly what is in .env
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
-        // 3. PERFORMANCE OPTIMIZATION: Try both 'API' and 'api' paths (ISE 3.3 casing quirk)
+        // 3. PERFORMANCE OPTIMIZATION: Use the successful path found by discovery
         const pathsToTest = [
-            `${url}/admin/API/mnt/AuthStatus/LastNRecords/All/50/All`,
-            `${url}/admin/api/mnt/AuthStatus/LastNRecords/All/50/All`
+            `${url}/admin/API/mnt/AuthStatus/MACAddress/All/3600/100/All`
         ];
 
         let lastResponse: any = null;
@@ -51,7 +50,7 @@ export async function GET(req: Request) {
         const agent = new https.Agent({ rejectUnauthorized: false });
 
         for (const endpoint of pathsToTest) {
-            console.log(`[ISE TRIAGE] Testing Endpoint (Axios-Final): ${endpoint}`);
+            console.log(`[ISE TRIAGE] Polling Successful Endpoint: ${endpoint}`);
             
             try {
                 const response = await axios.get(endpoint, {
