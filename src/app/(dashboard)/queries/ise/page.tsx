@@ -36,35 +36,41 @@ export default function CiscoIsePage() {
     const [triageLoading, setTriageLoading] = useState(false);
     const [triageStatus, setTriageStatus] = useState("");
 
+    const loadTriage = async () => {
+        setTriageLoading(true);
+        setTriageStatus("Synchronizing with ISE MnT nodes...");
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s client-side timeout
+
+        try {
+            const res = await fetch('/api/ise/triage', { 
+                cache: 'no-store',
+                signal: controller.signal 
+            });
+            const data = await res.json();
+            
+            if (data.error) {
+                setTriageData({ error: data.error });
+            } else {
+                setTriageData(data);
+            }
+        } catch (err: any) {
+            console.error("Failed to load triage data", err);
+            setTriageData({ error: err.name === 'AbortError' ? "ISE API Timeout (20s)" : "ISE Connection Error" });
+        } finally {
+            clearTimeout(timeoutId);
+            setTriageLoading(false);
+            setTriageStatus("");
+        }
+    };
+
     // Initial Triage Load
     useEffect(() => {
-        const loadTriage = async () => {
-            if (!hasIsePerm && permsLoading) return;
-            if (!hasIsePerm) return;
-
-            setTriageLoading(true);
-            setTriageStatus("Synchronizing with ISE MnT nodes...");
-            
-            try {
-                const res = await fetch('/api/ise/triage', { cache: 'no-store' });
-                const data = await res.json();
-                
-                if (data.error) {
-                    setTriageData({ error: data.error });
-                } else {
-                    setTriageData(data);
-                }
-            } catch (err: any) {
-                console.error("Failed to load triage data", err);
-                setTriageData({ error: "ISE Connection Timeout" });
-            } finally {
-                setTriageLoading(false);
-                setTriageStatus("");
-            }
-        };
-
-        loadTriage();
-    }, [hasIsePerm, permsLoading]);
+        if (hasIsePerm) {
+            loadTriage();
+        }
+    }, [hasIsePerm]);
 
     const handleSearch = async (e?: React.FormEvent, macToDrilldown?: string) => {
         if (e) e.preventDefault();
@@ -223,7 +229,7 @@ export default function CiscoIsePage() {
                             {!triageLoading && triageData?.error && (
                                 <div style={{ padding: '40px', textAlign: 'center', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
                                     <p style={{ color: '#ef4444', marginBottom: '16px' }}><strong>Triage Sync Failed:</strong> {triageData.error}</p>
-                                    <button onClick={() => { setTriageData(null); setTriageLoading(true); }} className="btn-secondary" style={{ fontSize: '0.8rem' }}>Retry Sync</button>
+                                    <button onClick={() => loadTriage()} className="btn-secondary" style={{ fontSize: '0.8rem' }}>Retry Sync</button>
                                 </div>
                             )}
 
@@ -298,7 +304,7 @@ export default function CiscoIsePage() {
                             <div className="glass-card">
                                 <h4 style={{ marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Investigation Tools</h4>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    <button onClick={() => { setTriageData(null); setTriageLoading(true); }} className="btn-primary" style={{ width: '100%', fontSize: '0.8rem', padding: '10px' }}>
+                                    <button onClick={() => loadTriage()} className="btn-primary" style={{ width: '100%', fontSize: '0.8rem', padding: '10px' }}>
                                         <RefreshCw size={14} style={{ display: 'inline', marginRight: '8px' }} />
                                         Refresh Live Telemetry
                                     </button>
