@@ -29,10 +29,10 @@ async function surgicalDiscover() {
         const sessionId = sessionMatch[1];
         console.log(`Found Session ID: ${sessionId}`);
 
-        console.log("Step 2: Querying detailed AuthStatus for this specific session...");
+        console.log("Step 2: Querying detailed AuthStatus (No Session Prefix)...");
         
-        // This is a surgical query for a known-good ID
-        const detailUrl = `${url}/admin/API/mnt/Session/AuthStatus/audit_session_id/${sessionId}/0`;
+        // This uses the root AuthStatus path which we know exists
+        const detailUrl = `${url}/admin/API/mnt/AuthStatus/audit_session_id/${sessionId}/0`;
         console.log(`Polling: ${detailUrl}`);
 
         const detailRes = await axios.get(detailUrl, {
