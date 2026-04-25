@@ -123,6 +123,9 @@ export async function GET(req: Request) {
                 .filter(res => res.calling_station_id !== "Unknown" || res.user_name !== "Unknown");
 
             const failuresOnly = mappedResults.filter(f => !f.status);
+            const successCount = mappedResults.length - failuresOnly.length;
+            
+            console.log(`[ISE TRIAGE] Sample Analysis: ${mappedResults.length} Total Events | ${successCount} Successes | ${failuresOnly.length} Failures`);
             
             // Group by User/Device for "Hotlist"
             const hotlistMap: Record<string, any> = {};

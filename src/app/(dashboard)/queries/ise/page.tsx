@@ -278,16 +278,20 @@ export default function CiscoIsePage() {
                                 <h4 style={{ marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Forensic Summary (5m)</h4>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                     <div>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Active Authentications</p>
+                                        <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{triageData?.stats?.total || 0}</p>
+                                    </div>
+                                    <div>
                                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Top Root Cause</p>
-                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--accent-secondary)' }}>{triageData?.stats?.topReason || "N/A"}</p>
+                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--accent-secondary)' }}>{triageData?.stats?.topReason && triageData.stats.topReason !== "None" ? triageData.stats.topReason : "No Failures"}</p>
                                     </div>
                                     <div>
                                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Most Impacted SSID</p>
-                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>{triageData?.stats?.topSsid || "N/A"}</p>
+                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>{triageData?.stats?.topSsid && triageData.stats.topSsid !== "None" ? triageData.stats.topSsid : "N/A"}</p>
                                     </div>
                                     <div>
                                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>High-Stress Site</p>
-                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>{triageData?.stats?.topLocation || "N/A"}</p>
+                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>{triageData?.stats?.topLocation && triageData.stats.topLocation !== "None" ? triageData.stats.topLocation : "N/A"}</p>
                                     </div>
                                     <div style={{ marginTop: '8px', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
