@@ -252,9 +252,8 @@ export default function CiscoIsePage() {
                                         triageData.hotlist.map((item: any, idx: number) => (
                                             <div 
                                                 key={idx} 
-                                                className="glass-card hover-glow" 
-                                                style={{ padding: '16px', borderLeft: '4px solid var(--accent-primary)', background: 'rgba(255,255,255,0.02)', cursor: 'pointer', transition: 'all 0.2s' }}
-                                                onClick={() => { setQuery(item.identity); handleSearch(undefined, item.identity); }}
+                                                className="glass-card" 
+                                                style={{ padding: '16px', borderLeft: '4px solid var(--accent-primary)', background: 'rgba(255,255,255,0.02)', transition: 'all 0.2s' }}
                                             >
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                                     <div style={{ flex: 1 }}>
