@@ -141,7 +141,8 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
             borderLeft: `4px solid ${isActive ? threatColor : 'var(--text-muted)'}`,
             padding: '12px 16px',
             animation: 'fadeIn 0.2s ease-out',
-            opacity: isActive ? 1 : 0.8
+            opacity: isActive ? 1 : 0.8,
+            boxShadow: threat > 50 ? '0 0 20px rgba(239, 68, 68, 0.15)' : 'none'
         }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => setIsExpanded(!isExpanded)}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1, minWidth: 0 }}>
@@ -380,6 +381,8 @@ export default function VectraPage() {
     const [accounts, setAccounts] = useState<any[]>([]);
     const [triageHosts, setTriageHosts] = useState<any[]>([]);
     const [triageAccounts, setTriageAccounts] = useState<any[]>([]);
+    const [triageStats, setTriageStats] = useState({ criticalHosts: 0, criticalAccounts: 0, topCategory: 'None' });
+    const [detectionDist, setDetectionDist] = useState<Record<string, number>>({});
     const [counts, setCounts] = useState({ hosts: 0, accounts: 0, active_detections: 0 });
     const [error, setError] = useState<string | null>(null);
     const [highRiskOnly, setHighRiskOnly] = useState(true);
@@ -387,14 +390,38 @@ export default function VectraPage() {
     const loadTriage = async () => {
         setTriageLoading(true);
         try {
-            const [hRes, aRes] = await Promise.all([
+            const [hRes, aRes, dRes] = await Promise.all([
                 fetch('/api/vectra?type=hosts&high_risk_only=true&ordering=-t_score'),
-                fetch('/api/vectra?type=accounts&high_risk_only=true&ordering=-t_score')
+                fetch('/api/vectra?type=accounts&high_risk_only=true&ordering=-t_score'),
+                fetch('/api/vectra?type=detections&ordering=-last_timestamp')
             ]);
             const hData = await hRes.json();
             const aData = await aRes.json();
-            setTriageHosts(hData.results?.slice(0, 10) || []);
-            setTriageAccounts(aData.results?.slice(0, 10) || []);
+            const dData = await dRes.json();
+
+            const hResults = hData.results || [];
+            const aResults = aData.results || [];
+            const dResults = dData.results || [];
+
+            setTriageHosts(hResults.slice(0, 10));
+            setTriageAccounts(aResults.slice(0, 10));
+
+            // Aggregate Detection Categories
+            const dist: Record<string, number> = {};
+            dResults.forEach((det: any) => {
+                const cat = det.category || det.detection_type || 'Unknown';
+                dist[cat] = (dist[cat] || 0) + 1;
+            });
+            setDetectionDist(dist);
+
+            const topCat = Object.entries(dist).sort((a,b) => b[1] - a[1])[0]?.[0] || 'None';
+
+            setTriageStats({
+                criticalHosts: hResults.filter((h: any) => (h.threat || h.t_score) > 50).length,
+                criticalAccounts: aResults.filter((a: any) => (a.threat || a.t_score) > 50).length,
+                topCategory: topCat
+            });
+
         } catch (e) {
             console.error("Triage Fetch Failed:", e);
         } finally {
@@ -655,9 +682,62 @@ export default function VectraPage() {
             {/* Triage Dashboard Tab */}
             {activeTab === 'dashboard' && !loading && (
                 <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
+                    
+                    {/* Behavioral Summary Bar */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                        <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid var(--status-error)', background: 'rgba(239, 68, 68, 0.05)' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: '900', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Critical Host Surface</div>
+                            <div style={{ fontSize: '2.2rem', fontWeight: '950', color: 'var(--status-error)' }}>{triageStats.criticalHosts}</div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Threat Score {'>'} 50</div>
+                        </div>
+                        <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid var(--accent-primary)', background: 'rgba(56, 189, 248, 0.05)' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: '900', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Compromised Identities</div>
+                            <div style={{ fontSize: '2.2rem', fontWeight: '950', color: 'var(--accent-primary)' }}>{triageStats.criticalAccounts}</div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>High Certainty Alerts</div>
+                        </div>
+                        <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid var(--status-info)', background: 'rgba(59, 130, 246, 0.05)' }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: '900', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Active Campaign Type</div>
+                            <div style={{ fontSize: '1.2rem', fontWeight: '950', color: 'var(--status-info)', marginTop: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={triageStats.topCategory}>
+                                {triageStats.topCategory}
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '8px' }}>Most Frequent Behavior</div>
+                        </div>
+                    </div>
+
+                    {/* Detection Distribution Chart */}
+                    <div className="glass-card" style={{ padding: '20px', marginBottom: '24px' }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: '900', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Activity size={16} color="var(--accent-primary)" />
+                            Behavioral Detection Distribution (Top 5)
+                        </div>
+                        <div style={{ height: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', overflow: 'hidden', display: 'flex' }}>
+                            {Object.entries(detectionDist).sort((a,b) => b[1] - a[1]).slice(0, 5).map(([cat, count], i) => {
+                                const colors = ['#ef4444', '#f59e0b', '#38bdf8', '#10b981', '#8b5cf6'];
+                                const total = Object.values(detectionDist).reduce((a, b) => a + b, 0);
+                                const width = (count / total) * 100;
+                                return (
+                                    <div 
+                                        key={cat} 
+                                        style={{ width: `${width}%`, background: colors[i % colors.length], height: '100%', transition: 'width 0.5s ease' }} 
+                                        title={`${cat}: ${count}`} 
+                                    />
+                                );
+                            })}
+                        </div>
+                        <div style={{ display: 'flex', gap: '16px', marginTop: '12px', flexWrap: 'wrap' }}>
+                            {Object.entries(detectionDist).sort((a,b) => b[1] - a[1]).slice(0, 5).map(([cat, count], i) => (
+                                <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem' }}>
+                                    <div style={{ width: '8px', height: '8px', borderRadius: '2px', background: ['#ef4444', '#f59e0b', '#38bdf8', '#10b981', '#8b5cf6'][i] }} />
+                                    <span style={{ color: 'var(--text-secondary)' }}>{cat}</span>
+                                    <span style={{ fontWeight: 'bold' }}>{count}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="glass-card" style={{ padding: '24px', marginBottom: '24px', borderTop: '4px solid var(--accent-primary)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                            <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Behavioral Triage Heatmap (Live)</h3>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Entity Triage Heatmap</h3>
                             <button onClick={() => loadTriage()} className="badge-action">
                                 <RefreshCw size={14} className={triageLoading ? "animate-spin" : ""} /> Refresh Pulse
                             </button>
