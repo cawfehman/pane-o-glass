@@ -343,14 +343,14 @@ export default function CiscoIsePage() {
                                 
                                 <div style={{ marginBottom: '24px' }}>
                                     <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Site Distribution (Sampled)</p>
-                                    {triageData?.siteDistribution && Object.entries(triageData.siteDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 3).map(([site, count]) => (
+                                    {triageData?.siteDistribution && Object.entries(triageData.siteDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 6).map(([site, count]) => (
                                         <DistributionBar key={site} label={site} count={count as number} total={triageData.stats.total} color="var(--accent-primary)" />
                                     ))}
                                 </div>
 
                                 <div style={{ marginBottom: '24px' }}>
                                     <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>SSID Distribution (Sampled)</p>
-                                    {triageData?.ssidDistribution && Object.entries(triageData.ssidDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 3).map(([ssid, count]) => (
+                                    {triageData?.ssidDistribution && Object.entries(triageData.ssidDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 6).map(([ssid, count]) => (
                                         <DistributionBar key={ssid} label={ssid} count={count as number} total={triageData.stats.total} color="var(--accent-secondary)" />
                                     ))}
                                 </div>
