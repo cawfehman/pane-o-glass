@@ -417,8 +417,8 @@ export default function VectraPage() {
             const topCat = Object.entries(dist).sort((a,b) => b[1] - a[1])[0]?.[0] || 'None';
 
             setTriageStats({
-                criticalHosts: hResults.filter((h: any) => (h.threat || h.t_score) > 50).length,
-                criticalAccounts: aResults.filter((a: any) => (a.threat || a.t_score) > 50).length,
+                criticalHosts: hResults.filter((h: any) => (h.threat || h.t_score) > 50 && (h.certainty || h.c_score) > 50).length,
+                criticalAccounts: aResults.filter((a: any) => (a.threat || a.t_score) > 50 && (a.certainty || a.c_score) > 50).length,
                 topCategory: topCat
             });
 
@@ -686,14 +686,14 @@ export default function VectraPage() {
                     {/* Behavioral Summary Bar */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '24px' }}>
                         <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid var(--status-error)', background: 'rgba(239, 68, 68, 0.05)' }}>
-                            <div style={{ fontSize: '0.75rem', fontWeight: '900', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Critical Host Surface</div>
+                            <div style={{ fontSize: '0.75rem', fontWeight: '900', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>High-Confidence Critical Hosts</div>
                             <div style={{ fontSize: '2.2rem', fontWeight: '950', color: 'var(--status-error)' }}>{triageStats.criticalHosts}</div>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Threat Score {'>'} 50</div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Threat & Certainty {'>'} 50</div>
                         </div>
                         <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid var(--accent-primary)', background: 'rgba(56, 189, 248, 0.05)' }}>
-                            <div style={{ fontSize: '0.75rem', fontWeight: '900', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Compromised Identities</div>
+                            <div style={{ fontSize: '0.75rem', fontWeight: '900', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>High-Confidence Identities</div>
                             <div style={{ fontSize: '2.2rem', fontWeight: '950', color: 'var(--accent-primary)' }}>{triageStats.criticalAccounts}</div>
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>High Certainty Alerts</div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Verified Behavioral Risks</div>
                         </div>
                         <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid var(--status-info)', background: 'rgba(59, 130, 246, 0.05)' }}>
                             <div style={{ fontSize: '0.75rem', fontWeight: '900', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Active Campaign Type</div>
