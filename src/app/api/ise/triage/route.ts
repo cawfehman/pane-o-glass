@@ -48,7 +48,9 @@ export async function GET(req: Request) {
         const siteCounts: Record<string, number> = {};
         const siteFailures: Record<string, number> = {};
 
-        const agent = new https.Agent({ rejectUnauthorized: false });
+        const agent = new https.Agent({ 
+            rejectUnauthorized: process.env.NODE_ENV === 'production' 
+        });
         const startTime = Date.now();
 
         // Failure Window: Last 15 minutes
@@ -165,6 +167,9 @@ export async function GET(req: Request) {
             })
             .sort((a, b) => b.count - a.count);
 
+        // Forensic Audit Logging
+        console.log(`[FORENSIC AUDIT] User: ${session?.user?.email} | Action: ISE_Triage_Dashboard`);
+
         return NextResponse.json({ 
             found: hotlist.length > 0, 
             hotlist: hotlist.slice(0, 20),
@@ -182,7 +187,7 @@ export async function GET(req: Request) {
             processingTime: `${Date.now() - startTime}ms`
         });
     } catch (e: any) {
-        console.error(`[ISE TRIAGE] Critical Error:`, e);
-        return NextResponse.json({ error: e.message || "Failed to synchronize forensics" }, { status: 500 });
+        console.error(`[ISE TRIAGE ERROR]:`, e);
+        return NextResponse.json({ error: "ISE Forensic Synchronization Failure" }, { status: 500 });
     }
 }

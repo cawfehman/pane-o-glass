@@ -38,6 +38,9 @@ export async function GET(req: NextRequest) {
 
         const topCat = Object.entries(dist).sort((a,b) => b[1] - a[1])[0]?.[0] || 'None';
 
+        // Forensic Audit Logging
+        console.log(`[FORENSIC AUDIT] User: ${session.user?.email} | Action: Vectra_Triage_Dashboard`);
+
         return NextResponse.json({
             hosts: hResults.slice(0, 10),
             accounts: aResults.slice(0, 10),
@@ -52,7 +55,7 @@ export async function GET(req: NextRequest) {
             detectionDistribution: dist
         });
     } catch (error: any) {
-        console.error("Vectra Triage Error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        console.error("[VECTRA TRIAGE ERROR]:", error);
+        return NextResponse.json({ error: "Vectra Triage Synchronization Failure" }, { status: 500 });
     }
 }

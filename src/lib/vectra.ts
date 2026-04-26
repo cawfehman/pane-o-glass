@@ -2,7 +2,9 @@ import axios from 'axios';
 import https from 'https';
 
 const httpsAgent = new https.Agent({
-    rejectUnauthorized: false,
+    // ONLY disable in development if explicitly needed. 
+    // In production, this MUST be true to prevent MitM attacks.
+    rejectUnauthorized: process.env.NODE_ENV === 'production',
 });
 
 let cachedToken: string | null = null;
