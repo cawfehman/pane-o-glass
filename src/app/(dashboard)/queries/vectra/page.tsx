@@ -390,47 +390,25 @@ export default function VectraPage() {
     const loadTriage = async () => {
         setTriageLoading(true);
         try {
-            const [hRes, aRes, dRes] = await Promise.all([
-                fetch('/api/vectra?type=hosts&high_risk_only=true&ordering=-t_score'),
-                fetch('/api/vectra?type=accounts&high_risk_only=true&ordering=-t_score'),
-                fetch('/api/vectra?type=detections&ordering=-last_timestamp')
-            ]);
-            const hData = await hRes.json();
-            const aData = await aRes.json();
-            const dData = await dRes.json();
+            const res = await fetch('/api/vectra/triage');
+            const data = await res.json();
+            
+            if (data.error) throw new Error(data.error);
 
-            const hResults = hData.results || [];
-            const aResults = aData.results || [];
-            const dResults = dData.results || [];
-
-            setTriageHosts(hResults.slice(0, 10));
-            setTriageAccounts(aResults.slice(0, 10));
-
-            // Aggregate Detection Categories
-            const dist: Record<string, number> = {};
-            dResults.forEach((det: any) => {
-                const cat = det.category || det.detection_type || 'Unknown';
-                dist[cat] = (dist[cat] || 0) + 1;
-            });
-            setDetectionDist(dist);
-
-            const topCat = Object.entries(dist).sort((a,b) => b[1] - a[1])[0]?.[0] || 'None';
-
-            setTriageStats({
-                criticalHosts: hResults.filter((h: any) => (h.threat || h.t_score) > 50 && (h.certainty || h.c_score) > 50).length,
-                criticalAccounts: aResults.filter((a: any) => (a.threat || a.t_score) > 50 && (a.certainty || a.c_score) > 50).length,
-                topCategory: topCat
-            });
-
-            // Update global counts for header
+            setTriageHosts(data.hosts || []);
+            setTriageAccounts(data.accounts || []);
+            setTriageStats(data.stats);
+            setDetectionDist(data.detectionDistribution || {});
+            
             setCounts({
-                hosts: hData.count || hResults.length,
-                accounts: aData.count || aResults.length,
-                active_detections: hResults.reduce((acc: number, h: any) => acc + ((h.threat || h.t_score || 0) > 0 ? 1 : 0), 0)
+                hosts: data.stats.totalHosts,
+                accounts: data.stats.totalAccounts,
+                active_detections: data.stats.totalDetections
             });
 
         } catch (e) {
             console.error("Triage Fetch Failed:", e);
+            setError("Failed to synchronize behavioral triage. Try refreshing.");
         } finally {
             setTriageLoading(false);
         }
