@@ -37,10 +37,13 @@ const huntWorkstation = (obj: any) => {
         obj.home_host_name ||
         obj.home_name ||
         obj.home_host ||
+        obj.home_host_info?.name ||
         obj.last_host ||
         obj.last_host_name ||
         obj.origin_host ||
+        obj.origin_host_name ||
         obj.primary_workstation ||
+        obj.source_host?.name ||
         null
     );
 };
@@ -97,7 +100,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                 }
                 
                 // For Account -> find Home Host
-                const hName = det.host || det.host_name || det.src_hosts?.[0]?.name;
+                const hName = det.host || det.host_name || det.src_hosts?.[0]?.name || det.source_host?.name || det.origin_host_name;
                 if (hName && typeof hName === 'string' && hName.length > 2) {
                     hostCounts[hName] = {
                         count: (hostCounts[hName]?.count || 0) + 1,
@@ -109,14 +112,14 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
             if (type === 'host') {
                 const sortedAccs = Object.entries(accCounts).sort((a,b) => b[1].count - a[1].count || b[1].score - a[1].score);
                 const synthesizedOwner = sortedAccs.length > 0 ? sortedAccs[0][0] : null;
-                if (!fullData.probable_owner && (synthesizedOwner || fullData.last_account_name)) {
+                if (!huntIdentity(fullData) && (synthesizedOwner || fullData.last_account_name)) {
                     fullData._is_ident_synthesized = true;
                     fullData.probable_owner = { name: synthesizedOwner || fullData.last_account_name, id: null };
                 }
             } else {
                 const sortedHosts = Object.entries(hostCounts).sort((a,b) => b[1].count - a[1].count || b[1].score - a[1].score);
                 const synthesizedHome = sortedHosts.length > 0 ? sortedHosts[0][0] : null;
-                if (!fullData.probable_home && (synthesizedHome || fullData.last_host_name || fullData.home_host_name)) {
+                if (!huntWorkstation(fullData) && (synthesizedHome || fullData.last_host_name || fullData.home_host_name)) {
                     fullData._is_ident_synthesized = true;
                     fullData.probable_home = { name: synthesizedHome || fullData.last_host_name || fullData.home_host_name, id: null };
                 }
@@ -842,8 +845,10 @@ export default function VectraPage() {
                                     <h4 style={{ fontSize: '0.9rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Top Critical Hosts</h4>
                                 </div>
                                 {triageLoading ? (
-                                    <div style={{ padding: '40px', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
-                                        <RefreshCw size={24} className="animate-spin" color="var(--accent-primary)" />
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {Array(4).fill(0).map((_, i) => (
+                                            <div key={i} className="glass-card animate-pulse" style={{ height: '70px', background: 'rgba(255,255,255,0.02)', borderLeft: '4px solid var(--accent-primary)' }} />
+                                        ))}
                                     </div>
                                 ) : triageHosts.length > 0 ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -861,8 +866,10 @@ export default function VectraPage() {
                                     <h4 style={{ fontSize: '0.9rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Top Critical Accounts</h4>
                                 </div>
                                 {triageLoading ? (
-                                    <div style={{ padding: '40px', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
-                                        <RefreshCw size={24} className="animate-spin" color="var(--accent-primary)" />
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {Array(4).fill(0).map((_, i) => (
+                                            <div key={i} className="glass-card animate-pulse" style={{ height: '70px', background: 'rgba(255,255,255,0.02)', borderLeft: '4px solid var(--status-info)' }} />
+                                        ))}
                                     </div>
                                 ) : triageAccounts.length > 0 ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
