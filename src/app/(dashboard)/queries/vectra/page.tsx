@@ -26,11 +26,46 @@ const huntName = (obj: any) => {
         obj.probable_home?.name ||
         (typeof obj.probable_home === 'string' && obj.probable_home) ||
         obj.home_host_name ||
+        obj.home_name ||
         obj.last_host ||
+        obj.last_host_name ||
         obj.assigned_to_user ||
         null
     );
 };
+
+export default function VectraPage() {
+    const { data: session, status } = useSession();
+
+    if (status === 'loading') {
+        return (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '60vh', gap: '20px' }}>
+                <div className="pulse-loader">
+                    <Zap size={48} className="animate-pulse" color="var(--accent-primary)" />
+                </div>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', letterSpacing: '0.1em', fontWeight: '900' }}>
+                    ESTABLISHING FORENSIC SESSION...
+                </p>
+            </div>
+        );
+    }
+
+    if (status === 'unauthenticated') {
+        return (
+            <div style={{ padding: '40px', textAlign: 'center' }}>
+                <ShieldAlert size={48} color="var(--status-error)" style={{ marginBottom: '20px' }} />
+                <h3>Access Denied</h3>
+                <p>Please log in to access the forensic portal.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="page-container animate-in">
+            {/* ... rest of the page implementation ... */}
+        </div>
+    );
+}
 
 const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: any, onSearch: (v: string) => void }) => {
     const [isExpanded, setIsExpanded] = useState(false);
