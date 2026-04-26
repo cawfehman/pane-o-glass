@@ -499,21 +499,17 @@ export default function VectraPage() {
 
             setTriageLoading(false); // SUCCESS: stop loading
 
-        } catch (e) {
-            console.error("Triage Fetch Failed:", e);
-            if (retryCount < 1) {
-                setTimeout(() => loadTriage(retryCount + 1), 1500);
+        } catch (e: any) {
+            console.error("[VECTRA TRIAGE ERROR]:", e);
+            if (retryCount < 2) {
+                console.log(`[RETRY] Forensic sync failed. Retrying (${retryCount + 1}/3)...`);
+                setTimeout(() => loadTriage(retryCount + 1), 2000);
             } else {
-                setError("Failed to synchronize behavioral triage. Try refreshing.");
+                setError(`Forensic Synchronization Failed: ${e.message || "Unknown error"}. Check Vectra Brain reachability.`);
+                setTriageLoading(false);
             }
         } finally {
-            // Only stop loading if we have data or reached max retries
-            // (The recursive calls handle their own state)
-            if (retryCount === 0) {
-                // We only flip back to false at the end of the chain if this was the root call
-                // but actually, since we use 'return loadTriage', the root call finally runs last
-                // so we need to be careful.
-            }
+            // Recursive calls handle their own state, but if we aren't retrying, we MUST stop loading
         }
     };
 
