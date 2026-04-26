@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     try {
         // Perform parallel fetching for the triage dashboard
         const [hRes, aRes, dRes] = await Promise.allSettled([
-            getVectraHosts({ highRiskOnly: true, ordering: '-t_score' }),
+            getVectraHosts({ highRiskOnly: false, ordering: '-t_score' }),
             getVectraAccounts({ ordering: '-t_score' }),
             getVectraDetections({ ordering: '-last_timestamp' })
         ]);
