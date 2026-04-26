@@ -205,40 +205,34 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                 </h4>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
                                     {type === 'host' ? (
-                                        <>
-                                            <div className="attribution-box">
+                                        <                                            <div className="attribution-box">
                                                 <div className="attr-label">
-                                                    {details?._is_ident_synthesized ? 'Probable Owner (Telemetry)' : 'Probable Owner (Modeling)'}
+                                                    {details?._is_ident_synthesized ? 'Confirmed Owner (Telemetry)' : 'Probable Owner (Modeling)'}
                                                 </div>
                                                 <div className="attr-value">
-                                                    {details?.probable_owner ? (
+                                                    {(details?.probable_owner?.name || details?.owner_name) ? (
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                             <button 
                                                                 className="pivot-link" 
-                                                                onClick={(e) => { e.stopPropagation(); onSearch(details.probable_owner.name); }}
+                                                                onClick={(e) => { e.stopPropagation(); onSearch(details?.probable_owner?.name || details?.owner_name); }}
                                                             >
-                                                                <User size={14} /> {details.probable_owner.name}
+                                                                <User size={14} /> {details?.probable_owner?.name || details?.owner_name}
                                                             </button>
-                                                            {details._is_ident_synthesized && (
-                                                                <span style={{ fontSize: '0.6rem', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--glass-border)', color: 'var(--text-muted)' }}>
-                                                                    LEAD
-                                                                </span>
-                                                            )}
                                                         </div>
-                                                    ) : <span className="attr-none">Identification in progress...</span>}
+                                                    ) : <span className="attr-none">Scanning behavioral history...</span>}
                                                 </div>
                                             </div>
                                             <div className="attribution-box">
-                                                <div className="attr-label">Last Known User (Login)</div>
+                                                <div className="attr-label">Last Known Interaction</div>
                                                 <div className="attr-value">
-                                                    {details?.last_account_name ? (
+                                                    {(details?.last_account_name || details?.last_user) ? (
                                                         <button 
                                                             className="pivot-link" 
-                                                            onClick={(e) => { e.stopPropagation(); onSearch(details.last_account_name); }}
+                                                            onClick={(e) => { e.stopPropagation(); onSearch(details?.last_account_name || details?.last_user); }}
                                                         >
-                                                            <Link2 size={14} /> {details.last_account_name}
+                                                            <Link2 size={14} /> {details?.last_account_name || details?.last_user}
                                                         </button>
-                                                    ) : <span className="attr-none">No recent login data</span>}
+                                                    ) : <span className="attr-none">No recent login telemetry</span>}
                                                 </div>
                                             </div>
                                         </>
@@ -247,17 +241,18 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                             <div className="attribution-box">
                                                 <div className="attr-label">Probable Home (Modeling)</div>
                                                 <div className="attr-value">
-                                                    {details?.probable_home ? (
+                                                    {(details?.probable_home?.name || details?.home_host_name) ? (
                                                         <button 
                                                             className="pivot-link" 
-                                                            onClick={(e) => { e.stopPropagation(); onSearch(details.probable_home.name); }}
+                                                            onClick={(e) => { e.stopPropagation(); onSearch(details?.probable_home?.name || details?.home_host_name); }}
                                                         >
-                                                            <HardDrive size={14} /> {details.probable_home.name}
+                                                            <HardDrive size={14} /> {details?.probable_home?.name || details?.home_host_name}
                                                         </button>
-                                                    ) : <span className="attr-none">Modeling primary workstation...</span>}
+                                                    ) : <span className="attr-none">Analyzing host affinity...</span>}
                                                 </div>
                                             </div>
                                         </>
+>
                                     )}
                                 </div>
                             </div>
