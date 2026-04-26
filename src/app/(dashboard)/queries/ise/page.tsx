@@ -244,22 +244,31 @@ export default function CiscoIsePage() {
                                                 onClick={() => { setQuery(item.identity); handleSearch(undefined, item.identity); }}
                                             >
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                    <div>
-                                                        <h4 style={{ fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
-                                                            {item.displayName !== "Unknown" ? item.displayName : item.mac}
-                                                            <span style={{ marginLeft: '12px', fontSize: '0.75rem', padding: '2px 8px', background: item.count > 100 ? 'var(--accent-primary)' : '#ef4444', color: 'black', borderRadius: '12px', fontWeight: 'bold' }}>
-                                                                {item.count.toLocaleString()} {item.count > 100 ? 'Sessions' : 'Failures'}
+                                                    <div style={{ flex: 1 }}>
+                                                        <h4 style={{ fontSize: '1.1rem', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 'bold' }}>
+                                                            {item.displayName}
+                                                            <span style={{ marginLeft: '12px', fontSize: '0.75rem', padding: '2px 10px', background: 'var(--accent-primary)', color: 'black', borderRadius: '12px', fontWeight: 'bold' }}>
+                                                                {item.count.toLocaleString()} Users
                                                             </span>
                                                         </h4>
-                                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 'normal', marginBottom: '8px' }}>
-                                                            {item.reason}
+                                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+                                                            {item.reason} · <strong>Node:</strong> {item.nas}
                                                         </p>
-                                                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                                            <strong>Latest:</strong> {new Date(item.latestTimestamp).toLocaleTimeString()} · <strong>AP/NAD:</strong> {item.nas}
-                                                        </p>
-                                                    </div>
-                                                    <div style={{ textAlign: 'right' }}>
-                                                        <button className="btn-secondary" style={{ fontSize: '0.7rem', padding: '4px 8px' }}>Drill Down &rarr;</button>
+                                                        
+                                                        {item.topUsers && item.topUsers.length > 0 && (
+                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                                                {item.topUsers.map((mac: string, mIdx: number) => (
+                                                                    <button 
+                                                                        key={mIdx}
+                                                                        onClick={(e) => { e.stopPropagation(); setQuery(mac); handleSearch(undefined, mac); }}
+                                                                        className="btn-secondary"
+                                                                        style={{ fontSize: '0.7rem', padding: '4px 10px', borderRadius: '6px', fontFamily: 'monospace', background: 'rgba(255,255,255,0.05)' }}
+                                                                    >
+                                                                        {mac}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
