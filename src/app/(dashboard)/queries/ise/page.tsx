@@ -274,10 +274,20 @@ export default function CiscoIsePage() {
                                                                                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b' }}></div>
                                                                                 <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Stressed (90-99%)</span>
                                                                             </div>
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '12px' }}>
                                                                                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }}></div>
                                                                                 <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Healthy (100%)</span>
                                                                             </div>
+                                                                            
+                                                                            <button 
+                                                                                onClick={() => loadTriage()} 
+                                                                                className="btn-secondary" 
+                                                                                style={{ padding: '4px 10px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                                                title="Refresh Forensics"
+                                                                            >
+                                                                                <RefreshCw size={12} />
+                                                                                Refresh
+                                                                            </button>
                                                                         </div>
                                                                     </div>
                                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
@@ -393,20 +403,45 @@ export default function CiscoIsePage() {
                                 </div>
                             </div>
 
-                            <div className="glass-card">
-                                <h4 style={{ marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Investigation Tools</h4>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    <button onClick={() => loadTriage()} className="btn-primary" style={{ width: '100%', fontSize: '0.8rem', padding: '10px' }}>
-                                        <RefreshCw size={14} style={{ display: 'inline', marginRight: '8px' }} />
-                                        Refresh Live Telemetry
-                                    </button>
-                                    <button onClick={() => setActiveTab("history")} className="btn-secondary" style={{ width: '100%', fontSize: '0.8rem', padding: '10px' }}>
-                                        <History size={14} style={{ display: 'inline', marginRight: '8px' }} />
-                                        View Global History
-                                    </button>
-                                </div>
-                            </div>
                         </div>
+                    </div>
+                )}
+
+                {/* Forensic Result Tabs */}
+                {(endpointResult || historyResult || discoveryResult) && (
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', background: 'rgba(255,255,255,0.03)', padding: '4px', borderRadius: '8px', width: 'fit-content' }}>
+                        <button 
+                            onClick={() => setActiveTab('live')}
+                            style={{ 
+                                padding: '8px 20px', 
+                                borderRadius: '6px', 
+                                fontSize: '0.85rem', 
+                                fontWeight: '600',
+                                border: 'none',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                background: activeTab === 'live' ? 'var(--accent-primary)' : 'transparent',
+                                color: activeTab === 'live' ? 'black' : 'var(--text-secondary)'
+                            }}
+                        >
+                            Active Telemetry
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('history')}
+                            style={{ 
+                                padding: '8px 20px', 
+                                borderRadius: '6px', 
+                                fontSize: '0.85rem', 
+                                fontWeight: '600',
+                                border: 'none',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                background: activeTab === 'history' ? 'var(--accent-primary)' : 'transparent',
+                                color: activeTab === 'history' ? 'black' : 'var(--text-secondary)'
+                            }}
+                        >
+                            Historical Logs
+                        </button>
                     </div>
                 )}
 
