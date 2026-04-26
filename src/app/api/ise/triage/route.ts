@@ -76,6 +76,8 @@ export async function GET(req: Request) {
 
         const siteCounts: Record<string, number> = {};
         const psnCounts: Record<string, number> = {};
+        const reasonCounts: Record<string, number> = {};
+        const ssidCounts: Record<string, number> = {};
         const radiusMacs: string[] = [];
         const locationMap: Record<string, string[]> = {};
 
