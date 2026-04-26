@@ -208,13 +208,13 @@ export default function CiscoIsePage() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '24px' }}>
                         <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
                             <h3 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <AlertCircle size={20} color="#ef4444" />
-                                Current Lockout Hotlist (Last 60 Minutes)
+                                <AlertCircle size={20} color={triageData?.stats?.failures > 0 ? "#ef4444" : "#38bdf8"} />
+                                Site Health & Triage Heatmap (Live)
                             </h3>
                             
                             {triageLoading && !triageData && (
                                 <div style={{ padding: '60px', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed var(--border-color)' }}>
-                                    <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>{triageStatus || "Synchronizing global failure telemetry..."}</p>
+                                    <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>{triageStatus || "Synchronizing global site telemetry..."}</p>
                                     <div style={{ width: '100%', maxWidth: '300px', height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', margin: '0 auto', overflow: 'hidden', position: 'relative' }}>
                                         <div className="shimmer" style={{ 
                                             position: 'absolute', top: 0, left: 0, height: '100%', width: '100%', 
@@ -222,7 +222,7 @@ export default function CiscoIsePage() {
                                             animation: 'shimmer-move 1.5s infinite linear'
                                         }}></div>
                                     </div>
-                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '16px' }}>Polling ISE Monitoring & Troubleshooting nodes.</p>
+                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '16px' }}>Polling ISE Session Directory (14,000+ Endpoints).</p>
                                 </div>
                             )}
 
@@ -240,17 +240,19 @@ export default function CiscoIsePage() {
                                             <div 
                                                 key={idx} 
                                                 className="glass-card hover-glow" 
-                                                style={{ padding: '16px', borderLeft: '4px solid #ef4444', background: 'rgba(255,255,255,0.02)', cursor: 'pointer', transition: 'all 0.2s' }}
-                                                onClick={() => { setQuery(item.mac); handleSearch(undefined, item.mac); }}
+                                                style={{ padding: '16px', borderLeft: `4px solid ${item.count > 100 ? 'var(--accent-primary)' : '#ef4444'}`, background: 'rgba(255,255,255,0.02)', cursor: 'pointer', transition: 'all 0.2s' }}
+                                                onClick={() => { setQuery(item.identity); handleSearch(undefined, item.identity); }}
                                             >
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                                     <div>
                                                         <h4 style={{ fontSize: '1rem', color: 'var(--text-primary)', marginBottom: '4px' }}>
                                                             {item.displayName !== "Unknown" ? item.displayName : item.mac}
-                                                            {item.count > 1 && <span style={{ marginLeft: '12px', fontSize: '0.75rem', padding: '2px 8px', background: '#ef4444', color: 'white', borderRadius: '12px' }}>{item.count} Failures</span>}
+                                                            <span style={{ marginLeft: '12px', fontSize: '0.75rem', padding: '2px 8px', background: item.count > 100 ? 'var(--accent-primary)' : '#ef4444', color: 'black', borderRadius: '12px', fontWeight: 'bold' }}>
+                                                                {item.count.toLocaleString()} {item.count > 100 ? 'Sessions' : 'Failures'}
+                                                            </span>
                                                         </h4>
-                                                        <p style={{ fontSize: '0.85rem', color: 'var(--accent-secondary)', fontWeight: 'bold', marginBottom: '8px' }}>
-                                                            {item.insight?.cause || item.reason}
+                                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 'normal', marginBottom: '8px' }}>
+                                                            {item.reason}
                                                         </p>
                                                         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                                                             <strong>Latest:</strong> {new Date(item.latestTimestamp).toLocaleTimeString()} · <strong>AP/NAD:</strong> {item.nas}
