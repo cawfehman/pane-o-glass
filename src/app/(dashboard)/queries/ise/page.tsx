@@ -253,7 +253,7 @@ export default function CiscoIsePage() {
                                             <div 
                                                 key={idx} 
                                                 className="glass-card" 
-                                                style={{ padding: '16px', borderLeft: '4px solid var(--accent-primary)', background: 'rgba(255,255,255,0.02)', transition: 'all 0.2s' }}
+                                                style={{ padding: '16px', borderLeft: '4px solid #10b981', background: 'rgba(255,255,255,0.02)', transition: 'all 0.2s' }}
                                             >
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                                     <div style={{ flex: 1 }}>
