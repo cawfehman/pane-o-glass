@@ -336,24 +336,27 @@ export default function CiscoIsePage() {
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             <div className="glass-card" style={{ borderTop: '4px solid var(--accent-primary)' }}>
-                                <h4 style={{ marginBottom: '20px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Live Distribution</h4>
+                                <h4 style={{ marginBottom: '6px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Live Distribution</h4>
+                                <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '20px', fontStyle: 'italic' }}>
+                                    Snapshot of 100 Sampled RADIUS Sessions
+                                </p>
                                 
                                 <div style={{ marginBottom: '24px' }}>
-                                    <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Sites / Buildings</p>
+                                    <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Site Distribution (Sampled)</p>
                                     {triageData?.siteDistribution && Object.entries(triageData.siteDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 3).map(([site, count]) => (
                                         <DistributionBar key={site} label={site} count={count as number} total={triageData.stats.total} color="var(--accent-primary)" />
                                     ))}
                                 </div>
 
                                 <div style={{ marginBottom: '24px' }}>
-                                    <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>SSID Load</p>
+                                    <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>SSID Distribution (Sampled)</p>
                                     {triageData?.ssidDistribution && Object.entries(triageData.ssidDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 3).map(([ssid, count]) => (
                                         <DistributionBar key={ssid} label={ssid} count={count as number} total={triageData.stats.total} color="var(--accent-secondary)" />
                                     ))}
                                 </div>
 
                                 <div>
-                                    <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Authentication Methods</p>
+                                    <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Auth Protocol (Sampled)</p>
                                     {triageData?.authDistribution && Object.entries(triageData.authDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).map(([method, count]) => (
                                         <DistributionBar key={method} label={method.toUpperCase()} count={count as number} total={triageData.stats.total} color="#4ade80" />
                                     ))}
