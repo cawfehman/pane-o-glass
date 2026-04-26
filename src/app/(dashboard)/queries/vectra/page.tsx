@@ -465,24 +465,24 @@ export default function VectraPage() {
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
         try {
-            const res = await fetch(`/api/vectra/triage?t=${Date.now()}`, { signal: controller.signal });
+            const res = await fetch(`/api/vectra/triage?t=${Date.now()}`, { 
+                signal: controller.signal,
+                cache: 'no-store' 
+            });
             clearTimeout(timeoutId);
             
-            // Handle server-side session lag (401)
-            if (res.status === 401 && retryCount < 3) {
-                console.log(`[AUTH LAG] Session not yet ready on server. Retry ${retryCount + 1}...`);
-                return loadTriage(retryCount + 1);
+            if (res.status !== 200) {
+                throw new Error(`Upstream API Error (HTTP ${res.status})`);
             }
 
             const data = await res.json();
             if (data.error) throw new Error(data.error);
 
-            // Aggressive Empty-State Recovery: If we got empty results, retry up to 3 times
+            // Aggressive Empty-State Recovery: If we got empty results, retry
             const isEmpty = (!data.hosts || data.hosts.length === 0) && (!data.accounts || data.accounts.length === 0);
             if (isEmpty && retryCount < 3) {
-                console.log(`[EMPTY RECOVERY] Triage empty. Handshake retry ${retryCount + 1}...`);
-                const retryDelay = retryCount === 0 ? 800 : retryCount === 1 ? 2500 : 5000;
-                await new Promise(r => setTimeout(r, retryDelay));
+                console.warn(`[EMPTY RECOVERY] Handshake retry ${retryCount + 1}/3...`);
+                await new Promise(r => setTimeout(r, 2000));
                 return loadTriage(retryCount + 1);
             }
 
@@ -780,27 +780,25 @@ export default function VectraPage() {
 
             {triageLoading && (
                 <div style={{ 
-                    background: 'rgba(56, 189, 248, 0.1)', 
-                    border: '1px solid rgba(56, 189, 248, 0.3)', 
-                    borderRadius: '12px', 
-                    padding: '20px', 
-                    marginBottom: '24px',
+                    background: 'rgba(56, 189, 248, 0.95)', 
+                    borderBottom: '2px solid var(--accent-primary)', 
+                    padding: '12px 30px', 
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    zIndex: 9999,
                     display: 'flex',
                     alignItems: 'center',
                     gap: '20px',
-                    animation: 'pulse 2s infinite',
-                    position: 'relative',
-                    zIndex: 10
+                    backdropFilter: 'blur(10px)',
+                    color: '#000',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
                 }}>
-                    <Zap size={28} color="var(--accent-primary)" className="animate-pulse" />
-                    <div style={{ flex: 1 }}>
-                        <div style={{ color: 'var(--accent-primary)', fontSize: '1.1rem', fontWeight: '950', letterSpacing: '0.05em' }}>
-                            SYNCHRONIZING FORENSIC TELEMETRY
-                        </div>
-                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: '700', marginTop: '4px' }}>
-                            Establishing Behavioral Baseline and Correlating Host Affinity...
-                        </div>
-                    </div>
+                    <RefreshCw size={20} color="#000" className="animate-spin" />
+                    <span style={{ fontSize: '0.9rem', fontWeight: '950', letterSpacing: '0.1em' }}>
+                        SYNCHRONIZING BEHAVIORAL TRIAGE TELEMETRY...
+                    </span>
                 </div>
             )}
 
