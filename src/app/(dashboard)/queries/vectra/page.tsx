@@ -101,9 +101,9 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                 
                 // For Account -> find Home Host (Robust Extraction)
                 const getH = (d: any) => {
-                    const cand = d.host || d.host_name || d.src_hosts?.[0] || d.source_host || d.origin_host || d.origin_host_name;
+                    const cand = d.host || d.host_name || d.src_hosts?.[0] || d.source_host || d.origin_host || d.origin_host_name || d.last_source || d.origin_ip;
                     if (!cand) return null;
-                    return typeof cand === 'string' ? cand : cand.name || cand.hostname || cand.ip;
+                    return typeof cand === 'string' ? cand : cand.name || cand.hostname || cand.ip || cand.id;
                 };
                 const hName = getH(det);
                 if (hName && typeof hName === 'string' && hName.length > 2) {
@@ -124,9 +124,11 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
             } else {
                 const sortedHosts = Object.entries(hostCounts).sort((a,b) => b[1].count - a[1].count || b[1].score - a[1].score);
                 const synthesizedHome = sortedHosts.length > 0 ? sortedHosts[0][0] : null;
-                if (!huntWorkstation(fullData) && (synthesizedHome || fullData.last_host_name || fullData.home_host_name)) {
+                // Forensic Fallback: Check last_host_name or any direct field
+                const directHome = fullData.last_host_name || fullData.home_host_name || fullData.last_source_name;
+                if (!huntWorkstation(fullData) && (synthesizedHome || directHome)) {
                     fullData._is_ident_synthesized = true;
-                    fullData.probable_home = { name: synthesizedHome || fullData.last_host_name || fullData.home_host_name, id: null };
+                    fullData.probable_home = { name: synthesizedHome || directHome, id: null };
                 }
             }
 
@@ -504,19 +506,20 @@ export default function VectraPage() {
     useEffect(() => {
         if (status !== 'authenticated') return;
 
-        // Immediate load
+        // Initial sync
         loadTriage();
 
-        // Persistence Watcher: If triage remains empty, try again every 6 seconds
+        // Persistence Watcher (Non-blocking)
         const watcher = setInterval(() => {
+            // Only retry if we are NOT already loading and have NO data
             if (triageHosts.length === 0 && triageAccounts.length === 0 && !triageLoading) {
-                console.log("[WATCHER] Triage empty, attempting forensic sync...");
+                console.log("[PERSISTENCE] Retrying triage sync...");
                 loadTriage();
             }
-        }, 6000);
+        }, 8000);
 
         return () => clearInterval(watcher);
-    }, [status, triageHosts.length, triageAccounts.length, triageLoading]);
+    }, [status]); // ONLY depend on status to prevent re-triggering loops
 
     const loadVectraData = async (searchQuery: string = query, isQuickAction: boolean = false, typeOverride?: 'hosts' | 'accounts') => {
         setLoading(true);
@@ -835,12 +838,24 @@ export default function VectraPage() {
                     </div>
 
                     <div className="glass-card" style={{ padding: '24px', marginBottom: '24px', borderTop: '4px solid var(--accent-primary)' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                            <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Entity Triage Heatmap</h3>
-                            <button onClick={() => loadTriage()} className="badge-action">
-                                <RefreshCw size={14} className={triageLoading ? "animate-spin" : ""} /> Refresh Pulse
-                            </button>
-                        </div>
+                        {triageLoading && (
+                            <div style={{ 
+                                background: 'rgba(56, 189, 248, 0.1)', 
+                                border: '1px solid rgba(56, 189, 248, 0.3)', 
+                                borderRadius: '8px', 
+                                padding: '12px', 
+                                marginBottom: '20px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '12px',
+                                animation: 'pulse 2s infinite'
+                            }}>
+                                <Zap size={18} color="var(--accent-primary)" className="animate-pulse" />
+                                <span style={{ color: 'var(--accent-primary)', fontSize: '0.85rem', fontWeight: '900', letterSpacing: '0.05em' }}>
+                                    SYNCHRONIZING FORENSIC TELEMETRY...
+                                </span>
+                            </div>
+                        )}
                         
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
                             {/* Critical Hosts */}
