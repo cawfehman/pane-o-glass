@@ -264,22 +264,59 @@ export default function CiscoIsePage() {
                                                                 {item.count.toLocaleString()} Users
                                                             </span>
                                                         </h4>
-                                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-                                                            {item.reason} · <strong>Node:</strong> {item.nas}
+                                                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
+                                                            <strong>Primary Node:</strong> {item.nas}
                                                         </p>
-                                                        
-                                                        {item.topUsers && item.topUsers.length > 0 && (
-                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                                                                {item.topUsers.map((mac: string, mIdx: number) => (
-                                                                    <button 
-                                                                        key={mIdx}
-                                                                        onClick={(e) => { e.stopPropagation(); setQuery(mac); handleSearch(undefined, mac); }}
-                                                                        className="btn-secondary"
-                                                                        style={{ fontSize: '0.7rem', padding: '4px 10px', borderRadius: '6px', fontFamily: 'monospace', background: 'rgba(255,255,255,0.05)' }}
-                                                                    >
-                                                                        {mac}
-                                                                    </button>
-                                                                ))}
+
+                                                        {/* Wireless Section */}
+                                                        {item.wireless && Object.keys(item.wireless).length > 0 && (
+                                                            <div style={{ marginBottom: '16px' }}>
+                                                                <p style={{ fontSize: '0.65rem', color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 'bold' }}>Wireless (SSID Groups)</p>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                                    {Object.entries(item.wireless).map(([ssid, macs]: [string, any]) => (
+                                                                        <div key={ssid}>
+                                                                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>{ssid}</p>
+                                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                                                {macs.map((mac: string) => (
+                                                                                    <button 
+                                                                                        key={mac}
+                                                                                        onClick={(e) => { e.stopPropagation(); setQuery(mac); handleSearch(undefined, mac); }}
+                                                                                        className="btn-secondary"
+                                                                                        style={{ fontSize: '0.65rem', padding: '3px 8px', borderRadius: '4px', fontFamily: 'monospace', background: 'rgba(255,255,255,0.03)' }}
+                                                                                    >
+                                                                                        {mac}
+                                                                                    </button>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Wired Section */}
+                                                        {item.wired && Object.keys(item.wired).length > 0 && (
+                                                            <div>
+                                                                <p style={{ fontSize: '0.65rem', color: '#4ade80', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 'bold' }}>Wired (Protocol Groups)</p>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                                    {Object.entries(item.wired).map(([method, macs]: [string, any]) => (
+                                                                        <div key={method}>
+                                                                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>{method}</p>
+                                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                                                {macs.map((mac: string) => (
+                                                                                    <button 
+                                                                                        key={mac}
+                                                                                        onClick={(e) => { e.stopPropagation(); setQuery(mac); handleSearch(undefined, mac); }}
+                                                                                        className="btn-secondary"
+                                                                                        style={{ fontSize: '0.65rem', padding: '3px 8px', borderRadius: '4px', fontFamily: 'monospace', background: 'rgba(255,255,255,0.03)' }}
+                                                                                    >
+                                                                                        {mac}
+                                                                                    </button>
+                                                                                ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
                                                             </div>
                                                         )}
                                                     </div>

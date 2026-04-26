@@ -78,26 +78,19 @@ export async function GET(req: Request) {
         const psnCounts: Record<string, number> = {};
         const reasonCounts: Record<string, number> = {};
         const ssidCounts: Record<string, number> = {};
-        const radiusMacs: string[] = [];
-        const locationMap: Record<string, string[]> = {};
+        const nestedHeatmap: Record<string, any> = {};
 
         await Promise.allSettled(samples.map(async (sessionXml: string) => {
             const macMatch = sessionXml.match(/<calling_station_id>(.*?)<\/calling_station_id>/);
             if (!macMatch) return;
             const mac = macMatch[1];
             
-            // Validate that we have a REAL hardware MAC, not an IP address (common for VPN/certain nodes)
             const isHardwareMac = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(mac);
             if (!isHardwareMac) return;
 
             try {
-                // Fetch full session details for this specific MAC (Surgical & Fast)
                 const detailRes = await axios.get(`${url}/admin/API/mnt/Session/MACAddress/${mac}`, {
-                    headers: { 
-                        "Authorization": `Basic ${basicAuth}`, 
-                        "Accept": "application/xml",
-                        "X-ERS-Internal-User": "true"
-                    },
+                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
                     httpsAgent: agent,
                     timeout: 5000
                 });
@@ -109,14 +102,13 @@ export async function GET(req: Request) {
                 const psnMatch = detailXml.match(/<server>(.*?)<\/server>/);
                 const ssidMatch = detailXml.match(/<wlan_ssid>(.*?)<\/wlan_ssid>/);
 
-                const method = methodMatch ? methodMatch[1].toLowerCase() : 'unknown';
+                const method = (methodMatch ? methodMatch[1].toLowerCase() : 'unknown').toUpperCase();
                 const location = locationMatch ? locationMatch[1] : 'Unknown';
                 const nas = nasMatch ? nasMatch[1] : 'Unknown';
                 const psn = psnMatch ? psnMatch[1] : 'Unknown';
-                const ssid = ssidMatch ? ssidMatch[1] : 'N/A';
+                const ssid = ssidMatch ? ssidMatch[1] : null;
 
-                // We ONLY care about RADIUS for triage (dot1x, mab)
-                if (['dot1x', 'mab', 'webauth'].includes(method)) {
+                if (['DOT1X', 'MAB', 'WEBAUTH'].includes(method)) {
                     psnCounts[psn] = (psnCounts[psn] || 0) + 1;
                     
                     let siteCode = 'OTHER';
@@ -127,35 +119,44 @@ export async function GET(req: Request) {
                     }
 
                     siteCounts[siteCode] = (siteCounts[siteCode] || 0) + 1;
-                    if (!locationMap[siteCode]) locationMap[siteCode] = [];
-                    locationMap[siteCode].push(mac);
                     
-                    // Analytics for stats
+                    // Nested Grouping: Site -> Type -> SubGroup
+                    if (!nestedHeatmap[siteCode]) nestedHeatmap[siteCode] = { wireless: {}, wired: {}, nas: nas };
+                    
+                    if (ssid) {
+                        if (!nestedHeatmap[siteCode].wireless[ssid]) nestedHeatmap[siteCode].wireless[ssid] = [];
+                        if (nestedHeatmap[siteCode].wireless[ssid].length < 6) nestedHeatmap[siteCode].wireless[ssid].push(mac);
+                    } else {
+                        if (!nestedHeatmap[siteCode].wired[method]) nestedHeatmap[siteCode].wired[method] = [];
+                        if (nestedHeatmap[siteCode].wired[method].length < 6) nestedHeatmap[siteCode].wired[method].push(mac);
+                    }
+                    
                     if (!reasonCounts[method]) reasonCounts[method] = 0;
                     reasonCounts[method]++;
-                    if (!ssidCounts[ssid]) ssidCounts[ssid] = 0;
-                    ssidCounts[ssid]++;
+                    if (ssid) {
+                        if (!ssidCounts[ssid]) ssidCounts[ssid] = 0;
+                        ssidCounts[ssid]++;
+                    }
                 }
-            } catch (err) {
-                // Individual probe failed, skip
-            }
+            } catch (err) {}
         }));
 
-        const topMethod = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1])[0]?.[0]?.toUpperCase() || "RADIUS";
+        const topMethod = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "RADIUS";
         const topSsid = Object.entries(ssidCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "N/A";
 
         const duration = Date.now() - startTime;
         
-        // Build the Hotlist from our Sampled RADIUS sessions
-        const hotlist = Object.entries(siteCounts)
-            .map(([site, count]) => ({
+        // Build the Hotlist from our Nested Heatmap
+        const hotlist = Object.entries(nestedHeatmap)
+            .map(([site, data]: [string, any]) => ({
                 identity: site,
                 displayName: `Site: ${site}`,
-                count: count,
+                count: siteCounts[site] || 0,
                 latestTimestamp: new Date().toISOString(),
                 reason: "Live RADIUS Telemetry",
-                nas: site,
-                topUsers: locationMap[site] || []
+                nas: data.nas,
+                wireless: data.wireless,
+                wired: data.wired
             }))
             .sort((a, b) => b.count - a.count);
 
