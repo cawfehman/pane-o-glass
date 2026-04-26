@@ -424,7 +424,7 @@ export default function CiscoIsePage() {
                                 color: activeTab === 'live' ? 'black' : 'var(--text-secondary)'
                             }}
                         >
-                            Active Telemetry
+                            Session
                         </button>
                         <button 
                             onClick={() => setActiveTab('history')}
@@ -440,7 +440,7 @@ export default function CiscoIsePage() {
                                 color: activeTab === 'history' ? 'black' : 'var(--text-secondary)'
                             }}
                         >
-                            Historical Logs
+                            History
                         </button>
                     </div>
                 )}
