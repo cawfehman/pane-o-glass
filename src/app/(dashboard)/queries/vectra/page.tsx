@@ -211,13 +211,13 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                                     {details?._is_ident_synthesized ? 'Confirmed Owner (Telemetry)' : 'Probable Owner (Modeling)'}
                                                 </div>
                                                 <div className="attr-value">
-                                                    {(details?.probable_owner?.name || (typeof details?.probable_owner === 'string' && details.probable_owner) || details?.owner_name || data?.probable_owner?.name || (typeof data?.probable_owner === 'string' && data.probable_owner) || data?.owner_name) ? (
+                                                    {(details?.probable_owner?.name || (typeof details?.probable_owner === 'string' && details.probable_owner) || details?.owner_name || details?.assigned_to || data?.probable_owner?.name || (typeof data?.probable_owner === 'string' && data.probable_owner) || data?.owner_name || data?.assigned_to) ? (
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                             <button 
                                                                 className="pivot-link" 
-                                                                onClick={(e) => { e.stopPropagation(); onSearch(details?.probable_owner?.name || (typeof details?.probable_owner === 'string' ? details.probable_owner : '') || details?.owner_name || data?.probable_owner?.name || (typeof data?.probable_owner === 'string' ? data.probable_owner : '') || data?.owner_name); }}
+                                                                onClick={(e) => { e.stopPropagation(); onSearch(details?.probable_owner?.name || (typeof details?.probable_owner === 'string' ? details.probable_owner : '') || details?.owner_name || details?.assigned_to || data?.probable_owner?.name || (typeof data?.probable_owner === 'string' ? data.probable_owner : '') || data?.owner_name || data?.assigned_to); }}
                                                             >
-                                                                <User size={14} /> {details?.probable_owner?.name || (typeof details?.probable_owner === 'string' ? details.probable_owner : '') || details?.owner_name || data?.probable_owner?.name || (typeof data?.probable_owner === 'string' ? data.probable_owner : '') || data?.owner_name}
+                                                                <User size={14} /> {details?.probable_owner?.name || (typeof details?.probable_owner === 'string' ? details.probable_owner : '') || details?.owner_name || details?.assigned_to || data?.probable_owner?.name || (typeof data?.probable_owner === 'string' ? data.probable_owner : '') || data?.owner_name || data?.assigned_to}
                                                             </button>
                                                         </div>
                                                     ) : <span className="attr-none">Scanning behavioral history...</span>}
@@ -226,12 +226,12 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                             <div className="attribution-box">
                                                 <div className="attr-label">Last Known Interaction</div>
                                                 <div className="attr-value">
-                                                    {(details?.last_account_name || details?.last_user || data?.last_account_name || data?.last_user) ? (
+                                                    {(details?.last_account_name || details?.last_user || details?.last_login_user || data?.last_account_name || data?.last_user || data?.last_login_user) ? (
                                                         <button 
                                                             className="pivot-link" 
-                                                            onClick={(e) => { e.stopPropagation(); onSearch(details?.last_account_name || details?.last_user || data?.last_account_name || data?.last_user); }}
+                                                            onClick={(e) => { e.stopPropagation(); onSearch(details?.last_account_name || details?.last_user || details?.last_login_user || data?.last_account_name || data?.last_user || data?.last_login_user); }}
                                                         >
-                                                            <Link2 size={14} /> {details?.last_account_name || details?.last_user || data?.last_account_name || data?.last_user}
+                                                            <Link2 size={14} /> {details?.last_account_name || details?.last_user || details?.last_login_user || data?.last_account_name || data?.last_user || data?.last_login_user}
                                                         </button>
                                                     ) : <span className="attr-none">No recent login telemetry</span>}
                                                 </div>
@@ -242,12 +242,12 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                             <div className="attribution-box">
                                                 <div className="attr-label">Probable Home (Modeling)</div>
                                                 <div className="attr-value">
-                                                    {(details?.probable_home?.name || (typeof details?.probable_home === 'string' && details.probable_home) || details?.home_host_name || data?.probable_home?.name || (typeof data?.probable_home === 'string' && data.probable_home) || data?.home_host_name) ? (
+                                                    {(details?.probable_home?.name || (typeof details?.probable_home === 'string' && details.probable_home) || details?.home_host_name || details?.last_host || data?.probable_home?.name || (typeof data?.probable_home === 'string' && data.probable_home) || data?.home_host_name || data?.last_host) ? (
                                                         <button 
                                                             className="pivot-link" 
-                                                            onClick={(e) => { e.stopPropagation(); onSearch(details?.probable_home?.name || (typeof details?.probable_home === 'string' ? details.probable_home : '') || details?.home_host_name || data?.probable_home?.name || (typeof data?.probable_home === 'string' ? data.probable_home : '') || data?.home_host_name); }}
+                                                            onClick={(e) => { e.stopPropagation(); onSearch(details?.probable_home?.name || (typeof details?.probable_home === 'string' ? details.probable_home : '') || details?.home_host_name || details?.last_host || data?.probable_home?.name || (typeof data?.probable_home === 'string' ? data.probable_home : '') || data?.home_host_name || data?.last_host); }}
                                                         >
-                                                            <HardDrive size={14} /> {details?.probable_home?.name || (typeof details?.probable_home === 'string' ? details.probable_home : '') || details?.home_host_name || data?.probable_home?.name || (typeof data?.probable_home === 'string' ? data.probable_home : '') || data?.home_host_name}
+                                                            <HardDrive size={14} /> {details?.probable_home?.name || (typeof details?.probable_home === 'string' ? details.probable_home : '') || details?.home_host_name || details?.last_host || data?.probable_home?.name || (typeof data?.probable_home === 'string' ? data.probable_home : '') || data?.home_host_name || data?.last_host}
                                                         </button>
                                                     ) : <span className="attr-none">Analyzing host affinity...</span>}
                                                 </div>
@@ -410,11 +410,10 @@ export default function VectraPage() {
     };
 
     useEffect(() => {
-        const timer = setTimeout(() => {
+        if (status === 'authenticated') {
             loadTriage();
-        }, 500);
-        return () => clearTimeout(timer);
-    }, []);
+        }
+    }, [status]);
 
     const loadVectraData = async (searchQuery: string = query, isQuickAction: boolean = false, typeOverride?: 'hosts' | 'accounts') => {
         setLoading(true);
