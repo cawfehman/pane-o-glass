@@ -461,8 +461,12 @@ export default function VectraPage() {
         const delay = retryCount === 0 ? 0 : retryCount === 1 ? 300 : retryCount === 2 ? 1000 : 2500;
         if (delay > 0) await new Promise(r => setTimeout(r, delay));
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
         try {
-            const res = await fetch(`/api/vectra/triage?t=${Date.now()}`);
+            const res = await fetch(`/api/vectra/triage?t=${Date.now()}`, { signal: controller.signal });
+            clearTimeout(timeoutId);
             
             // Handle server-side session lag (401)
             if (res.status === 401 && retryCount < 3) {
@@ -775,32 +779,35 @@ export default function VectraPage() {
                 </div>
             )}
 
+            {triageLoading && (
+                <div style={{ 
+                    background: 'rgba(56, 189, 248, 0.1)', 
+                    border: '1px solid rgba(56, 189, 248, 0.3)', 
+                    borderRadius: '12px', 
+                    padding: '20px', 
+                    marginBottom: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '20px',
+                    animation: 'pulse 2s infinite',
+                    position: 'relative',
+                    zIndex: 10
+                }}>
+                    <Zap size={28} color="var(--accent-primary)" className="animate-pulse" />
+                    <div style={{ flex: 1 }}>
+                        <div style={{ color: 'var(--accent-primary)', fontSize: '1.1rem', fontWeight: '950', letterSpacing: '0.05em' }}>
+                            SYNCHRONIZING FORENSIC TELEMETRY
+                        </div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: '700', marginTop: '4px' }}>
+                            Establishing Behavioral Baseline and Correlating Host Affinity...
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Triage Dashboard Tab */}
             {activeTab === 'dashboard' && !loading && (
                 <div style={{ animation: 'fadeIn 0.4s ease-out', overflow: 'hidden' }}>
-                    {triageLoading && (
-                        <div style={{ 
-                            background: 'rgba(56, 189, 248, 0.1)', 
-                            border: '1px solid rgba(56, 189, 248, 0.3)', 
-                            borderRadius: '12px', 
-                            padding: '20px', 
-                            marginBottom: '24px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '20px',
-                            animation: 'pulse 2s infinite'
-                        }}>
-                            <Zap size={28} color="var(--accent-primary)" className="animate-pulse" />
-                            <div style={{ flex: 1 }}>
-                                <div style={{ color: 'var(--accent-primary)', fontSize: '1.1rem', fontWeight: '950', letterSpacing: '0.05em' }}>
-                                    SYNCHRONIZING FORENSIC TELEMETRY
-                                </div>
-                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: '700', marginTop: '4px' }}>
-                                    Establishing Behavioral Baseline and Correlating Host Affinity...
-                                </div>
-                            </div>
-                        </div>
-                    )}
                     
                     {/* Behavioral Summary Bar */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '24px' }}>
