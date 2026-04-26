@@ -188,9 +188,9 @@ export default function CiscoIsePage() {
             {/* Navigation Tabs */}
             <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', marginBottom: '32px', flexShrink: 0 }}>
                 {([
-                    { id: 'dashboard', label: 'Triage Dashboard' },
-                    { id: 'live', label: 'Live Session' },
-                    { id: 'history', label: 'Connection History' }
+                    { id: 'dashboard', label: 'Triage' },
+                    { id: 'live', label: 'Session' },
+                    { id: 'history', label: 'History' }
                 ] as const).map(tab => (
                     <button
                         key={tab.id}
