@@ -408,7 +408,7 @@ export default function CiscoIsePage() {
                 )}
 
                 {/* Forensic Result Tabs */}
-                {(endpointResult || historyResult || discoveryResult) && (
+                {activeTab !== 'dashboard' && (endpointResult || historyResult || discoveryResult) && (
                     <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', background: 'rgba(255,255,255,0.03)', padding: '4px', borderRadius: '8px', width: 'fit-content' }}>
                         <button 
                             onClick={() => setActiveTab('live')}
