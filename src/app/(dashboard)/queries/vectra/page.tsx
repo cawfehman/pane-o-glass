@@ -371,14 +371,40 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
 export default function VectraPage() {
     const [query, setQuery] = useState('');
     const [loading, setLoading] = useState(false);
+    const [triageLoading, setTriageLoading] = useState(false);
     const [hasSearched, setHasSearched] = useState(false);
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'hosts' | 'accounts'>('dashboard');
     const [searchType, setSearchType] = useState<'all' | 'hosts' | 'accounts'>('all');
     const [activeQuery, setActiveQuery] = useState('');
     const [hosts, setHosts] = useState<any[]>([]);
     const [accounts, setAccounts] = useState<any[]>([]);
+    const [triageHosts, setTriageHosts] = useState<any[]>([]);
+    const [triageAccounts, setTriageAccounts] = useState<any[]>([]);
     const [counts, setCounts] = useState({ hosts: 0, accounts: 0, active_detections: 0 });
     const [error, setError] = useState<string | null>(null);
     const [highRiskOnly, setHighRiskOnly] = useState(true);
+
+    const loadTriage = async () => {
+        setTriageLoading(true);
+        try {
+            const [hRes, aRes] = await Promise.all([
+                fetch('/api/vectra?type=hosts&high_risk_only=true&ordering=-t_score'),
+                fetch('/api/vectra?type=accounts&high_risk_only=true&ordering=-t_score')
+            ]);
+            const hData = await hRes.json();
+            const aData = await aRes.json();
+            setTriageHosts(hData.results?.slice(0, 10) || []);
+            setTriageAccounts(aData.results?.slice(0, 10) || []);
+        } catch (e) {
+            console.error("Triage Fetch Failed:", e);
+        } finally {
+            setTriageLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadTriage();
+    }, []);
 
     const loadVectraData = async (searchQuery: string = query, isQuickAction: boolean = false, typeOverride?: 'hosts' | 'accounts') => {
         setLoading(true);
@@ -439,6 +465,13 @@ export default function VectraPage() {
 
             setHosts(hostsFinal);
             setAccounts(accountsFinal);
+            
+            // Auto-switch tab based on data presence
+            if (effectiveType === 'hosts' || (effectiveType === 'all' && hostsFinal.length > 0)) {
+                setActiveTab('hosts');
+            } else if (effectiveType === 'accounts' || (effectiveType === 'all' && accountsFinal.length > 0)) {
+                setActiveTab('accounts');
+            }
             
             setCounts({
                 hosts: hData.count || (hostsFinal.length),
@@ -519,16 +552,7 @@ export default function VectraPage() {
                             <button onClick={() => loadVectraData()} className="badge-action">
                                 <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh
                             </button>
-                            {activeQuery.startsWith('Top 10') && (
-                                <button 
-                                    onClick={() => { setHighRiskOnly(!highRiskOnly); }} 
-                                    className="badge-action"
-                                    style={{ background: highRiskOnly ? 'var(--status-error)' : 'rgba(255,255,255,0.05)', color: '#fff' }}
-                                >
-                                    <Shield size={14} /> {highRiskOnly ? "High Risk Only" : "All Results"}
-                                </button>
-                            )}
-                            <button onClick={() => { setHasSearched(false); setQuery(''); }} className="badge-action" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                            <button onClick={() => { setHasSearched(false); setQuery(''); setActiveTab('dashboard'); }} className="badge-action" style={{ background: 'rgba(255,255,255,0.05)' }}>
                                 <LayoutDashboard size={14} /> Reset
                             </button>
                         </div>
@@ -539,7 +563,8 @@ export default function VectraPage() {
                     padding: hasSearched ? '12px 20px' : '32px', 
                     background: 'rgba(255,255,255,0.02)',
                     maxWidth: hasSearched ? 'none' : '900px',
-                    margin: hasSearched ? '0' : '0 auto'
+                    margin: hasSearched ? '0' : '0 auto',
+                    marginBottom: hasSearched ? '20px' : '0'
                 }}>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
                         <div style={{ flex: 1, position: 'relative', minWidth: '300px' }}>
@@ -575,22 +600,34 @@ export default function VectraPage() {
                             </button>
                         )}
                     </div>
+                </div>
 
-                    {!hasSearched && (
-                        <div style={{ marginTop: '24px', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '20px' }}>
-                            <div style={{ textAlign: 'left', flex: '1 1 200px' }}>
-                                <div style={{ fontSize: '0.7rem', fontWeight: '900', color: 'var(--accent-primary)', marginBottom: '8px', textTransform: 'uppercase' }}>Quick Action Triage</div>
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                    <button onClick={() => handleQuickAction('hosts')} className="badge-action" style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'var(--status-error)', color: 'var(--status-error)' }}>
-                                        <Zap size={14} /> Top 10 Critical Hosts
-                                    </button>
-                                    <button onClick={() => handleQuickAction('accounts')} className="badge-action" style={{ background: 'rgba(56, 189, 248, 0.1)', borderColor: 'var(--status-info)', color: 'var(--status-info)' }}>
-                                        <User size={14} /> Top 10 Critical Accounts
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                {/* Navigation Tabs */}
+                <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', marginBottom: '32px', flexShrink: 0, marginTop: hasSearched ? '0' : '24px' }}>
+                    {([
+                        { id: 'dashboard', label: 'Behavioral Triage' },
+                        { id: 'hosts', label: 'Hosts' },
+                        { id: 'accounts', label: 'Accounts' }
+                    ] as const).map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setActiveTab(tab.id)}
+                            style={{
+                                padding: '12px 24px',
+                                background: activeTab === tab.id ? 'rgba(56, 189, 248, 0.1)' : 'transparent',
+                                border: 'none',
+                                borderBottom: activeTab === tab.id ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                                color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                fontWeight: activeTab === tab.id ? 'bold' : 'normal',
+                                cursor: 'pointer',
+                                fontSize: '0.95rem',
+                                transition: 'all 0.2s ease',
+                                marginBottom: '-1px'
+                            }}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
                 </div>
             </div>
 
@@ -615,32 +652,55 @@ export default function VectraPage() {
                 </div>
             )}
 
-            {/* Search Prompt Landing (If not searched) */}
-            {!hasSearched && !loading && (
-                <div style={{ marginTop: '40px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px' }}>
-                    <div className="glass-card" style={{ padding: '24px', textAlign: 'left' }}>
-                        <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
-                            <div style={{ background: 'var(--accent-primary)', color: '#000', padding: '12px', borderRadius: '12px' }}><Monitor size={24} /></div>
+            {/* Triage Dashboard Tab */}
+            {activeTab === 'dashboard' && !loading && (
+                <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
+                    <div className="glass-card" style={{ padding: '24px', marginBottom: '24px', borderTop: '4px solid var(--accent-primary)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Behavioral Triage Heatmap (Live)</h3>
+                            <button onClick={() => loadTriage()} className="badge-action">
+                                <RefreshCw size={14} className={triageLoading ? "animate-spin" : ""} /> Refresh Pulse
+                            </button>
+                        </div>
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
+                            {/* Critical Hosts */}
                             <div>
-                                <h3 style={{ fontSize: '1.1rem', fontWeight: '900', marginBottom: '4px' }}>Everything About Hosts</h3>
-                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Identify IP, OS, associations and discovery status regardless of current threat level.</p>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                                    <Monitor size={20} color="var(--accent-primary)" />
+                                    <h4 style={{ fontSize: '0.9rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Top Critical Hosts</h4>
+                                </div>
+                                {triageLoading ? (
+                                    <div style={{ padding: '40px', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
+                                        <RefreshCw size={24} className="animate-spin" color="var(--accent-primary)" />
+                                    </div>
+                                ) : triageHosts.length > 0 ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        {triageHosts.map((h, i) => <EntityCard key={h.id || i} type="host" data={h} onSearch={handleSearch} />)}
+                                    </div>
+                                ) : (
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No high-risk hosts detected.</p>
+                                )}
                             </div>
-                        </div>
-                        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '16px', fontSize: '0.8rem' }}>
-                            <code style={{ color: 'var(--accent-primary)' }}>10.150.x.x</code>, <code style={{ color: 'var(--accent-primary)' }}>APP-SERVER-01</code>
-                        </div>
-                    </div>
 
-                    <div className="glass-card" style={{ padding: '24px', textAlign: 'left' }}>
-                        <div style={{ display: 'flex', gap: '16px', marginBottom: '20px' }}>
-                            <div style={{ background: 'var(--status-info)', color: '#000', padding: '12px', borderRadius: '12px' }}><User size={24} /></div>
+                            {/* Critical Accounts */}
                             <div>
-                                <h3 style={{ fontSize: '1.1rem', fontWeight: '900', marginBottom: '4px' }}>Deep Account Lookup</h3>
-                                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Profile LDAP/O365 users, associated hosts, and historical behavior.</p>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                                    <User size={20} color="var(--status-info)" />
+                                    <h4 style={{ fontSize: '0.9rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Top Critical Accounts</h4>
+                                </div>
+                                {triageLoading ? (
+                                    <div style={{ padding: '40px', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
+                                        <RefreshCw size={24} className="animate-spin" color="var(--accent-primary)" />
+                                    </div>
+                                ) : triageAccounts.length > 0 ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                        {triageAccounts.map((a, i) => <EntityCard key={a.id || i} type="account" data={a} onSearch={handleSearch} />)}
+                                    </div>
+                                ) : (
+                                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No high-risk accounts detected.</p>
+                                )}
                             </div>
-                        </div>
-                        <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '16px', fontSize: '0.8rem' }}>
-                            <code style={{ color: 'var(--status-info)' }}>j.doe@company.org</code>, <code style={{ color: 'var(--status-info)' }}>adm_robert</code>
                         </div>
                     </div>
                 </div>
@@ -659,52 +719,49 @@ export default function VectraPage() {
 
             {/* Results Section */}
             {hasSearched && !loading && (
-                <div style={{ animation: 'fadeIn 0.4s ease-out', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
-                    <div style={{ 
-                        display: 'grid', 
-                        gridTemplateColumns: searchType === 'all' ? 'repeat(auto-fit, minmax(400px, 1fr))' : '1fr', 
-                        gap: '24px', 
-                        marginTop: '40px',
-                        minWidth: 0
-                    }}>
-                        {(searchType === 'all' || searchType === 'hosts') && (
-                            <div style={{ minWidth: 0 }}>
-                                <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
-                                    <Monitor size={20} color="var(--accent-primary)" />
-                                    {activeQuery.startsWith('Top 10') ? activeQuery : `Forensic Results for "${activeQuery}" (Hosts)`}
-                                </h3>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                    {hosts.length > 0 ? (
-                                        hosts.map((h, i) => <EntityCard key={h.id || i} type="host" data={h} onSearch={handleSearch} />)
-                                    ) : (
-                                        <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                            <Monitor size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
-                                            <p>No host information found matching this criteria.</p>
-                                        </div>
-                                    )}
-                                </div>
+                <div style={{ animation: 'fadeIn 0.4s ease-out', width: '100%' }}>
+                    
+                    {/* Hosts Tab View */}
+                    {activeTab === 'hosts' && (
+                        <div style={{ minWidth: 0 }}>
+                            <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
+                                <Monitor size={20} color="var(--accent-primary)" />
+                                Forensic Results for "{activeQuery}" (Hosts)
+                            </h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                {hosts.length > 0 ? (
+                                    hosts.map((h, i) => <EntityCard key={h.id || i} type="host" data={h} onSearch={handleSearch} />)
+                                ) : (
+                                    <div className="glass-card" style={{ padding: '60px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                        <Monitor size={48} style={{ opacity: 0.1, marginBottom: '16px' }} />
+                                        <p style={{ fontSize: '1.1rem' }}>No host metadata found matching your query.</p>
+                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px' }}>Try searching by IP or exact Hostname.</p>
+                                    </div>
+                                )}
                             </div>
-                        )}
+                        </div>
+                    )}
 
-                        {(searchType === 'all' || searchType === 'accounts') && (
-                            <div style={{ minWidth: 0 }}>
-                                <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
-                                    <User size={20} color="var(--status-info)" />
-                                    {activeQuery.startsWith('Top 10') ? activeQuery : `Forensic Results for "${activeQuery}" (Accounts)`}
-                                </h3>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                    {accounts.length > 0 ? (
-                                        accounts.map((a, i) => <EntityCard key={a.id || i} type="account" data={a} onSearch={handleSearch} />)
-                                    ) : (
-                                        <div className="glass-card" style={{ padding: '30px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                            <User size={32} style={{ opacity: 0.3, marginBottom: '12px' }} />
-                                            <p>No account information found matching this criteria.</p>
-                                        </div>
-                                    )}
-                                </div>
+                    {/* Accounts Tab View */}
+                    {activeTab === 'accounts' && (
+                        <div style={{ minWidth: 0 }}>
+                            <h3 style={{ fontSize: '1rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '16px' }}>
+                                <User size={20} color="var(--status-info)" />
+                                Forensic Results for "{activeQuery}" (Accounts)
+                            </h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                {accounts.length > 0 ? (
+                                    accounts.map((a, i) => <EntityCard key={a.id || i} type="account" data={a} onSearch={handleSearch} />)
+                                ) : (
+                                    <div className="glass-card" style={{ padding: '60px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                        <User size={48} style={{ opacity: 0.1, marginBottom: '16px' }} />
+                                        <p style={{ fontSize: '1.1rem' }}>No account metadata found matching your query.</p>
+                                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px' }}>Try searching by Email address or SamAccountName.</p>
+                                    </div>
+                                )}
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
             )}
             
