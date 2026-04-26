@@ -166,7 +166,7 @@ export async function GET(req: Request) {
             stats: {
                 total: Object.values(siteCounts).reduce((a, b) => a + b, 0),
                 failures: 0,
-                topReason: topMethod,
+                topReason: topMethod, // This is the Auth Method (e.g. DOT1X)
                 topSsid: topSsid,
                 topLocation: hotlist[0]?.identity || "None",
                 rate: 0

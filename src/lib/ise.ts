@@ -1,116 +1,102 @@
 import { parseStringPromise } from 'xml2js';
+import axios from 'axios';
+import https from 'https';
 
 export async function fetchIseSession(query: string) {
-    const url = process.env.ISE_PAN_URL;
-    const user = process.env.ISE_API_USER;
-    const pass = process.env.ISE_API_PASSWORD;
+    const rawUrl = process.env.ISE_PAN_URL;
+    const rawUser = process.env.ISE_API_USER;
+    const rawPass = process.env.ISE_API_PASSWORD;
 
-    if (!url || !user || !pass) {
+    if (!rawUrl || !rawUser || !rawPass) {
         throw new Error("ISE Credentials not configured in .env");
     }
 
+    // Quote-Resilience
+    const url = rawUrl.replace(/^"|"$/g, '').endsWith('/') ? rawUrl.replace(/^"|"$/g, '').slice(0, -1) : rawUrl.replace(/^"|"$/g, '');
+    const user = rawUser.replace(/^"|"$/g, '');
+    const pass = rawPass.replace(/^"|"$/g, '');
+    const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
+    const agent = new https.Agent({ rejectUnauthorized: false });
+
     // Determine query type
     let searchType = "user_name";
+    let formattedQuery = query;
+
     if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(query)) {
         searchType = "framed_ip_address";
     } else if (/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(query) || /^[0-9A-Fa-f]{12}$/.test(query)) {
         searchType = "calling_station_id"; // MAC Address
         if (query.length === 12) {
-            query = query.match(/.{1,2}/g)?.join(":") || query;
+            formattedQuery = query.match(/.{1,2}/g)?.join(":") || query;
         } else {
-            query = query.replace(/-/g, ":");
+            formattedQuery = query.replace(/-/g, ":");
         }
-        query = query.toUpperCase(); // ISE MnT often expects uppercase MAC
-    }
-
-    // MnT API uses Basic Auth
-    const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
-
-    // The MnT API for a specific session by MAC: /admin/API/mnt/Session/MACAddress/{mac}
-    // For Username or IP, we must query the ActiveList and filter it out.
-    // To ensure broad compatibility and not crash on 404s, we will grab the /admin/API/mnt/Session/ActiveList
-    // which returns ALL sessions, and filter it locally if it's small, OR we can use the specific endpoints.
-
-    let endpoint = "";
-    let localFilter = false;
-
-    if (searchType === "calling_station_id") {
-        endpoint = `${url}/admin/API/mnt/Session/MACAddress/${query}`;
-    } else if (searchType === "framed_ip_address") {
-        endpoint = `${url}/admin/API/mnt/Session/IPAddress/${query}`;
-    } else if (searchType === "user_name") {
-        // Cisco's UserName endpoint explicitly caps returns to the *single latest* session.
-        // To return ALL active devices for a user, we must parse the entire ActiveList locally.
-        endpoint = `${url}/admin/API/mnt/Session/ActiveList`;
-        localFilter = true;
+        formattedQuery = formattedQuery.toUpperCase();
     }
 
     try {
-        const response = await fetch(endpoint, {
-            headers: {
-                "Authorization": `Basic ${basicAuth}`,
-                "Accept": "application/xml" // MnT API strictly returns XML
-            }
-        });
+        let sessionsArray: any[] = [];
 
-        if (!response.ok) {
-            // MnT specifically throws 404/500 if the session just isn't found
-            if (response.status === 404 || response.status === 500) {
-                return { found: false, message: "No active session found for query." };
-            }
-            if (response.status === 401) throw new Error("ISE Authentication Failed (401)");
-            throw new Error(`ISE MnT API HTTP Error: ${response.status}`);
-        }
-
-        const xmlText = await response.text();
-        const data = await parseStringPromise(xmlText, { explicitArray: false });
-
-        // Parse XML response
-        let sessionNodes = data.sessionParameters || data.activeSession;
-        if (!sessionNodes && data.activeList && data.activeList.activeSession) {
-            sessionNodes = data.activeList.activeSession;
-        }
-
-        if (!sessionNodes) {
-            return { found: false, message: "Session data empty." };
-        }
-
-        // Normalize to array
-        let sessionsArray = Array.isArray(sessionNodes) ? sessionNodes : [sessionNodes];
-
-        if (localFilter && searchType === "user_name") {
-            const searchLower = query.toLowerCase();
-            sessionsArray = sessionsArray.filter((s: any) => {
-                const u = s.user_name?._ || s.user_name || s.userName;
-                return u && typeof u === 'string' && u.toLowerCase() === searchLower;
+        if (searchType === "calling_station_id") {
+            const endpoint = `${url}/admin/API/mnt/Session/MACAddress/${formattedQuery}`;
+            console.log(`[ISE-LIB] Fetching Surgical Session: ${endpoint}`);
+            const res = await axios.get(endpoint, {
+                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                httpsAgent: agent,
+                timeout: 10000
             });
-
-            if (sessionsArray.length === 0) {
-                return { found: false, message: "No active sessions found for this username." };
+            const data = await parseStringPromise(res.data, { explicitArray: false });
+            const node = data.sessionParameters || data.activeSession;
+            if (node) sessionsArray = [node];
+        } else if (searchType === "framed_ip_address") {
+            const endpoint = `${url}/admin/API/mnt/Session/IPAddress/${formattedQuery}`;
+            const res = await axios.get(endpoint, {
+                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                httpsAgent: agent,
+                timeout: 10000
+            });
+            const data = await parseStringPromise(res.data, { explicitArray: false });
+            const node = data.sessionParameters || data.activeSession;
+            if (node) sessionsArray = [node];
+        } else {
+            // Username - we must use ActiveList as a fallback for 3.3
+            const endpoint = `${url}/admin/API/mnt/Session/ActiveList`;
+            const res = await axios.get(endpoint, {
+                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                httpsAgent: agent,
+                timeout: 30000
+            });
+            const xml = res.data;
+            const searchLower = formattedQuery.toLowerCase();
+            
+            // Regex match for the specific username in the bulk XML (Faster than full parse)
+            const sessionMatches = xml.match(/<activeSession>([\s\S]*?)<\/activeSession>/g) || [];
+            const userMatches = sessionMatches.filter((s: string) => s.toLowerCase().includes(`<user_name>${searchLower}</user_name>`));
+            
+            // For the first few matches, fetch their full details surgically
+            for (const sessionXml of userMatches.slice(0, 5)) {
+                const macMatch = sessionXml.match(/<calling_station_id>(.*?)<\/calling_station_id>/);
+                if (macMatch) {
+                    const mac = macMatch[1];
+                    try {
+                        const detailRes = await axios.get(`${url}/admin/API/mnt/Session/MACAddress/${mac}`, {
+                            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                            httpsAgent: agent,
+                            timeout: 5000
+                        });
+                        const detailData = await parseStringPromise(detailRes.data, { explicitArray: false });
+                        const node = detailData.sessionParameters || detailData.activeSession;
+                        if (node) sessionsArray.push(node);
+                    } catch (e) {}
+                }
             }
         }
 
-        // Run secondary lookups to get rich data (like timestamp) that the ActiveList strips out
-        const detailedSessions = await Promise.all(sessionsArray.map(async (basicNode: any) => {
-            const mac = basicNode.calling_station_id?._ || basicNode.calling_station_id || basicNode.callingStationId;
-            if (!mac) return basicNode; // Fallback to basic node
+        if (sessionsArray.length === 0) {
+            return { found: false, message: "No active session found for query." };
+        }
 
-            try {
-                const macEnrichRes = await fetch(`${url}/admin/API/mnt/Session/MACAddress/${mac}`, {
-                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" }
-                });
-                if (macEnrichRes.ok) {
-                    const macXml = await macEnrichRes.text();
-                    const macData = await parseStringPromise(macXml, { explicitArray: false });
-                    return macData.sessionParameters || macData.activeSession || basicNode;
-                }
-                return basicNode;
-            } catch (e) {
-                return basicNode;
-            }
-        }));
-
-        const mappedSessions = detailedSessions.map((sessionNode: any) => {
+        const mappedSessions = sessionsArray.map((sessionNode: any) => {
             const timestamp = sessionNode.acs_timestamp?._ || sessionNode.acs_timestamp || sessionNode.acsTimestamp || "Unknown";
 
             // Deep parse other_attr_string for hidden fields like SSID

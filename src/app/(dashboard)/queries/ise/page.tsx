@@ -293,8 +293,8 @@ export default function CiscoIsePage() {
                                         <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{triageData?.stats?.total || 0}</p>
                                     </div>
                                     <div>
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Top Root Cause</p>
-                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--accent-secondary)' }}>{triageData?.stats?.topReason && triageData.stats.topReason !== "None" ? triageData.stats.topReason : "No Failures"}</p>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Dominant Auth Method</p>
+                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--accent-secondary)' }}>{triageData?.stats?.topReason && triageData.stats.topReason !== "None" ? triageData.stats.topReason : "No Sessions"}</p>
                                     </div>
                                     <div>
                                         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Most Impacted SSID</p>
