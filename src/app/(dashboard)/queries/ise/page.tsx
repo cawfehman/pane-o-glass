@@ -264,7 +264,7 @@ export default function CiscoIsePage() {
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                                                 <div style={{ flex: 1 }}>
                                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                                                                        <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Forensic Triage Heatmap</h3>
+                                                                        <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Forensic Triage Heatmap (Sampled)</h3>
                                                                         <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }}></div>
