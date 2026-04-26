@@ -93,7 +93,8 @@ export async function GET(req: Request) {
 
             if (!userSites[siteCode]) userSites[siteCode] = [];
             if (userSites[siteCode].length < 5) {
-                userSites[siteCode].push(user !== 'Unknown' ? user : mac);
+                // ALWAYS use MAC for drill-down in Patch 7 because it's the only key that works surgically
+                userSites[siteCode].push(mac);
             }
         });
 
