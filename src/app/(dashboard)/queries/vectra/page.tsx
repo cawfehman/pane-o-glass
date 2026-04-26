@@ -422,6 +422,13 @@ export default function VectraPage() {
                 topCategory: topCat
             });
 
+            // Update global counts for header
+            setCounts({
+                hosts: hData.count || hResults.length,
+                accounts: aData.count || aResults.length,
+                active_detections: hResults.reduce((acc: number, h: any) => acc + ((h.threat || h.t_score || 0) > 0 ? 1 : 0), 0)
+            });
+
         } catch (e) {
             console.error("Triage Fetch Failed:", e);
         } finally {
@@ -757,9 +764,9 @@ export default function VectraPage() {
                             </button>
                         </div>
                         
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
                             {/* Critical Hosts */}
-                            <div>
+                            <div style={{ minWidth: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                                     <Monitor size={20} color="var(--accent-primary)" />
                                     <h4 style={{ fontSize: '0.9rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Top Critical Hosts</h4>
@@ -778,7 +785,7 @@ export default function VectraPage() {
                             </div>
 
                             {/* Critical Accounts */}
-                            <div>
+                            <div style={{ minWidth: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                                     <User size={20} color="var(--status-info)" />
                                     <h4 style={{ fontSize: '0.9rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Top Critical Accounts</h4>
