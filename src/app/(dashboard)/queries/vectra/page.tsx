@@ -476,7 +476,8 @@ export default function VectraPage() {
             // If we got empty results but it's the first try, wait and retry once
             if ((!data.hosts || data.hosts.length === 0) && retryCount < 2) {
                 console.log(`[DATA LAG] Triage returned empty. Retry ${retryCount + 1}...`);
-                return loadTriage(retryCount + 1);
+                await loadTriage(retryCount + 1);
+                return;
             }
 
             setTriageHosts(data.hosts || []);
@@ -490,6 +491,8 @@ export default function VectraPage() {
                 active_detections: data.stats.totalDetections
             });
 
+            setTriageLoading(false); // SUCCESS: stop loading
+
         } catch (e) {
             console.error("Triage Fetch Failed:", e);
             if (retryCount < 1) {
@@ -498,8 +501,13 @@ export default function VectraPage() {
                 setError("Failed to synchronize behavioral triage. Try refreshing.");
             }
         } finally {
-            // Only stop loading if we're not waiting for a retry timeout
-            setTriageLoading(false);
+            // Only stop loading if we have data or reached max retries
+            // (The recursive calls handle their own state)
+            if (retryCount === 0) {
+                // We only flip back to false at the end of the chain if this was the root call
+                // but actually, since we use 'return loadTriage', the root call finally runs last
+                // so we need to be careful.
+            }
         }
     };
 
@@ -770,6 +778,29 @@ export default function VectraPage() {
             {/* Triage Dashboard Tab */}
             {activeTab === 'dashboard' && !loading && (
                 <div style={{ animation: 'fadeIn 0.4s ease-out', overflow: 'hidden' }}>
+                    {triageLoading && (
+                        <div style={{ 
+                            background: 'rgba(56, 189, 248, 0.1)', 
+                            border: '1px solid rgba(56, 189, 248, 0.3)', 
+                            borderRadius: '12px', 
+                            padding: '20px', 
+                            marginBottom: '24px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '20px',
+                            animation: 'pulse 2s infinite'
+                        }}>
+                            <Zap size={28} color="var(--accent-primary)" className="animate-pulse" />
+                            <div style={{ flex: 1 }}>
+                                <div style={{ color: 'var(--accent-primary)', fontSize: '1.1rem', fontWeight: '950', letterSpacing: '0.05em' }}>
+                                    SYNCHRONIZING FORENSIC TELEMETRY
+                                </div>
+                                <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: '700', marginTop: '4px' }}>
+                                    Establishing Behavioral Baseline and Correlating Host Affinity...
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     
                     {/* Behavioral Summary Bar */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '24px' }}>
@@ -838,25 +869,6 @@ export default function VectraPage() {
                     </div>
 
                     <div className="glass-card" style={{ padding: '24px', marginBottom: '24px', borderTop: '4px solid var(--accent-primary)' }}>
-                        {triageLoading && (
-                            <div style={{ 
-                                background: 'rgba(56, 189, 248, 0.1)', 
-                                border: '1px solid rgba(56, 189, 248, 0.3)', 
-                                borderRadius: '8px', 
-                                padding: '12px', 
-                                marginBottom: '20px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '12px',
-                                animation: 'pulse 2s infinite'
-                            }}>
-                                <Zap size={18} color="var(--accent-primary)" className="animate-pulse" />
-                                <span style={{ color: 'var(--accent-primary)', fontSize: '0.85rem', fontWeight: '900', letterSpacing: '0.05em' }}>
-                                    SYNCHRONIZING FORENSIC TELEMETRY...
-                                </span>
-                            </div>
-                        )}
-                        
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
                             {/* Critical Hosts */}
                             <div style={{ minWidth: 0 }}>
