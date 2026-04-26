@@ -627,7 +627,35 @@ export default function VectraPage() {
     };
 
     return (
-        <div style={{ maxWidth: '1600px', margin: '0 auto', padding: '0 20px 60px' }}>
+        <div style={{ maxWidth: '1600px', margin: '0 auto', padding: '0 20px 60px', position: 'relative' }}>
+            
+            {triageLoading && (
+                <div style={{ 
+                    background: 'rgba(56, 189, 248, 0.95)', 
+                    borderBottom: '2px solid var(--accent-primary)', 
+                    padding: '12px 30px', 
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    zIndex: 9999,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '20px',
+                    backdropFilter: 'blur(10px)',
+                    color: '#000',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+                }}>
+                    <RefreshCw size={20} color="#000" className="animate-spin" />
+                    <span style={{ fontSize: '0.9rem', fontWeight: '950', letterSpacing: '0.1em' }}>
+                        SYNCHRONIZING BEHAVIORAL TRIAGE TELEMETRY...
+                    </span>
+                </div>
+            )}
+
+            <div style={{ position: 'absolute', top: '10px', right: '30px', fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: '900', letterSpacing: '0.1em', opacity: 0.5 }}>
+                PORTAL v4.4.19 [STABLE]
+            </div>
             
             {/* Header / Search Experience */}
             <div style={{ 
