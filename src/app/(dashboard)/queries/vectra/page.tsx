@@ -365,8 +365,12 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
     );
 };
 
+export const dynamic = "force-dynamic";
+
 export default function VectraPage() {
-    const { data: session, status } = useSession();
+    const sessionContext = useSession();
+    const session = sessionContext?.data;
+    const status = sessionContext?.status;
     const [query, setQuery] = useState('');
     const [loading, setLoading] = useState(false);
     const [triageLoading, setTriageLoading] = useState(false);
