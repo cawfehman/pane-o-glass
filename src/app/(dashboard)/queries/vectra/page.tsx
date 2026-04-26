@@ -879,6 +879,13 @@ export default function VectraPage() {
                     </div>
 
                     <div className="glass-card" style={{ padding: '24px', marginBottom: '24px', borderTop: '4px solid var(--accent-primary)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                            <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Entity Triage Heatmap</h3>
+                            <button onClick={() => loadTriage()} className="badge-action">
+                                <RefreshCw size={14} className={triageLoading ? "animate-spin" : ""} /> Refresh Pulse
+                            </button>
+                        </div>
+
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '32px' }}>
                             {/* Critical Hosts */}
                             <div style={{ minWidth: 0 }}>
