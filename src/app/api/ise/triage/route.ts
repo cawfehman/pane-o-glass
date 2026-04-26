@@ -80,12 +80,14 @@ export async function GET(req: Request) {
             const userMatch = sessionXml.match(/<user_name>(.*?)<\/user_name>/);
             const macMatch = sessionXml.match(/<calling_station_id>(.*?)<\/calling_station_id>/);
             const locationMatch = sessionXml.match(/<location>(.*?)<\/location>/);
+            const methodMatch = sessionXml.match(/<authentication_method>(.*?)<\/authentication_method>/);
 
             const server = serverMatch ? serverMatch[1] : 'Unknown';
             const wlc = wlcMatch ? wlcMatch[1] : 'Unknown';
             const user = userMatch ? userMatch[1] : 'Unknown';
             const mac = macMatch ? macMatch[1] : 'Unknown';
             const location = locationMatch ? locationMatch[1] : 'Unknown';
+            const method = methodMatch ? methodMatch[1] : 'Unknown';
 
             psnCounts[server] = (psnCounts[server] || 0) + 1;
 
@@ -94,14 +96,17 @@ export async function GET(req: Request) {
             if (location !== 'Unknown' && location.includes('#')) {
                 siteCode = location.split('#').pop()?.toUpperCase() || 'OTHER';
             } else if (wlc !== 'Unknown' && !wlc.match(/^\d/)) {
-                // Only fall back to first 3 letters if it's NOT an IP address
                 siteCode = wlc.substring(0, 3).toUpperCase();
             }
             siteCounts[siteCode] = (siteCounts[siteCode] || 0) + 1;
 
             if (!userSites[siteCode]) userSites[siteCode] = [];
-            if (userSites[siteCode].length < 5) {
-                // ALWAYS use MAC for drill-down in Patch 7 because it's the only key that works surgically
+            
+            // CRITICAL: Only use MACs for drill-down if they are RADIUS (dot1x/mab)
+            // PassiveID sessions have no AuthStatus history and will return blank results
+            const isRadius = ['dot1x', 'mab', 'webauth'].includes(method.toLowerCase());
+            
+            if (isRadius && userSites[siteCode].length < 6) {
                 userSites[siteCode].push(mac);
             }
         });
