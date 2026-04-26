@@ -12,10 +12,9 @@ async function fuzzyDiscover() {
 
     // Test both the working path with a HUGE window, and other variations
     const endpoints = [
-        "/admin/API/mnt/Session/ActiveCount",
-        "/admin/API/mnt/Session/FailureCount",
-        "/admin/API/mnt/Session/AuthList",
-        "/admin/API/mnt/Session/AuthStatus/All/3600/10/All"
+        "/admin/API/mnt/AuthStatus/MACAddress/LastNRecords/50/All",
+        "/admin/API/mnt/AuthStatus/LastNRecords/50/All",
+        "/admin/API/mnt/Session/AuthStatus/LastNRecords/50/All"
     ];
 
     console.log("Starting Deep Data Discovery...");
