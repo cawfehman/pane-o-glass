@@ -248,79 +248,95 @@ export default function CiscoIsePage() {
 
                             {!triageLoading && triageData && !triageData.error && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                    {triageData.hotlist && triageData.hotlist.length > 0 ? (
-                                        triageData.hotlist.map((item: any, idx: number) => (
-                                            <div 
-                                                key={idx} 
-                                                className="glass-card" 
-                                                style={{ padding: '16px', borderLeft: '4px solid #10b981', background: 'rgba(255,255,255,0.02)', transition: 'all 0.2s' }}
-                                            >
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                    <div style={{ flex: 1 }}>
-                                                        <h4 style={{ fontSize: '1.1rem', color: 'var(--text-primary)', marginBottom: '4px', fontWeight: 'bold' }}>
-                                                            {item.displayName}
-                                                            <span style={{ marginLeft: '12px', fontSize: '0.75rem', padding: '2px 10px', background: 'var(--accent-primary)', color: 'black', borderRadius: '12px', fontWeight: 'bold' }}>
-                                                                {item.count.toLocaleString()} Users
-                                                            </span>
-                                                        </h4>
-                                                        <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                                                            <strong>Primary Node:</strong> {item.nas}
-                                                        </p>
+                                            {triageData.hotlist && triageData.hotlist.length > 0 ? (
+                                                triageData.hotlist.map((item: any, idx: number) => {
+                                                    // Dynamic health color
+                                                    let healthColor = '#10b981'; // Emerald
+                                                    if (item.successRate < 90) healthColor = '#ef4444'; // Red
+                                                    else if (item.successRate < 100) healthColor = '#f59e0b'; // Amber
 
-                                                        {/* Wireless Section */}
-                                                        {item.wireless && Object.keys(item.wireless).length > 0 && (
-                                                            <div style={{ marginBottom: '16px' }}>
-                                                                <p style={{ fontSize: '0.65rem', color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 'bold' }}>Wireless (SSID Groups)</p>
-                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                                                    {Object.entries(item.wireless).map(([ssid, macs]: [string, any]) => (
-                                                                        <div key={ssid}>
-                                                                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>{ssid}</p>
-                                                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                                                                        {macs.map((mac: string) => (
-                                                                                            <button 
-                                                                                                key={mac}
-                                                                                                onClick={(e) => { e.stopPropagation(); setQuery(mac); handleSearch(undefined, mac); }}
-                                                                                                className="mac-button"
-                                                                                            >
-                                                                                                {mac}
-                                                                                            </button>
-                                                                                        ))}
+                                                    return (
+                                                        <div 
+                                                            key={idx} 
+                                                            className="glass-card" 
+                                                            style={{ padding: '16px', borderLeft: `4px solid ${healthColor}`, background: 'rgba(255,255,255,0.02)', transition: 'all 0.2s' }}
+                                                        >
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                                <div style={{ flex: 1 }}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                                        <h4 style={{ fontSize: '1.1rem', color: 'var(--text-primary)', fontWeight: 'bold', margin: 0 }}>
+                                                                            {item.displayName}
+                                                                        </h4>
+                                                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                                                            <span style={{ fontSize: '0.75rem', padding: '2px 10px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                                                                                {item.count.toLocaleString()} Total
+                                                                            </span>
+                                                                            <span style={{ fontSize: '0.75rem', padding: '2px 10px', background: healthColor, color: 'black', borderRadius: '12px', fontWeight: 'bold' }}>
+                                                                                {item.successRate}% Health
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
+                                                                        <strong>Primary Node:</strong> {item.nas}
+                                                                    </p>
+
+                                                                    {/* Wireless Section */}
+                                                                    {item.wireless && Object.keys(item.wireless).length > 0 && (
+                                                                        <div style={{ marginBottom: '16px' }}>
+                                                                            <p style={{ fontSize: '0.65rem', color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 'bold' }}>Wireless (SSID Groups)</p>
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                                                {Object.entries(item.wireless).map(([ssid, macObjs]: [string, any]) => (
+                                                                                    <div key={ssid}>
+                                                                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>{ssid}</p>
+                                                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                                                            {macObjs.map((obj: any) => (
+                                                                                                <button 
+                                                                                                    key={obj.mac}
+                                                                                                    onClick={(e) => { e.stopPropagation(); setQuery(obj.mac); handleSearch(undefined, obj.mac); }}
+                                                                                                    className="mac-button"
+                                                                                                    style={obj.status === 'failure' ? { background: 'rgba(239, 68, 68, 0.2)', borderColor: '#ef4444', color: '#ef4444' } : {}}
+                                                                                                >
+                                                                                                    {obj.mac}
+                                                                                                </button>
+                                                                                            ))}
+                                                                                        </div>
                                                                                     </div>
+                                                                                ))}
+                                                                            </div>
                                                                         </div>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        )}
+                                                                    )}
 
-                                                        {/* Wired Section */}
-                                                        {item.wired && Object.keys(item.wired).length > 0 && (
-                                                            <div>
-                                                                <p style={{ fontSize: '0.65rem', color: '#4ade80', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 'bold' }}>Wired (Protocol Groups)</p>
-                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                                                    {Object.entries(item.wired).map(([method, macs]: [string, any]) => (
-                                                                        <div key={method}>
-                                                                            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>{method}</p>
-                                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                                                                    {macs.map((mac: string) => (
-                                                                                        <button 
-                                                                                            key={mac}
-                                                                                            onClick={(e) => { e.stopPropagation(); setQuery(mac); handleSearch(undefined, mac); }}
-                                                                                            className="mac-button"
-                                                                                        >
-                                                                                            {mac}
-                                                                                        </button>
-                                                                                    ))}
-                                                                                </div>
+                                                                    {/* Wired Section */}
+                                                                    {item.wired && Object.keys(item.wired).length > 0 && (
+                                                                        <div>
+                                                                            <p style={{ fontSize: '0.65rem', color: '#4ade80', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 'bold' }}>Wired (Protocol Groups)</p>
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                                                {Object.entries(item.wired).map(([method, macObjs]: [string, any]) => (
+                                                                                    <div key={method}>
+                                                                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>{method}</p>
+                                                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                                                            {macObjs.map((obj: any) => (
+                                                                                                <button 
+                                                                                                    key={obj.mac}
+                                                                                                    onClick={(e) => { e.stopPropagation(); setQuery(obj.mac); handleSearch(undefined, obj.mac); }}
+                                                                                                    className="mac-button"
+                                                                                                    style={obj.status === 'failure' ? { background: 'rgba(239, 68, 68, 0.2)', borderColor: '#ef4444', color: '#ef4444' } : {}}
+                                                                                                >
+                                                                                                    {obj.mac}
+                                                                                                </button>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
                                                                         </div>
-                                                                    ))}
+                                                                    )}
                                                                 </div>
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
+                                                        </div>
+                                                    );
+                                                })
+                                            ) : (
                                         <div style={{ padding: '60px', textAlign: 'center', background: 'rgba(16, 185, 129, 0.05)', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.1)' }}>
                                             <svg style={{ marginBottom: '16px', color: '#10b981' }} width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
                                             <p style={{ color: '#10b981', fontWeight: 'bold' }}>Authentication Health: Optimal</p>

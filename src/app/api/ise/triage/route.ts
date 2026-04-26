@@ -40,53 +40,52 @@ export async function GET(req: Request) {
         // No trim - use exactly what is in .env
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
-        // 3. PERFORMANCE OPTIMIZATION: Use ActiveList for Global Triage
-        // In Patch 7, AuthStatus Global is broken, but ActiveList returns 14k+ records in seconds
-        const endpoint = `${url}/admin/API/mnt/Session/ActiveList`;
-        const agent = new https.Agent({ rejectUnauthorized: false });
-        const startTime = Date.now();
-
-        console.log(`[ISE TRIAGE] Fetching Active Session List from: ${endpoint}`);
-        
-        const response = await axios.get(endpoint, {
-            headers: { 
-                "Authorization": `Basic ${basicAuth}`, 
-                "Accept": "application/xml",
-                "X-ERS-Internal-User": "true"
-            },
-            httpsAgent: agent,
-            timeout: 30000,
-            proxy: false
-        });
-
-        if (response.status !== 200) {
-            throw new Error(`ISE MnT API Unavailable (HTTP ${response.status})`);
-        }
-
-        const xmlText = response.data;
-        
-        // Use high-speed regex to parse the 14,000 sessions (much faster than XML DOM)
-        const sessionMatches = xmlText.match(/<activeSession>([\s\S]*?)<\/activeSession>/g) || [];
-        
-        // 4. SAMPLING STRATEGY: Since bulk list is sparse and global failures are broken,
-        // we probe the first 100 active sessions in parallel to build a high-fidelity "Sampled Heatmap"
-        const sampleSize = 100;
-        const samples = sessionMatches.slice(0, sampleSize);
-        console.log(`[ISE TRIAGE] Deep-probing ${samples.length} sessions for forensic enrichment...`);
-
-        const siteCounts: Record<string, number> = {};
+        // 3. DUAL-STREAM SAMPLING: Fetch Active Sessions AND Recent Failures
         const psnCounts: Record<string, number> = {};
         const reasonCounts: Record<string, number> = {};
         const ssidCounts: Record<string, number> = {};
         const nestedHeatmap: Record<string, any> = {};
+        const siteCounts: Record<string, number> = {};
+        const siteFailures: Record<string, number> = {};
 
-        await Promise.allSettled(samples.map(async (sessionXml: string) => {
-            const macMatch = sessionXml.match(/<calling_station_id>(.*?)<\/calling_station_id>/);
+        const agent = new https.Agent({ rejectUnauthorized: false });
+        const startTime = Date.now();
+
+        // Failure Window: Last 15 minutes
+        const now = new Date();
+        const fifteenAgo = new Date(now.getTime() - 15 * 60 * 1000);
+        const formatTime = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, '');
+        const timeStart = formatTime(fifteenAgo);
+        const timeEnd = formatTime(now);
+
+        const activeEndpoint = `${url}/admin/API/mnt/Session/ActiveList`;
+        const failureEndpoint = `${url}/admin/API/mnt/Failure/All/${timeStart}/${timeEnd}/All/All/All`;
+
+        console.log(`[ISE TRIAGE] Dual-Stream Sampling: ActiveList & Failures`);
+
+        const [activeRes, failureRes] = await Promise.allSettled([
+            axios.get(activeEndpoint, { headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" }, httpsAgent: agent, timeout: 20000 }),
+            axios.get(failureEndpoint, { headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" }, httpsAgent: agent, timeout: 20000 })
+        ]);
+
+        const activeXml = activeRes.status === 'fulfilled' ? activeRes.value.data : '';
+        const failureXml = failureRes.status === 'fulfilled' ? failureRes.value.data : '';
+
+        const activeMatches = (activeXml.match(/<activeSession>([\s\S]*?)<\/activeSession>/g) || []).slice(0, 80);
+        const failureMatches = (failureXml.match(/<failureRecord>([\s\S]*?)<\/failureRecord>/g) || []).slice(0, 40);
+
+        const allProbes = [
+            ...activeMatches.map(xml => ({ xml, status: 'success' })),
+            ...failureMatches.map(xml => ({ xml, status: 'failure' }))
+        ];
+
+        console.log(`[ISE TRIAGE] Probing ${allProbes.length} sessions (Successes: ${activeMatches.length}, Failures: ${failureMatches.length})`);
+
+        await Promise.allSettled(allProbes.map(async ({ xml, status }) => {
+            const macMatch = xml.match(/<calling_station_id>(.*?)<\/calling_station_id>/);
             if (!macMatch) return;
             const mac = macMatch[1];
-            
-            const isHardwareMac = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(mac);
-            if (!isHardwareMac) return;
+            if (!/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(mac)) return;
 
             try {
                 const detailRes = await axios.get(`${url}/admin/API/mnt/Session/MACAddress/${mac}`, {
@@ -109,19 +108,13 @@ export async function GET(req: Request) {
                 const psn = psnMatch ? psnMatch[1] : 'Unknown';
                 let ssid = (ssidMatch && ssidMatch[1] !== 'null') ? ssidMatch[1] : null;
 
-                // Deep parse other_attr_string for hidden SSID
                 if (!ssid && otherAttrMatch) {
-                    const attrs = otherAttrMatch[1];
-                    // Look for Called-Station-ID=XX-XX-XX-XX-XX-XX:SSID
-                    const calledStationMatch = attrs.match(/Called-Station-ID=.*?:(.*?)(?::|:!:|$)/);
-                    if (calledStationMatch) {
-                        ssid = calledStationMatch[1];
-                    }
+                    const calledStationMatch = otherAttrMatch[1].match(/Called-Station-ID=.*?:(.*?)(?::|:!:|$)/);
+                    if (calledStationMatch) ssid = calledStationMatch[1];
                 }
 
                 if (['DOT1X', 'MAB', 'WEBAUTH'].includes(method)) {
                     psnCounts[psn] = (psnCounts[psn] || 0) + 1;
-                    
                     let siteCode = 'OTHER';
                     if (location !== 'Unknown' && location.includes('#')) {
                         siteCode = location.split('#').pop()?.toUpperCase() || 'OTHER';
@@ -129,65 +122,64 @@ export async function GET(req: Request) {
                         siteCode = nas.substring(0, 3).toUpperCase();
                     }
 
-                    siteCounts[siteCode] = (siteCounts[siteCode] || 0) + 1;
+                    if (status === 'success') {
+                        siteCounts[siteCode] = (siteCounts[siteCode] || 0) + 1;
+                    } else {
+                        siteFailures[siteCode] = (siteFailures[siteCode] || 0) + 1;
+                    }
                     
-                    // Nested Grouping: Site -> Type -> SubGroup
                     if (!nestedHeatmap[siteCode]) nestedHeatmap[siteCode] = { wireless: {}, wired: {}, nas: nas };
                     
-                    if (ssid) {
-                        if (!nestedHeatmap[siteCode].wireless[ssid]) nestedHeatmap[siteCode].wireless[ssid] = [];
-                        if (nestedHeatmap[siteCode].wireless[ssid].length < 6) nestedHeatmap[siteCode].wireless[ssid].push(mac);
-                    } else {
-                        if (!nestedHeatmap[siteCode].wired[method]) nestedHeatmap[siteCode].wired[method] = [];
-                        if (nestedHeatmap[siteCode].wired[method].length < 6) nestedHeatmap[siteCode].wired[method].push(mac);
+                    const group = ssid ? nestedHeatmap[siteCode].wireless : nestedHeatmap[siteCode].wired;
+                    const key = ssid || method;
+                    
+                    if (!group[key]) group[key] = [];
+                    if (group[key].length < 12) {
+                        group[key].push({ mac, status });
                     }
                     
-                    if (!reasonCounts[method]) reasonCounts[method] = 0;
-                    reasonCounts[method]++;
-                    if (ssid) {
-                        if (!ssidCounts[ssid]) ssidCounts[ssid] = 0;
-                        ssidCounts[ssid]++;
-                    }
+                    reasonCounts[method] = (reasonCounts[method] || 0) + 1;
+                    if (ssid) ssidCounts[ssid] = (ssidCounts[ssid] || 0) + 1;
                 }
             } catch (err) {}
         }));
 
-        const topMethod = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "RADIUS";
-        const topSsid = Object.entries(ssidCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "N/A";
-
-        const duration = Date.now() - startTime;
-        
-        // Build the Hotlist from our Nested Heatmap
         const hotlist = Object.entries(nestedHeatmap)
-            .map(([site, data]: [string, any]) => ({
-                identity: site,
-                displayName: `Site: ${site}`,
-                count: siteCounts[site] || 0,
-                latestTimestamp: new Date().toISOString(),
-                reason: "Live RADIUS Telemetry",
-                nas: data.nas,
-                wireless: data.wireless,
-                wired: data.wired
-            }))
+            .map(([site, data]: [string, any]) => {
+                const successes = siteCounts[site] || 0;
+                const failures = siteFailures[site] || 0;
+                const total = successes + failures;
+                const health = total > 0 ? Math.round((successes / total) * 100) : 100;
+                
+                return {
+                    identity: site,
+                    displayName: `Site: ${site}`,
+                    count: total,
+                    successRate: health,
+                    latestTimestamp: new Date().toISOString(),
+                    reason: "Unified Forensic Snapshot",
+                    nas: data.nas,
+                    wireless: data.wireless,
+                    wired: data.wired
+                };
+            })
             .sort((a, b) => b.count - a.count);
 
         return NextResponse.json({ 
             found: hotlist.length > 0, 
-            failures: [], 
             hotlist: hotlist.slice(0, 20),
             stats: {
                 total: Object.values(siteCounts).reduce((a, b) => a + b, 0),
-                failures: 0,
-                topReason: topMethod, // This is the Auth Method (e.g. DOT1X)
-                topSsid: topSsid,
+                failures: Object.values(siteFailures).reduce((a, b) => a + b, 0),
+                topReason: Object.entries(reasonCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "RADIUS",
+                topSsid: Object.entries(ssidCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "N/A",
                 topLocation: hotlist[0]?.identity || "None",
-                rate: 0
             },
             psnDistribution: psnCounts,
             ssidDistribution: ssidCounts,
             siteDistribution: siteCounts,
             authDistribution: reasonCounts,
-            processingTime: `${duration}ms`
+            processingTime: `${Date.now() - startTime}ms`
         });
     } catch (e: any) {
         console.error(`[ISE TRIAGE] Critical Error:`, e);
