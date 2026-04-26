@@ -275,18 +275,17 @@ export default function CiscoIsePage() {
                                                                     {Object.entries(item.wireless).map(([ssid, macs]: [string, any]) => (
                                                                         <div key={ssid}>
                                                                             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>{ssid}</p>
-                                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                                                                {macs.map((mac: string) => (
-                                                                                    <button 
-                                                                                        key={mac}
-                                                                                        onClick={(e) => { e.stopPropagation(); setQuery(mac); handleSearch(undefined, mac); }}
-                                                                                        className="btn-secondary"
-                                                                                        style={{ fontSize: '0.65rem', padding: '3px 8px', borderRadius: '4px', fontFamily: 'monospace', background: 'rgba(255,255,255,0.03)' }}
-                                                                                    >
-                                                                                        {mac}
-                                                                                    </button>
-                                                                                ))}
-                                                                            </div>
+                                                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                                                        {macs.map((mac: string) => (
+                                                                                            <button 
+                                                                                                key={mac}
+                                                                                                onClick={(e) => { e.stopPropagation(); setQuery(mac); handleSearch(undefined, mac); }}
+                                                                                                className="mac-button"
+                                                                                            >
+                                                                                                {mac}
+                                                                                            </button>
+                                                                                        ))}
+                                                                                    </div>
                                                                         </div>
                                                                     ))}
                                                                 </div>
@@ -301,18 +300,17 @@ export default function CiscoIsePage() {
                                                                     {Object.entries(item.wired).map(([method, macs]: [string, any]) => (
                                                                         <div key={method}>
                                                                             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>{method}</p>
-                                                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                                                                {macs.map((mac: string) => (
-                                                                                    <button 
-                                                                                        key={mac}
-                                                                                        onClick={(e) => { e.stopPropagation(); setQuery(mac); handleSearch(undefined, mac); }}
-                                                                                        className="btn-secondary"
-                                                                                        style={{ fontSize: '0.65rem', padding: '3px 8px', borderRadius: '4px', fontFamily: 'monospace', background: 'rgba(255,255,255,0.03)' }}
-                                                                                    >
-                                                                                        {mac}
-                                                                                    </button>
-                                                                                ))}
-                                                                            </div>
+                                                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                                                    {macs.map((mac: string) => (
+                                                                                        <button 
+                                                                                            key={mac}
+                                                                                            onClick={(e) => { e.stopPropagation(); setQuery(mac); handleSearch(undefined, mac); }}
+                                                                                            className="mac-button"
+                                                                                        >
+                                                                                            {mac}
+                                                                                        </button>
+                                                                                    ))}
+                                                                                </div>
                                                                         </div>
                                                                     ))}
                                                                 </div>
