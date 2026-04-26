@@ -12,6 +12,26 @@ import {
     UserPlus, Link2
 } from 'lucide-react';
 
+// Deep forensic hunting for any field that looks like an identity name
+const huntName = (obj: any) => {
+    if (!obj) return null;
+    return (
+        obj.probable_owner?.name || 
+        (typeof obj.probable_owner === 'string' && obj.probable_owner) ||
+        obj.owner_name || 
+        obj.assigned_to || 
+        obj.last_login_user ||
+        obj.last_user ||
+        obj.last_account_name ||
+        obj.probable_home?.name ||
+        (typeof obj.probable_home === 'string' && obj.probable_home) ||
+        obj.home_host_name ||
+        obj.last_host ||
+        obj.assigned_to_user ||
+        null
+    );
+};
+
 const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: any, onSearch: (v: string) => void }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [details, setDetails] = useState<any>(null);
@@ -388,26 +408,6 @@ export default function VectraPage() {
     const [error, setError] = useState<string | null>(null);
     const [highRiskOnly, setHighRiskOnly] = useState(true);
 
-    // Deep forensic hunting for any field that looks like an identity name
-    const huntName = (obj: any) => {
-        if (!obj) return null;
-        return (
-            obj.probable_owner?.name || 
-            (typeof obj.probable_owner === 'string' && obj.probable_owner) ||
-            obj.owner_name || 
-            obj.assigned_to || 
-            obj.last_login_user ||
-            obj.last_user ||
-            obj.last_account_name ||
-            obj.probable_home?.name ||
-            (typeof obj.probable_home === 'string' && obj.probable_home) ||
-            obj.home_host_name ||
-            obj.last_host ||
-            obj.assigned_to_user ||
-            null
-        );
-    };
-
     const loadTriage = async (retryCount = 0) => {
         if (retryCount === 0) setTriageLoading(true);
         try {
@@ -442,13 +442,17 @@ export default function VectraPage() {
                 setError("Failed to synchronize behavioral triage. Try refreshing.");
             }
         } finally {
-            if (retryCount >= 1 || !triageLoading) setTriageLoading(false);
+            // Only stop loading if we're not waiting for a retry timeout
+            setTriageLoading(false);
         }
     };
 
     useEffect(() => {
         if (status === 'authenticated') {
-            loadTriage();
+            const timer = setTimeout(() => {
+                loadTriage();
+            }, 100);
+            return () => clearTimeout(timer);
         }
     }, [status]);
 
