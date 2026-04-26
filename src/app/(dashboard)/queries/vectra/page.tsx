@@ -253,7 +253,6 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                                 </div>
                                             </div>
                                         </>
->
                                     )}
                                 </div>
                             </div>
