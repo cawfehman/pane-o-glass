@@ -12,8 +12,8 @@ import {
     UserPlus, Link2
 } from 'lucide-react';
 
-// Deep forensic hunting for any field that looks like an identity name
-const huntName = (obj: any) => {
+// Deep forensic hunting for Identity (User)
+const huntIdentity = (obj: any) => {
     if (!obj) return null;
     return (
         obj.probable_owner?.name || 
@@ -23,7 +23,16 @@ const huntName = (obj: any) => {
         obj.last_login_user ||
         obj.last_user ||
         obj.last_account_name ||
-        obj.probable_home?.name ||
+        obj.assigned_to_user ||
+        null
+    );
+};
+
+// Deep forensic hunting for Workstation (Host)
+const huntWorkstation = (obj: any) => {
+    if (!obj) return null;
+    return (
+        obj.probable_home?.name || 
         (typeof obj.probable_home === 'string' && obj.probable_home) ||
         obj.home_host_name ||
         obj.home_name ||
@@ -32,7 +41,6 @@ const huntName = (obj: any) => {
         obj.last_host_name ||
         obj.origin_host ||
         obj.primary_workstation ||
-        obj.assigned_to_user ||
         null
     );
 };
@@ -249,54 +257,35 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                 </h4>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
                                     {type === 'host' ? (
-                                        <>
-                                            <div className="attribution-box">
-                                                <div className="attr-label">
-                                                    {details?._is_ident_synthesized ? 'Confirmed Owner (Telemetry)' : 'Probable Owner (Modeling)'}
-                                                </div>
-                                                <div className="attr-value">
-                                                    {huntName(details) || huntName(data) ? (
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                            <button 
-                                                                className="pivot-link" 
-                                                                onClick={(e) => { e.stopPropagation(); onSearch(huntName(details) || huntName(data)); }}
-                                                            >
-                                                                <User size={14} /> {huntName(details) || huntName(data)}
-                                                            </button>
-                                                        </div>
-                                                    ) : <span className="attr-none">Scanning behavioral history...</span>}
-                                                </div>
+                                        <div className="attribution-box">
+                                            <div className="attr-label">
+                                                {details?._is_ident_synthesized ? 'Confirmed Owner (Telemetry)' : 'Probable Owner (Modeling)'}
                                             </div>
-                                            <div className="attribution-box">
-                                                <div className="attr-label">Last Known Interaction</div>
-                                                <div className="attr-value">
-                                                    {(details?.last_account_name || details?.last_user || details?.last_login_user || data?.last_account_name || data?.last_user || data?.last_login_user) ? (
-                                                        <button 
-                                                            className="pivot-link" 
-                                                            onClick={(e) => { e.stopPropagation(); onSearch(details?.last_account_name || details?.last_user || details?.last_login_user || data?.last_account_name || data?.last_user || data?.last_login_user); }}
-                                                        >
-                                                            <Link2 size={14} /> {details?.last_account_name || details?.last_user || details?.last_login_user || data?.last_account_name || data?.last_user || data?.last_login_user}
-                                                        </button>
-                                                    ) : <span className="attr-none">No recent login telemetry</span>}
-                                                </div>
+                                            <div className="attr-value">
+                                                {huntIdentity(details) || huntIdentity(data) ? (
+                                                    <button className="pivot-link" onClick={() => onSearch(huntIdentity(details) || huntIdentity(data))}>
+                                                        <UserCheck size={14} /> {huntIdentity(details) || huntIdentity(data)}
+                                                    </button>
+                                                ) : (
+                                                    <span className="attr-none">Scanning behavioral history...</span>
+                                                )}
                                             </div>
-                                        </>
+                                        </div>
                                     ) : (
-                                        <>
-                                            <div className="attribution-box">
-                                                <div className="attr-label">Probable Home (Modeling)</div>
-                                                <div className="attr-value">
-                                                    {huntName(details) || huntName(data) ? (
-                                                        <button 
-                                                            className="pivot-link" 
-                                                            onClick={(e) => { e.stopPropagation(); onSearch(huntName(details) || huntName(data)); }}
-                                                        >
-                                                            <HardDrive size={14} /> {huntName(details) || huntName(data)}
-                                                        </button>
-                                                    ) : <span className="attr-none">Analyzing host affinity...</span>}
-                                                </div>
+                                        <div className="attribution-box">
+                                            <div className="attr-label">
+                                                {details?._is_ident_synthesized ? 'Confirmed Home (Telemetry)' : 'Probable Home (Modeling)'}
                                             </div>
-                                        </>
+                                            <div className="attr-value">
+                                                {huntWorkstation(details) || huntWorkstation(data) ? (
+                                                    <button className="pivot-link" onClick={() => onSearch(huntWorkstation(details) || huntWorkstation(data))}>
+                                                        <HardDrive size={14} /> {huntWorkstation(details) || huntWorkstation(data)}
+                                                    </button>
+                                                ) : (
+                                                    <span className="attr-none">Analyzing host affinity...</span>
+                                                )}
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -505,13 +494,21 @@ export default function VectraPage() {
     };
 
     useEffect(() => {
-        if (status === 'authenticated') {
-            const timer = setTimeout(() => {
+        if (status !== 'authenticated') return;
+
+        // Immediate load
+        loadTriage();
+
+        // Persistence Watcher: If triage remains empty, try again every 6 seconds
+        const watcher = setInterval(() => {
+            if (triageHosts.length === 0 && triageAccounts.length === 0 && !triageLoading) {
+                console.log("[WATCHER] Triage empty, attempting forensic sync...");
                 loadTriage();
-            }, 100);
-            return () => clearTimeout(timer);
-        }
-    }, [status]);
+            }
+        }, 6000);
+
+        return () => clearInterval(watcher);
+    }, [status, triageHosts.length, triageAccounts.length, triageLoading]);
 
     const loadVectraData = async (searchQuery: string = query, isQuickAction: boolean = false, typeOverride?: 'hosts' | 'accounts') => {
         setLoading(true);
