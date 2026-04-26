@@ -83,6 +83,10 @@ export async function GET(req: Request) {
             const macMatch = sessionXml.match(/<calling_station_id>(.*?)<\/calling_station_id>/);
             if (!macMatch) return;
             const mac = macMatch[1];
+            
+            // Validate that we have a REAL hardware MAC, not an IP address (common for VPN/certain nodes)
+            const isHardwareMac = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(mac);
+            if (!isHardwareMac) return;
 
             try {
                 // Fetch full session details for this specific MAC (Surgical & Fast)
@@ -101,11 +105,13 @@ export async function GET(req: Request) {
                 const locationMatch = detailXml.match(/<location>(.*?)<\/location>/);
                 const nasMatch = detailXml.match(/<network_device_name>(.*?)<\/network_device_name>/);
                 const psnMatch = detailXml.match(/<server>(.*?)<\/server>/);
+                const ssidMatch = detailXml.match(/<wlan_ssid>(.*?)<\/wlan_ssid>/);
 
                 const method = methodMatch ? methodMatch[1].toLowerCase() : 'unknown';
                 const location = locationMatch ? locationMatch[1] : 'Unknown';
                 const nas = nasMatch ? nasMatch[1] : 'Unknown';
                 const psn = psnMatch ? psnMatch[1] : 'Unknown';
+                const ssid = ssidMatch ? ssidMatch[1] : 'N/A';
 
                 // We ONLY care about RADIUS for triage (dot1x, mab)
                 if (['dot1x', 'mab', 'webauth'].includes(method)) {
@@ -121,11 +127,20 @@ export async function GET(req: Request) {
                     siteCounts[siteCode] = (siteCounts[siteCode] || 0) + 1;
                     if (!locationMap[siteCode]) locationMap[siteCode] = [];
                     locationMap[siteCode].push(mac);
+                    
+                    // Analytics for stats
+                    if (!reasonCounts[method]) reasonCounts[method] = 0;
+                    reasonCounts[method]++;
+                    if (!ssidCounts[ssid]) ssidCounts[ssid] = 0;
+                    ssidCounts[ssid]++;
                 }
             } catch (err) {
                 // Individual probe failed, skip
             }
         }));
+
+        const topMethod = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1])[0]?.[0]?.toUpperCase() || "RADIUS";
+        const topSsid = Object.entries(ssidCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "N/A";
 
         const duration = Date.now() - startTime;
         
@@ -136,7 +151,7 @@ export async function GET(req: Request) {
                 displayName: `Site: ${site}`,
                 count: count,
                 latestTimestamp: new Date().toISOString(),
-                reason: "Active RADIUS Connections (Sampled)",
+                reason: "Live RADIUS Telemetry",
                 nas: site,
                 topUsers: locationMap[site] || []
             }))
@@ -149,8 +164,8 @@ export async function GET(req: Request) {
             stats: {
                 total: Object.values(siteCounts).reduce((a, b) => a + b, 0),
                 failures: 0,
-                topReason: "Live RADIUS Triage",
-                topSsid: "Enriched Building View",
+                topReason: topMethod,
+                topSsid: topSsid,
                 topLocation: hotlist[0]?.identity || "None",
                 rate: 0
             },
