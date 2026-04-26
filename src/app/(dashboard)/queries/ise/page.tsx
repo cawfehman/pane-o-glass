@@ -109,11 +109,24 @@ export default function CiscoIsePage() {
                 if (!macToDrilldown) setQuery(searchTerm);
             }
 
-        } catch (err: any) {
-            setError(err.message);
         } finally {
             setLoading(false);
         }
+    };
+
+    const DistributionBar = ({ label, count, total, color = 'var(--accent-primary)' }: { label: string, count: number, total: number, color?: string }) => {
+        const percent = total > 0 ? Math.round((count / total) * 100) : 0;
+        return (
+            <div style={{ marginBottom: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '4px' }}>
+                    <span style={{ color: 'var(--text-secondary)', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={label}>{label}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>{count} ({percent}%)</span>
+                </div>
+                <div style={{ height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${percent}%`, background: color, borderRadius: '2px', transition: 'width 0.5s ease-out' }} />
+                </div>
+            </div>
+        );
     };
 
     if (permsLoading) return <div className="p-8">Verifying Cisco ISE access...</div>;
@@ -286,33 +299,27 @@ export default function CiscoIsePage() {
                         
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             <div className="glass-card" style={{ borderTop: '4px solid var(--accent-primary)' }}>
-                                <h4 style={{ marginBottom: '16px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Live RADIUS Summary</h4>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                    <div>
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Sampled RADIUS Users</p>
-                                        <p style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{triageData?.stats?.total || 0}</p>
-                                    </div>
-                                    <div>
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Dominant Auth Method</p>
-                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold', color: 'var(--accent-secondary)' }}>{triageData?.stats?.topReason && triageData.stats.topReason !== "None" ? triageData.stats.topReason : "No Sessions"}</p>
-                                    </div>
-                                    <div>
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Most Impacted SSID</p>
-                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>{triageData?.stats?.topSsid && triageData.stats.topSsid !== "None" ? triageData.stats.topSsid : "N/A"}</p>
-                                    </div>
-                                    <div>
-                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>High-Stress Site</p>
-                                        <p style={{ fontSize: '0.95rem', fontWeight: 'bold' }}>{triageData?.stats?.topLocation && triageData.stats.topLocation !== "None" ? triageData.stats.topLocation : "N/A"}</p>
-                                    </div>
-                                    <div style={{ marginTop: '8px', padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Auth Success Rate</span>
-                                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>{100 - (triageData?.stats?.rate || 0)}%</span>
-                                        </div>
-                                        <div style={{ height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                                            <div style={{ height: '100%', background: 'var(--accent-primary)', width: `${100 - (triageData?.stats?.rate || 0)}%` }}></div>
-                                        </div>
-                                    </div>
+                                <h4 style={{ marginBottom: '20px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Live Distribution</h4>
+                                
+                                <div style={{ marginBottom: '24px' }}>
+                                    <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Sites / Buildings</p>
+                                    {triageData?.siteDistribution && Object.entries(triageData.siteDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 3).map(([site, count]) => (
+                                        <DistributionBar key={site} label={site} count={count as number} total={triageData.stats.total} color="var(--accent-primary)" />
+                                    ))}
+                                </div>
+
+                                <div style={{ marginBottom: '24px' }}>
+                                    <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>SSID Load</p>
+                                    {triageData?.ssidDistribution && Object.entries(triageData.ssidDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 3).map(([ssid, count]) => (
+                                        <DistributionBar key={ssid} label={ssid} count={count as number} total={triageData.stats.total} color="var(--accent-secondary)" />
+                                    ))}
+                                </div>
+
+                                <div>
+                                    <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Authentication Methods</p>
+                                    {triageData?.authDistribution && Object.entries(triageData.authDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).map(([method, count]) => (
+                                        <DistributionBar key={method} label={method.toUpperCase()} count={count as number} total={triageData.stats.total} color="#4ade80" />
+                                    ))}
                                 </div>
                             </div>
 

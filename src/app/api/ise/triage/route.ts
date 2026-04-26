@@ -172,6 +172,9 @@ export async function GET(req: Request) {
                 rate: 0
             },
             psnDistribution: psnCounts,
+            ssidDistribution: ssidCounts,
+            siteDistribution: siteCounts,
+            authDistribution: reasonCounts,
             processingTime: `${duration}ms`
         });
     } catch (e: any) {
