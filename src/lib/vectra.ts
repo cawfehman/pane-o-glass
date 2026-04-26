@@ -73,8 +73,8 @@ export async function getVectraHosts(params: any = {}) {
             return {
                 ...response.data,
                 results: response.data.results.filter((h: any) => 
-                    (h.threat > 0 || h.t_score > 0 || h.certainty > 0 || h.c_score > 0)
-                )
+                    (h.threat > 0 || h.t_score > 0 || h.certainty > 0 || h.c_score > 0 || h.tags?.length > 0)
+                ).slice(0, 50)
             };
         }
 

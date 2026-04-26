@@ -477,11 +477,13 @@ export default function VectraPage() {
             const data = await res.json();
             if (data.error) throw new Error(data.error);
 
-            // If we got empty results but it's the first try, wait and retry once
-            if ((!data.hosts || data.hosts.length === 0) && retryCount < 2) {
-                console.log(`[DATA LAG] Triage returned empty. Retry ${retryCount + 1}...`);
-                await loadTriage(retryCount + 1);
-                return;
+            // Aggressive Empty-State Recovery: If we got empty results, retry up to 3 times
+            const isEmpty = (!data.hosts || data.hosts.length === 0) && (!data.accounts || data.accounts.length === 0);
+            if (isEmpty && retryCount < 3) {
+                console.log(`[EMPTY RECOVERY] Triage empty. Handshake retry ${retryCount + 1}...`);
+                const retryDelay = retryCount === 0 ? 800 : retryCount === 1 ? 2500 : 5000;
+                await new Promise(r => setTimeout(r, retryDelay));
+                return loadTriage(retryCount + 1);
             }
 
             setTriageHosts(data.hosts || []);
@@ -490,9 +492,9 @@ export default function VectraPage() {
             setDetectionDist(data.detectionDistribution || {});
             
             setCounts({
-                hosts: data.stats.totalHosts,
-                accounts: data.stats.totalAccounts,
-                active_detections: data.stats.totalDetections
+                hosts: data.stats.totalHosts || (data.hosts?.length || 0),
+                accounts: data.stats.totalAccounts || (data.accounts?.length || 0),
+                active_detections: data.stats.totalDetections || 0
             });
 
             setTriageLoading(false); // SUCCESS: stop loading
@@ -518,20 +520,21 @@ export default function VectraPage() {
     useEffect(() => {
         if (status !== 'authenticated') return;
 
-        // Initial sync
-        loadTriage();
+        // Initial sync if empty
+        if (triageHosts.length === 0 && triageAccounts.length === 0 && !triageLoading) {
+            loadTriage();
+        }
 
         // Persistence Watcher (Non-blocking)
         const watcher = setInterval(() => {
-            // Only retry if we are NOT already loading and have NO data
             if (triageHosts.length === 0 && triageAccounts.length === 0 && !triageLoading) {
-                console.log("[PERSISTENCE] Retrying triage sync...");
+                console.log("[PERSISTENCE] Triage empty, attempting forensic sync...");
                 loadTriage();
             }
-        }, 8000);
+        }, 10000);
 
         return () => clearInterval(watcher);
-    }, [status]); // ONLY depend on status to prevent re-triggering loops
+    }, [status, triageHosts.length, triageAccounts.length, triageLoading]);
 
     const loadVectraData = async (searchQuery: string = query, isQuickAction: boolean = false, typeOverride?: 'hosts' | 'accounts') => {
         setLoading(true);
