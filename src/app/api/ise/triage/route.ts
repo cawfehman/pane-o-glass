@@ -66,6 +66,8 @@ export async function GET(req: Request) {
         const xmlText = response.data;
         
         // Use high-speed regex to parse the 14,000 sessions (much faster than XML DOM)
+        const sessionMatches = xmlText.match(/<activeSession>([\s\S]*?)<\/activeSession>/g) || [];
+        
         // 4. SAMPLING STRATEGY: Since bulk list is sparse and global failures are broken,
         // we probe the first 60 active sessions in parallel to build a high-fidelity "Sampled Heatmap"
         const sampleSize = 60;
