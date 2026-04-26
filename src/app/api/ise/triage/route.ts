@@ -66,75 +66,89 @@ export async function GET(req: Request) {
         const xmlText = response.data;
         
         // Use high-speed regex to parse the 14,000 sessions (much faster than XML DOM)
-        const sessionMatches = xmlText.match(/<activeSession>([\s\S]*?)<\/activeSession>/g) || [];
-        console.log(`[ISE TRIAGE] Processing ${sessionMatches.length} active sessions.`);
+        // 4. SAMPLING STRATEGY: Since bulk list is sparse and global failures are broken,
+        // we probe the first 60 active sessions in parallel to build a high-fidelity "Sampled Heatmap"
+        const sampleSize = 60;
+        const samples = sessionMatches.slice(0, sampleSize);
+        console.log(`[ISE TRIAGE] Deep-probing ${samples.length} sessions for forensic enrichment...`);
 
         const siteCounts: Record<string, number> = {};
         const psnCounts: Record<string, number> = {};
-        const userSites: Record<string, string[]> = {}; // For site-based drill down
+        const radiusMacs: string[] = [];
+        const locationMap: Record<string, string[]> = {};
 
-        sessionMatches.forEach((sessionXml: string) => {
-            // Extract key fields using optimized regex
-            const serverMatch = sessionXml.match(/<server>(.*?)<\/server>/);
-            const wlcMatch = sessionXml.match(/<network_device_name>(.*?)<\/network_device_name>/) || sessionXml.match(/<nas_ip_address>(.*?)<\/nas_ip_address>/);
-            const userMatch = sessionXml.match(/<user_name>(.*?)<\/user_name>/);
+        await Promise.allSettled(samples.map(async (sessionXml: string) => {
             const macMatch = sessionXml.match(/<calling_station_id>(.*?)<\/calling_station_id>/);
-            const locationMatch = sessionXml.match(/<location>(.*?)<\/location>/);
-            const methodMatch = sessionXml.match(/<authentication_method>(.*?)<\/authentication_method>/);
+            if (!macMatch) return;
+            const mac = macMatch[1];
 
-            const server = serverMatch ? serverMatch[1] : 'Unknown';
-            const wlc = wlcMatch ? wlcMatch[1] : 'Unknown';
-            const user = userMatch ? userMatch[1] : 'Unknown';
-            const mac = macMatch ? macMatch[1] : 'Unknown';
-            const location = locationMatch ? locationMatch[1] : 'Unknown';
-            const method = methodMatch ? methodMatch[1] : 'Unknown';
+            try {
+                // Fetch full session details for this specific MAC (Surgical & Fast)
+                const detailRes = await axios.get(`${url}/admin/API/mnt/Session/MACAddress/${mac}`, {
+                    headers: { 
+                        "Authorization": `Basic ${basicAuth}`, 
+                        "Accept": "application/xml",
+                        "X-ERS-Internal-User": "true"
+                    },
+                    httpsAgent: agent,
+                    timeout: 5000
+                });
 
-            psnCounts[server] = (psnCounts[server] || 0) + 1;
+                const detailXml = detailRes.data;
+                const methodMatch = detailXml.match(/<authentication_method>(.*?)<\/authentication_method>/);
+                const locationMatch = detailXml.match(/<location>(.*?)<\/location>/);
+                const nasMatch = detailXml.match(/<network_device_name>(.*?)<\/network_device_name>/);
+                const psnMatch = detailXml.match(/<server>(.*?)<\/server>/);
 
-            // Site Code Extraction: Use the last part of the location string (e.g., Campus#KEL -> KEL)
-            let siteCode = 'OTHER';
-            if (location !== 'Unknown' && location.includes('#')) {
-                siteCode = location.split('#').pop()?.toUpperCase() || 'OTHER';
-            } else if (wlc !== 'Unknown' && !wlc.match(/^\d/)) {
-                siteCode = wlc.substring(0, 3).toUpperCase();
+                const method = methodMatch ? methodMatch[1].toLowerCase() : 'unknown';
+                const location = locationMatch ? locationMatch[1] : 'Unknown';
+                const nas = nasMatch ? nasMatch[1] : 'Unknown';
+                const psn = psnMatch ? psnMatch[1] : 'Unknown';
+
+                // We ONLY care about RADIUS for triage (dot1x, mab)
+                if (['dot1x', 'mab', 'webauth'].includes(method)) {
+                    psnCounts[psn] = (psnCounts[psn] || 0) + 1;
+                    
+                    let siteCode = 'OTHER';
+                    if (location !== 'Unknown' && location.includes('#')) {
+                        siteCode = location.split('#').pop()?.toUpperCase() || 'OTHER';
+                    } else if (nas !== 'Unknown' && !nas.match(/^\d/)) {
+                        siteCode = nas.substring(0, 3).toUpperCase();
+                    }
+
+                    siteCounts[siteCode] = (siteCounts[siteCode] || 0) + 1;
+                    if (!locationMap[siteCode]) locationMap[siteCode] = [];
+                    locationMap[siteCode].push(mac);
+                }
+            } catch (err) {
+                // Individual probe failed, skip
             }
-            siteCounts[siteCode] = (siteCounts[siteCode] || 0) + 1;
-
-            if (!userSites[siteCode]) userSites[siteCode] = [];
-            
-            // CRITICAL: Only use MACs for drill-down if they are RADIUS (dot1x/mab)
-            // PassiveID sessions have no AuthStatus history and will return blank results
-            const isRadius = ['dot1x', 'mab', 'webauth'].includes(method.toLowerCase());
-            
-            if (isRadius && userSites[siteCode].length < 6) {
-                userSites[siteCode].push(mac);
-            }
-        });
+        }));
 
         const duration = Date.now() - startTime;
         
-        // Map to a format the Dashboard expects, or provide new high-level stats
+        // Build the Hotlist from our Sampled RADIUS sessions
         const hotlist = Object.entries(siteCounts)
             .map(([site, count]) => ({
                 identity: site,
                 displayName: `Site: ${site}`,
                 count: count,
                 latestTimestamp: new Date().toISOString(),
-                reason: "Active Connections",
+                reason: "Active RADIUS Connections (Sampled)",
                 nas: site,
-                topUsers: userSites[site]
+                topUsers: locationMap[site] || []
             }))
             .sort((a, b) => b.count - a.count);
 
         return NextResponse.json({ 
-            found: sessionMatches.length > 0, 
-            failures: [], // ActiveList doesn't have failures, but we'll show active load
+            found: hotlist.length > 0, 
+            failures: [], 
             hotlist: hotlist.slice(0, 20),
             stats: {
-                total: sessionMatches.length,
-                failures: 0, // Placeholder
-                topReason: "High Connection Volume",
-                topSsid: "CHS-Wireless (Est)",
+                total: Object.values(siteCounts).reduce((a, b) => a + b, 0),
+                failures: 0,
+                topReason: "Live RADIUS Triage",
+                topSsid: "Enriched Building View",
                 topLocation: hotlist[0]?.identity || "None",
                 rate: 0
             },
