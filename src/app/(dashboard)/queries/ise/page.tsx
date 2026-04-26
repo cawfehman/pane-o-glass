@@ -263,6 +263,23 @@ export default function CiscoIsePage() {
                                                         >
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                                                 <div style={{ flex: 1 }}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                                                                        <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Forensic Triage Heatmap</h3>
+                                                                        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }}></div>
+                                                                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Healthy (100%)</span>
+                                                                            </div>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b' }}></div>
+                                                                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Stressed (90-99%)</span>
+                                                                            </div>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }}></div>
+                                                                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Critical (&lt;90%)</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
                                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                                                                         <h4 style={{ fontSize: '1.1rem', color: 'var(--text-primary)', fontWeight: 'bold', margin: 0 }}>
                                                                             {item.displayName}
