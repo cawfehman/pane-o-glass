@@ -79,16 +79,24 @@ export async function GET(req: Request) {
             const wlcMatch = sessionXml.match(/<network_device_name>(.*?)<\/network_device_name>/) || sessionXml.match(/<nas_ip_address>(.*?)<\/nas_ip_address>/);
             const userMatch = sessionXml.match(/<user_name>(.*?)<\/user_name>/);
             const macMatch = sessionXml.match(/<calling_station_id>(.*?)<\/calling_station_id>/);
+            const locationMatch = sessionXml.match(/<location>(.*?)<\/location>/);
 
             const server = serverMatch ? serverMatch[1] : 'Unknown';
             const wlc = wlcMatch ? wlcMatch[1] : 'Unknown';
             const user = userMatch ? userMatch[1] : 'Unknown';
             const mac = macMatch ? macMatch[1] : 'Unknown';
+            const location = locationMatch ? locationMatch[1] : 'Unknown';
 
             psnCounts[server] = (psnCounts[server] || 0) + 1;
 
-            // Site Code: First 3 letters of WLC (e.g., KEL, CAM, RIV)
-            const siteCode = wlc !== 'Unknown' ? wlc.substring(0, 3).toUpperCase() : 'OTHER';
+            // Site Code Extraction: Use the last part of the location string (e.g., Campus#KEL -> KEL)
+            let siteCode = 'OTHER';
+            if (location !== 'Unknown' && location.includes('#')) {
+                siteCode = location.split('#').pop()?.toUpperCase() || 'OTHER';
+            } else if (wlc !== 'Unknown' && !wlc.match(/^\d/)) {
+                // Only fall back to first 3 letters if it's NOT an IP address
+                siteCode = wlc.substring(0, 3).toUpperCase();
+            }
             siteCounts[siteCode] = (siteCounts[siteCode] || 0) + 1;
 
             if (!userSites[siteCode]) userSites[siteCode] = [];

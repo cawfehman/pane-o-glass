@@ -44,29 +44,41 @@ export async function GET(req: Request) {
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
+        const agent = new https.Agent({ rejectUnauthorized: false });
         const fetchAuthStatus = async (mac: string) => {
             const tryFormat = async (formattedMac: string) => {
                 const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/86400/50/All`;
-                const response = await fetch(endpoint, {
-                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" }
-                });
-
-                if (!response.ok) return [];
-
-                const xmlText = await response.text();
-                const data = await parseStringPromise(xmlText, { 
-                    explicitArray: false,
-                    tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
-                });
+                console.log(`[ISE-FAILURES] Fetching Surgical Logs: ${endpoint}`);
                 
-                const rawNodes = data.authStatusOutputList?.authStatusList || data.authStatusList || data.authStatus;
-                if (!rawNodes) return [];
-                const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
-                
-                return nodesArray.flatMap((n: any) => {
-                    const elements = n.authStatusElements || n;
-                    return Array.isArray(elements) ? elements : [elements];
-                });
+                try {
+                    const response = await axios.get(endpoint, {
+                        headers: { 
+                            "Authorization": `Basic ${basicAuth}`, 
+                            "Accept": "application/xml",
+                            "X-ERS-Internal-User": "true"
+                        },
+                        httpsAgent: agent,
+                        timeout: 10000
+                    });
+
+                    const xmlText = response.data;
+                    const data = await parseStringPromise(xmlText, { 
+                        explicitArray: false,
+                        tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
+                    });
+                    
+                    const rawNodes = data.authStatusOutputList?.authStatusList || data.authStatusList || data.authStatus;
+                    if (!rawNodes) return [];
+                    const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
+                    
+                    return nodesArray.flatMap((n: any) => {
+                        const elements = n.authStatusElements || n;
+                        return Array.isArray(elements) ? elements : [elements];
+                    });
+                } catch (err: any) {
+                    console.error(`[ISE-FAILURES] Surgical fetch failed:`, err.message);
+                    return [];
+                }
             };
 
             let nodes = await tryFormat(mac);
