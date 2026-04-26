@@ -212,13 +212,13 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                                     {details?._is_ident_synthesized ? 'Confirmed Owner (Telemetry)' : 'Probable Owner (Modeling)'}
                                                 </div>
                                                 <div className="attr-value">
-                                                    {(details?.probable_owner?.name || (typeof details?.probable_owner === 'string' && details.probable_owner) || details?.owner_name || details?.assigned_to || data?.probable_owner?.name || (typeof data?.probable_owner === 'string' && data.probable_owner) || data?.owner_name || data?.assigned_to) ? (
+                                                    {huntName(details) || huntName(data) ? (
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                             <button 
                                                                 className="pivot-link" 
-                                                                onClick={(e) => { e.stopPropagation(); onSearch(details?.probable_owner?.name || (typeof details?.probable_owner === 'string' ? details.probable_owner : '') || details?.owner_name || details?.assigned_to || data?.probable_owner?.name || (typeof data?.probable_owner === 'string' ? data.probable_owner : '') || data?.owner_name || data?.assigned_to); }}
+                                                                onClick={(e) => { e.stopPropagation(); onSearch(huntName(details) || huntName(data)); }}
                                                             >
-                                                                <User size={14} /> {details?.probable_owner?.name || (typeof details?.probable_owner === 'string' ? details.probable_owner : '') || details?.owner_name || details?.assigned_to || data?.probable_owner?.name || (typeof data?.probable_owner === 'string' ? data.probable_owner : '') || data?.owner_name || data?.assigned_to}
+                                                                <User size={14} /> {huntName(details) || huntName(data)}
                                                             </button>
                                                         </div>
                                                     ) : <span className="attr-none">Scanning behavioral history...</span>}
@@ -243,12 +243,12 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                             <div className="attribution-box">
                                                 <div className="attr-label">Probable Home (Modeling)</div>
                                                 <div className="attr-value">
-                                                    {(details?.probable_home?.name || (typeof details?.probable_home === 'string' && details.probable_home) || details?.home_host_name || details?.last_host || data?.probable_home?.name || (typeof data?.probable_home === 'string' && data.probable_home) || data?.home_host_name || data?.last_host) ? (
+                                                    {huntName(details) || huntName(data) ? (
                                                         <button 
                                                             className="pivot-link" 
-                                                            onClick={(e) => { e.stopPropagation(); onSearch(details?.probable_home?.name || (typeof details?.probable_home === 'string' ? details.probable_home : '') || details?.home_host_name || details?.last_host || data?.probable_home?.name || (typeof data?.probable_home === 'string' ? data.probable_home : '') || data?.home_host_name || data?.last_host); }}
+                                                            onClick={(e) => { e.stopPropagation(); onSearch(huntName(details) || huntName(data)); }}
                                                         >
-                                                            <HardDrive size={14} /> {details?.probable_home?.name || (typeof details?.probable_home === 'string' ? details.probable_home : '') || details?.home_host_name || details?.last_host || data?.probable_home?.name || (typeof data?.probable_home === 'string' ? data.probable_home : '') || data?.home_host_name || data?.last_host}
+                                                            <HardDrive size={14} /> {huntName(details) || huntName(data)}
                                                         </button>
                                                     ) : <span className="attr-none">Analyzing host affinity...</span>}
                                                 </div>
@@ -388,13 +388,40 @@ export default function VectraPage() {
     const [error, setError] = useState<string | null>(null);
     const [highRiskOnly, setHighRiskOnly] = useState(true);
 
-    const loadTriage = async () => {
-        setTriageLoading(true);
+    // Deep forensic hunting for any field that looks like an identity name
+    const huntName = (obj: any) => {
+        if (!obj) return null;
+        return (
+            obj.probable_owner?.name || 
+            (typeof obj.probable_owner === 'string' && obj.probable_owner) ||
+            obj.owner_name || 
+            obj.assigned_to || 
+            obj.last_login_user ||
+            obj.last_user ||
+            obj.last_account_name ||
+            obj.probable_home?.name ||
+            (typeof obj.probable_home === 'string' && obj.probable_home) ||
+            obj.home_host_name ||
+            obj.last_host ||
+            obj.assigned_to_user ||
+            null
+        );
+    };
+
+    const loadTriage = async (retryCount = 0) => {
+        if (retryCount === 0) setTriageLoading(true);
         try {
             const res = await fetch(`/api/vectra/triage?t=${Date.now()}`);
             const data = await res.json();
             
             if (data.error) throw new Error(data.error);
+
+            // If we got empty results but it's the first try, wait and retry once
+            if ((!data.hosts || data.hosts.length === 0) && retryCount < 1) {
+                console.log("Vectra Triage returned empty. Retrying in 1s...");
+                setTimeout(() => loadTriage(retryCount + 1), 1000);
+                return;
+            }
 
             setTriageHosts(data.hosts || []);
             setTriageAccounts(data.accounts || []);
@@ -409,9 +436,13 @@ export default function VectraPage() {
 
         } catch (e) {
             console.error("Triage Fetch Failed:", e);
-            setError("Failed to synchronize behavioral triage. Try refreshing.");
+            if (retryCount < 1) {
+                setTimeout(() => loadTriage(retryCount + 1), 1500);
+            } else {
+                setError("Failed to synchronize behavioral triage. Try refreshing.");
+            }
         } finally {
-            setTriageLoading(false);
+            if (retryCount >= 1 || !triageLoading) setTriageLoading(false);
         }
     };
 
