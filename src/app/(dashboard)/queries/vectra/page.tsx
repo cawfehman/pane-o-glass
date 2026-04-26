@@ -99,8 +99,13 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                     };
                 }
                 
-                // For Account -> find Home Host
-                const hName = det.host || det.host_name || det.src_hosts?.[0]?.name || det.source_host?.name || det.origin_host_name;
+                // For Account -> find Home Host (Robust Extraction)
+                const getH = (d: any) => {
+                    const cand = d.host || d.host_name || d.src_hosts?.[0] || d.source_host || d.origin_host || d.origin_host_name;
+                    if (!cand) return null;
+                    return typeof cand === 'string' ? cand : cand.name || cand.hostname || cand.ip;
+                };
+                const hName = getH(det);
                 if (hName && typeof hName === 'string' && hName.length > 2) {
                     hostCounts[hName] = {
                         count: (hostCounts[hName]?.count || 0) + 1,
@@ -450,8 +455,8 @@ export default function VectraPage() {
     const loadTriage = async (retryCount = 0) => {
         if (retryCount === 0) setTriageLoading(true);
         
-        // Exponential backoff for initial handshake
-        const delay = retryCount === 0 ? 0 : retryCount === 1 ? 800 : retryCount === 2 ? 2000 : 4000;
+        // Exponential backoff for initial handshake (Optimized)
+        const delay = retryCount === 0 ? 0 : retryCount === 1 ? 300 : retryCount === 2 ? 1000 : 2500;
         if (delay > 0) await new Promise(r => setTimeout(r, delay));
 
         try {
