@@ -205,7 +205,8 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
                                 </h4>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
                                     {type === 'host' ? (
-                                        <                                            <div className="attribution-box">
+                                        <>
+                                            <div className="attribution-box">
                                                 <div className="attr-label">
                                                     {details?._is_ident_synthesized ? 'Confirmed Owner (Telemetry)' : 'Probable Owner (Modeling)'}
                                                 </div>
