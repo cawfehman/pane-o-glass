@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { 
     Shield, Search, RefreshCw, Smartphone, Monitor, User, Activity, 
     Globe, Server, ChevronDown, ChevronUp, Terminal, ShieldCheck, 
@@ -365,6 +366,7 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
 };
 
 export default function VectraPage() {
+    const { data: session, status } = useSession();
     const [query, setQuery] = useState('');
     const [loading, setLoading] = useState(false);
     const [triageLoading, setTriageLoading] = useState(false);
