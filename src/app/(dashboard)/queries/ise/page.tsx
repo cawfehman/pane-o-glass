@@ -177,7 +177,7 @@ export default function CiscoIsePage() {
                 {([
                     { id: 'dashboard', label: 'Triage Dashboard' },
                     { id: 'live', label: 'Live Session' },
-                    { id: 'history', label: 'Diagnostic History' }
+                    { id: 'history', label: 'Connection History' }
                 ] as const).map(tab => (
                     <button
                         key={tab.id}
