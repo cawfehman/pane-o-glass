@@ -27,8 +27,11 @@ const huntName = (obj: any) => {
         (typeof obj.probable_home === 'string' && obj.probable_home) ||
         obj.home_host_name ||
         obj.home_name ||
+        obj.home_host ||
         obj.last_host ||
         obj.last_host_name ||
+        obj.origin_host ||
+        obj.primary_workstation ||
         obj.assigned_to_user ||
         null
     );
@@ -73,26 +76,42 @@ const EntityCard = ({ type, data, onSearch }: { type: 'host' | 'account', data: 
 
             // 3. Heuristic Identity Synthesis (Forensic Calculation)
             const accCounts: Record<string, {count: number, score: number}> = {};
+            const hostCounts: Record<string, {count: number, score: number}> = {};
+
             rawDetections.forEach((det: any) => {
-                const name = det.account || det.account_name || det.account_info?.name;
-                if (name && typeof name === 'string' && name.length > 2) {
-                    accCounts[name] = { 
-                        count: (accCounts[name]?.count || 0) + 1,
-                        score: Math.max(accCounts[name]?.score || 0, det.threat || det.t_score || 0)
+                // For Host -> find Owner
+                const accName = det.account || det.account_name || det.account_info?.name;
+                if (accName && typeof accName === 'string' && accName.length > 2) {
+                    accCounts[accName] = { 
+                        count: (accCounts[accName]?.count || 0) + 1,
+                        score: Math.max(accCounts[accName]?.score || 0, det.threat || det.t_score || 0)
+                    };
+                }
+                
+                // For Account -> find Home Host
+                const hName = det.host || det.host_name || det.src_hosts?.[0]?.name;
+                if (hName && typeof hName === 'string' && hName.length > 2) {
+                    hostCounts[hName] = {
+                        count: (hostCounts[hName]?.count || 0) + 1,
+                        score: Math.max(hostCounts[hName]?.score || 0, det.threat || det.t_score || 0)
                     };
                 }
             });
 
-            const sortedAccs = Object.entries(accCounts).sort((a,b) => b[1].count - a[1].count || b[1].score - a[1].score);
-            const synthesizedOwner = sortedAccs.length > 0 ? sortedAccs[0][0] : null;
-
-            // Update fullData with synthesis if null
-            if (!fullData.probable_owner && (synthesizedOwner || fullData.last_account_name)) {
-                fullData._is_ident_synthesized = true;
-                fullData.probable_owner = { 
-                    name: synthesizedOwner || fullData.last_account_name,
-                    id: null 
-                };
+            if (type === 'host') {
+                const sortedAccs = Object.entries(accCounts).sort((a,b) => b[1].count - a[1].count || b[1].score - a[1].score);
+                const synthesizedOwner = sortedAccs.length > 0 ? sortedAccs[0][0] : null;
+                if (!fullData.probable_owner && (synthesizedOwner || fullData.last_account_name)) {
+                    fullData._is_ident_synthesized = true;
+                    fullData.probable_owner = { name: synthesizedOwner || fullData.last_account_name, id: null };
+                }
+            } else {
+                const sortedHosts = Object.entries(hostCounts).sort((a,b) => b[1].count - a[1].count || b[1].score - a[1].score);
+                const synthesizedHome = sortedHosts.length > 0 ? sortedHosts[0][0] : null;
+                if (!fullData.probable_home && (synthesizedHome || fullData.last_host_name || fullData.home_host_name)) {
+                    fullData._is_ident_synthesized = true;
+                    fullData.probable_home = { name: synthesizedHome || fullData.last_host_name || fullData.home_host_name, id: null };
+                }
             }
 
             // 4. Deep Correlation Extraction
@@ -438,17 +457,27 @@ export default function VectraPage() {
 
     const loadTriage = async (retryCount = 0) => {
         if (retryCount === 0) setTriageLoading(true);
+        
+        // Exponential backoff for initial handshake
+        const delay = retryCount === 0 ? 0 : retryCount === 1 ? 800 : retryCount === 2 ? 2000 : 4000;
+        if (delay > 0) await new Promise(r => setTimeout(r, delay));
+
         try {
             const res = await fetch(`/api/vectra/triage?t=${Date.now()}`);
-            const data = await res.json();
             
+            // Handle server-side session lag (401)
+            if (res.status === 401 && retryCount < 3) {
+                console.log(`[AUTH LAG] Session not yet ready on server. Retry ${retryCount + 1}...`);
+                return loadTriage(retryCount + 1);
+            }
+
+            const data = await res.json();
             if (data.error) throw new Error(data.error);
 
             // If we got empty results but it's the first try, wait and retry once
-            if ((!data.hosts || data.hosts.length === 0) && retryCount < 1) {
-                console.log("Vectra Triage returned empty. Retrying in 1s...");
-                setTimeout(() => loadTriage(retryCount + 1), 1000);
-                return;
+            if ((!data.hosts || data.hosts.length === 0) && retryCount < 2) {
+                console.log(`[DATA LAG] Triage returned empty. Retry ${retryCount + 1}...`);
+                return loadTriage(retryCount + 1);
             }
 
             setTriageHosts(data.hosts || []);
