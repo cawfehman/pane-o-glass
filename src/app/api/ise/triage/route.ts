@@ -69,8 +69,8 @@ export async function GET(req: Request) {
         const sessionMatches = xmlText.match(/<activeSession>([\s\S]*?)<\/activeSession>/g) || [];
         
         // 4. SAMPLING STRATEGY: Since bulk list is sparse and global failures are broken,
-        // we probe the first 60 active sessions in parallel to build a high-fidelity "Sampled Heatmap"
-        const sampleSize = 60;
+        // we probe the first 100 active sessions in parallel to build a high-fidelity "Sampled Heatmap"
+        const sampleSize = 100;
         const samples = sessionMatches.slice(0, sampleSize);
         console.log(`[ISE TRIAGE] Deep-probing ${samples.length} sessions for forensic enrichment...`);
 
@@ -101,12 +101,23 @@ export async function GET(req: Request) {
                 const nasMatch = detailXml.match(/<network_device_name>(.*?)<\/network_device_name>/);
                 const psnMatch = detailXml.match(/<server>(.*?)<\/server>/);
                 const ssidMatch = detailXml.match(/<wlan_ssid>(.*?)<\/wlan_ssid>/);
+                const otherAttrMatch = detailXml.match(/<other_attr_string>(.*?)<\/other_attr_string>/);
 
                 const method = (methodMatch ? methodMatch[1].toLowerCase() : 'unknown').toUpperCase();
                 const location = locationMatch ? locationMatch[1] : 'Unknown';
                 const nas = nasMatch ? nasMatch[1] : 'Unknown';
                 const psn = psnMatch ? psnMatch[1] : 'Unknown';
-                const ssid = ssidMatch ? ssidMatch[1] : null;
+                let ssid = (ssidMatch && ssidMatch[1] !== 'null') ? ssidMatch[1] : null;
+
+                // Deep parse other_attr_string for hidden SSID
+                if (!ssid && otherAttrMatch) {
+                    const attrs = otherAttrMatch[1];
+                    // Look for Called-Station-ID=XX-XX-XX-XX-XX-XX:SSID
+                    const calledStationMatch = attrs.match(/Called-Station-ID=.*?:(.*?)(?::|:!:|$)/);
+                    if (calledStationMatch) {
+                        ssid = calledStationMatch[1];
+                    }
+                }
 
                 if (['DOT1X', 'MAB', 'WEBAUTH'].includes(method)) {
                     psnCounts[psn] = (psnCounts[psn] || 0) + 1;
