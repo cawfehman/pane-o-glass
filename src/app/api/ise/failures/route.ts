@@ -142,7 +142,7 @@ export async function GET(req: Request) {
                         authentication_method: val(node.authentication_method) || val(node.authenticationMethod) || "Unknown",
                         authentication_protocol: val(node.authentication_protocol) || val(node.authenticationProtocol) || "Unknown",
                         acs_server: val(node.acs_server) || val(node.acsServer) || "Unknown",
-                        nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || "Unknown",
+                        nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || val(node.network_device_name) || "Unknown",
                         endpoint_profile: val(node.endpoint_profile) || val(node.endpointProfile) || "Unknown",
                         identity_group: val(node.identity_group) || val(node.identityGroup) || "Unknown",
                         authorization_rule: otherAttrs['AuthorizationPolicyMatchedRule'] || val(node.authorization_rule) || val(node.authorizationRule) || "Unknown",

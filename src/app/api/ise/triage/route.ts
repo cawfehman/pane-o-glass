@@ -106,7 +106,7 @@ export async function GET(req: Request) {
 
                 const method = (methodMatch ? methodMatch[1].toLowerCase() : 'unknown').toUpperCase();
                 const location = locationMatch ? locationMatch[1] : 'Unknown';
-                const nas = nasMatch ? nasMatch[1] : 'Unknown';
+                const nas = nasMatch ? nasMatch[1] : (detailXml.match(/<nas_identifier>(.*?)<\/nas_identifier>/)?.[1] || 'Unknown');
                 const psn = psnMatch ? psnMatch[1] : 'Unknown';
                 let ssid = (ssidMatch && ssidMatch[1] !== 'null') ? ssidMatch[1] : null;
 
