@@ -10,12 +10,14 @@ interface ConnectionPathProps {
         nas_ip_address?: string;
         acs_server?: string;
         authorization_rule?: string;
+        access_point_name?: string;
+        wlan_ssid?: string;
         status?: boolean;
         enrichment?: {
             ad?: any;
             vectra?: any;
         };
-        ad?: any; // For failures where it might be top-level
+        ad?: any;
     };
 }
 
@@ -24,6 +26,7 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
     const vectraData = session.enrichment?.vectra;
     const isPass = session.status !== false;
     const hasVectraAlert = vectraData && (vectraData.t_score > 50 || vectraData.c_score > 50);
+    const isWireless = session.wlan_ssid && session.wlan_ssid !== "N/A";
 
     const nodes = [
         {
@@ -38,7 +41,27 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
                     <line x1="12" y1="17" x2="12" y2="21"></line>
                 </svg>
             )
-        },
+        }
+    ];
+
+    if (isWireless) {
+        nodes.push({
+            id: 'ap',
+            label: 'Access Point',
+            sub: session.access_point_name || "Wireless AP",
+            status: 'success',
+            icon: (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
+                    <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                    <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                </svg>
+            )
+        });
+    }
+
+    nodes.push(
         {
             id: 'nas',
             label: 'Network Access',
@@ -79,24 +102,44 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
                 </svg>
             )
         }
-    ];
+    );
+
+    const nodeWidth = 100 / nodes.length;
 
     return (
         <div className="connection-path-container" style={{ margin: '24px 0', padding: '24px', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-            <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '24px' }}>
-                Authentication Path Visualizer
-            </h4>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Authentication Path Visualizer
+                </h4>
+                {isWireless && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: 'var(--accent-primary)', background: 'rgba(59, 130, 246, 0.1)', padding: '4px 10px', borderRadius: '12px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+                        <span>WIRELESS SESSION ({session.wlan_ssid})</span>
+                    </div>
+                )}
+            </div>
             
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
-                {/* Connecting Lines */}
-                <div style={{ position: 'absolute', top: '35%', left: '10%', right: '10%', height: '2px', background: 'var(--border-color)', zIndex: 0 }}></div>
+                {/* Connecting Line Segments */}
+                <div style={{ position: 'absolute', top: '35%', left: `${nodeWidth/2}%`, right: `${nodeWidth/2}%`, height: '2px', zIndex: 0, display: 'flex' }}>
+                    {nodes.slice(0, -1).map((_, i) => (
+                        <div key={i} style={{ 
+                            flex: 1, 
+                            height: '2px', 
+                            background: i === 0 && isWireless ? 'none' : 'var(--border-color)',
+                            borderTop: i === 0 && isWireless ? '2px dashed var(--accent-primary)' : 'none',
+                            opacity: i === 0 && isWireless ? 0.8 : 0.4
+                        }}></div>
+                    ))}
+                </div>
 
                 {nodes.map((node, idx) => {
                     const statusColor = node.status === 'success' ? '#10b981' : (node.status === 'warning' ? '#f59e0b' : (node.status === 'danger' ? '#ef4444' : 'var(--text-muted)'));
                     const statusBg = node.status === 'success' ? 'rgba(16, 185, 129, 0.1)' : (node.status === 'warning' ? 'rgba(245, 158, 11, 0.1)' : (node.status === 'danger' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(255,255,255,0.05)'));
 
                     return (
-                        <div key={node.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1, width: '25%' }}>
+                        <div key={node.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1, width: `${nodeWidth}%` }}>
                             <div style={{ 
                                 width: '48px', height: '48px', borderRadius: '12px', background: statusBg, border: `2px solid ${statusColor}`, color: statusColor,
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px', transition: 'all 0.3s ease',
