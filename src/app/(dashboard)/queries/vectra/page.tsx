@@ -455,8 +455,8 @@ export default function VectraPage() {
     const [highRiskOnly, setHighRiskOnly] = useState(true);
 
     const loadTriage = async (retryCount = 0) => {
+        setTriageLoading(true);
         if (retryCount === 0) {
-            setTriageLoading(true);
             // Artificial delay to ensure session propagation in production
             await new Promise(r => setTimeout(r, 2500));
         }
@@ -658,7 +658,7 @@ export default function VectraPage() {
             )}
 
             <div style={{ position: 'absolute', top: '10px', right: '30px', fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: '900', letterSpacing: '0.1em', opacity: 0.5 }}>
-                PORTAL v4.4.19 [STABLE]
+                PORTAL v4.4.21 [STABLE]
             </div>
             
             {/* Header / Search Experience */}
