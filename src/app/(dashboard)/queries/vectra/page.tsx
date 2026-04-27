@@ -631,8 +631,7 @@ export default function VectraPage() {
     };
 
     return (
-        <div style={{ maxWidth: '1600px', margin: '0 auto', padding: '0 20px 60px', position: 'relative' }}>
-            
+        <>
             {triageLoading && (
                 <div style={{ 
                     background: 'rgba(56, 189, 248, 0.95)', 
@@ -656,9 +655,17 @@ export default function VectraPage() {
                     </span>
                 </div>
             )}
-
+            <div style={{ 
+                maxWidth: '1600px', 
+                margin: '0 auto', 
+                padding: '0 20px 60px', 
+                position: 'relative',
+                background: '#0a0b10', // Visual Cache Buster (Deep Obsidian Navy)
+                minHeight: '100vh'
+            }}>
+            
             <div style={{ position: 'absolute', top: '10px', right: '30px', fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: '900', letterSpacing: '0.1em', opacity: 0.5 }}>
-                PORTAL v4.4.21 [STABLE]
+                PORTAL v4.4.22 [STABLE]
             </div>
             
             {/* Header / Search Experience */}
