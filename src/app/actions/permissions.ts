@@ -195,11 +195,6 @@ export async function resetPermissions(targetRoles?: string[]) {
             { toolId: 'ise-tacacs', role: 'NETWORK', isEnabled: true },
             { toolId: 'hibp-account', role: 'NETWORK', isEnabled: true },
             { toolId: 'hibp-domain', role: 'NETWORK', isEnabled: false },
-            { toolId: 'vectra', role: 'ADMIN', isEnabled: true },
-            { toolId: 'vectra', role: 'ANALYST', isEnabled: true },
-            { toolId: 'vectra', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'vectra', role: 'NETWORK', isEnabled: false },
-            { toolId: 'vectra', role: 'USER', isEnabled: false },
             { toolId: 'firewall', role: 'DESKTOP', isEnabled: true },
             { toolId: 'ise', role: 'DESKTOP', isEnabled: false },
             { toolId: 'ise-tacacs', role: 'DESKTOP', isEnabled: false },
@@ -209,8 +204,7 @@ export async function resetPermissions(targetRoles?: string[]) {
             { toolId: 'ise', role: 'SYSTEMS', isEnabled: false },
             { toolId: 'ise-tacacs', role: 'SYSTEMS', isEnabled: false },
             { toolId: 'hibp-account', role: 'SYSTEMS', isEnabled: true },
-            { toolId: 'hibp-domain', role: 'SYSTEMS', isEnabled: true },
-            { toolId: 'vectra', role: 'SYSTEMS', isEnabled: false }
+            { toolId: 'hibp-domain', role: 'SYSTEMS', isEnabled: true }
         ];
 
         const filteredPermissions = rolesToReset 
