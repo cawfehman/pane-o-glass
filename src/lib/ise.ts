@@ -9,18 +9,27 @@ export function parseCalledStationId(calledStationId: string, fallbackApName: st
 
     if (calledStationId && calledStationId.includes(':')) {
         const parts = calledStationId.split(':');
-        // Extract SSID (last part)
-        ssid = parts.pop() || "N/A";
-        // Remaining parts are the AP Name
-        const remaining = parts.join(':');
-        if (remaining) {
-            apName = remaining;
+        
+        // Heuristic: If it has 6+ parts and they look like hex, it's probably a MAC or MAC:SSID
+        // In that case, we only want to extract SSID if it's definitely there.
+        // But the user specifically said they reconfigured WLCs to send AP NAME:SSID.
+        // AP Names usually don't look like MAC octets.
+        const looksLikeMac = parts.length >= 6 && parts.slice(0, 6).every(p => /^[0-9A-Fa-f]{2}$/.test(p));
+
+        if (!looksLikeMac) {
+            ssid = parts.pop() || "N/A";
+            const remaining = parts.join(':');
+            if (remaining) {
+                apName = remaining;
+            }
         }
     }
 
     if (apName !== "N/A" && apName.length >= 3) {
-        // Site code is first 3 chars
-        siteCode = apName.substring(0, 3).toUpperCase();
+        // Only extract site code if it doesn't look like a MAC prefix
+        if (!/^[0-9A-Fa-f]{2}[:.-]/.test(apName)) {
+            siteCode = apName.substring(0, 3).toUpperCase();
+        }
     }
 
     return { ssid, apName, siteCode };
@@ -135,16 +144,13 @@ export async function fetchIseSession(query: string) {
                 });
             }
 
-            const calledStationId = otherAttrs['Called-Station-ID'] || sessionNode.called_station_id?._ || sessionNode.called_station_id || "";
+            const callingStationId = otherAttrs['Called-Station-ID'] || sessionNode.calling_station_id?._ || sessionNode.calling_station_id || "";
             let extractedSsid = "N/A";
             let extractedApIdentity = sessionNode.network_device_name?._ || sessionNode.network_device_name || otherAttrs['NAS-Identifier'] || "N/A";
 
-            if (calledStationId.includes(':')) {
-                const parts = calledStationId.split(':');
-                extractedSsid = parts.pop() || "N/A";
-                const firstPart = parts.join(':');
-                if (firstPart) extractedApIdentity = firstPart;
-            }
+            const { ssid: parseSsid, apName: parseApName, siteCode: parseSiteCode } = parseCalledStationId(callingStationId, extractedApIdentity);
+            extractedSsid = parseSsid;
+            extractedApIdentity = parseApName;
 
             return {
                 user_name: sessionNode.user_name?._ || sessionNode.user_name || sessionNode.userName,
@@ -170,7 +176,7 @@ export async function fetchIseSession(query: string) {
                 endpoint_policy: sessionNode.endpoint_policy?._ || sessionNode.endpoint_policy || sessionNode.endpointPolicy || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || "Unknown",
                 wlan_ssid: sessionNode.wlan_ssid?._ || sessionNode.wlan_ssid || sessionNode.wlanSsid || extractedSsid,
                 access_point_name: extractedApIdentity,
-                site_code: parseCalledStationId(calledStationId, extractedApIdentity).siteCode
+                site_code: parseSiteCode
             };
         });
 

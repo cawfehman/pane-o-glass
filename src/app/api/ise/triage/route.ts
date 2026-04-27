@@ -126,8 +126,8 @@ export async function GET(req: Request) {
                         });
                     }
 
-                    const calledStationId = otherAttrs['Called-Station-ID'] || (detailXml.match(/<called_station_id>(.*?)<\/called_station_id>/)?.[1]) || "";
-                    const { ssid: extractedSsid, apName: extractedApName, siteCode: extractedSiteCode } = parseCalledStationId(calledStationId, nas);
+                    const callingStationId = otherAttrs['Called-Station-ID'] || (detailXml.match(/<calling_station_id>(.*?)<\/calling_station_id>/)?.[1]) || "";
+                    const { ssid: extractedSsid, apName: extractedApName, siteCode: extractedSiteCode } = parseCalledStationId(callingStationId, nas);
                     
                     if (extractedSsid !== "N/A") ssid = extractedSsid;
 
