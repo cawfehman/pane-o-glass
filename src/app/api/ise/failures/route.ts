@@ -114,15 +114,7 @@ export async function GET(req: Request) {
                     }
 
                     const calledStationId = otherAttrs['Called-Station-ID'] || val(node.called_station_id) || "";
-                    let extractedSsid = "N/A";
-                    let extractedApIdentity = val(node.network_device_name) || otherAttrs['NAS-Identifier'] || "N/A";
-
-                    if (calledStationId.includes(':')) {
-                        const parts = calledStationId.split(':');
-                        extractedSsid = parts.pop() || "N/A";
-                        const firstPart = parts.join(':');
-                        if (firstPart) extractedApIdentity = firstPart;
-                    }
+                    const { ssid, apName, siteCode } = parseCalledStationId(calledStationId, val(node.network_device_name) || otherAttrs['NAS-Identifier'] || "N/A");
 
                     const failureId = val(node.failure_id) || val(node.failureId) || "";
                     const insight = getFailureInsight(failureId);
@@ -155,8 +147,9 @@ export async function GET(req: Request) {
                         identity_group: val(node.identity_group) || val(node.identityGroup) || "Unknown",
                         authorization_rule: otherAttrs['AuthorizationPolicyMatchedRule'] || val(node.authorization_rule) || val(node.authorizationRule) || "Unknown",
                         auth_policy: otherAttrs['IdentityPolicyMatchedRule'] || val(node.authentication_policy) || val(node.authenticationPolicy) || val(node.auth_policy) || "Unknown",
-                        wlan_ssid: val(node.wlan_ssid) || val(node.wlanSsid) || extractedSsid,
-                        access_point_name: extractedApIdentity,
+                        wlan_ssid: val(node.wlan_ssid) || val(node.wlanSsid) || ssid,
+                        access_point_name: apName,
+                        site_code: siteCode,
                         steps
                     };
                 });

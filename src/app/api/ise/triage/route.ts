@@ -4,7 +4,7 @@ import { logAudit } from '@/lib/audit';
 import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
 import { getUserDetails } from '@/lib/ldap';
-import { getFailureInsight } from '@/lib/ise';
+import { getFailureInsight, parseCalledStationId } from '@/lib/ise';
 import axios from 'axios';
 import https from 'https';
 
@@ -117,11 +117,29 @@ export async function GET(req: Request) {
 
                 if (['DOT1X', 'MAB', 'WEBAUTH'].includes(method)) {
                     psnCounts[psn] = (psnCounts[psn] || 0) + 1;
-                    let siteCode = 'OTHER';
-                    if (location !== 'Unknown' && location.includes('#')) {
-                        siteCode = location.split('#').pop()?.toUpperCase() || 'OTHER';
-                    } else if (nas !== 'Unknown' && !nas.match(/^\d/)) {
-                        siteCode = nas.substring(0, 3).toUpperCase();
+                    
+                    const otherAttrs: Record<string, string> = {};
+                    if (otherAttrMatch) {
+                        otherAttrMatch[1].split(':!:').forEach((pair: string) => {
+                            const [k, ...v] = pair.split('=');
+                            if (k) otherAttrs[k.trim()] = v.join('=').trim();
+                        });
+                    }
+
+                    const calledStationId = otherAttrs['Called-Station-ID'] || (detailXml.match(/<called_station_id>(.*?)<\/called_station_id>/)?.[1]) || "";
+                    const { ssid: extractedSsid, apName: extractedApName, siteCode: extractedSiteCode } = parseCalledStationId(calledStationId, nas);
+                    
+                    if (extractedSsid !== "N/A") ssid = extractedSsid;
+
+                    let siteCode = extractedSiteCode;
+                    if (siteCode === "N/A") {
+                        if (location !== 'Unknown' && location.includes('#')) {
+                            siteCode = location.split('#').pop()?.toUpperCase() || 'OTHER';
+                        } else if (nas !== 'Unknown' && !nas.match(/^\d/)) {
+                            siteCode = nas.substring(0, 3).toUpperCase();
+                        } else {
+                            siteCode = 'OTHER';
+                        }
                     }
 
                     if (status === 'success') {

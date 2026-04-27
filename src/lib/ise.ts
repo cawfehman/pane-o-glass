@@ -1,6 +1,30 @@
-import { parseStringPromise } from 'xml2js';
-import axios from 'axios';
 import https from 'https';
+import axios from 'axios';
+import { parseStringPromise } from 'xml2js';
+
+export function parseCalledStationId(calledStationId: string, fallbackApName: string = "N/A") {
+    let ssid = "N/A";
+    let apName = fallbackApName;
+    let siteCode = "N/A";
+
+    if (calledStationId && calledStationId.includes(':')) {
+        const parts = calledStationId.split(':');
+        // Extract SSID (last part)
+        ssid = parts.pop() || "N/A";
+        // Remaining parts are the AP Name
+        const remaining = parts.join(':');
+        if (remaining) {
+            apName = remaining;
+        }
+    }
+
+    if (apName !== "N/A" && apName.length >= 3) {
+        // Site code is first 3 chars
+        siteCode = apName.substring(0, 3).toUpperCase();
+    }
+
+    return { ssid, apName, siteCode };
+}
 
 export async function fetchIseSession(query: string) {
     const rawUrl = process.env.ISE_PAN_URL;
@@ -145,7 +169,8 @@ export async function fetchIseSession(query: string) {
                 acs_server: sessionNode.acs_server?._ || sessionNode.acs_server || sessionNode.acsServer || "Unknown",
                 endpoint_policy: sessionNode.endpoint_policy?._ || sessionNode.endpoint_policy || sessionNode.endpointPolicy || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || "Unknown",
                 wlan_ssid: sessionNode.wlan_ssid?._ || sessionNode.wlan_ssid || sessionNode.wlanSsid || extractedSsid,
-                access_point_name: extractedApIdentity
+                access_point_name: extractedApIdentity,
+                site_code: parseCalledStationId(calledStationId, extractedApIdentity).siteCode
             };
         });
 

@@ -189,6 +189,7 @@ function FailureCard({ failure }: { failure: any }) {
                     <div>
                         <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Network Location</h4>
                         <p title="The IP address of the switch, WLC, or firewall"><strong>Device IP:</strong> {failure.nas_ip_address}</p>
+                        <p title="The 3-character site identifier extracted from AP name"><strong>Site Code:</strong> <span style={{ color: 'var(--accent-secondary)', fontWeight: 'bold' }}>{failure.site_code || "N/A"}</span></p>
                         <p title="The SSID or physical port"><strong>SSID:</strong> <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>{failure.wlan_ssid || "N/A"}</span></p>
                         <p title="The hostname of the network device or AP"><strong>AP Name:</strong> {failure.access_point_name || "N/A"}</p>
                         <p title="The NAD (Switch/WLC) hostname"><strong>NAD:</strong> {failure.nas_identifier}</p>
