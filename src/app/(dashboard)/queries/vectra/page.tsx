@@ -520,8 +520,8 @@ export default function VectraPage() {
     useEffect(() => {
         if (status !== 'authenticated') return;
 
-        // Initial sync if empty
-        if (triageHosts.length === 0 && triageAccounts.length === 0 && !triageLoading) {
+        // Initial sync (Always run on mount if empty)
+        if (triageHosts.length === 0 && triageAccounts.length === 0) {
             loadTriage();
         }
 
@@ -531,10 +531,10 @@ export default function VectraPage() {
                 console.log("[PERSISTENCE] Triage empty, attempting forensic sync...");
                 loadTriage();
             }
-        }, 10000);
+        }, 12000);
 
         return () => clearInterval(watcher);
-    }, [status, triageHosts.length, triageAccounts.length, triageLoading]);
+    }, [status]); // Only depend on status for the mount trigger
 
     const loadVectraData = async (searchQuery: string = query, isQuickAction: boolean = false, typeOverride?: 'hosts' | 'accounts') => {
         setLoading(true);
@@ -665,7 +665,7 @@ export default function VectraPage() {
             }}>
             
             <div style={{ position: 'absolute', top: '10px', right: '30px', fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: '900', letterSpacing: '0.1em', opacity: 0.5 }}>
-                PORTAL v4.4.22 [STABLE]
+                PORTAL v4.4.23 [STABLE]
             </div>
             
             {/* Header / Search Experience */}
