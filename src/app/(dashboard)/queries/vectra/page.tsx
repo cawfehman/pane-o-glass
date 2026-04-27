@@ -1035,5 +1035,6 @@ export default function VectraPage() {
                 .correlation-chip:hover { background: var(--accent-primary); color: #000; border-color: var(--accent-primary); }
             `}</style>
         </div>
+        </>
     );
 }
