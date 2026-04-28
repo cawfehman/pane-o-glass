@@ -47,9 +47,9 @@ export async function GET(req: Request) {
         const agent = new https.Agent({ rejectUnauthorized: false });
         const fetchAuthStatus = async (mac: string) => {
             const tryFormat = async (formattedMac: string) => {
-                // Expanded to 7 Days (604800 seconds)
-                const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/604800/50/All`;
-                console.log(`[ISE-HISTORY] Fetching 7-Day Logs: ${endpoint}`);
+                // Expanded to 30 Days (2592000 seconds) for Service Account visibility
+                const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/2592000/50/All`;
+                console.log(`[ISE-HISTORY] Fetching 30-Day Logs: ${endpoint}`);
                 
                 try {
                     const response = await axios.get(endpoint, {
@@ -59,7 +59,7 @@ export async function GET(req: Request) {
                             "X-ERS-Internal-User": "true"
                         },
                         httpsAgent: agent,
-                        timeout: 10000
+                        timeout: 15000 // Increased timeout for deep history
                     });
 
                     const xmlText = response.data;
@@ -94,7 +94,7 @@ export async function GET(req: Request) {
 
         await logAudit(
             'ISE_HISTORY_QUERY',
-            `Searched ISE History (7-Day) for ${searchType === "mac" ? "MAC" : "User"}: ${formattedQuery}`,
+            `Searched ISE History (30-Day) for ${searchType === "mac" ? "MAC" : "User"}: ${formattedQuery}`,
             session.user.id,
             (session.user as any).ipAddress
         );
@@ -166,7 +166,7 @@ export async function GET(req: Request) {
                     const ersRes = await axios.get(`${ersUrl}/ers/config/endpoint/name/${f.calling_station_id}`, {
                         headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
                         httpsAgent: agent,
-                        timeout: 1500 
+                        timeout: 1200 
                     });
 
                     const ep = ersRes.data.ERSEndPoint;
@@ -209,25 +209,25 @@ export async function GET(req: Request) {
 
             try {
                 const endpoint = `${url}/admin/API/mnt/Session/UserName/${encodeURIComponent(formattedQuery)}`;
-                const response = await fetch(endpoint, {
-                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" }
+                const response = await axios.get(endpoint, {
+                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
+                    httpsAgent: agent,
+                    timeout: 5000
                 });
-                if (response.ok) {
-                    const xmlText = await response.text();
-                    const data = await parseStringPromise(xmlText, { 
-                        explicitArray: false,
-                        tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
-                    });
-                    let nodes = data.sessionParameters || data.activeSession;
-                    const nodesArr = Array.isArray(nodes) ? nodes : [nodes];
-                    nodesArr.forEach((node: any) => {
-                        const mac = node.calling_station_id?._ || node.calling_station_id || node.callingStationId;
-                        if (mac) {
-                             macsToScan.add(mac);
-                             userHistoryPayloads.push(node);
-                        }
-                    });
-                }
+                const xmlText = response.data;
+                const data = await parseStringPromise(xmlText, { 
+                    explicitArray: false,
+                    tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
+                });
+                let nodes = data.sessionParameters || data.activeSession;
+                const nodesArr = Array.isArray(nodes) ? nodes : [nodes];
+                nodesArr.forEach((node: any) => {
+                    const mac = node.calling_station_id?._ || node.calling_station_id || node.callingStationId;
+                    if (mac) {
+                         macsToScan.add(mac);
+                         userHistoryPayloads.push(node);
+                    }
+                });
             } catch (e) { }
 
             if (macsToScan.size === 0) {
@@ -248,12 +248,14 @@ export async function GET(req: Request) {
 
                 if (latestLog) {
                     summaryArray.push({
-                        mac,
+                        calling_station_id: mac,
                         timestamp: latestLog.acs_timestamp?._ || latestLog.acs_timestamp || latestLog.last_accounting_update?._ || latestLog.last_accounting_update || "Unknown",
                         nas_identifier: latestLog.nas_identifier?._ || latestLog.nas_identifier || "Unknown",
+                        endpoint_profile: latestLog.endpoint_profile?._ || latestLog.endpoint_profile || "Unknown",
+                        framed_ip_address: latestLog.framed_ip_address?._ || latestLog.framed_ip_address || "N/A"
                     });
                 } else {
-                    summaryArray.push({ mac, timestamp: "Unknown", nas_identifier: "Unknown" });
+                    summaryArray.push({ calling_station_id: mac, timestamp: "Unknown", nas_identifier: "Unknown", endpoint_profile: "Unknown" });
                 }
             }));
             
@@ -262,7 +264,7 @@ export async function GET(req: Request) {
                 const timeB = new Date(b.timestamp).getTime();
                 return isNaN(timeB) ? -1 : (isNaN(timeA) ? 1 : timeB - timeA);
             });
-            return NextResponse.json({ found: summaryArray.length > 0, discovery: summaryArray, searchType: "user_name" });
+            return NextResponse.json({ found: summaryArray.length > 0, sessions: summaryArray, searchType: "user_name" });
         }
 
     } catch (e: any) {

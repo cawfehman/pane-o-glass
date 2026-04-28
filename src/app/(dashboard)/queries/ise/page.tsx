@@ -95,6 +95,7 @@ export default function CiscoIsePage() {
             if (sessionData.found && sessionData.sessions && sessionData.sessions.length > 1 && !macToDrilldown) {
                 setDiscoveryResult(sessionData);
                 setActiveTab("live");
+                setEndpointResult(null);
             } else {
                 const primarySession = sessionData.sessions?.[0] || null;
                 setEndpointResult(primarySession);
@@ -105,7 +106,14 @@ export default function CiscoIsePage() {
                 const historyData = await historyRes.json();
                 setHistoryResult(historyData);
                 
-                setActiveTab(primarySession ? "live" : "history");
+                // For drilldowns or if no active session found, prioritize history
+                if (macToDrilldown || !primarySession) {
+                    setActiveTab("history");
+                    setDiscoveryResult(null); // Clear discovery once drilldown is chosen
+                } else {
+                    setActiveTab("live");
+                }
+                
                 if (!macToDrilldown) setQuery(searchTerm);
             }
 
