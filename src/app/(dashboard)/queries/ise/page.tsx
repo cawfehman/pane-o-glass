@@ -114,6 +114,33 @@ export default function CiscoIsePage() {
         }
     };
 
+    const getMacStyle = (obj: any) => {
+        const prof = obj.profile?.toLowerCase() || "";
+        let profileColor = 'rgba(255,255,255,0.05)';
+        let borderCol = 'var(--border-color)';
+        
+        if (obj.status === 'failure') {
+            profileColor = 'rgba(239, 68, 68, 0.2)';
+            borderCol = '#ef4444';
+        } else if (prof.includes('apple') || prof.includes('iphone') || prof.includes('ipad')) {
+            profileColor = 'rgba(56, 189, 248, 0.15)';
+            borderCol = '#0ea5e9';
+        } else if (prof.includes('workstation') || prof.includes('windows')) {
+            profileColor = 'rgba(16, 185, 129, 0.15)';
+            borderCol = '#10b981';
+        } else if (prof.includes('android')) {
+            profileColor = 'rgba(168, 85, 247, 0.15)';
+            borderCol = '#a855f7';
+        }
+
+        return { 
+            background: profileColor, 
+            borderColor: borderCol, 
+            color: obj.status === 'failure' ? '#ef4444' : 'var(--text-primary)',
+            fontSize: '0.7rem'
+        };
+    };
+
     const DistributionBar = ({ label, count, total, color = 'var(--accent-primary)' }: { label: string, count: number, total: number, color?: string }) => {
         const percent = total > 0 ? Math.round((count / total) * 100) : 0;
         return (
@@ -321,7 +348,8 @@ export default function CiscoIsePage() {
                                                                                                     key={obj.mac}
                                                                                                     onClick={(e) => { e.stopPropagation(); setQuery(obj.mac); handleSearch(undefined, obj.mac); }}
                                                                                                     className="mac-button"
-                                                                                                    style={obj.status === 'failure' ? { background: 'rgba(239, 68, 68, 0.2)', borderColor: '#ef4444', color: '#ef4444' } : {}}
+                                                                                                    style={getMacStyle(obj)}
+                                                                                                    title={`Device: ${obj.profile || "Unknown"}`}
                                                                                                 >
                                                                                                     {obj.mac}
                                                                                                 </button>
@@ -347,7 +375,8 @@ export default function CiscoIsePage() {
                                                                                                     key={obj.mac}
                                                                                                     onClick={(e) => { e.stopPropagation(); setQuery(obj.mac); handleSearch(undefined, obj.mac); }}
                                                                                                     className="mac-button"
-                                                                                                    style={obj.status === 'failure' ? { background: 'rgba(239, 68, 68, 0.2)', borderColor: '#ef4444', color: '#ef4444' } : {}}
+                                                                                                    style={getMacStyle(obj)}
+                                                                                                    title={`Device: ${obj.profile || "Unknown"}`}
                                                                                                 >
                                                                                                     {obj.mac}
                                                                                                 </button>

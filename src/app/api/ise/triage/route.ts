@@ -148,6 +148,8 @@ export async function GET(req: Request) {
                         siteFailures[siteCode] = (siteFailures[siteCode] || 0) + 1;
                     }
                     
+                    const profile = otherAttrs['EndPointProfilerProfile'] || otherAttrs['EndPointProfile'] || (detailXml.match(/<endpoint_profile>(.*?)<\/endpoint_profile>/)?.[1]) || "Unknown";
+                    
                     if (!nestedHeatmap[siteCode]) nestedHeatmap[siteCode] = { wireless: {}, wired: {}, nas: nas };
                     
                     const group = ssid ? nestedHeatmap[siteCode].wireless : nestedHeatmap[siteCode].wired;
@@ -155,7 +157,7 @@ export async function GET(req: Request) {
                     
                     if (!group[key]) group[key] = [];
                     if (group[key].length < 12) {
-                        group[key].push({ mac, status });
+                        group[key].push({ mac, status, profile });
                     }
                     
                     reasonCounts[method] = (reasonCounts[method] || 0) + 1;
