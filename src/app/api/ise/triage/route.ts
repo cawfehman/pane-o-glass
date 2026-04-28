@@ -148,7 +148,30 @@ export async function GET(req: Request) {
                         siteFailures[siteCode] = (siteFailures[siteCode] || 0) + 1;
                     }
                     
-                    const profile = otherAttrs['EndPointProfilerProfile'] || otherAttrs['EndPointProfile'] || (detailXml.match(/<endpoint_profile>(.*?)<\/endpoint_profile>/)?.[1]) || "Unknown";
+                    let profile = otherAttrs['EndPointProfilerProfile'] || otherAttrs['EndPointProfile'] || (detailXml.match(/<endpoint_profile>(.*?)<\/endpoint_profile>/)?.[1]) || "Unknown";
+                    
+                    // Surgical ERS Enrichment for Triage
+                    try {
+                        const ersUrl = url.replace(':8443', ':9060');
+                        const ersRes = await axios.get(`${ersUrl}/ers/config/endpoint/name/${mac}`, {
+                            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
+                            httpsAgent: agent,
+                            timeout: 2000 
+                        });
+
+                        const ep = ersRes.data.ERSEndPoint;
+                        if (ep && ep.mfcAttributes) {
+                            const mfc = ep.mfcAttributes;
+                            const manufacturer = Array.isArray(mfc.mfcHardwareManufacturer) ? mfc.mfcHardwareManufacturer.join('') : mfc.mfcHardwareManufacturer;
+                            const os = Array.isArray(mfc.mfcOperatingSystem) ? mfc.mfcOperatingSystem.join('') : mfc.mfcOperatingSystem;
+                            
+                            if (manufacturer || os) {
+                                profile = `${manufacturer || ""} ${os || ""}`.trim() || profile;
+                            }
+                        }
+                    } catch (e) {
+                        // Fallback to whatever MnT had
+                    }
                     
                     if (!nestedHeatmap[siteCode]) nestedHeatmap[siteCode] = { wireless: {}, wired: {}, nas: nas };
                     
