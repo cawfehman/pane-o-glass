@@ -47,8 +47,9 @@ export async function GET(req: Request) {
         const agent = new https.Agent({ rejectUnauthorized: false });
         const fetchAuthStatus = async (mac: string) => {
             const tryFormat = async (formattedMac: string) => {
-                const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/86400/50/All`;
-                console.log(`[ISE-FAILURES] Fetching Surgical Logs: ${endpoint}`);
+                // Expanded to 7 Days (604800 seconds)
+                const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/604800/50/All`;
+                console.log(`[ISE-HISTORY] Fetching 7-Day Logs: ${endpoint}`);
                 
                 try {
                     const response = await axios.get(endpoint, {
@@ -71,12 +72,14 @@ export async function GET(req: Request) {
                     if (!rawNodes) return [];
                     const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
                     
-                    return nodesArray.flatMap((n: any) => {
+                    const flattened = nodesArray.flatMap((n: any) => {
                         const elements = n.authStatusElements || n;
                         return Array.isArray(elements) ? elements : [elements];
                     });
+
+                    return flattened;
                 } catch (err: any) {
-                    console.error(`[ISE-FAILURES] Surgical fetch failed:`, err.message);
+                    console.error(`[ISE-HISTORY] Surgical fetch failed:`, err.message);
                     return [];
                 }
             };
@@ -90,79 +93,102 @@ export async function GET(req: Request) {
         };
 
         await logAudit(
-            'ISE_DIAGNOSTICS_QUERY',
-            `Searched ISE diagnostics for ${searchType === "mac" ? "MAC" : "User"}: ${formattedQuery}`,
+            'ISE_HISTORY_QUERY',
+            `Searched ISE History (7-Day) for ${searchType === "mac" ? "MAC" : "User"}: ${formattedQuery}`,
             session.user.id,
             (session.user as any).ipAddress
         );
 
         if (searchType === "mac") {
             const nodes = await fetchAuthStatus(formattedQuery);
-                const mappedResults = nodes.map((node: any) => {
-                    const val = (v: any) => v?._ || v || "";
+            const mappedResults = nodes.map((node: any) => {
+                const val = (v: any) => v?._ || v || "";
 
-                    // Deep parse other_attr_string for hidden fields like SSID
-                    const otherAttrs: Record<string, string> = {};
-                    const rawAttrs = val(node.other_attr_string);
-                    if (rawAttrs) {
-                        rawAttrs.split(':!:').forEach((pair: string) => {
-                            const [key, ...valParts] = pair.split('=');
-                            if (key && valParts.length > 0) {
-                                otherAttrs[key.trim()] = valParts.join('=').trim();
-                            }
-                        });
+                // Deep parse other_attr_string for hidden fields like SSID
+                const otherAttrs: Record<string, string> = {};
+                const rawAttrs = val(node.other_attr_string);
+                if (rawAttrs) {
+                    rawAttrs.split(':!:').forEach((pair: string) => {
+                        const [key, ...valParts] = pair.split('=');
+                        if (key && valParts.length > 0) {
+                            otherAttrs[key.trim()] = valParts.join('=').trim();
+                        }
+                    });
+                }
+
+                const callingStationId = otherAttrs['Called-Station-ID'] || val(node.calling_station_id) || "";
+                const { ssid, apName, siteCode } = parseCalledStationId(callingStationId, val(node.network_device_name) || otherAttrs['NAS-Identifier'] || "N/A");
+
+                const failureId = val(node.failure_id) || val(node.failureId) || "";
+                const insight = getFailureInsight(failureId);
+
+                let steps: any[] = [];
+                const stepsList = node.execution_steps?.step || node.steps?.step;
+                if (stepsList) {
+                    const stepArr = Array.isArray(stepsList) ? stepsList : [stepsList];
+                    steps = stepArr.map((s: any) => ({
+                        id: val(s.id),
+                        description: val(s.description)
+                    }));
+                }
+
+                return {
+                    timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || val(node.timestamp) || "Unknown",
+                    timestamp_label: val(node.failure_reason) ? "FAILURE TIME" : "AUTH TIME",
+                    user_name: val(node.user_name) || val(node.userName) || "Unknown",
+                    calling_station_id: val(node.calling_station_id) || val(node.callingStationId) || val(node.mac_address) || val(node.macAddress) || "Unknown",
+                    nas_ip_address: val(node.nas_ip_address) || val(node.nasIpAddress) || "Unknown",
+                    nas_port_id: val(node.nas_port_id) || val(node.nasPortId) || "Unknown",
+                    failure_reason: val(node.failure_reason) || val(node.failureReason) || "Passed/Active",
+                    failure_id: failureId,
+                    insight,
+                    status: val(node.passed) === "true" || node.passed === true || (!val(node.failure_reason) && val(node.passed) !== "false"),
+                    authentication_method: val(node.authentication_method) || val(node.authenticationMethod) || "Unknown",
+                    authentication_protocol: val(node.authentication_protocol) || val(node.authenticationProtocol) || "Unknown",
+                    acs_server: val(node.acs_server) || val(node.acsServer) || "Unknown",
+                    nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || val(node.network_device_name) || "Unknown",
+                    endpoint_profile: otherAttrs['EndPointProfilerProfile'] || otherAttrs['EndPointProfile'] || val(node.endpoint_profile) || val(node.endpointProfile) || "Unknown",
+                    identity_group: val(node.identity_group) || val(node.identityGroup) || "Unknown",
+                    authorization_rule: otherAttrs['AuthorizationPolicyMatchedRule'] || val(node.authorization_rule) || val(node.authorizationRule) || "Unknown",
+                    auth_policy: otherAttrs['IdentityPolicyMatchedRule'] || val(node.authentication_policy) || val(node.authenticationPolicy) || val(node.auth_policy) || "Unknown",
+                    wlan_ssid: val(node.wlan_ssid) || val(node.wlanSsid) || ssid,
+                    access_point_name: apName,
+                    site_code: siteCode,
+                    steps
+                };
+            });
+
+            // Parallel Surgical ERS Enrichment for History
+            const enrichedResults = await Promise.all(mappedResults.map(async (f: any) => {
+                let profile = f.endpoint_profile;
+                try {
+                    const ersUrl = url.replace(':8443', ':9060');
+                    const ersRes = await axios.get(`${ersUrl}/ers/config/endpoint/name/${f.calling_station_id}`, {
+                        headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
+                        httpsAgent: agent,
+                        timeout: 1500 
+                    });
+
+                    const ep = ersRes.data.ERSEndPoint;
+                    if (ep && ep.mfcAttributes) {
+                        const mfc = ep.mfcAttributes;
+                        const manufacturer = Array.isArray(mfc.mfcHardwareManufacturer) ? mfc.mfcHardwareManufacturer.join('') : mfc.mfcHardwareManufacturer;
+                        const os = Array.isArray(mfc.mfcOperatingSystem) ? mfc.mfcOperatingSystem.join('') : mfc.mfcOperatingSystem;
+                        
+                        if (manufacturer || os) {
+                            profile = `${manufacturer || ""} ${os || ""}`.trim() || profile;
+                        }
                     }
+                } catch (e) {}
 
-                    const calledStationId = otherAttrs['Called-Station-ID'] || val(node.called_station_id) || "";
-                    const { ssid, apName, siteCode } = parseCalledStationId(calledStationId, val(node.network_device_name) || otherAttrs['NAS-Identifier'] || "N/A");
-
-                    const failureId = val(node.failure_id) || val(node.failureId) || "";
-                    const insight = getFailureInsight(failureId);
-
-                    let steps: any[] = [];
-                    const stepsList = node.execution_steps?.step || node.steps?.step;
-                    if (stepsList) {
-                        const stepArr = Array.isArray(stepsList) ? stepsList : [stepsList];
-                        steps = stepArr.map((s: any) => ({
-                            id: val(s.id),
-                            description: val(s.description)
-                        }));
-                    }
-
-                    return {
-                        timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || val(node.timestamp) || "Unknown",
-                        user_name: val(node.user_name) || val(node.userName) || "Unknown",
-                        calling_station_id: val(node.calling_station_id) || val(node.callingStationId) || val(node.mac_address) || val(node.macAddress) || "Unknown",
-                        nas_ip_address: val(node.nas_ip_address) || val(node.nasIpAddress) || "Unknown",
-                        nas_port_id: val(node.nas_port_id) || val(node.nasPortId) || "Unknown",
-                        failure_reason: val(node.failure_reason) || val(node.failureReason) || "Passed/Active",
-                        failure_id: failureId,
-                        insight,
-                        status: val(node.passed) === "true" || node.passed === true || (!val(node.failure_reason) && val(node.passed) !== "false"),
-                        authentication_method: val(node.authentication_method) || val(node.authenticationMethod) || "Unknown",
-                        authentication_protocol: val(node.authentication_protocol) || val(node.authenticationProtocol) || "Unknown",
-                        acs_server: val(node.acs_server) || val(node.acsServer) || "Unknown",
-                        nas_identifier: val(node.nas_identifier) || val(node.nasIdentifier) || val(node.network_device_name) || "Unknown",
-                        endpoint_profile: val(node.endpoint_profile) || val(node.endpointProfile) || "Unknown",
-                        identity_group: val(node.identity_group) || val(node.identityGroup) || "Unknown",
-                        authorization_rule: otherAttrs['AuthorizationPolicyMatchedRule'] || val(node.authorization_rule) || val(node.authorizationRule) || "Unknown",
-                        auth_policy: otherAttrs['IdentityPolicyMatchedRule'] || val(node.authentication_policy) || val(node.authenticationPolicy) || val(node.auth_policy) || "Unknown",
-                        wlan_ssid: val(node.wlan_ssid) || val(node.wlanSsid) || ssid,
-                        access_point_name: apName,
-                        site_code: siteCode,
-                        steps
-                    };
-                });
-
-            
-            const enrichedFailures = await Promise.all(mappedResults.map(async (f: any) => {
                 return {
                     ...f,
+                    endpoint_profile: profile,
                     ad: f.user_name && f.user_name !== "Unknown" ? await getUserDetails(f.user_name) : null
                 };
             }));
             
-            const events = enrichedFailures.sort((a, b) => {
+            const events = enrichedResults.sort((a, b) => {
                 const timeA = new Date(a.timestamp).getTime();
                 const timeB = new Date(b.timestamp).getTime();
                 return isNaN(timeB) ? -1 : (isNaN(timeA) ? 1 : timeB - timeA);
