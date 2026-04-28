@@ -65,6 +65,8 @@ export async function fetchIseSession(query: string) {
             formattedQuery = query.replace(/-/g, ":");
         }
         formattedQuery = formattedQuery.toUpperCase();
+    } else if (/^[0-9a-fA-F]{20,}$/.test(query) || query.includes('/')) {
+        searchType = "session_id";
     }
 
     try {
@@ -73,6 +75,17 @@ export async function fetchIseSession(query: string) {
         if (searchType === "calling_station_id") {
             const endpoint = `${url}/admin/API/mnt/Session/MACAddress/${formattedQuery}`;
             console.log(`[ISE-LIB] Fetching Surgical Session: ${endpoint}`);
+            const res = await axios.get(endpoint, {
+                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                httpsAgent: agent,
+                timeout: 10000
+            });
+            const data = await parseStringPromise(res.data, { explicitArray: false });
+            const node = data.sessionParameters || data.activeSession;
+            if (node) sessionsArray = [node];
+        } else if (searchType === "session_id") {
+            const endpoint = `${url}/admin/API/mnt/Session/SessionID/${formattedQuery}`;
+            console.log(`[ISE-LIB] Fetching Surgical Audit: ${endpoint}`);
             const res = await axios.get(endpoint, {
                 headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
                 httpsAgent: agent,
@@ -158,7 +171,7 @@ export async function fetchIseSession(query: string) {
                 framed_ip_address: sessionNode.framed_ip_address?._ || sessionNode.framed_ip_address || sessionNode.framedIPAddress,
                 nas_ip_address: sessionNode.nas_ip_address?._ || sessionNode.nas_ip_address || sessionNode.nasIpAddress,
                 nas_port_id: sessionNode.nas_port_id?._ || sessionNode.nas_port_id || sessionNode.nasPortId,
-                nas_identifier: sessionNode.nas_identifier?._ || sessionNode.nas_identifier || sessionNode.nasIdentifier || sessionNode.network_device_name?._ || sessionNode.network_device_name || "Unknown",
+                nas_identifier: sessionNode.nas_identifier?._ || sessionNode.nas_identifier || sessionNode.nasIdentifier || sessionNode.network_device_name?._ || sessionNode.network_device_name || otherAttrs['NAS-Identifier'] || "Unknown",
                 endpoint_profile: otherAttrs['EndPointProfilerProfile'] || otherAttrs['EndPointProfile'] || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || sessionNode.endpointProfile || "Unknown",
                 identity_group: sessionNode.identity_group?._ || sessionNode.identity_group || sessionNode.identityGroup || "Unknown",
                 posture_status: sessionNode.posture_status?._ || sessionNode.posture_status || sessionNode.postureStatus || "Unknown",
