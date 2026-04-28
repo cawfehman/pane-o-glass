@@ -12,6 +12,7 @@ interface ConnectionPathProps {
         authorization_rule?: string;
         access_point_name?: string;
         wlan_ssid?: string;
+        rssi?: string;
         status?: boolean;
         enrichment?: {
             ad?: any;
@@ -28,13 +29,23 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
     const hasVectraAlert = vectraData && (vectraData.t_score > 50 || vectraData.c_score > 50);
     const isWireless = session.wlan_ssid && session.wlan_ssid !== "N/A";
 
+    const isMobile = session.endpoint_profile?.toLowerCase().includes('apple') || 
+                     session.endpoint_profile?.toLowerCase().includes('iphone') || 
+                     session.endpoint_profile?.toLowerCase().includes('android') ||
+                     session.endpoint_profile?.toLowerCase().includes('mobile');
+
     const nodes = [
         {
             id: 'endpoint',
-            label: 'Endpoint',
+            label: session.endpoint_profile && session.endpoint_profile !== "Unknown" ? session.endpoint_profile : 'Endpoint',
             sub: session.calling_station_id,
             status: hasVectraAlert ? 'warning' : 'success',
-            icon: (
+            icon: isMobile ? (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                </svg>
+            ) : (
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
                     <line x1="8" y1="21" x2="16" y2="21"></line>
@@ -113,9 +124,16 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
                     Authentication Path Visualizer
                 </h4>
                 {isWireless && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: 'var(--accent-primary)', background: 'rgba(59, 130, 246, 0.1)', padding: '4px 10px', borderRadius: '12px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
-                        <span>WIRELESS SESSION ({session.wlan_ssid})</span>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        {session.rssi && session.rssi !== "N/A" && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '4px 10px', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                                <span style={{ fontWeight: 'bold' }}>{session.rssi} dBm</span>
+                            </div>
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: 'var(--accent-primary)', background: 'rgba(59, 130, 246, 0.1)', padding: '4px 10px', borderRadius: '12px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+                            <span>WIRELESS ({session.wlan_ssid})</span>
+                        </div>
                     </div>
                 )}
             </div>

@@ -182,9 +182,34 @@ export async function fetchIseSession(query: string) {
             };
         });
 
+        const enrichedSessions = await Promise.all(mappedSessions.map(async (session: any) => {
+            try {
+                const ersUrl = url.replace(':8443', ':9060');
+                const ersRes = await axios.get(`${ersUrl}/ers/config/endpoint/name/${session.calling_station_id}`, {
+                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
+                    httpsAgent: agent,
+                    timeout: 3000
+                });
+
+                const ep = ersRes.data.ERSEndPoint;
+                if (ep && ep.mfcAttributes) {
+                    const mfc = ep.mfcAttributes;
+                    const manufacturer = Array.isArray(mfc.mfcHardwareManufacturer) ? mfc.mfcHardwareManufacturer.join('') : mfc.mfcHardwareManufacturer;
+                    const os = Array.isArray(mfc.mfcOperatingSystem) ? mfc.mfcOperatingSystem.join('') : mfc.mfcOperatingSystem;
+                    
+                    if (manufacturer || os) {
+                        session.endpoint_profile = `${manufacturer || ""} ${os || ""}`.trim() || session.endpoint_profile;
+                    }
+                }
+            } catch (e) {
+                // Ignore ERS errors, fallback to MnT data
+            }
+            return session;
+        }));
+
         return {
             found: true,
-            sessions: mappedSessions
+            sessions: enrichedSessions
         };
 
     } catch (e: any) {
