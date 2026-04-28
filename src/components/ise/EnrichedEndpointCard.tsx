@@ -82,11 +82,14 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
                         <p title="The specific ISE PSN" style={{ marginBottom: '4px' }}><strong>Node:</strong> {session.acs_server || "Unknown"}</p>
                         <p title="Authorization Rule" style={{ marginBottom: '4px' }}><strong>Rule:</strong> {session.authorization_rule || "Unknown"}</p>
                         <p title="Auth Method" style={{ marginBottom: '4px' }}><strong>Method:</strong> {session.authentication_method || "Unknown"}</p>
-                        <p title="Identity Group" style={{ marginBottom: '4px' }}><strong>Group:</strong> {session.identity_group || "Unknown"}</p>
+                        <p title="Identity Group" style={{ marginBottom: '4px' }}><strong>ID Group:</strong> {session.identity_group || "Unknown"}</p>
                     </div>
 
                     <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                         <h4 style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px' }}>Telemetry</h4>
+                        <p title="Profiling classification from ISE" style={{ marginBottom: '4px' }}>
+                            <strong>Device:</strong> <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>{session.endpoint_profile || "Unknown"}</span>
+                        </p>
                         <p title="Wireless Signal Strength" style={{ marginBottom: '4px' }}>
                             <strong>Signal:</strong> {session.rssi && session.rssi !== "N/A" ? (
                                 <span style={{ color: parseInt(session.rssi) > -70 ? '#10b981' : '#f59e0b', fontWeight: 'bold' }}>
@@ -98,7 +101,6 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
                             <strong>Profile:</strong> <span style={{ color: 'var(--text-secondary)' }}>{session.user_agent || "N/A"}</span>
                         </p>
                         <p title="VLAN" style={{ marginBottom: '4px' }}><strong>VLAN:</strong> {session.vlan || "Unknown"}</p>
-                        <p title="Security Group" style={{ marginBottom: '4px' }}><strong>SGT:</strong> {session.security_group || "N/A"}</p>
                     </div>
                 </div>
             </div>
