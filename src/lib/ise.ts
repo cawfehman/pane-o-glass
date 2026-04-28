@@ -143,11 +143,22 @@ export async function fetchIseSession(query: string) {
         }
 
         const mappedSessions = sessionsArray.map((sessionNode: any) => {
-            const timestamp = sessionNode.auth_acs_timestamp?._ || sessionNode.auth_acs_timestamp || 
-                              sessionNode.acct_acs_timestamp?._ || sessionNode.acct_acs_timestamp ||
-                              sessionNode.event_timestamp?._ || sessionNode.event_timestamp ||
-                              sessionNode.acs_timestamp?._ || sessionNode.acs_timestamp || 
-                              sessionNode.acsTimestamp || "Unknown";
+            let timestamp = "Unknown";
+            let timestampLabel = "EVENT TIME";
+
+            if (sessionNode.auth_acs_timestamp?._ || sessionNode.auth_acs_timestamp) {
+                timestamp = sessionNode.auth_acs_timestamp?._ || sessionNode.auth_acs_timestamp;
+                timestampLabel = "AUTH TIME";
+            } else if (sessionNode.acct_acs_timestamp?._ || sessionNode.acct_acs_timestamp) {
+                timestamp = sessionNode.acct_acs_timestamp?._ || sessionNode.acct_acs_timestamp;
+                timestampLabel = "ACCT TIME";
+            } else if (sessionNode.event_timestamp?._ || sessionNode.event_timestamp) {
+                timestamp = sessionNode.event_timestamp?._ || sessionNode.event_timestamp;
+                timestampLabel = "EVENT TIME";
+            } else if (sessionNode.acs_timestamp?._ || sessionNode.acs_timestamp || sessionNode.acsTimestamp) {
+                timestamp = sessionNode.acs_timestamp?._ || sessionNode.acs_timestamp || sessionNode.acsTimestamp;
+                timestampLabel = "SESSION TIME";
+            }
 
             // Deep parse other_attr_string for hidden fields like SSID
             const otherAttrs: Record<string, string> = {};
@@ -180,6 +191,7 @@ export async function fetchIseSession(query: string) {
                 identity_group: sessionNode.identity_group?._ || sessionNode.identity_group || sessionNode.identityGroup || "Unknown",
                 posture_status: sessionNode.posture_status?._ || sessionNode.posture_status || sessionNode.postureStatus || "Unknown",
                 timestamp: timestamp,
+                timestamp_label: timestampLabel,
                 authorization_rule: sessionNode.authorization_rule?._ || sessionNode.authorization_rule || sessionNode.authorizationRule || "Unknown",
                 authentication_method: sessionNode.authentication_method?._ || sessionNode.authentication_method || sessionNode.authenticationMethod || "Unknown",
                 authentication_protocol: sessionNode.authentication_protocol?._ || sessionNode.authentication_protocol || sessionNode.authenticationProtocol || "Unknown",

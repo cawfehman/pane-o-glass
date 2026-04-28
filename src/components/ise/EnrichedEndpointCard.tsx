@@ -107,7 +107,7 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
             
             <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px 24px', fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', letterSpacing: '0.025em' }}>
                 <span title="Full Cisco Audit Session ID for syslog correlation">AUDIT ID: {session.audit_session_id || "N/A"}</span>
-                <span>EVENT TIME: {session.timestamp && session.timestamp !== "Unknown" ? new Date(session.timestamp).toLocaleString() : "UNKNOWN"}</span>
+                <span>{session.timestamp_label || "EVENT TIME"}: {session.timestamp && session.timestamp !== "Unknown" ? new Date(session.timestamp).toLocaleString() : "UNKNOWN"}</span>
             </div>
         </div>
     );
