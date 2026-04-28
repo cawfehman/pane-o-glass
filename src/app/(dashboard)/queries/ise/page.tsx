@@ -525,7 +525,7 @@ export default function CiscoIsePage() {
                         ) : (
                             <div className="glass-card" style={{ textAlign: 'center', padding: '60px 20px' }}>
                                 <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>No Forensic History Available</p>
-                                <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>ISE hasn't logged any RADIUS events for this target in the last 24 hours.</p>
+                                <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>ISE hasn't logged any RADIUS events for this target in the last 30 days.</p>
                             </div>
                         )}
                     </div>
