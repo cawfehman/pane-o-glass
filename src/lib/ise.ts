@@ -175,7 +175,7 @@ export async function fetchIseSession(query: string) {
                 endpoint_profile: otherAttrs['EndPointProfilerProfile'] || otherAttrs['EndPointProfile'] || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || sessionNode.endpointProfile || "Unknown",
                 identity_group: sessionNode.identity_group?._ || sessionNode.identity_group || sessionNode.identityGroup || "Unknown",
                 posture_status: sessionNode.posture_status?._ || sessionNode.posture_status || sessionNode.postureStatus || "Unknown",
-                start_time: timestamp,
+                timestamp: timestamp,
                 authorization_rule: sessionNode.authorization_rule?._ || sessionNode.authorization_rule || sessionNode.authorizationRule || "Unknown",
                 authentication_method: sessionNode.authentication_method?._ || sessionNode.authentication_method || sessionNode.authenticationMethod || "Unknown",
                 authentication_protocol: sessionNode.authentication_protocol?._ || sessionNode.authentication_protocol || sessionNode.authenticationProtocol || "Unknown",
