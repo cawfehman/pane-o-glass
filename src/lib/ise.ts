@@ -176,7 +176,9 @@ export async function fetchIseSession(query: string) {
                 endpoint_policy: sessionNode.endpoint_policy?._ || sessionNode.endpoint_policy || sessionNode.endpointPolicy || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || "Unknown",
                 wlan_ssid: sessionNode.wlan_ssid?._ || sessionNode.wlan_ssid || sessionNode.wlanSsid || extractedSsid,
                 access_point_name: extractedApIdentity,
-                site_code: parseSiteCode
+                site_code: parseSiteCode,
+                rssi: otherAttrs['Airespace-RSSI'] || otherAttrs['RSSI'] || otherAttrs['Signal-Strength'] || "N/A",
+                user_agent: otherAttrs['User-Agent'] || otherAttrs['UserAgent'] || otherAttrs['device-sensor-user-agent'] || "N/A"
             };
         });
 

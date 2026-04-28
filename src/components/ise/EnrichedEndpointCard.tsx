@@ -68,20 +68,37 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
                 <ConnectionPath session={session} />
 
                 {/* Grid of technical details */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px', marginTop: '24px', fontSize: '0.9rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginTop: '24px', fontSize: '0.85rem' }}>
                     <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                        <h4 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '12px' }}>Infrastructure Integration</h4>
-                        <p title="The switch, WLC, or firewall handling this session" style={{ marginBottom: '4px' }}><strong>NAD:</strong> {session.nas_identifier || "Unknown"}</p>
-                        <p title="The 3-character site identifier extracted from AP name" style={{ marginBottom: '4px' }}><strong>Site Code:</strong> <span style={{ color: 'var(--accent-secondary)', fontWeight: 'bold' }}>{session.site_code || "N/A"}</span></p>
-                        <p title="The IP assigned to the access device" style={{ marginBottom: '4px' }}><strong>NAD IP:</strong> {session.nas_ip_address || "Unknown"}</p>
-                        <p title="The SSID for wireless connections" style={{ marginBottom: '4px' }}><strong>SSID:</strong> <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>{session.wlan_ssid || "N/A"}</span></p>
-                        <p title="The specific Access Point Name" style={{ marginBottom: '4px' }}><strong>AP Name:</strong> {session.access_point_name || "N/A"}</p>
+                        <h4 style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px' }}>Infrastructure</h4>
+                        <p title="The WLC or Switch" style={{ marginBottom: '4px' }}><strong>NAD:</strong> {session.nas_identifier || "Unknown"}</p>
+                        <p title="The SSID" style={{ marginBottom: '4px' }}><strong>SSID:</strong> {session.wlan_ssid || "N/A"}</p>
+                        <p title="The Access Point" style={{ marginBottom: '4px' }}><strong>AP:</strong> {session.access_point_name || "N/A"}</p>
+                        <p title="Site Code" style={{ marginBottom: '4px' }}><strong>Site:</strong> <span style={{ color: 'var(--accent-secondary)' }}>{session.site_code || "N/A"}</span></p>
                     </div>
+
                     <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                        <h4 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '12px' }}>Cisco Policy Engine</h4>
-                        <p title="The specific ISE PSN that authenticated the session" style={{ marginBottom: '4px' }}><strong>Auth Node:</strong> {session.acs_server || "Unknown"}</p>
-                        <p title="The protocol (DOT1X, MAB, etc)" style={{ marginBottom: '4px' }}><strong>Method:</strong> {session.authentication_method || "Unknown"}</p>
-                        <p title="Internal authentication policy set" style={{ marginBottom: '4px' }}><strong>Policy:</strong> {session.authorization_rule || "Unknown"}</p>
+                        <h4 style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px' }}>Policy & Node</h4>
+                        <p title="The specific ISE PSN" style={{ marginBottom: '4px' }}><strong>Node:</strong> {session.acs_server || "Unknown"}</p>
+                        <p title="Authorization Rule" style={{ marginBottom: '4px' }}><strong>Rule:</strong> {session.authorization_rule || "Unknown"}</p>
+                        <p title="Auth Method" style={{ marginBottom: '4px' }}><strong>Method:</strong> {session.authentication_method || "Unknown"}</p>
+                        <p title="Identity Group" style={{ marginBottom: '4px' }}><strong>Group:</strong> {session.identity_group || "Unknown"}</p>
+                    </div>
+
+                    <div style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                        <h4 style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px' }}>Telemetry</h4>
+                        <p title="Wireless Signal Strength" style={{ marginBottom: '4px' }}>
+                            <strong>Signal:</strong> {session.rssi && session.rssi !== "N/A" ? (
+                                <span style={{ color: parseInt(session.rssi) > -70 ? '#10b981' : '#f59e0b', fontWeight: 'bold' }}>
+                                    {session.rssi} dBm
+                                </span>
+                            ) : "N/A"}
+                        </p>
+                        <p title="Browser/OS Profile" style={{ marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <strong>Profile:</strong> <span style={{ color: 'var(--text-secondary)' }}>{session.user_agent || "N/A"}</span>
+                        </p>
+                        <p title="VLAN" style={{ marginBottom: '4px' }}><strong>VLAN:</strong> {session.vlan || "Unknown"}</p>
+                        <p title="Security Group" style={{ marginBottom: '4px' }}><strong>SGT:</strong> {session.security_group || "N/A"}</p>
                     </div>
                 </div>
             </div>
