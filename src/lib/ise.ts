@@ -143,7 +143,11 @@ export async function fetchIseSession(query: string) {
         }
 
         const mappedSessions = sessionsArray.map((sessionNode: any) => {
-            const timestamp = sessionNode.acs_timestamp?._ || sessionNode.acs_timestamp || sessionNode.acsTimestamp || "Unknown";
+            const timestamp = sessionNode.auth_acs_timestamp?._ || sessionNode.auth_acs_timestamp || 
+                              sessionNode.acct_acs_timestamp?._ || sessionNode.acct_acs_timestamp ||
+                              sessionNode.event_timestamp?._ || sessionNode.event_timestamp ||
+                              sessionNode.acs_timestamp?._ || sessionNode.acs_timestamp || 
+                              sessionNode.acsTimestamp || "Unknown";
 
             // Deep parse other_attr_string for hidden fields like SSID
             const otherAttrs: Record<string, string> = {};
