@@ -35,53 +35,66 @@ async function runAutoUnshun() {
                 host: fw.ip,
                 username: fw.user,
                 password: fw.pass,
-                readyTimeout: 10000
+                readyTimeout: 15000
             });
 
-            for (const ip of watchList) {
-                const checkCmd = `show shun ${ip}`;
-                console.log(`[GUARDIAN] Querying ${fw.name} for ${ip}...`);
-                
-                const output = await new Promise((resolve) => {
-                    ssh.requestShell().then((stream) => {
-                        let data = "";
-                        stream.on('data', (d) => data += d.toString());
-                        stream.on('close', () => resolve(data));
-                        
-                        // Send command and then exit shell to trigger close
-                        stream.write(`${checkCmd}\n`);
-                        setTimeout(() => stream.write("exit\n"), 1500);
-                    }).catch(err => {
-                        console.error(`[DEBUG] Shell Error: ${err.message}`);
-                        resolve("");
+            console.log(`[GUARDIAN] Connected to ${fw.name}. Running scan...`);
+
+            const shellOutput = await new Promise((resolve, reject) => {
+                ssh.requestShell().then((stream) => {
+                    let data = "";
+                    stream.on('data', (d) => {
+                        data += d.toString();
                     });
-                });
-
-                if (process.env.DEBUG_GUARDIAN === "true") {
-                    console.log(`[DEBUG] Full Shell Output from ${fw.name}:\n${output}`);
-                }
-
-                const isMatch = output.toLowerCase().includes(ip.toLowerCase()) && 
-                                !output.toLowerCase().includes("not found") && 
-                                !output.toLowerCase().includes("no shun");
-
-                if (isMatch) {
-                    console.log(`[!!!] MATCH FOUND: ${ip} is shunned on ${fw.name}. Removing...`);
                     
+                    stream.on('close', () => resolve(data));
+                    stream.on('error', (err) => reject(err));
+
+                    // 1. Run all checks and removals in one stream
+                    for (const ip of watchList) {
+                        stream.write(`show shun ${ip}\n`);
+                    }
+                    
+                    // 2. Give it time to process all commands
+                    setTimeout(() => {
+                        stream.write("exit\n");
+                    }, 3000); // 3 seconds to run all checks
+                }).catch(reject);
+            });
+
+            if (process.env.DEBUG_GUARDIAN === "true") {
+                console.log(`[DEBUG] Raw output from ${fw.name}:\n${shellOutput}`);
+            }
+
+            // 3. Post-process the single shell output for all matches
+            for (const ip of watchList) {
+                const targetIp = ip.toLowerCase();
+                const lines = shellOutput.split('\n').map(l => l.trim().toLowerCase());
+                
+                // Find if any line contains 'shun' and our IP
+                const match = lines.find(l => l.includes('shun') && l.includes(targetIp) && !l.includes("not found"));
+                
+                if (match) {
+                    console.log(`[!!!] MATCH FOUND: ${ip} was shunned on ${fw.name}.`);
+                    
+                    // Since we already ran the checks, we need to run the REMOVALS now 
+                    // We'll open one more shell for removals if needed, or just run them in the first pass
+                    // To be safe, let's run them in a second interactive pass
                     await new Promise((resolve) => {
                         ssh.requestShell().then((stream) => {
+                            console.log(`[GUARDIAN] Removing shun for ${ip} on ${fw.name}...`);
                             stream.write(`no shun ${ip}\n`);
                             setTimeout(() => {
                                 stream.write("exit\n");
                                 resolve(true);
-                            }, 1500);
-                        });
+                            }, 2000);
+                        }).catch(() => resolve(false));
                     });
-                    
+
                     // 4. Log to Global History List (Prisma)
                     await prisma.firewallQueryHistory.create({
                         data: {
-                            userId: null, // System Action
+                            userId: null,
                             command: "Auto-Unshun (Guardian)",
                             targetIp: ip,
                             targetName: fw.name,
@@ -90,14 +103,12 @@ async function runAutoUnshun() {
                             ipAsDomain: "guardian.local"
                         }
                     });
-                    
-                    console.log(`[GUARDIAN] Successfully removed and logged shun for ${ip}.`);
                 }
             }
             
             ssh.dispose();
         } catch (err) {
-            console.error(`[GUARDIAN] Failed to connect to ${fw.name} (${fw.ip}):`, err.message);
+            console.error(`[GUARDIAN] Error on ${fw.name}: ${err.message}`);
             ssh.dispose();
         }
     }
