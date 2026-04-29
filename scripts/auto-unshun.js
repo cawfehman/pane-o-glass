@@ -81,14 +81,22 @@ async function runAutoUnshun() {
                 });
             }
 
+            const outputLines = shellOutput.split('\n').map(l => l.trim().toLowerCase());
+
             for (const ip of watchList) {
                 const targetIp = ip.toLowerCase();
-                const lines = shellOutput.split('\n').map(l => l.trim().toLowerCase());
                 
-                const match = lines.find(l => l.includes('shun') && l.includes(targetIp) && !l.includes("not found"));
+                // Find if any line contains 'shun' and our IP, but IS NOT the command we sent
+                const match = outputLines.find(line => {
+                    return line.includes('shun') && 
+                           line.includes(targetIp) && 
+                           !line.includes('show') && // Ignore the echoed command
+                           !line.includes('not found') && 
+                           !line.includes('no shun');
+                });
                 
                 if (match) {
-                    console.log(`[!!!] MATCH FOUND: ${ip} was shunned on ${fw.name}.`);
+                    console.log(`[!!!] TRUE MATCH: Found active shun for ${ip} on ${fw.name}: "${match}"`);
                     
                     const ipInfo = await getIpInfoLite(ip);
 
