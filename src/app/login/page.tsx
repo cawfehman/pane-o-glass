@@ -86,7 +86,7 @@ function LoginContent() {
                 </h1>
                 {isTimeout && (
                     <div style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', border: '1px solid #f59e0b', color: '#f59e0b', padding: '12px', borderRadius: '4px', marginBottom: '16px', fontSize: '0.875rem' }}>
-                        Your session has expired due to 10 minutes of inactivity. Please sign in again.
+                        Your session has expired due to inactivity. Please sign in again.
                     </div>
                 )}
                 <p>Sign in to your dashboard</p>
