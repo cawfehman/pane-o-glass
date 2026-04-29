@@ -38,19 +38,18 @@ async function runAutoUnshun() {
                 readyTimeout: 10000
             });
 
-            // 1. Get current shun list
-            const result = await ssh.execCommand('show shun');
-            const output = result.stdout;
-            
-            // 2. Check for matches line-by-line
-            const shunLines = output.split('\n').map(l => l.trim().toLowerCase());
-            
             for (const ip of watchList) {
-                // Look for a line that starts with 'shun' and contains the IP
-                const match = shunLines.find(line => line.startsWith('shun') && line.includes(ip.toLowerCase()));
+                // Surgical check for this specific IP
+                const checkResult = await ssh.execCommand(`show shun ${ip}`);
+                const output = checkResult.stdout.toLowerCase();
                 
-                if (match) {
-                    console.log(`[!!!] MATCH: Found ${ip} on ${fw.name} in shun list: "${match}"`);
+                if (process.env.DEBUG_GUARDIAN === "true") {
+                    console.log(`[DEBUG] Query ${fw.name} for ${ip}: ${output.trim()}`);
+                }
+
+                // If output contains the IP, it is currently shunned
+                if (output.includes(ip.toLowerCase()) && !output.includes("not found") && !output.includes("no shun")) {
+                    console.log(`[!!!] MATCH: ${ip} is actively shunned on ${fw.name}. Removing...`);
                     
                     // 3. Remove the shun
                     await ssh.execCommand(`no shun ${ip}`);
