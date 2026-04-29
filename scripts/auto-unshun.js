@@ -42,9 +42,20 @@ async function runAutoUnshun() {
         return;
     }
 
+    // Get or Create Guardian User for the log
+    let guardianUser = await prisma.user.findUnique({ where: { username: "Guardian" } });
+    if (!guardianUser) {
+        guardianUser = await prisma.user.create({
+            data: {
+                username: "Guardian",
+                role: "SYSTEM",
+                isExternal: false
+            }
+        });
+    }
+
     console.log(`[GUARDIAN] Starting scan...`);
     console.log(`[GUARDIAN] Monitoring: ${watchList.join(', ')}`);
-    console.log(`[GUARDIAN] Target Firewalls: ${firewalls.length}`);
 
     for (const fw of firewalls) {
         const ssh = new NodeSSH();
@@ -56,94 +67,64 @@ async function runAutoUnshun() {
                 readyTimeout: 15000
             });
 
-            console.log(`[GUARDIAN] Connected to ${fw.name}. Running scan...`);
+            console.log(`[GUARDIAN] Connected to ${fw.name}. Scanning...`);
 
-            const shellOutput = await new Promise((resolve, reject) => {
+            await new Promise((resolve, reject) => {
                 ssh.requestShell().then((stream) => {
-                    let data = "";
+                    let buffer = "";
                     stream.on('data', (d) => {
-                        data += d.toString();
+                        buffer += d.toString();
                     });
                     
-                    stream.on('close', () => resolve(data));
+                    stream.on('close', () => resolve(true));
                     stream.on('error', (err) => reject(err));
 
-                    // 1. Run all checks and removals in one stream
-                    for (const ip of watchList) {
-                        stream.write(`show shun ${ip}\n`);
-                    }
-                    
-                    // 2. Give it time to process all commands
-                    setTimeout(() => {
+                    const processQueue = async () => {
+                        for (const ip of watchList) {
+                            buffer = ""; // Clear buffer for this check
+                            stream.write(`show shun ${ip}\n`);
+                            
+                            // Wait for output to settle
+                            await new Promise(r => setTimeout(r, 1500));
+                            
+                            const lines = buffer.split('\n').map(l => l.trim().toLowerCase());
+                            const match = lines.find(line => 
+                                line.includes('shun') && 
+                                line.includes(ip.toLowerCase()) && 
+                                !line.includes('show') && 
+                                !line.includes('not found')
+                            );
+
+                            if (match) {
+                                console.log(`[!!!] TRUE MATCH: Found active shun for ${ip} on ${fw.name}. Removing...`);
+                                
+                                stream.write(`no shun ${ip}\n`);
+                                await new Promise(r => setTimeout(r, 1000));
+                                
+                                // Enrichment & Logging
+                                const ipInfo = await getIpInfo(ip);
+                                await prisma.firewallQueryHistory.create({
+                                    data: {
+                                        userId: guardianUser.id,
+                                        command: "Auto-Unshun (Guardian)",
+                                        targetIp: ip,
+                                        targetName: fw.name,
+                                        ipAsn: ipInfo?.asn || "INTERNAL",
+                                        ipAsName: ipInfo?.as_name || "Protected Asset",
+                                        ipAsDomain: ipInfo?.as_domain || "guardian.local",
+                                        ipCountry: ipInfo?.country || "Internal",
+                                        ipCountryCode: ipInfo?.country_code || "IN"
+                                    }
+                                });
+                                console.log(`[GUARDIAN] Successfully unshunned and logged ${ip}.`);
+                            }
+                        }
                         stream.write("exit\n");
-                    }, 3000); // 3 seconds to run all checks
+                    };
+
+                    processQueue();
                 }).catch(reject);
             });
-
-            if (process.env.DEBUG_GUARDIAN === "true") {
-                console.log(`[DEBUG] Raw output from ${fw.name}:\n${shellOutput}`);
-            }
-
-            // 3. Post-process the single shell output for all matches
-            
-            // Get or Create Guardian User for the log
-            let guardianUser = await prisma.user.findUnique({ where: { username: "Guardian" } });
-            if (!guardianUser) {
-                guardianUser = await prisma.user.create({
-                    data: {
-                        username: "Guardian",
-                        role: "SYSTEM",
-                        isExternal: false
-                    }
-                });
-            }
-
-            const outputLines = shellOutput.split('\n').map(l => l.trim().toLowerCase());
-
-            for (const ip of watchList) {
-                const targetIp = ip.toLowerCase();
-                
-                // Find if any line contains 'shun' and our IP, but IS NOT the command we sent
-                const match = outputLines.find(line => {
-                    return line.includes('shun') && 
-                           line.includes(targetIp) && 
-                           !line.includes('show') && 
-                           !line.includes('not found') && 
-                           !line.includes('no shun');
-                });
-                
-                if (match) {
-                    console.log(`[!!!] TRUE MATCH: Found active shun for ${ip} on ${fw.name}: "${match}"`);
-                    
-                    const ipInfo = await getIpInfo(ip);
-
-                    await new Promise((resolve) => {
-                        ssh.requestShell().then((stream) => {
-                            console.log(`[GUARDIAN] Removing shun for ${ip} on ${fw.name}...`);
-                            stream.write(`no shun ${ip}\n`);
-                            setTimeout(() => {
-                                stream.write("exit\n");
-                                resolve(true);
-                            }, 2000);
-                        }).catch(() => resolve(false));
-                    });
-
-                    // 4. Log to Global History List (Prisma)
-                    await prisma.firewallQueryHistory.create({
-                        data: {
-                            userId: guardianUser.id,
-                            command: "Auto-Unshun (Guardian)",
-                            targetIp: ip,
-                            targetName: fw.name,
-                            ipAsn: ipInfo?.asn || "INTERNAL",
-                            ipAsName: ipInfo?.as_name || "Protected Asset",
-                            ipAsDomain: ipInfo?.as_domain || "guardian.local",
-                            ipCountry: ipInfo?.country || "Internal",
-                            ipCountryCode: ipInfo?.country_code || "IN"
-                        }
-                    });
-                }
-            }
             
             ssh.dispose();
         } catch (err) {
@@ -166,7 +147,7 @@ async function runAutoUnshun() {
     }
 }
 
-// Execute once and exit (perfect for Task Scheduler or Cron)
+// Execute once and exit
 runAutoUnshun()
     .then(async () => {
         await prisma.$disconnect();
