@@ -74,6 +74,17 @@ async function runAutoUnshun() {
     }
     
     console.log("[GUARDIAN] Scan complete.");
+    
+    // 5. Update Heartbeat for Dashboard
+    try {
+        await prisma.backgroundJob.upsert({
+            where: { name: "Firewall Guardian" },
+            update: { lastRun: new Date(), status: "SUCCESS" },
+            create: { name: "Firewall Guardian", status: "SUCCESS" }
+        });
+    } catch (e) {
+        console.error("[GUARDIAN] Failed to update heartbeat:", e.message);
+    }
 }
 
 // Execute once and exit (perfect for Task Scheduler or Cron)

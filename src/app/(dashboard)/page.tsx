@@ -72,12 +72,18 @@ export default async function DashboardHome() {
         include: { user: { select: { username: true } } }
     });
 
+    // Guardian Pulse
+    const guardianJob = await prisma.backgroundJob.findUnique({
+        where: { name: "Firewall Guardian" }
+    });
+    const isGuardianLive = guardianJob && (new Date().getTime() - new Date(guardianJob.lastRun).getTime() < 300000); // 5 mins
+
     return (
         <div>
             <h1 style={{ marginBottom: '24px' }}>Admin Command Center</h1>
-
+            
             {/* Health Metrics */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px' }}>
                 <div className="glass-card">
                     <h3 style={{ marginBottom: '12px', color: 'var(--text-secondary)' }}>Role Composition</h3>
                     <p style={{ fontSize: '2.5rem', fontWeight: 700, color: 'var(--accent-primary)' }}>{adminCount}</p>
@@ -92,6 +98,18 @@ export default async function DashboardHome() {
                     <h3 style={{ marginBottom: '12px', color: 'var(--text-secondary)' }}>Event Monitoring</h3>
                     <p style={{ fontSize: '2.5rem', fontWeight: 700 }}>{logCount.toLocaleString()}</p>
                     <p style={{ marginTop: '8px', color: 'var(--text-muted)' }}>Actions Tracked (30-day)</p>
+                </div>
+                <div className="glass-card" style={{ borderLeft: isGuardianLive ? '4px solid #10b981' : '4px solid #ef4444' }}>
+                    <h3 style={{ marginBottom: '12px', color: 'var(--text-secondary)' }}>Guardian Pulse</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: isGuardianLive ? '#10b981' : '#ef4444', boxShadow: isGuardianLive ? '0 0 8px #10b981' : 'none' }}></div>
+                        <p style={{ fontSize: '2rem', fontWeight: 700, color: isGuardianLive ? '#10b981' : '#ef4444' }}>
+                            {isGuardianLive ? "LIVE" : "STALLED"}
+                        </p>
+                    </div>
+                    <p style={{ marginTop: '8px', color: 'var(--text-muted)' }}>
+                        {guardianJob ? `Last Seen: ${new Date(guardianJob.lastRun).toLocaleTimeString()}` : "Not yet started"}
+                    </p>
                 </div>
             </div>
 

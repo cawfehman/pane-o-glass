@@ -77,3 +77,11 @@ model Feedback {
   body      String
   createdAt DateTime @default(now())
 }
+
+model BackgroundJob {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  lastRun   DateTime @default(now())
+  status    String   // "SUCCESS", "FAILURE"
+  message   String?
+}
