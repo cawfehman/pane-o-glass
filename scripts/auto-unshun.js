@@ -39,20 +39,30 @@ async function runAutoUnshun() {
             });
 
             for (const ip of watchList) {
-                // Surgical check for this specific IP
-                const checkResult = await ssh.execCommand(`show shun ${ip}`);
-                const output = checkResult.stdout.toLowerCase();
+                const checkCmd = `show shun ${ip}`;
+                console.log(`[GUARDIAN] Executing on ${fw.name}: "${checkCmd}"`);
                 
-                if (process.env.DEBUG_GUARDIAN === "true") {
-                    console.log(`[DEBUG] Query ${fw.name} for ${ip}: ${output.trim()}`);
-                }
+                const checkResult = await ssh.execCommand(checkCmd);
+                const output = checkResult.stdout.trim();
+                const error = checkResult.stderr.trim();
+                
+                if (error) console.log(`[DEBUG] Stderr from ${fw.name}: ${error}`);
+                if (output) console.log(`[DEBUG] Stdout from ${fw.name}: ${output}`);
 
                 // If output contains the IP, it is currently shunned
-                if (output.includes(ip.toLowerCase()) && !output.includes("not found") && !output.includes("no shun")) {
-                    console.log(`[!!!] MATCH: ${ip} is actively shunned on ${fw.name}. Removing...`);
+                const isMatch = output.toLowerCase().includes(ip.toLowerCase()) && 
+                                !output.toLowerCase().includes("not found") && 
+                                !output.toLowerCase().includes("no shun");
+
+                if (isMatch) {
+                    console.log(`[!!!] MATCH FOUND: ${ip} is shunned on ${fw.name}.`);
                     
-                    // 3. Remove the shun
-                    await ssh.execCommand(`no shun ${ip}`);
+                    const removeCmd = `no shun ${ip}`;
+                    console.log(`[GUARDIAN] Executing removal: "${removeCmd}"`);
+                    const removeResult = await ssh.execCommand(removeCmd);
+                    
+                    if (removeResult.stdout) console.log(`[DEBUG] Removal Output: ${removeResult.stdout.trim()}`);
+                    if (removeResult.stderr) console.log(`[DEBUG] Removal Error: ${removeResult.stderr.trim()}`);
                     
                     // 4. Log to Global History List (Prisma)
                     await prisma.firewallQueryHistory.create({
