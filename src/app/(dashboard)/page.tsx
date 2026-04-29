@@ -99,16 +99,26 @@ export default async function DashboardHome() {
                     <p style={{ fontSize: '2.5rem', fontWeight: 700 }}>{logCount.toLocaleString()}</p>
                     <p style={{ marginTop: '8px', color: 'var(--text-muted)' }}>Actions Tracked (30-day)</p>
                 </div>
-                <div className="glass-card" style={{ borderLeft: isGuardianLive ? '4px solid #10b981' : '4px solid #ef4444' }}>
-                    <h3 style={{ marginBottom: '12px', color: 'var(--text-secondary)' }}>Guardian Pulse</h3>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: isGuardianLive ? '#10b981' : '#ef4444', boxShadow: isGuardianLive ? '0 0 8px #10b981' : 'none' }}></div>
-                        <p style={{ fontSize: '2rem', fontWeight: 700, color: isGuardianLive ? '#10b981' : '#ef4444' }}>
-                            {isGuardianLive ? "LIVE" : "STALLED"}
-                        </p>
+                <div className="glass-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                        <h3 style={{ color: 'var(--text-secondary)' }}>Guardian Pulse</h3>
+                        <div style={{ 
+                            width: '10px', 
+                            height: '10px', 
+                            borderRadius: '50%', 
+                            backgroundColor: isGuardianLive ? '#10b981' : '#ef4444', 
+                            boxShadow: isGuardianLive ? '0 0 10px #10b981' : 'none',
+                            marginTop: '4px'
+                        }}></div>
                     </div>
-                    <p style={{ marginTop: '8px', color: 'var(--text-muted)' }}>
-                        {guardianJob ? `Last Seen: ${new Date(guardianJob.lastRun).toLocaleTimeString()}` : "Not yet started"}
+                    <p style={{ fontSize: '1.8rem', fontWeight: 700, color: isGuardianLive ? '#10b981' : '#ef4444', lineHeight: 1 }}>
+                        {isGuardianLive ? "ACTIVE" : "STALLED"}
+                    </p>
+                    <p style={{ marginTop: '8px', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 500 }}>
+                        Automated Shun-List Protection
+                    </p>
+                    <p style={{ marginTop: '12px', fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
+                        {guardianJob ? `Checked at: ${new Date(guardianJob.lastRun).toLocaleTimeString()}` : "Waiting for first scan..."}
                     </p>
                 </div>
             </div>
