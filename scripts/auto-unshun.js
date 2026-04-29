@@ -67,19 +67,31 @@ async function runAutoUnshun() {
             }
 
             // 3. Post-process the single shell output for all matches
+            const { getIpInfoLite } = require('../src/lib/ipinfo');
+            
+            // Get or Create Guardian User for the log
+            let guardianUser = await prisma.user.findUnique({ where: { username: "Guardian" } });
+            if (!guardianUser) {
+                guardianUser = await prisma.user.create({
+                    data: {
+                        username: "Guardian",
+                        role: "SYSTEM",
+                        isExternal: false
+                    }
+                });
+            }
+
             for (const ip of watchList) {
                 const targetIp = ip.toLowerCase();
                 const lines = shellOutput.split('\n').map(l => l.trim().toLowerCase());
                 
-                // Find if any line contains 'shun' and our IP
                 const match = lines.find(l => l.includes('shun') && l.includes(targetIp) && !l.includes("not found"));
                 
                 if (match) {
                     console.log(`[!!!] MATCH FOUND: ${ip} was shunned on ${fw.name}.`);
                     
-                    // Since we already ran the checks, we need to run the REMOVALS now 
-                    // We'll open one more shell for removals if needed, or just run them in the first pass
-                    // To be safe, let's run them in a second interactive pass
+                    const ipInfo = await getIpInfoLite(ip);
+
                     await new Promise((resolve) => {
                         ssh.requestShell().then((stream) => {
                             console.log(`[GUARDIAN] Removing shun for ${ip} on ${fw.name}...`);
@@ -94,13 +106,15 @@ async function runAutoUnshun() {
                     // 4. Log to Global History List (Prisma)
                     await prisma.firewallQueryHistory.create({
                         data: {
-                            userId: null,
+                            userId: guardianUser.id,
                             command: "Auto-Unshun (Guardian)",
                             targetIp: ip,
                             targetName: fw.name,
-                            ipAsn: "INTERNAL_WATCHLIST",
-                            ipAsName: "Protected Asset",
-                            ipAsDomain: "guardian.local"
+                            ipAsn: ipInfo?.asn || "INTERNAL",
+                            ipAsName: ipInfo?.as_name || "Protected Asset",
+                            ipAsDomain: ipInfo?.as_domain || "guardian.local",
+                            ipCountry: ipInfo?.country || "Internal",
+                            ipCountryCode: ipInfo?.country_code || "IN"
                         }
                     });
                 }
