@@ -77,6 +77,10 @@ export default async function DashboardHome() {
         where: { name: "Firewall Guardian" }
     });
     const isGuardianLive = guardianJob && (new Date().getTime() - new Date(guardianJob.lastRun).getTime() < 300000); // 5 mins
+    
+    const watchListRaw = process.env.WATCH_IP_LIST || "";
+    const watchList = watchListRaw.split(',').filter(ip => ip.trim() !== "");
+    const watchListDisplay = watchList.length > 0 ? watchList.join(', ') : "None configured";
 
     return (
         <div>
@@ -114,8 +118,11 @@ export default async function DashboardHome() {
                     <p style={{ fontSize: '1.8rem', fontWeight: 700, color: isGuardianLive ? '#10b981' : '#ef4444', lineHeight: 1 }}>
                         {isGuardianLive ? "ACTIVE" : "STALLED"}
                     </p>
-                    <p style={{ marginTop: '8px', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 500 }}>
-                        Automated Shun-List Protection
+                    <p 
+                        title={`Currently Protecting: ${watchListDisplay}`}
+                        style={{ marginTop: '8px', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 500, cursor: 'help', display: 'inline-block', borderBottom: '1px dotted var(--text-muted)' }}
+                    >
+                        {watchList.length} Protected IP{watchList.length !== 1 ? 's' : ''}
                     </p>
                     <p style={{ marginTop: '12px', fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
                         {guardianJob ? `Checked at: ${new Date(guardianJob.lastRun).toLocaleTimeString()}` : "Waiting for first scan..."}
