@@ -75,7 +75,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 // Log the successful login
                 await logAudit("USER_LOGIN", "Successful login", user.id, clientIp);
 
-                return { id: user.id, name: user.username, role: user.role }
+                return { 
+                    id: user.id, 
+                    name: user.username, 
+                    role: user.role,
+                    sessionTimeout: user.sessionTimeout 
+                }
             }
         })
     ],

@@ -2,6 +2,8 @@ import { auth } from "@/lib/auth";
 import PasswordChangeForm from "@/components/PasswordChangeForm";
 import ThemeSelector from "@/components/ThemeSelector";
 import { redirect } from "next/navigation";
+import SessionTimeoutSettings from "@/components/SessionTimeoutSettings";
+import { prisma } from "@/lib/prisma";
 
 export default async function ProfilePage() {
     const session = await auth();
@@ -9,6 +11,10 @@ export default async function ProfilePage() {
     if (!session) {
         redirect("/login");
     }
+
+    const user = await prisma.user.findUnique({
+        where: { id: session.user?.id }
+    });
 
     return (
         <div className="page-container">
@@ -41,7 +47,10 @@ export default async function ProfilePage() {
                     </div>
                 </div>
 
-                <ThemeSelector />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
+                    <ThemeSelector />
+                    <SessionTimeoutSettings currentTimeout={user?.sessionTimeout || 10} />
+                </div>
                 
                 <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)' }} />
                 

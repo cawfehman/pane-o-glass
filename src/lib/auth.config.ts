@@ -10,6 +10,7 @@ export const authConfig = {
             if (user) {
                 token.id = user.id
                 token.role = (user as any).role
+                token.sessionTimeout = (user as any).sessionTimeout
             }
             return token
         },
@@ -17,6 +18,7 @@ export const authConfig = {
             if (token && session.user) {
                 session.user.id = token.id as string
                     ; (session.user as any).role = token.role
+                    ; (session.user as any).sessionTimeout = token.sessionTimeout
             }
             return session
         }

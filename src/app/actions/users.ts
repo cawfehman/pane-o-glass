@@ -157,3 +157,23 @@ export async function changeOwnPassword(formData: FormData) {
     
     return { success: true };
 }
+
+export async function updateSessionTimeout(minutes: number) {
+    const session = await auth();
+    if (!session?.user?.id) {
+        throw new Error("Unauthorized");
+    }
+
+    // Validate: 1 minute to 30 minutes
+    const validatedMinutes = Math.max(1, Math.min(30, minutes));
+
+    await prisma.user.update({
+        where: { id: session.user.id },
+        data: { sessionTimeout: validatedMinutes }
+    });
+
+    await logAudit("USER_PREFERENCE_CHANGE", `User updated session timeout to ${validatedMinutes} minutes`, session.user.id);
+    
+    revalidatePath("/profile");
+    return { success: true, timeout: validatedMinutes };
+}
