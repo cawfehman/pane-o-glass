@@ -4,7 +4,8 @@ import { useEffect, useRef } from "react";
 import { signOut, useSession } from "next-auth/react";
 
 export default function SessionTimeout() {
-    const { data: session } = useSession();
+    const sessionContext = useSession();
+    const session = sessionContext?.data;
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
     // Default to 10 minutes, or use user's preference (capped at 30 mins for safety)

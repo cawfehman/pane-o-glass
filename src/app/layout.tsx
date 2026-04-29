@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { ThemeProvider } from "@/components/ThemeContext";
+import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
   title: "Linux Dashboard",
@@ -31,9 +31,9 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <ThemeProvider>
+        <Providers>
           {children}
-        </ThemeProvider>
+        </Providers>
       </body>
     </html>
   );
