@@ -1,17 +1,19 @@
 const { NodeSSH } = require('node-ssh');
 const { PrismaClient } = require('@prisma/client');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const prisma = new PrismaClient();
 
 async function runAutoUnshun() {
     const watchListStr = process.env.WATCH_IP_LIST || "";
-    if (!watchListStr) {
+    const watchList = watchListStr.split(',').map(ip => ip.trim()).filter(ip => ip !== "");
+    
+    if (watchList.length === 0) {
         console.log("[GUARDIAN] No WATCH_IP_LIST defined in .env. Skipping scan.");
         return;
     }
 
-    const watchList = watchListStr.split(',').map(ip => ip.trim());
     const configStr = process.env.FIREWALL_CONFIG || "[]";
     let firewalls = [];
     
@@ -22,7 +24,9 @@ async function runAutoUnshun() {
         return;
     }
 
-    console.log(`[GUARDIAN] Starting scan for ${watchList.length} protected IPs across ${firewalls.length} firewalls...`);
+    console.log(`[GUARDIAN] Starting scan...`);
+    console.log(`[GUARDIAN] Monitoring: ${watchList.join(', ')}`);
+    console.log(`[GUARDIAN] Target Firewalls: ${firewalls.length}`);
 
     for (const fw of firewalls) {
         const ssh = new NodeSSH();
@@ -38,13 +42,15 @@ async function runAutoUnshun() {
             const result = await ssh.execCommand('show shun');
             const output = result.stdout;
             
-            // 2. Check for matches using regex to handle "shun (Interface) IP" format
+            // 2. Check for matches line-by-line
+            const shunLines = output.split('\n').map(l => l.trim().toLowerCase());
+            
             for (const ip of watchList) {
-                // Regex looks for 'shun', then space, then anything in parentheses, then the IP
-                const shunRegex = new RegExp(`shun\\s+\\([^)]+\\)\\s+${ip.replace(/\./g, '\\.')}\\s+`, 'i');
+                // Look for a line that starts with 'shun' and contains the IP
+                const match = shunLines.find(line => line.startsWith('shun') && line.includes(ip.toLowerCase()));
                 
-                if (shunRegex.test(output) || output.includes(`shun ${ip} `)) {
-                    console.log(`[!!!] ALERT: Protected IP ${ip} found shunned on ${fw.name}. Removing now...`);
+                if (match) {
+                    console.log(`[!!!] MATCH: Found ${ip} on ${fw.name} in shun list: "${match}"`);
                     
                     // 3. Remove the shun
                     await ssh.execCommand(`no shun ${ip}`);
