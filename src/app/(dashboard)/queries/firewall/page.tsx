@@ -16,6 +16,8 @@ export default function CiscoFirewallPage() {
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(true);
 
+    const [guardianStatus, setGuardianStatus] = useState<{ isLive: boolean; lastRun: string | null; watchList: string[] } | null>(null);
+
     const fetchHistory = async () => {
         try {
             const res = await fetch("/api/firewall/history", { cache: 'no-store' });
@@ -28,6 +30,16 @@ export default function CiscoFirewallPage() {
         } finally {
             setLoadingHistory(false);
         }
+    };
+
+    const fetchGuardianStatus = async () => {
+        try {
+            const res = await fetch("/api/health/guardian");
+            if (res.ok) {
+                const data = await res.json();
+                setGuardianStatus(data);
+            }
+        } catch (e) {}
     };
 
     // Fetch configured firewalls on load
@@ -54,6 +66,11 @@ export default function CiscoFirewallPage() {
 
         fetchHosts();
         fetchHistory();
+        fetchGuardianStatus();
+        
+        // Refresh guardian status every minute
+        const interval = setInterval(fetchGuardianStatus, 60000);
+        return () => clearInterval(interval);
     }, []);
 
     const handleAction = async (action: "show" | "remove") => {
@@ -103,9 +120,38 @@ export default function CiscoFirewallPage() {
     return (
         <div className="internal-scroll-layout">
             <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                <div>
-                    <h1>Cisco Firewall Utilities</h1>
-                    <p style={{ color: 'var(--text-secondary)' }}>Query or remove IP address shuns across your configured Cisco devices.</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                        <h1>Cisco Firewall Utilities</h1>
+                        <p style={{ color: 'var(--text-secondary)' }}>Query or remove IP address shuns across your configured Cisco devices.</p>
+                    </div>
+
+                    {guardianStatus && (
+                        <div 
+                            title={`Guardian is monitoring: ${guardianStatus.watchList.join(', ')}`}
+                            style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '10px', 
+                                backgroundColor: 'rgba(255,255,255,0.03)', 
+                                padding: '8px 16px', 
+                                borderRadius: '20px', 
+                                border: '1px solid var(--border-color)',
+                                cursor: 'help'
+                            }}
+                        >
+                            <div style={{ 
+                                width: '8px', 
+                                height: '8px', 
+                                borderRadius: '50%', 
+                                backgroundColor: guardianStatus.isLive ? '#10b981' : '#ef4444',
+                                boxShadow: guardianStatus.isLive ? '0 0 8px #10b981' : 'none'
+                            }}></div>
+                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: guardianStatus.isLive ? '#10b981' : '#ef4444' }}>
+                                GUARDIAN: {guardianStatus.isLive ? "ACTIVE" : "STALLED"}
+                            </span>
+                        </div>
+                    )}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 450px) 1fr', gap: '2rem', alignItems: 'stretch' }}>

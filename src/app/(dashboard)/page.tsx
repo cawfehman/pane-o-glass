@@ -72,22 +72,12 @@ export default async function DashboardHome() {
         include: { user: { select: { username: true } } }
     });
 
-    // Guardian Pulse
-    const guardianJob = await prisma.backgroundJob.findUnique({
-        where: { name: "Firewall Guardian" }
-    });
-    const isGuardianLive = guardianJob && (new Date().getTime() - new Date(guardianJob.lastRun).getTime() < 300000); // 5 mins
-    
-    const watchListRaw = process.env.WATCH_IP_LIST || "";
-    const watchList = watchListRaw.split(',').filter(ip => ip.trim() !== "");
-    const watchListDisplay = watchList.length > 0 ? watchList.join(', ') : "None configured";
-
     return (
         <div>
             <h1 style={{ marginBottom: '24px' }}>Admin Command Center</h1>
             
             {/* Health Metrics */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
                 <div className="glass-card">
                     <h3 style={{ marginBottom: '12px', color: 'var(--text-secondary)' }}>Role Composition</h3>
                     <p style={{ fontSize: '2.5rem', fontWeight: 700, color: 'var(--accent-primary)' }}>{adminCount}</p>
@@ -102,31 +92,6 @@ export default async function DashboardHome() {
                     <h3 style={{ marginBottom: '12px', color: 'var(--text-secondary)' }}>Event Monitoring</h3>
                     <p style={{ fontSize: '2.5rem', fontWeight: 700 }}>{logCount.toLocaleString()}</p>
                     <p style={{ marginTop: '8px', color: 'var(--text-muted)' }}>Actions Tracked (30-day)</p>
-                </div>
-                <div className="glass-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                        <h3 style={{ color: 'var(--text-secondary)' }}>Guardian Pulse</h3>
-                        <div style={{ 
-                            width: '10px', 
-                            height: '10px', 
-                            borderRadius: '50%', 
-                            backgroundColor: isGuardianLive ? '#10b981' : '#ef4444', 
-                            boxShadow: isGuardianLive ? '0 0 10px #10b981' : 'none',
-                            marginTop: '4px'
-                        }}></div>
-                    </div>
-                    <p style={{ fontSize: '1.8rem', fontWeight: 700, color: isGuardianLive ? '#10b981' : '#ef4444', lineHeight: 1 }}>
-                        {isGuardianLive ? "ACTIVE" : "STALLED"}
-                    </p>
-                    <p 
-                        title={`Currently Protecting: ${watchListDisplay}`}
-                        style={{ marginTop: '8px', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 500, cursor: 'help', display: 'inline-block', borderBottom: '1px dotted var(--text-muted)' }}
-                    >
-                        {watchList.length} Protected IP{watchList.length !== 1 ? 's' : ''}
-                    </p>
-                    <p style={{ marginTop: '12px', fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border-color)', paddingTop: '8px' }}>
-                        {guardianJob ? `Checked at: ${new Date(guardianJob.lastRun).toLocaleTimeString()}` : "Waiting for first scan..."}
-                    </p>
                 </div>
             </div>
 
