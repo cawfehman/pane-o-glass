@@ -1,9 +1,27 @@
 const { NodeSSH } = require('node-ssh');
 const { PrismaClient } = require('@prisma/client');
 const path = require('path');
+const axios = require('axios');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const prisma = new PrismaClient();
+
+// Standalone IP Metadata Lookup
+async function getIpInfo(ip) {
+    try {
+        const response = await axios.get(`https://ipapi.co/${ip}/json/`);
+        const d = response.data;
+        return {
+            asn: d.asn,
+            as_name: d.org,
+            as_domain: d.asn,
+            country: d.country_name,
+            country_code: d.country_code
+        };
+    } catch (e) {
+        return null;
+    }
+}
 
 async function runAutoUnshun() {
     const watchListStr = process.env.WATCH_IP_LIST || "";
@@ -67,7 +85,6 @@ async function runAutoUnshun() {
             }
 
             // 3. Post-process the single shell output for all matches
-            const { getIpInfoLite } = require('../src/lib/ipinfo');
             
             // Get or Create Guardian User for the log
             let guardianUser = await prisma.user.findUnique({ where: { username: "Guardian" } });
@@ -90,7 +107,7 @@ async function runAutoUnshun() {
                 const match = outputLines.find(line => {
                     return line.includes('shun') && 
                            line.includes(targetIp) && 
-                           !line.includes('show') && // Ignore the echoed command
+                           !line.includes('show') && 
                            !line.includes('not found') && 
                            !line.includes('no shun');
                 });
@@ -98,7 +115,7 @@ async function runAutoUnshun() {
                 if (match) {
                     console.log(`[!!!] TRUE MATCH: Found active shun for ${ip} on ${fw.name}: "${match}"`);
                     
-                    const ipInfo = await getIpInfoLite(ip);
+                    const ipInfo = await getIpInfo(ip);
 
                     await new Promise((resolve) => {
                         ssh.requestShell().then((stream) => {
