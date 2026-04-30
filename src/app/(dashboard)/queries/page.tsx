@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getPermissionsForRole } from "@/app/actions/permissions";
-import { ShieldAlert, Database, Activity, Lock, Terminal, Network, Search } from "lucide-react";
+import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck } from "lucide-react";
 
 export default async function QueriesPage() {
     const session = await auth();
@@ -11,57 +11,43 @@ export default async function QueriesPage() {
     
     // Fetch dynamic permissions from DB
     const permissions = await getPermissionsForRole(normalizedRole);
-    const hasPermission = (toolId: string) => permissions.includes(toolId);
+    const hasPermission = (toolId: string) => isAdmin || permissions.includes(toolId);
 
     const tools = [
         {
+            id: 'firewall',
+            title: "Cisco Firewall",
+            href: "/queries/firewall",
+            description: "Query IP shuns across edge firewalls and audit background 'Guardian' automation events.",
+            icon: <Terminal size={24} />
+        },
+        {
+            id: 'ise',
+            title: "Cisco ISE Center",
+            href: "/queries/ise",
+            description: "Monitor real-time network authentication sessions and identity services for wired and wireless clients.",
+            icon: <Activity size={24} />
+        },
+        {
+            id: 'ise-tacacs',
+            title: "TACACS+ Administration",
+            href: "/queries/tacacs",
+            description: "Audit administrative access to network devices and track command executions across the infrastructure.",
+            icon: <Lock size={24} />
+        },
+        {
             id: 'hibp-account',
-            title: "HIBP Account Safety",
+            title: "HIBP Account Security",
             href: "/queries/hibp/account",
-            description: "Check if specific email addresses or accounts have been exposed in known public data breaches.",
+            description: "Search the 'Have I Been Pwned' database to identify if specific accounts have been compromised in breaches.",
             icon: <ShieldAlert size={24} />
         },
         {
             id: 'hibp-domain',
-            title: "HIBP Domain Safety",
+            title: "HIBP Domain Security",
             href: "/queries/hibp/domain",
-            description: "Monitor your corporate domains for large-scale breaches and identify leaked credentials across all employees.",
-            icon: <Database size={24} />
-        },
-        {
-            id: 'ise',
-            title: "Cisco ISE Sessions",
-            href: "/queries/ise",
-            description: "View real-time active network sessions and identity details for wireless and wired clients across the enterprise.",
-            icon: <Activity size={24} />
-        },
-        {
-            id: 'ise-failures',
-            title: "ISE Auth Failures",
-            href: "/queries/ise-failures",
-            description: "Analyze global authentication failures to identify brute-force attempts or network configuration issues.",
-            icon: <Lock size={24} />
-        },
-        {
-            id: 'firewall',
-            title: "Cisco Firewall Utilities",
-            href: "/queries/firewall",
-            description: "Query IP shuns across edge firewalls and audit the automated Guardian background unshun events.",
-            icon: <Terminal size={24} />
-        },
-        {
-            id: 'tacacs',
-            title: "TACACS Audit Logs",
-            href: "/queries/tacacs",
-            description: "Audit administrative access to network devices and track command executions across your infrastructure.",
-            icon: <Search size={24} />
-        },
-        {
-            id: 'network',
-            title: "Network Diagnostics",
-            href: "/queries/network",
-            description: "Query network pathing, infrastructure status, and diagnostic telemetry from core switches.",
-            icon: <Network size={24} />
+            description: "Monitor domain-wide breach data to identify leaked credentials across all corporate employees.",
+            icon: <ShieldCheck size={24} />
         }
     ];
 
@@ -87,7 +73,8 @@ export default async function QueriesPage() {
                             height: '100%', 
                             background: 'var(--bg-surface)',
                             display: 'flex',
-                            flexDirection: 'column'
+                            flexDirection: 'column',
+                            border: '1px solid var(--border-color)'
                         }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
                                 <div style={{ 
