@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/app/actions/permissions";
+import { obfuscateAuditAccount } from "@/lib/obfuscation";
 
 export async function POST(request: Request) {
     try {
@@ -27,7 +28,8 @@ export async function POST(request: Request) {
 
         // 3. Make the Request to HIBP (URL encoding the account per spec required)
         const clientIp = request.headers.get("x-forwarded-for")?.split(',')[0] || 'unknown';
-        await logAudit("HIBP_ACCOUNT_SEARCH", `Searched breaches for account: ${account}`, session.user?.id, clientIp);
+        const auditAccount = obfuscateAuditAccount(account);
+        await logAudit("HIBP_ACCOUNT_SEARCH", `Searched breaches for account: ${auditAccount}`, session.user?.id, clientIp);
 
         const response = await fetch(`https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(account)}?truncateResponse=false`, {
             headers: {

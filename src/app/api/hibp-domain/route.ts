@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/app/actions/permissions";
 import { getBulkUserDetails } from "@/lib/ldap";
+import { obfuscateAuditAccount } from "@/lib/obfuscation";
 
 export async function POST(request: Request) {
     try {
@@ -29,7 +30,8 @@ export async function POST(request: Request) {
         // 3. Make the Request to HIBP (URL encoding the domain per spec required)
         const encodedDomain = encodeURIComponent(domain.trim());
         const clientIp = request.headers.get("x-forwarded-for")?.split(',')[0] || 'unknown';
-        await logAudit("HIBP_DOMAIN_SEARCH", `Searched breaches for domain: ${domain}`, session.user?.id, clientIp);
+        const auditDomain = obfuscateAuditAccount(domain);
+        await logAudit("HIBP_DOMAIN_SEARCH", `Searched breaches for domain: ${auditDomain}`, session.user?.id, clientIp);
 
         const response = await fetch(`https://haveibeenpwned.com/api/v3/breacheddomain/${encodeURIComponent(domain)}`, {
             headers: {
