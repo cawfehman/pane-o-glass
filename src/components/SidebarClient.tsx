@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import packageJson from "../../package.json";
 import FeedbackModal from "./FeedbackModal";
+import Clock from "./Clock";
 
 export default function SidebarClient({ role, permissions = [] }: { role: string, permissions?: string[] }) {
     const pathname = usePathname();
@@ -22,6 +23,11 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                 </svg>
                 InfoSec Tools
             </div>
+
+            <div style={{ padding: '0 1rem' }}>
+                <Clock />
+            </div>
+
             <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <div className="nav-section">Main</div>
                 <Link href="/" className={`nav-link ${pathname === "/" ? "active" : ""}`}>
