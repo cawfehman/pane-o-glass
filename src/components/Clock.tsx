@@ -10,34 +10,38 @@ export default function Clock() {
         return () => clearInterval(timer);
     }, []);
 
-    const localTime = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    // Get timezone abbreviation (e.g., EST, EDT)
+    const tz = time.toLocaleTimeString('en-us',{timeZoneName:'short'}).split(' ').pop();
+    
+    const localTime = time.toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit',
+        hour12: true 
+    });
+    
     const utcTime = time.toISOString().split('T')[1].split('.')[0] + " UTC";
 
     return (
         <div style={{ 
-            padding: '12px 16px', 
-            marginBottom: '1rem', 
-            background: 'rgba(255, 255, 255, 0.03)', 
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border-color)',
+            padding: '4px 0 16px 0',
             display: 'flex',
             flexDirection: 'column',
-            gap: '2px'
+            gap: '1px',
+            opacity: 0.8
         }}>
             <div style={{ 
-                fontSize: '1.1rem', 
-                fontWeight: 600, 
-                color: 'var(--text-primary)',
+                fontSize: '0.85rem', 
+                color: 'var(--text-secondary)',
                 fontFamily: 'monospace',
-                letterSpacing: '1px'
+                letterSpacing: '0.5px'
             }}>
-                {localTime}
+                {localTime} <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>({tz})</span>
             </div>
             <div style={{ 
                 fontSize: '0.75rem', 
                 color: 'var(--text-muted)', 
                 fontFamily: 'monospace',
-                fontWeight: 500,
                 letterSpacing: '0.5px'
             }}>
                 {utcTime}
