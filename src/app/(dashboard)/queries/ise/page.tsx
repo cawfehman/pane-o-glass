@@ -162,15 +162,15 @@ export default function CiscoIsePage() {
         );
     };
 
-    if (permsLoading) return <div className="p-8">Verifying Cisco ISE access...</div>;
-    if (!hasIsePerm) return <div className="p-8 glass-card m-8 border-l-4 border-red-500 text-red-400">Access Denied: You do not have permission to view RADIUS endpoint forensics.</div>;
-
     const [siteSearch, setSiteSearch] = useState("");
 
     // Filtered Hotlist for Triage
     const filteredHotlist = triageData?.hotlist?.filter((item: any) => 
         item.displayName.toLowerCase().includes(siteSearch.toLowerCase())
     ) || [];
+
+    if (permsLoading) return <div className="p-8">Verifying Cisco ISE access...</div>;
+    if (!hasIsePerm) return <div className="p-8 glass-card m-8 border-l-4 border-red-500 text-red-400">Access Denied: You do not have permission to view RADIUS endpoint forensics.</div>;
 
     return (
         <div className="internal-scroll-layout" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
