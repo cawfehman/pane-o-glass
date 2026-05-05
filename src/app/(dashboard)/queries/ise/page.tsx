@@ -106,12 +106,10 @@ export default function CiscoIsePage() {
                 const historyData = await historyRes.json();
                 setHistoryResult(historyData);
                 
-                // For drilldowns or if no active session found, prioritize history
-                if (macToDrilldown || !primarySession) {
-                    setActiveTab("history");
+                // Prioritize the Live Session tab for all searches and drilldowns
+                setActiveTab("live");
+                if (macToDrilldown) {
                     setDiscoveryResult(null); // Clear discovery once drilldown is chosen
-                } else {
-                    setActiveTab("live");
                 }
                 
                 if (!macToDrilldown) setQuery(searchTerm);
