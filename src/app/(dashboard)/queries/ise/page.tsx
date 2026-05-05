@@ -167,6 +167,13 @@ export default function CiscoIsePage() {
     if (permsLoading) return <div className="p-8">Verifying Cisco ISE access...</div>;
     if (!hasIsePerm) return <div className="p-8 glass-card m-8 border-l-4 border-red-500 text-red-400">Access Denied: You do not have permission to view RADIUS endpoint forensics.</div>;
 
+    const [siteSearch, setSiteSearch] = useState("");
+
+    // Filtered Hotlist for Triage
+    const filteredHotlist = triageData?.hotlist?.filter((item: any) => 
+        item.displayName.toLowerCase().includes(siteSearch.toLowerCase())
+    ) || [];
+
     return (
         <div className="internal-scroll-layout" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             {/* Header Section */}
@@ -181,7 +188,7 @@ export default function CiscoIsePage() {
                     {(loading || triageLoading) && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--accent-primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
                             <div className="spinner-small"></div>
-                            Synchronizing MnT Data...
+                            Synchronizing Global Telemetry...
                         </div>
                     )}
                 </div>
@@ -193,7 +200,7 @@ export default function CiscoIsePage() {
                             type="text"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            placeholder="Enter MAC, IP, or Username..."
+                            placeholder="Enter MAC, IP, or Username for deep dive..."
                             style={{ 
                                 width: '100%', padding: '14px 16px 14px 44px', borderRadius: '12px', 
                                 border: '1px solid var(--border-color)', background: 'var(--bg-card)', 
@@ -204,7 +211,7 @@ export default function CiscoIsePage() {
                         <svg style={{ position: 'absolute', left: '16px', top: '15px', color: 'var(--text-muted)' }} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     </div>
                     <button type="submit" className="btn-primary" disabled={loading} style={{ padding: '0 32px', borderRadius: '12px', fontWeight: 'bold', minWidth: '140px' }}>
-                        Search
+                        Forensic Search
                     </button>
                     {query && (
                         <button type="button" onClick={() => { setQuery(""); setDiscoveryResult(null); setEndpointResult(null); setHistoryResult(null); setActiveTab("dashboard"); }} className="btn-secondary" style={{ padding: '0 20px', borderRadius: '12px' }}>
@@ -223,9 +230,9 @@ export default function CiscoIsePage() {
             {/* Navigation Tabs */}
             <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', marginBottom: '32px', flexShrink: 0 }}>
                 {([
-                    { id: 'dashboard', label: 'Triage' },
-                    { id: 'live', label: 'Session' },
-                    { id: 'history', label: 'History' }
+                    { id: 'dashboard', label: 'Triage Heatmap' },
+                    { id: 'live', label: 'Live Session' },
+                    { id: 'history', label: 'Failure History' }
                 ] as const).map(tab => (
                     <button
                         key={tab.id}
@@ -254,14 +261,31 @@ export default function CiscoIsePage() {
                 {/* Triage Dashboard Tab */}
                 {activeTab === "dashboard" && (
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '24px' }}>
-                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
-                            <h3 style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <AlertCircle size={20} color={triageData?.stats?.failures > 0 ? "#ef4444" : "#38bdf8"} />
-                                Site Health & Triage Heatmap (Live)
-                            </h3>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                            
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
+                                    <AlertCircle size={20} color={triageData?.stats?.failures > 0 ? "#ef4444" : "#38bdf8"} />
+                                    Global Forensic Triage
+                                </h3>
+                                <div style={{ position: 'relative', width: '280px' }}>
+                                    <input 
+                                        type="text"
+                                        placeholder="Filter by Site Code..."
+                                        value={siteSearch}
+                                        onChange={(e) => setSiteSearch(e.target.value)}
+                                        style={{ 
+                                            width: '100%', padding: '8px 12px 8px 34px', borderRadius: '8px', 
+                                            border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.02)', 
+                                            color: 'var(--text-primary)', fontSize: '0.85rem', outline: 'none'
+                                        }}
+                                    />
+                                    <svg style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-muted)' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                </div>
+                            </div>
                             
                             {triageLoading && !triageData && (
-                                <div style={{ padding: '60px', textAlign: 'center', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px dashed var(--border-color)' }}>
+                                <div className="glass-card" style={{ padding: '60px', textAlign: 'center' }}>
                                     <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>{triageStatus || "Synchronizing global site telemetry..."}</p>
                                     <div style={{ width: '100%', maxWidth: '300px', height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', margin: '0 auto', overflow: 'hidden', position: 'relative' }}>
                                         <div className="shimmer" style={{ 
@@ -275,7 +299,7 @@ export default function CiscoIsePage() {
                             )}
 
                             {!triageLoading && triageData?.error && (
-                                <div style={{ padding: '40px', textAlign: 'center', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                                <div className="glass-card" style={{ padding: '40px', textAlign: 'center', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
                                     <p style={{ color: '#ef4444', marginBottom: '16px' }}><strong>Triage Sync Failed:</strong> {triageData.error}</p>
                                     <button onClick={() => loadTriage()} className="btn-secondary" style={{ fontSize: '0.8rem' }}>Retry Sync</button>
                                 </div>
@@ -283,8 +307,8 @@ export default function CiscoIsePage() {
 
                             {!triageLoading && triageData && !triageData.error && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                            {triageData.hotlist && triageData.hotlist.length > 0 ? (
-                                                triageData.hotlist.map((item: any, idx: number) => {
+                                            {filteredHotlist.length > 0 ? (
+                                                filteredHotlist.map((item: any, idx: number) => {
                                                     // Dynamic health color
                                                     let healthColor = '#10b981'; // Emerald
                                                     if (item.successRate < 90) healthColor = '#ef4444'; // Red
@@ -294,49 +318,66 @@ export default function CiscoIsePage() {
                                                         <div 
                                                             key={idx} 
                                                             className="glass-card" 
-                                                            style={{ padding: '16px', borderLeft: `4px solid ${healthColor}`, background: 'rgba(255,255,255,0.02)', transition: 'all 0.2s' }}
+                                                            style={{ padding: '24px', borderLeft: `4px solid ${healthColor}`, background: 'rgba(255,255,255,0.02)', transition: 'all 0.2s' }}
                                                         >
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                                                 <div style={{ flex: 1 }}>
                                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                                                                        <h3 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Forensic Triage Heatmap (Sampled)</h3>
-                                                                        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                                            <h3 style={{ fontSize: '1.75rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
+                                                                                {item.displayName}
+                                                                            </h3>
+                                                                            <span style={{ 
+                                                                                fontSize: '0.65rem', 
+                                                                                padding: '2px 8px', 
+                                                                                borderRadius: '4px', 
+                                                                                background: 'rgba(56, 189, 248, 0.1)', 
+                                                                                color: 'var(--accent-primary)',
+                                                                                fontWeight: 700,
+                                                                                textTransform: 'uppercase',
+                                                                                letterSpacing: '0.05em'
+                                                                            }}>
+                                                                                Triage Heatmap (Sampled)
+                                                                            </span>
+                                                                        </div>
+                                                                        
+                                                                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }}></div>
-                                                                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Critical (&lt;90%)</span>
+                                                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: healthColor }}></div>
+                                                                                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: healthColor }}>
+                                                                                    {item.successRate}% Health
+                                                                                </span>
                                                                             </div>
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b' }}></div>
-                                                                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Stressed (90-99%)</span>
-                                                                            </div>
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '12px' }}>
-                                                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }}></div>
-                                                                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Healthy (100%)</span>
-                                                                            </div>
-                                                                            
                                                                             <button 
                                                                                 onClick={() => loadTriage()} 
                                                                                 className="btn-secondary" 
-                                                                                style={{ padding: '4px 10px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                                                style={{ padding: '6px 12px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px' }}
                                                                                 title="Refresh Forensics"
                                                                             >
                                                                                 <RefreshCw size={12} />
-                                                                                Refresh
+                                                                                Sync
                                                                             </button>
                                                                         </div>
                                                                     </div>
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                                                        <h4 style={{ fontSize: '1.1rem', color: 'var(--text-primary)', fontWeight: 'bold', margin: 0 }}>
-                                                                            {item.displayName}
-                                                                        </h4>
-                                                                        <div style={{ display: 'flex', gap: '8px' }}>
-                                                                            <span style={{ fontSize: '0.75rem', padding: '2px 10px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                                                                                {item.count.toLocaleString()} Total
-                                                                            </span>
-                                                                            <span style={{ fontSize: '0.75rem', padding: '2px 10px', background: healthColor, color: 'black', borderRadius: '12px', fontWeight: 'bold' }}>
-                                                                                {item.successRate}% Health
-                                                                            </span>
-                                                                        </div>
+
+                                                                    {/* Site Metadata Placeholders */}
+                                                                    <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                                        <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                                                                            [Site Full Name Placeholder]
+                                                                        </p>
+                                                                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                                                                            [Site Address Placeholder]
+                                                                        </p>
+                                                                    </div>
+
+                                                                    <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+                                                                        <span style={{ fontSize: '0.75rem', padding: '4px 12px', background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                                                                            <strong>Active Sessions:</strong> {item.count.toLocaleString()}
+                                                                        </span>
+                                                                        <span style={{ fontSize: '0.75rem', padding: '4px 12px', background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                                                                            <strong>Primary NAS:</strong> {item.nas}
+                                                                        </span>
                                                                     </div>
                                                                     <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
                                                                         <strong>Primary Node:</strong> {item.nas}
