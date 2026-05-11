@@ -236,15 +236,32 @@ export default function SiteManagementPage() {
                                         <tr>
                                             <th className="px-4 py-2 text-left">Code</th>
                                             <th className="px-4 py-2 text-left">Site Identity</th>
-                                            <th className="px-4 py-2 text-left">Location / Address</th>
+                                            <th className="px-4 py-2 text-left">Status</th>
+                                            <th className="px-4 py-2 text-left">Physical Address</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/5">
-                                        {/* Since we don't have the full content easily accessible without another API call, we'd ideally fetch it. 
-                                            For now, this serves as a structural anchor. */}
-                                        <tr className="text-muted italic">
-                                            <td colSpan={3} className="px-4 py-8 text-center">Preview requires active session sync...</td>
-                                        </tr>
+                                        {parsedPreview.map((s, idx) => (
+                                            <tr key={idx} className="hover:bg-white/5 transition-colors">
+                                                <td className="px-4 py-2 font-bold text-accent-primary">{s.code}</td>
+                                                <td className="px-4 py-2 text-secondary">{s.name}</td>
+                                                <td className="px-4 py-2">
+                                                    <span className={`text-[9px] uppercase px-1.5 py-0.5 rounded-full font-bold ${
+                                                        s.status?.toLowerCase() === 'active' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
+                                                        s.status?.toLowerCase() === 'retired' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                                                        'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
+                                                    }`}>
+                                                        {s.status || 'Active'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-2 text-muted truncate max-w-[200px]">{s.address}</td>
+                                            </tr>
+                                        ))}
+                                        {parsedPreview.length === 0 && (
+                                            <tr className="text-muted italic">
+                                                <td colSpan={4} className="px-4 py-8 text-center">Preview requires active session sync...</td>
+                                            </tr>
+                                        )}
                                     </tbody>
                                 </table>
                             </div>

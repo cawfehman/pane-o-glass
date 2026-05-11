@@ -4,6 +4,7 @@ export interface SiteMetadata {
     code: string;
     name: string;
     address: string;
+    status: string; // Active, Retired, Future
 }
 
 export function parseSiteCsv(csvContent: string): SiteMetadata[] {
@@ -35,6 +36,7 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
     const codeIdx = headers.indexOf('code');
     const nameIdx = headers.indexOf('name');
     const addrIdx = headers.indexOf('address');
+    const statusIdx = headers.indexOf('status');
 
     if (codeIdx === -1) return [];
 
@@ -47,8 +49,9 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
             
             results.push({
                 code,
-                name: rawName || code, // Default to code if name is empty
-                address: addrIdx !== -1 ? parts[addrIdx] || "" : ""
+                name: rawName || code,
+                address: addrIdx !== -1 ? parts[addrIdx] || "" : "",
+                status: statusIdx !== -1 ? parts[statusIdx] || "Active" : "Active"
             });
         }
     }
