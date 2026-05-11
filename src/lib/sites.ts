@@ -36,15 +36,20 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
 }
 
 export async function getCurrentSiteMap(): Promise<Map<string, SiteMetadata>> {
-    const latest = await prisma.siteMapVersion.findFirst({
-        orderBy: { versionNumber: 'desc' }
-    });
-
     const map = new Map<string, SiteMetadata>();
-    
-    if (latest) {
-        const sites = parseSiteCsv(latest.content);
-        sites.forEach(s => map.set(s.code, s));
+
+    try {
+        const latest = await prisma.siteMapVersion.findFirst({
+            orderBy: { versionNumber: 'desc' }
+        });
+
+        if (latest) {
+            const sites = parseSiteCsv(latest.content);
+            sites.forEach(s => map.set(s.code, s));
+        }
+    } catch (e) {
+        console.error("[SITES-LIB] Failed to fetch site map from database. Table might be missing.", e);
+        // Fallback to empty map so triage doesn't crash
     }
 
     return map;
