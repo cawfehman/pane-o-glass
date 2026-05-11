@@ -42,9 +42,12 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
     for (let i = 1; i < lines.length; i++) {
         const parts = splitCsvRow(lines[i]);
         if (parts.length >= 1) {
+            const code = parts[codeIdx]?.toUpperCase() || "UNK";
+            const rawName = nameIdx !== -1 ? parts[nameIdx] || "" : "";
+            
             results.push({
-                code: parts[codeIdx]?.toUpperCase() || "UNK",
-                name: nameIdx !== -1 ? parts[nameIdx] || "" : "",
+                code,
+                name: rawName || code, // Default to code if name is empty
                 address: addrIdx !== -1 ? parts[addrIdx] || "" : ""
             });
         }
