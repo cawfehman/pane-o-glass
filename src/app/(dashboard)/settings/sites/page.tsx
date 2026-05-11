@@ -105,7 +105,7 @@ export default function SiteManagementPage() {
             {/* Minimal Header */}
             <header className="flex justify-between items-center mb-10">
                 <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-2xl bg-accent-primary/10 text-accent-primary border border-accent-primary/20">
+                    <div className="p-3 rounded-2xl bg-accent-primary-10 text-accent-primary border border-accent-primary/20">
                         <Database size={28} />
                     </div>
                     <div>
@@ -160,11 +160,11 @@ export default function SiteManagementPage() {
                                     </div>
                                     
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+                                        <div className="p-3 rounded-xl bg-white-5 border border-white/5">
                                             <p className="text-[10px] text-muted uppercase mb-1 font-bold">Author</p>
                                             <p className="text-sm font-bold truncate">{latestVersion.createdBy}</p>
                                         </div>
-                                        <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.05]">
+                                        <div className="p-3 rounded-xl bg-white-5 border border-white/5">
                                             <p className="text-[10px] text-muted uppercase mb-1 font-bold">Modified</p>
                                             <p className="text-sm font-bold">{new Date(latestVersion.createdAt).toLocaleDateString()}</p>
                                         </div>
@@ -187,7 +187,7 @@ export default function SiteManagementPage() {
                         onDrop={handleDrop}
                     >
                         <div className="flex flex-col items-center text-center gap-4">
-                            <div className={`p-4 rounded-full ${uploading ? 'animate-spin bg-accent-primary/20' : 'bg-white/5'}`}>
+                            <div className={`p-4 rounded-full ${uploading ? 'animate-spin bg-accent-primary-10' : 'bg-white-5'}`}>
                                 <Upload className={uploading ? 'text-accent-primary' : 'text-muted'} size={24} />
                             </div>
                             <div>
@@ -202,19 +202,19 @@ export default function SiteManagementPage() {
                     </div>
 
                     {/* Quick Specs */}
-                    <div className="glass-card p-6 bg-accent-primary/[0.02] border-l-2 border-accent-primary/20">
+                    <div className="glass-card p-6 bg-accent-primary-10 border-l-2 border-accent-primary/20">
                         <h4 className="text-[10px] font-black text-accent-primary uppercase tracking-widest mb-4">CSV Schema Requirements</h4>
                         <div className="space-y-3">
                             <div className="flex items-center gap-3">
-                                <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center text-[10px] font-bold">1</div>
+                                <div className="w-5 h-5 rounded bg-white-5 flex items-center justify-center text-[10px] font-bold">1</div>
                                 <p className="text-xs text-secondary font-medium"><strong className="text-primary">Code</strong>: 3-4 char site identifier (NYC)</p>
                             </div>
                             <div className="flex items-center gap-3">
-                                <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center text-[10px] font-bold">2</div>
+                                <div className="w-5 h-5 rounded bg-white-5 flex items-center justify-center text-[10px] font-bold">2</div>
                                 <p className="text-xs text-secondary font-medium"><strong className="text-primary">Name</strong>: Full descriptive site name</p>
                             </div>
                             <div className="flex items-center gap-3">
-                                <div className="w-5 h-5 rounded bg-white/10 flex items-center justify-center text-[10px] font-bold">3</div>
+                                <div className="w-5 h-5 rounded bg-white-5 flex items-center justify-center text-[10px] font-bold">3</div>
                                 <p className="text-xs text-secondary font-medium"><strong className="text-primary">Address</strong>: Physical location details</p>
                             </div>
                         </div>
@@ -230,9 +230,9 @@ export default function SiteManagementPage() {
                                 <h3 className="font-bold text-sm uppercase tracking-wider">Live Directory Preview</h3>
                                 <p className="text-[10px] text-muted">First 10 entries parsed from current version</p>
                             </div>
-                            <div className="bg-black/20 rounded-xl overflow-hidden border border-white/5">
+                            <div className="bg-white-5 rounded-xl overflow-hidden border border-white/5">
                                 <table className="w-full text-xs">
-                                    <thead className="bg-white/5 text-muted uppercase font-bold">
+                                    <thead className="bg-white-5 text-muted uppercase font-bold">
                                         <tr>
                                             <th className="px-4 py-2 text-left">Code</th>
                                             <th className="px-4 py-2 text-left">Site Identity</th>
@@ -264,7 +264,7 @@ export default function SiteManagementPage() {
                         
                         <div className="flex-1 overflow-x-auto">
                             <table className="w-full text-left">
-                                <thead className="bg-white/[0.01] text-[10px] text-muted uppercase tracking-widest font-black">
+                                <thead className="bg-white-5 text-[10px] text-muted uppercase tracking-widest font-black">
                                     <tr>
                                         <th className="px-6 py-5">Status</th>
                                         <th className="px-6 py-5">Source File</th>
@@ -282,7 +282,7 @@ export default function SiteManagementPage() {
                                         ))
                                     ) : versions.length > 0 ? (
                                         versions.map((v) => (
-                                            <tr key={v.id} className="hover:bg-white/[0.01] transition-all group">
+                                            <tr key={v.id} className="hover:bg-white-5 transition-all group">
                                                 <td className="px-6 py-4">
                                                     {v.id === latestVersion?.id ? (
                                                         <div className="flex items-center gap-2">
@@ -301,7 +301,7 @@ export default function SiteManagementPage() {
                                                 </td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex items-center gap-2">
-                                                        <div className="w-6 h-6 rounded-full bg-accent-primary/10 flex items-center justify-center text-[10px] font-bold text-accent-primary border border-accent-primary/20">
+                                                        <div className="w-6 h-6 rounded-full bg-accent-primary-10 flex items-center justify-center text-[10px] font-bold text-accent-primary border border-accent-primary/20">
                                                             {v.createdBy[0].toUpperCase()}
                                                         </div>
                                                         <span className="text-xs font-medium text-secondary">{v.createdBy}</span>
@@ -316,7 +316,7 @@ export default function SiteManagementPage() {
                                                 <td className="px-6 py-4 text-right">
                                                     <a 
                                                         href={`/api/settings/sites/download?id=${v.id}`}
-                                                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-accent-primary hover:text-black transition-all text-[10px] font-black uppercase tracking-wider"
+                                                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white-5 hover:bg-accent-primary hover:text-black transition-all text-[10px] font-black uppercase tracking-wider"
                                                     >
                                                         <Download size={12} />
                                                         Fetch
