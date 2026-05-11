@@ -228,6 +228,7 @@ export async function GET(req: Request) {
                     displayName: site, // Clean site code
                     siteName: meta?.name || `Site: ${site}`,
                     siteAddress: meta?.address || "Address telemetry unavailable",
+                    isUnknownSite: !meta,
                     count: total,
                     successRate: health,
                     latestTimestamp: new Date().toISOString(),

@@ -366,12 +366,31 @@ export default function CiscoIsePage() {
 
                                                                     {/* Site Metadata */}
                                                                     <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                                        <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                                                                            {item.siteName}
-                                                                        </p>
-                                                                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                            <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+                                                                                {item.siteName}
+                                                                            </p>
+                                                                            {item.isUnknownSite && (
+                                                                                <span style={{ 
+                                                                                    fontSize: '0.6rem', 
+                                                                                    padding: '2px 6px', 
+                                                                                    borderRadius: '4px', 
+                                                                                    background: 'rgba(245, 158, 11, 0.1)', 
+                                                                                    color: '#f59e0b',
+                                                                                    border: '1px solid rgba(245, 158, 11, 0.2)',
+                                                                                    fontWeight: 700,
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '4px'
+                                                                                }}>
+                                                                                    <AlertCircle size={10} />
+                                                                                    UNMAPPED
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <p style={{ margin: 0, fontSize: '0.8rem', color: item.isUnknownSite ? '#f59e0b' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                                                                            {item.siteAddress}
+                                                                            {item.isUnknownSite ? "SITE CODE NOT IN DIRECTORY (Investigation Required)" : item.siteAddress}
                                                                         </p>
                                                                     </div>
 
