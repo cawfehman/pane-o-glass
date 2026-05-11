@@ -98,7 +98,52 @@ export default function SiteManagementPage() {
         if (e.dataTransfer.files?.[0]) handleUpload(e.dataTransfer.files[0]);
     };
 
-    const latestVersion = versions[0];
+    const latestVersion = versions.length > 0 ? versions[0] : null;
+
+    // Client-side parser for preview
+    const parsePreview = (csv: string) => {
+        if (!csv) return [];
+        const lines = csv.split(/\r?\n/).filter(line => line.trim() !== "");
+        if (lines.length <= 1) return [];
+
+        const splitCsvRow = (row: string) => {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < row.length; i++) {
+                const char = row[i];
+                if (char === '"') inQuotes = !inQuotes;
+                else if (char === ',' && !inQuotes) {
+                    result.push(current.trim().replace(/^"|"$/g, ''));
+                    current = '';
+                } else current += char;
+            }
+            result.push(current.trim().replace(/^"|"$/g, ''));
+            return result;
+        };
+
+        const headers = splitCsvRow(lines[0]).map(h => h.toLowerCase());
+        const codeIdx = headers.indexOf('code');
+        const nameIdx = headers.indexOf('name');
+        const addrIdx = headers.indexOf('address');
+        const statusIdx = headers.indexOf('status');
+
+        if (codeIdx === -1) return [];
+
+        return lines.slice(1).slice(0, 10).map(line => {
+            const parts = splitCsvRow(line);
+            const code = parts[codeIdx]?.toUpperCase() || "UNK";
+            return {
+                code,
+                name: (nameIdx !== -1 ? parts[nameIdx] : "") || code,
+                address: addrIdx !== -1 ? parts[addrIdx] || "" : "",
+                status: statusIdx !== -1 ? parts[statusIdx] || "Active" : "Active"
+            };
+        });
+    };
+
+    const parsedPreview = latestVersion?.content ? parsePreview(latestVersion.content) : [];
+    const totalSites = latestVersion?.content ? latestVersion.content.split(/\r?\n/).filter(l => l.trim()).length - 1 : 0;
 
     return (
         <div className="p-8 max-w-7xl mx-auto animate-in fade-in duration-500">
@@ -154,9 +199,15 @@ export default function SiteManagementPage() {
                             
                             {latestVersion ? (
                                 <div className="space-y-6">
-                                    <div className="flex items-baseline gap-2">
-                                        <span className="text-4xl font-black tracking-tighter">v{latestVersion.versionNumber}</span>
-                                        <span className="text-sm text-muted font-medium italic">/ stable</span>
+                                    <div className="flex items-baseline justify-between">
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-4xl font-black tracking-tighter">v{latestVersion.versionNumber}</span>
+                                            <span className="text-sm text-muted font-medium italic">/ stable</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[10px] font-black text-accent-primary uppercase tracking-widest">Total Sites</p>
+                                            <p className="text-2xl font-black tracking-tight">{totalSites}</p>
+                                        </div>
                                     </div>
                                     
                                     <div className="grid grid-cols-2 gap-4">
@@ -216,6 +267,10 @@ export default function SiteManagementPage() {
                             <div className="flex items-center gap-3">
                                 <div className="w-5 h-5 rounded bg-white-5 flex items-center justify-center text-[10px] font-bold">3</div>
                                 <p className="text-xs text-secondary font-medium"><strong className="text-primary">Address</strong>: Physical location details</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="w-5 h-5 rounded bg-white-5 flex items-center justify-center text-[10px] font-bold">4</div>
+                                <p className="text-xs text-secondary font-medium"><strong className="text-primary">Status</strong>: Active, Retired, or Future</p>
                             </div>
                         </div>
                     </div>
