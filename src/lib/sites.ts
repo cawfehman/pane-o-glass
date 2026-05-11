@@ -10,19 +10,37 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
     const lines = csvContent.split(/\r?\n/).filter(line => line.trim() !== "");
     if (lines.length <= 1) return [];
 
-    // Simple parser (assuming no commas in the values for now, or using a smarter split)
-    // For production grade, we'd use a real CSV parser, but this handles basic cases.
-    const results: SiteMetadata[] = [];
-    const headers = lines[0].toLowerCase().split(',');
+    // Smarter split that respects double quotes for fields with commas
+    const splitCsvRow = (row: string) => {
+        const result = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let i = 0; i < row.length; i++) {
+            const char = row[i];
+            if (char === '"') {
+                inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+                result.push(current.trim().replace(/^"|"$/g, ''));
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+        result.push(current.trim().replace(/^"|"$/g, ''));
+        return result;
+    };
 
+    const headers = splitCsvRow(lines[0]).map(h => h.toLowerCase());
     const codeIdx = headers.indexOf('code');
     const nameIdx = headers.indexOf('name');
     const addrIdx = headers.indexOf('address');
 
     if (codeIdx === -1) return [];
 
+    const results: SiteMetadata[] = [];
     for (let i = 1; i < lines.length; i++) {
-        const parts = lines[i].split(',').map(p => p.trim());
+        const parts = splitCsvRow(lines[i]);
         if (parts.length >= 1) {
             results.push({
                 code: parts[codeIdx]?.toUpperCase() || "UNK",
