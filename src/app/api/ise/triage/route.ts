@@ -5,6 +5,7 @@ import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
 import { getUserDetails } from '@/lib/ldap';
 import { getFailureInsight, parseCalledStationId } from '@/lib/ise';
+import { getCurrentSiteMap } from '@/lib/sites';
 import axios from 'axios';
 import https from 'https';
 
@@ -35,9 +36,15 @@ export async function GET(req: Request) {
         const pass = rawPass.replace(/^"|"$/g, '');
         const url = urlClean;
 
+        const { searchParams } = new URL(req.url);
+        const targetSite = searchParams.get('site')?.toUpperCase();
+
         console.log(`[ISE TRIAGE] Using Cleaned URL: ${url}`);
-        console.log(`[ISE TRIAGE] User: ${user} (Length: ${user.length})`);
-        // No trim - use exactly what is in .env
+        console.log(`[ISE TRIAGE] Target Site Filter: ${targetSite || 'NONE (Global)'}`);
+        
+        // Fetch Site Map for enrichment
+        const siteMap = await getCurrentSiteMap();
+        
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
         // 3. DUAL-STREAM SAMPLING: Fetch Active Sessions AND Recent Failures
@@ -73,8 +80,26 @@ export async function GET(req: Request) {
         const activeXml = activeRes.status === 'fulfilled' ? activeRes.value.data : '';
         const failureXml = failureRes.status === 'fulfilled' ? failureRes.value.data : '';
 
-        const activeMatches = (activeXml.match(/<activeSession>([\s\S]*?)<\/activeSession>/g) || []).slice(0, 80);
-        const failureMatches = (failureXml.match(/<failureRecord>([\s\S]*?)<\/failureRecord>/g) || []).slice(0, 40);
+        const activeMatchesRaw = (activeXml.match(/<activeSession>([\s\S]*?)<\/activeSession>/g) || []);
+        const failureMatchesRaw = (failureXml.match(/<failureRecord>([\s\S]*?)<\/failureRecord>/g) || []);
+
+        let activeMatches = activeMatchesRaw;
+        let failureMatches = failureMatchesRaw;
+
+        // Targeted Filtering: If a site is specified, filter the bulk list BEFORE surgical probing
+        if (targetSite) {
+            console.log(`[ISE TRIAGE] Filtering bulk telemetry for site: ${targetSite}`);
+            activeMatches = activeMatchesRaw.filter(xml => xml.includes(targetSite));
+            failureMatches = failureMatchesRaw.filter(xml => xml.includes(targetSite));
+            
+            // If we found the site, we can afford a deeper sample of just that site
+            activeMatches = activeMatches.slice(0, 50);
+            failureMatches = failureMatches.slice(0, 30);
+        } else {
+            // Global view: Sample the first few
+            activeMatches = activeMatches.slice(0, 80);
+            failureMatches = failureMatches.slice(0, 40);
+        }
 
         const allProbes = [
             ...activeMatches.map(xml => ({ xml, status: 'success' })),
@@ -196,13 +221,17 @@ export async function GET(req: Request) {
                 const total = successes + failures;
                 const health = total > 0 ? Math.round((successes / total) * 100) : 100;
                 
+                const meta = siteMap.get(site);
+
                 return {
                     identity: site,
-                    displayName: `Site: ${site}`,
+                    displayName: site, // Clean site code
+                    siteName: meta?.name || `Site: ${site}`,
+                    siteAddress: meta?.address || "Address telemetry unavailable",
                     count: total,
                     successRate: health,
                     latestTimestamp: new Date().toISOString(),
-                    reason: "Unified Forensic Snapshot",
+                    reason: targetSite ? `Targeted Forensics: ${targetSite}` : "Unified Forensic Snapshot",
                     nas: data.nas,
                     wireless: data.wireless,
                     wired: data.wired

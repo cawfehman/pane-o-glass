@@ -85,3 +85,12 @@ model BackgroundJob {
   status    String   // "SUCCESS", "FAILURE"
   message   String?
 }
+
+model SiteMapVersion {
+  id            String   @id @default(cuid())
+  filename      String
+  content       String   // Full CSV content
+  versionNumber Int
+  createdBy     String   // Username of admin
+  createdAt     DateTime @default(now())
+}

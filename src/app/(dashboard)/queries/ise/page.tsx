@@ -36,15 +36,16 @@ export default function CiscoIsePage() {
     const [triageLoading, setTriageLoading] = useState(false);
     const [triageStatus, setTriageStatus] = useState("");
 
-    const loadTriage = async () => {
+    const loadTriage = async (siteCode?: string) => {
         setTriageLoading(true);
-        setTriageStatus("Synchronizing with ISE MnT nodes...");
+        setTriageStatus(siteCode ? `Focusing forensics on site: ${siteCode}...` : "Synchronizing with ISE MnT nodes...");
         
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s client-side timeout
 
         try {
-            const res = await fetch('/api/ise/triage', { 
+            const url = siteCode ? `/api/ise/triage?site=${encodeURIComponent(siteCode)}` : '/api/ise/triage';
+            const res = await fetch(url, { 
                 cache: 'no-store',
                 signal: controller.signal 
             });
@@ -269,9 +270,14 @@ export default function CiscoIsePage() {
                                 <div style={{ position: 'relative', width: '280px' }}>
                                     <input 
                                         type="text"
-                                        placeholder="Filter by Site Code..."
+                                        placeholder="Filter or Search Site Code (Enter)..."
                                         value={siteSearch}
                                         onChange={(e) => setSiteSearch(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && siteSearch.trim()) {
+                                                loadTriage(siteSearch.trim());
+                                            }
+                                        }}
                                         style={{ 
                                             width: '100%', padding: '8px 12px 8px 34px', borderRadius: '8px', 
                                             border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.02)', 
@@ -358,14 +364,14 @@ export default function CiscoIsePage() {
                                                                         </div>
                                                                     </div>
 
-                                                                    {/* Site Metadata Placeholders */}
+                                                                    {/* Site Metadata */}
                                                                     <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                                                         <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                                                                            [Site Full Name Placeholder]
+                                                                            {item.siteName}
                                                                         </p>
                                                                         <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                                                                            [Site Address Placeholder]
+                                                                            {item.siteAddress}
                                                                         </p>
                                                                     </div>
 
