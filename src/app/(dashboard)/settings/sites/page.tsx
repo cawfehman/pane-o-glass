@@ -226,9 +226,9 @@ export default function SiteManagementPage() {
     const totalSites = latestVersion?.content ? latestVersion.content.split(/\r?\n/).filter(l => l.trim()).length - 1 : 0;
 
     return (
-        <div className="max-w-7xl mx-auto animate-in fade-in duration-400 space-y-6">
+        <div className="flex flex-col h-[calc(100vh-90px)] max-w-7xl mx-auto p-6 overflow-hidden animate-in fade-in duration-400">
             
-            {/* Upper Action Banner & Title row */}
+            {/* Upper Action Banner & Title row locked cleanly at top */}
             <header className="flex justify-between items-center shrink-0 mb-6">
                 <div className="flex items-center gap-3">
                     <div className="p-2.5 rounded-xl bg-accent-primary/10 text-accent-primary border border-accent-primary/20">
@@ -241,13 +241,13 @@ export default function SiteManagementPage() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {/* Primary Trigger */}
+                    {/* Primary Trigger renamed to Add Site and made smaller */}
                     <button 
                         onClick={handleAddClick}
-                        className="btn-secondary flex items-center gap-2 px-4 py-2 font-black text-xs rounded-xl transition-all"
+                        className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg transition-all"
                     >
-                        <Plus size={15} strokeWidth={3} />
-                        <span>Add Site Record</span>
+                        <Plus size={14} strokeWidth={2.5} />
+                        <span>Add Site</span>
                     </button>
 
                     {/* Unified CSV Actions Dropdown */}
@@ -310,7 +310,7 @@ export default function SiteManagementPage() {
             )}
 
             {/* Main Content Workspace Stack without outer bounding box */}
-            <div className="flex flex-col space-y-4">
+            <div className="flex-1 flex flex-col min-h-0 space-y-4">
                 
                 {/* Secondary Header Row: Tab Selectors & Directory Master collapse tool */}
                 <div className="flex flex-wrap items-center justify-between border-b border-white/10 px-6 py-3 shrink-0 bg-white/[0.01] gap-4">
@@ -366,12 +366,12 @@ export default function SiteManagementPage() {
                     )}
                 </div>
 
-                {/* Main View Area allowing independent scrolling of lists without global page blocking */}
-                <div>
+                {/* Main View Area strictly configured for isolated custom inner list scrolling */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3">
                     
                     {/* TAB 1: SITE DIRECTORY */}
                     {activeTab === 'directory' && (
-                        <div className="max-h-[calc(100vh-240px)] overflow-y-auto custom-scrollbar space-y-3 pr-2">
+                        <div className="space-y-3">
                             {parsedPreview.map((s) => {
                                 const isEditing = editingSiteCode === s.code;
                                 
@@ -469,36 +469,33 @@ export default function SiteManagementPage() {
                                 if (isCompactView) {
                                     return (
                                         <div key={s.code} className="px-5 py-3 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-150 flex items-center justify-between gap-4 group">
-                                            {/* Left side: ONLY SITE CODE */}
+                                            {/* Left side: ONLY SITE CODE and Status badge immediately near it */}
                                             <div className="flex items-center gap-3">
-                                                <div className="w-2 h-2 rounded-full bg-accent-primary/50 group-hover:bg-accent-primary transition-colors"></div>
-                                                <span className="text-base font-black text-white font-mono uppercase tracking-widest">{s.code}</span>
-                                            </div>
-
-                                            {/* Right side: Status and Premium Action buttons */}
-                                            <div className="flex items-center gap-6 shrink-0">
-                                                <span className={`text-xs italic font-semibold ${statusColorClass}`}>
+                                                <div className="w-2 h-2 rounded-full bg-accent-primary/50 group-hover:bg-accent-primary transition-colors shrink-0"></div>
+                                                <span className="text-base font-black text-white font-mono uppercase tracking-widest shrink-0">{s.code}</span>
+                                                <span className={`text-xs italic font-bold px-2 py-0.5 rounded bg-white/5 border border-white/5 shrink-0 ${statusColorClass}`}>
                                                     {formattedStatus}
                                                 </span>
+                                            </div>
 
-                                                <div className="flex items-center gap-2.5">
-                                                    <button 
-                                                        onClick={() => handleEditClick(s)} 
-                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-primary/[0.08] hover:bg-accent-primary/[0.15] border border-accent-primary/20 text-accent-primary font-bold text-xs transition-all"
-                                                        title="Edit Record"
-                                                    >
-                                                        <Edit2 size={12} strokeWidth={2.5} />
-                                                        <span>Edit</span>
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleDeleteClick(s.code)} 
-                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/[0.08] hover:bg-red-500/[0.15] border border-red-500/20 text-red-400 font-bold text-xs transition-all"
-                                                        title="Delete Record"
-                                                    >
-                                                        <Trash2 size={12} strokeWidth={2.5} />
-                                                        <span>Delete</span>
-                                                    </button>
-                                                </div>
+                                            {/* Right side: High-contrast theme-agnostic Action buttons separated by smooth spacing */}
+                                            <div className="flex items-center gap-3 shrink-0">
+                                                <button 
+                                                    onClick={() => handleEditClick(s)} 
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white font-bold text-xs transition-all shadow-sm"
+                                                    title="Edit Record"
+                                                >
+                                                    <Edit2 size={12} strokeWidth={2.5} className="text-sky-400" />
+                                                    <span>Edit</span>
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDeleteClick(s.code)} 
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-red-950/40 border border-zinc-700 hover:border-red-800 text-red-400 hover:text-red-300 font-bold text-xs transition-all shadow-sm"
+                                                    title="Delete Record"
+                                                >
+                                                    <Trash2 size={12} strokeWidth={2.5} />
+                                                    <span>Delete</span>
+                                                </button>
                                             </div>
                                         </div>
                                     );
@@ -508,16 +505,19 @@ export default function SiteManagementPage() {
                                 return (
                                     <div key={s.code} className="p-5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-200 group relative">
                                         <div className="flex items-start justify-between gap-4">
-                                            <div className="flex-1 min-w-0 pr-4 space-y-1">
-                                                {/* 1. Site Code */}
-                                                <div>
-                                                    <span className="text-lg font-black text-accent-primary tracking-wider uppercase font-mono">
+                                            <div className="flex-1 min-w-0 pr-4">
+                                                {/* 1. Site Code with Status badging placed snug beside it */}
+                                                <div className="flex items-center gap-3 mb-1.5">
+                                                    <span className="text-xl font-black text-accent-primary tracking-wider uppercase font-mono">
                                                         {s.code}
+                                                    </span>
+                                                    <span className={`text-xs italic font-bold px-2 py-0.5 rounded bg-white/5 border border-white/5 ${statusColorClass}`}>
+                                                        {formattedStatus}
                                                     </span>
                                                 </div>
 
                                                 {/* 2. Site Name */}
-                                                <h4 className="text-sm font-bold text-white tracking-tight truncate">
+                                                <h4 className="text-sm font-extrabold text-white tracking-tight mb-1 truncate">
                                                     {s.name}
                                                 </h4>
 
@@ -532,7 +532,7 @@ export default function SiteManagementPage() {
 
                                                 {/* Optional Notes */}
                                                 {s.notes && (
-                                                    <div className="mt-2.5 p-2.5 rounded-lg bg-black/40 border border-white/5 text-xs text-secondary/90 whitespace-pre-wrap font-mono relative overflow-hidden">
+                                                    <div className="mt-3 p-2.5 rounded-lg bg-black/40 border border-white/5 text-xs text-secondary/90 whitespace-pre-wrap font-mono relative overflow-hidden">
                                                         <div className="absolute top-0 left-0 bottom-0 w-1 bg-accent-primary/40"></div>
                                                         <span className="text-[9px] block uppercase font-black tracking-widest text-accent-primary/80 mb-1">Notes</span>
                                                         {s.notes}
@@ -540,30 +540,24 @@ export default function SiteManagementPage() {
                                                 )}
                                             </div>
 
-                                            {/* Right side: Status Badge and Gorgeous Premium Controls */}
-                                            <div className="flex flex-col items-end justify-between gap-4 shrink-0 pl-4 border-l border-white/5 h-full min-h-[80px]">
-                                                <span className={`text-xs italic font-semibold tracking-wide ${statusColorClass}`}>
-                                                    {formattedStatus}
-                                                </span>
-
-                                                <div className="flex items-center gap-2.5 mt-auto">
-                                                    <button 
-                                                        onClick={() => handleEditClick(s)} 
-                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-primary/[0.08] hover:bg-accent-primary/[0.15] border border-accent-primary/20 text-accent-primary font-bold text-xs transition-all"
-                                                        title="Edit Record"
-                                                    >
-                                                        <Edit2 size={12} strokeWidth={2.5} />
-                                                        <span>Edit</span>
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleDeleteClick(s.code)} 
-                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/[0.08] hover:bg-red-500/[0.15] border border-red-500/20 text-red-400 font-bold text-xs transition-all"
-                                                        title="Delete Record"
-                                                    >
-                                                        <Trash2 size={12} strokeWidth={2.5} />
-                                                        <span>Delete</span>
-                                                    </button>
-                                                </div>
+                                            {/* Right side: High-contrast theme-agnostic Action controls separated by generous gap-3.5 spacing */}
+                                            <div className="flex items-center gap-3.5 shrink-0 ml-4 self-center border-l border-white/5 pl-4.5 py-2">
+                                                <button 
+                                                    onClick={() => handleEditClick(s)} 
+                                                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white font-bold text-xs transition-all shadow-sm"
+                                                    title="Edit Record"
+                                                >
+                                                    <Edit2 size={13} strokeWidth={2.5} className="text-sky-400" />
+                                                    <span>Edit</span>
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDeleteClick(s.code)} 
+                                                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-800 hover:bg-red-950/40 border border-zinc-700 hover:border-red-800 text-red-400 hover:text-red-300 font-bold text-xs transition-all shadow-sm"
+                                                    title="Delete Record"
+                                                >
+                                                    <Trash2 size={13} strokeWidth={2.5} />
+                                                    <span>Delete</span>
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -580,7 +574,7 @@ export default function SiteManagementPage() {
 
                     {/* TAB 2: ARCHIVAL LOGS (Isolated configuration historical view) */}
                     {activeTab === 'archive' && (
-                        <div className="max-h-[calc(100vh-240px)] overflow-y-auto custom-scrollbar pr-2">
+                        <div>
                             <div className="mb-4 flex justify-between items-center shrink-0">
                                 <span className="text-xs font-bold text-secondary uppercase tracking-wider">Version History Repository</span>
                                 <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Retained Archive Sets</span>
