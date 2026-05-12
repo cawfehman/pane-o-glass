@@ -410,12 +410,13 @@ export default function SiteManagementPage() {
                                                     </td>
                                                     <td className="px-4 py-3.5">
                                                         {isEditing ? (
-                                                            <input 
-                                                                type="text" 
+                                                            <textarea 
+                                                                rows={2}
                                                                 value={editingSiteData.address} 
                                                                 onChange={e => setEditingSiteData({...editingSiteData, address: e.target.value})}
-                                                                className="w-full min-w-[280px] px-3 py-1.5 bg-black/80 border border-accent-primary/40 rounded-lg focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs text-white shadow-sm transition-all"
+                                                                className="w-full min-w-[320px] px-3 py-1.5 bg-black/90 border border-accent-primary/50 rounded-lg focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs text-white shadow-sm transition-all leading-relaxed"
                                                                 placeholder="Physical Address"
+                                                                style={{ resize: 'vertical' }}
                                                             />
                                                         ) : (
                                                             <span className="text-muted block break-words leading-relaxed font-medium max-w-xl">{s.address}</span>
@@ -445,19 +446,19 @@ export default function SiteManagementPage() {
                                                             <div className="flex items-center justify-end gap-2">
                                                                 <button 
                                                                     onClick={() => handleEditClick(s)} 
-                                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.03] hover:bg-accent-primary hover:shadow-[0_0_12px_rgba(var(--accent-primary-rgb),0.4)] border border-white/[0.08] hover:border-transparent text-accent-primary hover:text-black font-bold transition-all text-[10px] tracking-wide" 
+                                                                    style={{ backgroundColor: '#ffffff', color: '#000000', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 900, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}
                                                                     title="Edit Site Directory"
                                                                 >
-                                                                    <Edit2 size={11} className="stroke-[2.5]" />
-                                                                    <span>Edit</span>
+                                                                    <Edit2 size={12} strokeWidth={3} />
+                                                                    <span>EDIT</span>
                                                                 </button>
                                                                 <button 
                                                                     onClick={() => handleDeleteClick(s.code)} 
-                                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.03] hover:bg-red-500/20 hover:shadow-[0_0_12px_rgba(239,68,68,0.2)] border border-white/[0.08] hover:border-red-500/30 text-muted hover:text-red-400 font-bold transition-all text-[10px] tracking-wide" 
+                                                                    style={{ backgroundColor: '#dc2626', color: '#ffffff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 900, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}
                                                                     title="Delete Site"
                                                                 >
-                                                                    <Trash2 size={11} className="stroke-[2.5]" />
-                                                                    <span>Delete</span>
+                                                                    <Trash2 size={12} strokeWidth={3} />
+                                                                    <span>DELETE</span>
                                                                 </button>
                                                             </div>
                                                         )}
@@ -566,22 +567,34 @@ export default function SiteManagementPage() {
                 </div>
             </div>
 
-            {/* Modal for Add Site rendered via React Portal to guarantee viewport top-level floating popup */}
-            {mounted && isModalOpen && createPortal(
-                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-                    <div className="glass-card w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-200 relative overflow-hidden border border-white/20">
+            {/* Modal for Add Site matching platform overlay style standard precisely */}
+            {isModalOpen && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.85)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 99999,
+                    backdropFilter: 'blur(8px)'
+                }}>
+                    <div className="glass-card w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.9)] animate-in zoom-in-95 duration-200 relative overflow-hidden border border-white/20" style={{ maxWidth: '90%', width: '450px' }}>
                         {actionLoading && (
                             <div className="absolute inset-0 z-10 bg-black/60 backdrop-blur-sm flex items-center justify-center">
-                                <div className="flex flex-col items-center gap-4">
-                                    <div className="w-8 h-8 rounded-full border-4 border-accent-primary border-t-transparent animate-spin"></div>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-6 h-6 rounded-full border-4 border-accent-primary border-t-transparent animate-spin"></div>
                                     <p className="text-sm font-bold animate-pulse text-white">Adding Site Directory...</p>
                                 </div>
                             </div>
                         )}
-                        <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/[0.02]">
-                            <h3 className="text-lg font-black tracking-tight text-white">Add New Site Directory</h3>
-                            <button onClick={() => setIsModalOpen(false)} className="p-2 rounded-full hover:bg-white/10 text-muted hover:text-white transition-colors">
-                                <X size={20} />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.02)' }}>
+                            <h3 className="text-lg font-black tracking-tight text-white" style={{ margin: 0 }}>Add New Site Directory</h3>
+                            <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.5rem' }}>
+                                &times;
                             </button>
                         </div>
                         <div className="p-6 space-y-5">
@@ -646,8 +659,7 @@ export default function SiteManagementPage() {
                             </button>
                         </div>
                     </div>
-                </div>,
-                document.body
+                </div>
             )}
         </div>
     );
