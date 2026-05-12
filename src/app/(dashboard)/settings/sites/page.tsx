@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { createPortal } from "react-dom";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { 
     Upload, 
     Download, 
@@ -9,17 +8,15 @@ import {
     CheckCircle2, 
     AlertCircle, 
     FileText, 
-    ArrowRight,
-    Search,
-    ShieldCheck,
     Database,
-    Clock,
-    User,
-    Eye,
     Plus,
     Edit2,
     Trash2,
-    X
+    Search,
+    ChevronDown,
+    LayoutGrid,
+    List,
+    FileSpreadsheet
 } from "lucide-react";
 
 interface SiteVersion {
@@ -33,14 +30,22 @@ interface SiteVersion {
 
 export default function SiteManagementPage() {
     const [versions, setVersions] = useState<SiteVersion[]>([]);
-    const [activeSites, setActiveSites] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [dragActive, setDragActive] = useState(false);
-    const [showDirectory, setShowDirectory] = useState(true);
     
+    // Master view navigation tabs
+    const [activeTab, setActiveTab] = useState<'directory' | 'archive'>('directory');
+    
+    // Unified CSV Dropdown toggle state
+    const [isCsvMenuOpen, setIsCsvMenuOpen] = useState(false);
+    const csvMenuRef = useRef<HTMLDivElement>(null);
+    
+    // High-Density layout collapse controller
+    const [isCompactView, setIsCompactView] = useState(false);
+
     // Modal State (Add Site)
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentSite, setCurrentSite] = useState<any>({ code: "", name: "", address: "", status: "Active", notes: "" });
@@ -49,6 +54,17 @@ export default function SiteManagementPage() {
     // Inline Edit State
     const [editingSiteCode, setEditingSiteCode] = useState<string | null>(null);
     const [editingSiteData, setEditingSiteData] = useState<any>({ name: "", address: "", status: "Active", notes: "" });
+
+    // Close CSV dropdown menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (csvMenuRef.current && !csvMenuRef.current.contains(event.target as Node)) {
+                setIsCsvMenuOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
     const fetchVersions = useCallback(async () => {
         setLoading(true);
@@ -64,9 +80,7 @@ export default function SiteManagementPage() {
         }
     }, []);
 
-    const [mounted, setMounted] = useState(false);
     useEffect(() => {
-        setMounted(true);
         fetchVersions();
     }, [fetchVersions]);
 
@@ -129,6 +143,7 @@ export default function SiteManagementPage() {
         setUploading(true);
         setError("");
         setSuccess("");
+        setIsCsvMenuOpen(false); // smoothly auto-close dropdown overlay
 
         const formData = new FormData();
         formData.append('file', file);
@@ -141,7 +156,7 @@ export default function SiteManagementPage() {
             const data = await res.json();
             if (data.error) throw new Error(data.error);
             
-            setSuccess(`Site Map v${data.version.versionNumber} is now live.`);
+            setSuccess(`CSV Site Map successfully imported and mapped.`);
             fetchVersions();
         } catch (e: any) {
             setError(e.message);
@@ -211,142 +226,204 @@ export default function SiteManagementPage() {
     const totalSites = latestVersion?.content ? latestVersion.content.split(/\r?\n/).filter(l => l.trim()).length - 1 : 0;
 
     return (
-        <div className="p-8 max-w-7xl mx-auto animate-in fade-in duration-500">
-            {/* Minimal Header */}
-            <header className="flex justify-between items-center mb-10">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-2xl bg-accent-primary-10 text-accent-primary border border-accent-primary/20">
-                        <Database size={28} />
+        <div className="flex flex-col h-[calc(100vh-90px)] max-w-7xl mx-auto p-6 overflow-hidden animate-in fade-in duration-400">
+            
+            {/* Upper Action Banner & Title row */}
+            <header className="flex justify-between items-center shrink-0 mb-6">
+                <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-accent-primary/10 text-accent-primary border border-accent-primary/20">
+                        <Database size={24} strokeWidth={2.5} />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-black tracking-tight">SITE INTELLIGENCE</h1>
-                        <p className="text-sm text-muted font-medium uppercase tracking-widest opacity-60">Directory & Forensic Mapping</p>
+                        <h1 className="text-xl font-black tracking-tight uppercase text-white">Site Operations</h1>
+                        <p className="text-xs text-muted font-bold tracking-wide">Mapping Engine & Access Directives</p>
                     </div>
                 </div>
-                <div className="flex gap-3">
+
+                <div className="flex items-center gap-3">
+                    {/* Primary Trigger */}
                     <button 
                         onClick={handleAddClick}
-                        className="btn-secondary flex items-center gap-2 px-5 font-black text-xs"
+                        className="btn-secondary flex items-center gap-2 px-4 py-2 font-black text-xs rounded-xl transition-all"
                     >
-                        <Plus size={16} />
-                        Add Site Record
+                        <Plus size={15} strokeWidth={3} />
+                        <span>Add Site Record</span>
                     </button>
-                    <a href="/api/settings/sites/download" className="btn-primary flex items-center gap-2 px-5 text-xs font-black">
-                        <Download size={16} />
-                        Export CSV
-                    </a>
+
+                    {/* Unified CSV Actions Dropdown */}
+                    <div className="relative" ref={csvMenuRef}>
+                        <button 
+                            onClick={() => setIsCsvMenuOpen(!isCsvMenuOpen)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all border ${
+                                isCsvMenuOpen 
+                                    ? 'bg-accent-primary text-black border-accent-primary shadow-lg shadow-accent-primary/20' 
+                                    : 'bg-white/5 hover:bg-white/10 text-white border-white/10'
+                            }`}
+                        >
+                            <FileSpreadsheet size={15} strokeWidth={2.5} />
+                            <span>CSV</span>
+                            <ChevronDown size={14} className={`transition-transform duration-200 ${isCsvMenuOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {/* Custom dropdown content overlay containing export download link and drag/drop ingest card */}
+                        {isCsvMenuOpen && (
+                            <div className="absolute right-0 mt-2 w-80 rounded-2xl bg-black/95 border border-white/15 p-4 shadow-2xl backdrop-blur-xl z-50 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div>
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted block mb-1.5">Extraction</span>
+                                    <a 
+                                        href="/api/settings/sites/download" 
+                                        onClick={() => setIsCsvMenuOpen(false)}
+                                        className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-white text-xs font-bold transition-all group"
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <Download size={14} className="text-accent-primary" />
+                                            <span>Export Live Mapping CSV</span>
+                                        </span>
+                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent-primary/10 text-accent-primary font-black uppercase">CSV</span>
+                                    </a>
+                                </div>
+
+                                <div className="border-t border-white/10 pt-3">
+                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted block mb-1.5">Ingest / Import</span>
+                                    
+                                    {/* Compacted Drag/Drop chooser zone */}
+                                    <div 
+                                        className={`rounded-xl border border-dashed p-4 text-center transition-all duration-200 relative ${
+                                            dragActive ? 'border-accent-primary bg-accent-primary/10' : 'border-white/15 bg-white/[0.01] hover:border-white/25'
+                                        }`}
+                                        onDragEnter={handleDrag}
+                                        onDragLeave={handleDrag}
+                                        onDragOver={handleDrag}
+                                        onDrop={handleDrop}
+                                    >
+                                        <input 
+                                            type="file" 
+                                            accept=".csv" 
+                                            className="hidden" 
+                                            id="dropdown-csv-upload" 
+                                            onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} 
+                                            disabled={uploading} 
+                                        />
+                                        <label htmlFor="dropdown-csv-upload" className="cursor-pointer block">
+                                            <Upload className={`mx-auto mb-1.5 ${uploading ? 'animate-spin text-accent-primary' : 'text-muted'}`} size={16} />
+                                            <span className="text-xs font-bold text-white block">Choose CSV File</span>
+                                            <span className="text-[10px] text-muted block mt-0.5">{uploading ? 'Parsing schema...' : 'or drop file here'}</span>
+                                        </label>
+                                    </div>
+                                    <span className="text-[8px] text-muted/60 block text-center mt-1.5 font-mono">Columns: Code, Name, Address, Status, Notes</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </header>
 
-            {/* Status Messages */}
+            {/* Error / Success Notifications */}
             {(error || success) && (
-                <div className={`mb-8 p-4 rounded-xl border flex items-center gap-4 animate-in slide-in-from-top-4 ${
+                <div className={`mb-4 p-3.5 rounded-xl border flex items-center gap-3 shrink-0 animate-in slide-in-from-top-2 ${
                     error ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
                 }`}>
-                    {error ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
-                    <p className="font-medium">{error || success}</p>
+                    {error ? <AlertCircle size={16} className="shrink-0" /> : <CheckCircle2 size={16} className="shrink-0" />}
+                    <p className="font-bold text-xs">{error || success}</p>
                 </div>
             )}
 
-            <div className="grid grid-cols-12 gap-8">
+            {/* Main Content Workspace Stack */}
+            <div className="glass-card flex-1 flex flex-col overflow-hidden border border-white/10 rounded-2xl">
                 
-                {/* Left: Active Config & Upload (4 cols) */}
-                <div className="col-span-12 lg:col-span-4 space-y-4 opacity-70 hover:opacity-100 transition-opacity duration-300">
-                    
-                    {/* Compact Subdued Active Mapping */}
-                    <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
-                        <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Directory Version</span>
-                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[9px] font-bold uppercase tracking-wider">Live</span>
-                        </div>
-                        {latestVersion ? (
-                            <div className="space-y-2">
-                                <div className="flex items-baseline justify-between">
-                                    <span className="text-base font-black tracking-tight text-secondary">v{latestVersion.versionNumber}</span>
-                                    <span className="text-xs font-black text-muted">{totalSites} <span className="font-normal text-[10px] text-muted/60 uppercase">sites</span></span>
-                                </div>
-                                <div className="flex items-center justify-between text-[10px] text-muted/70 pt-2 border-t border-white/5">
-                                    <span className="truncate max-w-[120px]">{latestVersion.createdBy}</span>
-                                    <span>{new Date(latestVersion.createdAt).toLocaleDateString()}</span>
-                                </div>
+                {/* Secondary Header Row: Tab Selectors & Directory Master collapse tool */}
+                <div className="flex flex-wrap items-center justify-between border-b border-white/10 px-6 py-3 shrink-0 bg-white/[0.01] gap-4">
+                    {/* Tab routes */}
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => setActiveTab('directory')}
+                            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+                                activeTab === 'directory'
+                                    ? 'bg-white/10 text-white shadow-inner border border-white/5'
+                                    : 'text-muted hover:text-white/80'
+                            }`}
+                        >
+                            <span>Site Directory</span>
+                            <span className="px-1.5 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary text-[10px] font-black">
+                                {totalSites}
+                            </span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('archive')}
+                            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+                                activeTab === 'archive'
+                                    ? 'bg-white/10 text-white shadow-inner border border-white/5'
+                                    : 'text-muted hover:text-white/80'
+                            }`}
+                        >
+                            <History size={13} />
+                            <span>Archival Logs</span>
+                        </button>
+                    </div>
+
+                    {/* View Controls normalizer (Available when on Site Directory tab) */}
+                    {activeTab === 'directory' && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Density View:</span>
+                            <div className="flex items-center rounded-lg bg-black/40 p-0.5 border border-white/5">
+                                <button 
+                                    onClick={() => setIsCompactView(false)}
+                                    className={`p-1.5 rounded-md transition-all ${!isCompactView ? 'bg-white/10 text-accent-primary' : 'text-muted hover:text-white'}`}
+                                    title="Detailed Card View"
+                                >
+                                    <LayoutGrid size={13} strokeWidth={2.5} />
+                                </button>
+                                <button 
+                                    onClick={() => setIsCompactView(true)}
+                                    className={`p-1.5 rounded-md transition-all ${isCompactView ? 'bg-white/10 text-accent-primary' : 'text-muted hover:text-white'}`}
+                                    title="Compact List View"
+                                >
+                                    <List size={13} strokeWidth={2.5} />
+                                </button>
                             </div>
-                        ) : (
-                            <p className="text-center py-3 text-muted/50 italic text-xs">Awaiting configuration...</p>
-                        )}
-                    </div>
-
-                    {/* Subdued Drag/Drop Upload */}
-                    <div 
-                        className={`bg-white/[0.01] border border-dashed rounded-xl p-4 text-center transition-all duration-300 ${
-                            dragActive ? 'border-accent-primary/50 bg-accent-primary/5' : 'border-white/10 hover:border-white/15'
-                        }`}
-                        onDragEnter={handleDrag}
-                        onDragLeave={handleDrag}
-                        onDragOver={handleDrag}
-                        onDrop={handleDrop}
-                    >
-                        <input type="file" accept=".csv" className="hidden" id="csv-upload" onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} disabled={uploading} />
-                        <label htmlFor="csv-upload" className="cursor-pointer block">
-                            <Upload className={`mx-auto mb-2 ${uploading ? 'animate-spin text-accent-primary' : 'text-muted/60'}`} size={16} />
-                            <span className="text-xs font-bold text-muted block">Sync CSV Mapping</span>
-                            <span className="text-[10px] text-muted/50 block mt-0.5">{uploading ? 'Ingesting mapping...' : 'Click or drag file'}</span>
-                        </label>
-                    </div>
-
-                    {/* Highly Compacted Specs */}
-                    <div className="p-3 rounded-xl bg-white/[0.01] border border-white/5 text-center">
-                        <span className="text-[9px] font-bold text-muted/60 uppercase tracking-widest block">CSV Schema Columns</span>
-                        <p className="text-[10px] text-muted/80 font-mono mt-1">
-                            Code, Name, Address, Status, Notes
-                        </p>
-                    </div>
+                        </div>
+                    )}
                 </div>
 
-                {/* Right: History (8 cols) */}
-                <div className="col-span-12 lg:col-span-8 space-y-6">
+                {/* Main Scrollable View Area locked exactly to active tab flow logic */}
+                <div className="flex-1 overflow-hidden flex flex-col relative">
                     
-                    <div className="glass-card p-6 border-l-4 border-emerald-500 flex flex-col h-full max-h-[700px]">
-                        <div className="flex justify-between items-center mb-4 shrink-0 border-b border-white/5 pb-3">
-                            <div className="flex items-center gap-2.5">
-                                <h3 className="font-black tracking-tight text-white uppercase text-sm">Site Mapping Directory</h3>
-                                <span className="px-2.5 py-0.5 rounded-full bg-accent-primary/10 text-accent-primary font-bold text-xs">
-                                    {totalSites} Total Sites
-                                </span>
-                            </div>
-                            <span className="text-[10px] text-muted font-bold uppercase tracking-widest">Live Metadata Table</span>
-                        </div>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4 pt-2">
+                    {/* TAB 1: SITE DIRECTORY */}
+                    {activeTab === 'directory' && (
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-3">
                             {parsedPreview.map((s) => {
                                 const isEditing = editingSiteCode === s.code;
+                                
+                                // Process inline custom edits state view
                                 if (isEditing) {
                                     return (
-                                        <div key={s.code} className="p-6 bg-accent-primary/[0.05] border-2 border-accent-primary/50 rounded-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200 shadow-xl relative overflow-hidden">
+                                        <div key={s.code} className="p-5 bg-accent-primary/[0.05] border-2 border-accent-primary/50 rounded-2xl space-y-4 shadow-xl relative overflow-hidden animate-in fade-in duration-200">
                                             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent-primary to-emerald-400"></div>
-                                            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                                                <div className="flex items-center gap-3">
-                                                    <span className="px-3 py-1 rounded-lg bg-accent-primary font-black text-black text-xs tracking-wider">{s.code}</span>
-                                                    <h4 className="text-xs font-black text-white uppercase tracking-wider">Editing Directory Record</h4>
+                                            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                                                <div className="flex items-center gap-2.5">
+                                                    <span className="px-2.5 py-0.5 rounded-md bg-accent-primary font-black text-black text-xs tracking-wider font-mono">{s.code}</span>
+                                                    <h4 className="text-xs font-black text-white uppercase tracking-wider">Editing Metadata Record</h4>
                                                 </div>
-                                                <span className="text-[10px] uppercase font-black tracking-widest text-accent-primary">Inline Form</span>
+                                                <span className="text-[9px] uppercase font-black tracking-widest text-accent-primary">Inline Editor</span>
                                             </div>
                                             
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div>
-                                                    <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1.5">Descriptive Identity</label>
+                                                    <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1">Descriptive Identity</label>
                                                     <input 
                                                         type="text" 
                                                         value={editingSiteData.name} 
                                                         onChange={e => setEditingSiteData({...editingSiteData, name: e.target.value})}
-                                                        className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white transition-all shadow-inner"
-                                                        placeholder="e.g. Regional Data Center"
+                                                        className="w-full px-3 py-2 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white transition-all"
+                                                        placeholder="e.g. Regional Processing Center"
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1.5">Lifecycle Status</label>
+                                                    <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1">Lifecycle Status</label>
                                                     <select 
                                                         value={editingSiteData.status} 
                                                         onChange={e => setEditingSiteData({...editingSiteData, status: e.target.value})}
-                                                        className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white transition-all appearance-none shadow-inner"
+                                                        className="w-full px-3 py-2 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white transition-all appearance-none"
                                                     >
                                                         <option value="Active">🟢 Active</option>
                                                         <option value="Future">🟡 Future</option>
@@ -356,43 +433,43 @@ export default function SiteManagementPage() {
                                             </div>
 
                                             <div>
-                                                <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1.5">Physical Address</label>
+                                                <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1">Physical Address</label>
                                                 <textarea 
-                                                    rows={2}
+                                                    rows={1}
                                                     value={editingSiteData.address} 
                                                     onChange={e => setEditingSiteData({...editingSiteData, address: e.target.value})}
-                                                    className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-medium text-white transition-all leading-relaxed shadow-inner"
-                                                    placeholder="Full street address, city, state, zip"
+                                                    className="w-full px-3 py-2 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-medium text-white transition-all leading-relaxed"
+                                                    placeholder="Full address string"
                                                     style={{ resize: 'vertical' }}
                                                 />
                                             </div>
 
                                             <div>
-                                                <label className="block text-[10px] font-black uppercase tracking-widest text-accent-primary mb-1.5">Optional Notes / Context</label>
+                                                <label className="block text-[10px] font-black uppercase tracking-widest text-accent-primary mb-1">Optional Notes / Context</label>
                                                 <textarea 
-                                                    rows={3}
+                                                    rows={2}
                                                     value={editingSiteData.notes} 
                                                     onChange={e => setEditingSiteData({...editingSiteData, notes: e.target.value})}
-                                                    className="w-full px-4 py-2.5 bg-black/90 border border-accent-primary/30 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-medium text-white transition-all leading-relaxed placeholder:text-white/20 shadow-inner"
-                                                    placeholder="Add access procedures, specific rack info, or key contact extensions..."
+                                                    className="w-full px-3 py-2 bg-black/90 border border-accent-primary/30 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-medium text-white transition-all leading-relaxed"
+                                                    placeholder="Add direct handling workflows..."
                                                     style={{ resize: 'vertical' }}
                                                 />
                                             </div>
 
-                                            <div className="flex items-center justify-end gap-3 pt-2 border-t border-white/10">
+                                            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-white/10">
                                                 <button 
                                                     onClick={() => setEditingSiteCode(null)} 
                                                     disabled={actionLoading}
-                                                    className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-muted hover:text-white font-bold text-xs transition-all"
+                                                    className="px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-muted hover:text-white font-bold text-xs transition-all"
                                                 >
                                                     Cancel
                                                 </button>
                                                 <button 
                                                     onClick={() => performAction('update', { code: s.code, ...editingSiteData })} 
                                                     disabled={actionLoading}
-                                                    className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center gap-2"
+                                                    className="px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] flex items-center gap-1.5"
                                                 >
-                                                    <CheckCircle2 size={14} strokeWidth={3} />
+                                                    <CheckCircle2 size={13} strokeWidth={3} />
                                                     {actionLoading ? "Saving..." : "Save Record"}
                                                 </button>
                                             </div>
@@ -402,31 +479,72 @@ export default function SiteManagementPage() {
 
                                 const rawStatus = s.status || 'Active';
                                 const formattedStatus = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1).toLowerCase();
+                                const statusColorClass = 
+                                    formattedStatus === 'Active' ? 'text-green-400' :
+                                    formattedStatus === 'Retired' ? 'text-red-400' :
+                                    'text-yellow-400';
 
+                                // COMPACT LIST VIEW NORMALIZATION
+                                if (isCompactView) {
+                                    return (
+                                        <div key={s.code} className="px-4 py-2.5 bg-white/[0.015] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-150 flex items-center justify-between gap-4 group">
+                                            <div className="flex items-center gap-4 min-w-0 flex-1">
+                                                {/* Site Code */}
+                                                <span className="w-16 shrink-0 text-sm font-black text-accent-primary font-mono uppercase tracking-wider">{s.code}</span>
+                                                
+                                                {/* Site Name normalizer */}
+                                                <span className="text-xs font-bold text-white tracking-tight truncate max-w-[280px]">{s.name}</span>
+                                                
+                                                {/* Address partial view when room available */}
+                                                <span className="text-[11px] text-muted truncate flex-1 hidden md:inline">{s.address || <span className="italic opacity-40">No address specified</span>}</span>
+                                            </div>
+
+                                            {/* Status Badge pushed securely to the far right alongside spaced operation handles */}
+                                            <div className="flex items-center gap-4 shrink-0">
+                                                <span className={`text-xs italic font-semibold w-16 text-right ${statusColorClass}`}>
+                                                    {formattedStatus}
+                                                </span>
+
+                                                {/* Action controls separated by beautiful gap-3 spacing parameter */}
+                                                <div className="flex items-center gap-3 border-l border-white/10 pl-3">
+                                                    <button 
+                                                        onClick={() => handleEditClick(s)} 
+                                                        className="px-2 py-1 rounded bg-white/5 hover:bg-white border border-white/5 text-muted hover:text-black font-extrabold text-[10px] transition-all"
+                                                        title="Edit Site Record"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleDeleteClick(s.code)} 
+                                                        className="px-2 py-1 rounded bg-red-500/10 hover:bg-red-500 border border-red-500/10 text-red-400/90 hover:text-white font-extrabold text-[10px] transition-all"
+                                                        title="Delete Site Record"
+                                                    >
+                                                        Del
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                // EXPANDED CARD VIEW NORMALIZATION
                                 return (
                                     <div key={s.code} className="p-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-200 group relative">
                                         <div className="flex items-start justify-between gap-4">
-                                            <div className="flex-1 min-w-0 pr-2">
-                                                {/* 1. Site Code with absolute premium prominence */}
-                                                <div className="flex items-baseline gap-2.5 mb-1">
+                                            <div className="flex-1 min-w-0 pr-4">
+                                                {/* 1. Site Code */}
+                                                <div className="mb-1">
                                                     <span className="text-base font-black text-accent-primary tracking-wider uppercase font-mono drop-shadow-sm">
                                                         {s.code}
                                                     </span>
-                                                    <span className={`text-[11px] italic font-semibold tracking-wide ${
-                                                        formattedStatus === 'Active' ? 'text-green-400' :
-                                                        formattedStatus === 'Retired' ? 'text-red-400' :
-                                                        'text-yellow-400'
-                                                    }`}>
-                                                        {formattedStatus}
-                                                    </span>
                                                 </div>
 
-                                                {/* 2. Site Name clearly emphasized below the code */}
-                                                <h4 className="text-xs font-bold text-white tracking-tight mb-1.5 truncate">
+                                                {/* 2. Site Name */}
+                                                <h4 className="text-xs font-bold text-white tracking-tight mb-1 truncate">
                                                     {s.name}
                                                 </h4>
 
-                                                {/* 3. Address softly displayed below the name */}
+                                                {/* 3. Address */}
                                                 {s.address ? (
                                                     <p className="text-[11px] text-muted font-medium break-words leading-relaxed">
                                                         {s.address}
@@ -445,128 +563,115 @@ export default function SiteManagementPage() {
                                                 )}
                                             </div>
 
-                                            {/* Action buttons locked to the absolute right side, beautifully muted styling */}
-                                            <div className="flex items-center gap-1 shrink-0 ml-auto pt-0.5">
-                                                <button 
-                                                    onClick={() => handleEditClick(s)} 
-                                                    className="px-2 py-1 rounded bg-white/5 hover:bg-white text-muted/80 hover:text-black font-bold text-[10px] transition-all flex items-center gap-1"
-                                                    title="Edit Record"
-                                                >
-                                                    <Edit2 size={9} strokeWidth={2.5} />
-                                                    <span>Edit</span>
-                                                </button>
-                                                <button 
-                                                    onClick={() => handleDeleteClick(s.code)} 
-                                                    className="px-2 py-1 rounded bg-red-500/10 hover:bg-red-500 text-red-400/80 hover:text-white font-bold text-[10px] transition-all flex items-center gap-1"
-                                                    title="Delete Record"
-                                                >
-                                                    <Trash2 size={9} strokeWidth={2.5} />
-                                                    <span>Del</span>
-                                                </button>
+                                            {/* Status Badge clearly partitioned from Site Code, locked on the far right row container */}
+                                            <div className="flex items-center gap-4 shrink-0 pl-3 border-l border-white/5 pt-0.5">
+                                                <span className={`text-xs italic font-semibold tracking-wide ${statusColorClass}`}>
+                                                    {formattedStatus}
+                                                </span>
+
+                                                {/* Actions block with expanded horizontal layout spacing mapping directly to gap-3 request */}
+                                                <div className="flex items-center gap-3">
+                                                    <button 
+                                                        onClick={() => handleEditClick(s)} 
+                                                        className="px-2.5 py-1 rounded bg-white/5 hover:bg-white border border-white/10 text-muted/90 hover:text-black font-extrabold text-[10px] transition-all"
+                                                        title="Edit Record"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleDeleteClick(s.code)} 
+                                                        className="px-2.5 py-1 rounded bg-red-500/10 hover:bg-red-500 border border-red-500/20 text-red-400/90 hover:text-white font-extrabold text-[10px] transition-all"
+                                                        title="Delete Record"
+                                                    >
+                                                        Del
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 );
                             })}
+
                             {parsedPreview.length === 0 && (
                                 <div className="p-12 border border-white/5 rounded-2xl text-center text-muted italic bg-white/[0.01]">
-                                    No active mapping found. Please upload a CSV directory mapping file.
+                                    No active mapping found. Please provision a site record or select CSV import tools.
                                 </div>
                             )}
                         </div>
-                    </div>
+                    )}
 
-                    <div className="glass-card flex flex-col h-full">
-                        <div className="p-6 border-b border-white/5 flex justify-between items-center">
-                            <div className="flex items-center gap-3">
-                                <History size={20} className="text-accent-primary" />
-                                <h3 className="font-black tracking-tight uppercase text-sm">Archival Logs</h3>
+                    {/* TAB 2: ARCHIVAL LOGS (Isolated configuration historical view) */}
+                    {activeTab === 'archive' && (
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+                            <div className="mb-4 flex justify-between items-center shrink-0">
+                                <span className="text-xs font-bold text-secondary uppercase tracking-wider">Version History Repository</span>
+                                <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Retained Archive Sets</span>
                             </div>
-                            <div className="flex items-center gap-4">
-                                <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Retention: Last 10 Versions</span>
-                            </div>
-                        </div>
-                        
-                        <div className="flex-1 overflow-x-auto">
-                            <table className="w-full text-left">
-                                <thead className="bg-white-5 text-[10px] text-muted uppercase tracking-widest font-black">
+
+                            <table className="w-full text-left border-collapse">
+                                <thead className="bg-white/5 text-[10px] text-muted uppercase tracking-widest font-black border-b border-white/10">
                                     <tr>
-                                        <th className="px-6 py-5">Status</th>
-                                        <th className="px-6 py-5">Source File</th>
-                                        <th className="px-6 py-5">Initiated By</th>
-                                        <th className="px-6 py-5">Timestamp</th>
-                                        <th className="px-6 py-5 text-right">Actions</th>
+                                        <th className="px-6 py-4">Status</th>
+                                        <th className="px-6 py-4">Schema Baseline</th>
+                                        <th className="px-6 py-4">Initiated By</th>
+                                        <th className="px-6 py-4">Timestamp</th>
+                                        <th className="px-6 py-4 text-right">Data Directives</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-white/5">
+                                <tbody className="divide-y divide-white/5 text-xs">
                                     {loading ? (
-                                        [...Array(5)].map((_, i) => (
+                                        [...Array(3)].map((_, i) => (
                                             <tr key={i} className="animate-pulse">
                                                 <td colSpan={5} className="px-6 py-6"><div className="h-4 bg-white/5 rounded w-full"></div></td>
                                             </tr>
                                         ))
                                     ) : versions.length > 0 ? (
                                         versions.map((v) => (
-                                            <tr key={v.id} className="hover:bg-white-5 transition-all group">
+                                            <tr key={v.id} className="hover:bg-white/[0.02] transition-all">
                                                 <td className="px-6 py-4">
                                                     {v.id === latestVersion?.id ? (
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                                                            <span className="text-[10px] font-black text-emerald-400 uppercase tracking-tighter">Current</span>
-                                                        </div>
+                                                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-black text-[10px] uppercase tracking-wider">Current Live</span>
                                                     ) : (
-                                                        <span className="text-[10px] font-bold text-muted uppercase">Archived</span>
+                                                        <span className="text-muted font-bold text-[10px] uppercase">Archived</span>
                                                     )}
                                                 </td>
-                                                <td className="px-6 py-4">
+                                                <td className="px-6 py-4 font-bold text-white">
                                                     <div className="flex items-center gap-2">
-                                                        <FileText size={14} className="text-muted" />
-                                                        <span className="text-sm font-bold">{v.filename}</span>
+                                                        <FileText size={13} className="text-accent-primary" />
+                                                        <span>{v.filename}</span>
+                                                        <span className="text-[10px] text-muted font-normal">(v{v.versionNumber})</span>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-6 h-6 rounded-full bg-accent-primary-10 flex items-center justify-center text-[10px] font-bold text-accent-primary border border-accent-primary/20">
-                                                            {v.createdBy[0].toUpperCase()}
-                                                        </div>
-                                                        <span className="text-xs font-medium text-secondary">{v.createdBy}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-xs font-medium">{new Date(v.createdAt).toLocaleDateString()}</span>
-                                                        <span className="text-[10px] text-muted">{new Date(v.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                    </div>
+                                                <td className="px-6 py-4 font-medium text-secondary">{v.createdBy}</td>
+                                                <td className="px-6 py-4 text-muted">
+                                                    {new Date(v.createdAt).toLocaleString()}
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <a 
                                                         href={`/api/settings/sites/download?id=${v.id}`}
-                                                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white-5 hover:bg-accent-primary hover:text-black transition-all text-[10px] font-black uppercase tracking-wider"
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white font-black text-[10px] uppercase transition-all border border-white/5"
                                                     >
-                                                        <Download size={12} />
-                                                        Fetch
+                                                        <Download size={11} />
+                                                        <span>Extract</span>
                                                     </a>
                                                 </td>
                                             </tr>
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan={5} className="px-6 py-32 text-center">
-                                                <div className="flex flex-col items-center gap-4 opacity-30">
-                                                    <Search size={48} />
-                                                    <p className="font-bold uppercase tracking-widest text-xs">Repository Empty</p>
-                                                </div>
+                                            <td colSpan={5} className="px-6 py-16 text-center text-muted italic">
+                                                No historical configuration versions captured.
                                             </td>
                                         </tr>
                                     )}
                                 </tbody>
                             </table>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
 
-            {/* Modal for Add Site matching platform overlay style standard precisely */}
+            {/* Modal Overlay for Provisioning New Sites */}
             {isModalOpen && (
                 <div style={{
                     position: 'fixed',
@@ -581,59 +686,57 @@ export default function SiteManagementPage() {
                     zIndex: 99999,
                     backdropFilter: 'blur(8px)'
                 }}>
-                    <div className="glass-card w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.9)] animate-in zoom-in-95 duration-200 relative overflow-hidden border border-white/20" style={{ maxWidth: '90%', width: '450px' }}>
+                    <div className="glass-card w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.9)] relative overflow-hidden border border-white/20 animate-in zoom-in-95 duration-200" style={{ maxWidth: '90%', width: '450px' }}>
                         {actionLoading && (
                             <div className="absolute inset-0 z-10 bg-black/60 backdrop-blur-sm flex items-center justify-center">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-6 h-6 rounded-full border-4 border-accent-primary border-t-transparent animate-spin"></div>
-                                    <p className="text-sm font-bold animate-pulse text-white">Adding Site Directory...</p>
+                                    <div className="w-5 h-5 rounded-full border-3 border-accent-primary border-t-transparent animate-spin"></div>
+                                    <p className="text-xs font-bold text-white">Saving Record Entry...</p>
                                 </div>
                             </div>
                         )}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', backgroundColor: 'rgba(255,255,255,0.02)' }}>
-                            <h3 className="text-lg font-black tracking-tight text-white" style={{ margin: 0 }}>Add New Site Directory</h3>
-                            <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.5rem' }}>
-                                &times;
-                            </button>
+                        <div className="flex justify-between items-center p-4 border-b border-white/10 bg-white/[0.02]">
+                            <h3 className="text-sm font-black tracking-tight text-white uppercase">Provision New Site</h3>
+                            <button onClick={() => setIsModalOpen(false)} className="text-muted hover:text-white font-bold text-base">&times;</button>
                         </div>
-                        <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
                             <div>
-                                <label className="block text-xs font-bold text-accent-primary uppercase tracking-widest mb-1.5">Site Code (3-4 Chars)</label>
+                                <label className="block text-[10px] font-black text-accent-primary uppercase tracking-widest mb-1.5">Site Code (Unique Id)</label>
                                 <input 
                                     type="text" 
                                     value={currentSite.code} 
                                     onChange={e => setCurrentSite({...currentSite, code: e.target.value.toUpperCase()})}
-                                    placeholder="e.g. NYC"
-                                    className="w-full px-4 py-2.5 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-black text-white text-sm shadow-inner"
+                                    placeholder="e.g. LON"
+                                    className="w-full px-3.5 py-2 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary font-black text-white text-xs"
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-1.5">Descriptive Name</label>
+                                <label className="block text-[10px] font-black text-muted uppercase tracking-widest mb-1.5">Descriptive Identity</label>
                                 <input 
                                     type="text" 
                                     value={currentSite.name} 
                                     onChange={e => setCurrentSite({...currentSite, name: e.target.value})}
-                                    placeholder="e.g. New York HQ"
-                                    className="w-full px-4 py-2.5 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-bold text-white text-sm shadow-inner"
+                                    placeholder="e.g. London Tech Campus"
+                                    className="w-full px-3.5 py-2 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary font-bold text-white text-xs"
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-1.5">Physical Address</label>
+                                <label className="block text-[10px] font-black text-muted uppercase tracking-widest mb-1.5">Physical Address</label>
                                 <textarea 
                                     rows={2}
                                     value={currentSite.address} 
                                     onChange={e => setCurrentSite({...currentSite, address: e.target.value})}
-                                    placeholder="e.g. 123 Broadway, NY 10001"
-                                    className="w-full px-4 py-2.5 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all text-xs text-white font-medium shadow-inner"
+                                    placeholder="Street, District, Postal Code"
+                                    className="w-full px-3.5 py-2 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs text-white font-medium"
                                     style={{ resize: 'vertical' }}
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-1.5">Lifecycle Status</label>
+                                <label className="block text-[10px] font-black text-muted uppercase tracking-widest mb-1.5">Lifecycle Status</label>
                                 <select 
                                     value={currentSite.status} 
                                     onChange={e => setCurrentSite({...currentSite, status: e.target.value})}
-                                    className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-bold appearance-none text-white text-sm shadow-inner"
+                                    className="w-full px-3.5 py-2 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary font-bold appearance-none text-white text-xs"
                                 >
                                     <option value="Active">🟢 Active</option>
                                     <option value="Future">🟡 Future</option>
@@ -641,32 +744,32 @@ export default function SiteManagementPage() {
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-accent-primary uppercase tracking-widest mb-1.5">Optional Notes / Instructions</label>
+                                <label className="block text-[10px] font-black text-accent-primary uppercase tracking-widest mb-1.5">Optional Notes</label>
                                 <textarea 
-                                    rows={3}
+                                    rows={2}
                                     value={currentSite.notes} 
                                     onChange={e => setCurrentSite({...currentSite, notes: e.target.value})}
-                                    placeholder="Add site specific administrative access steps, internal tags, or emergency point of contact info..."
-                                    className="w-full px-4 py-2.5 bg-black/80 border border-accent-primary/30 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all text-xs text-white font-medium shadow-inner placeholder:text-white/20"
+                                    placeholder="Gate directives, clearance keys..."
+                                    className="w-full px-3.5 py-2 bg-black/80 border border-accent-primary/30 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs text-white font-medium placeholder:text-white/20"
                                     style={{ resize: 'vertical' }}
                                 />
                             </div>
                         </div>
-                        <div className="p-6 border-t border-white/10 flex flex-wrap justify-end gap-3 bg-white/[0.02]">
-                            <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-xs font-bold rounded-xl bg-white-5 hover:bg-white-10 border border-white/10 text-muted hover:text-white transition-all" disabled={actionLoading}>Cancel</button>
+                        <div className="p-4 border-t border-white/10 flex flex-wrap justify-end gap-2.5 bg-white/[0.02]">
+                            <button onClick={() => setIsModalOpen(false)} className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-muted hover:text-white transition-all" disabled={actionLoading}>Cancel</button>
                             <button 
                                 onClick={() => performAction('add', currentSite, true)} 
-                                className="px-4 py-2 text-xs font-black rounded-xl bg-accent-primary/10 hover:bg-accent-primary/20 text-accent-primary border border-accent-primary/30 transition-all"
+                                className="px-3.5 py-1.5 text-xs font-black rounded-xl bg-accent-primary/10 hover:bg-accent-primary/20 text-accent-primary border border-accent-primary/30 transition-all"
                                 disabled={actionLoading || !currentSite.code.trim()}
                             >
                                 Save & Add Another
                             </button>
                             <button 
                                 onClick={() => performAction('add', currentSite, false)} 
-                                className="px-5 py-2 text-xs font-black rounded-xl bg-accent-primary hover:bg-accent-primary/90 text-black shadow-[0_0_15px_rgba(var(--accent-primary-rgb),0.5)] transition-all"
+                                className="px-4 py-1.5 text-xs font-black rounded-xl bg-accent-primary hover:bg-accent-primary/90 text-black shadow-lg transition-all"
                                 disabled={actionLoading || !currentSite.code.trim()}
                             >
-                                Save
+                                Save Record
                             </button>
                         </div>
                     </div>
