@@ -340,7 +340,7 @@ export default function CiscoIsePage() {
             </div>
 
             {/* Body Content */}
-            <div style={{ flex: 1, overflowY: 'auto', paddingRight: '4px' }} className="custom-scrollbar">
+            <div style={{ flex: 1, overflowY: activeTab === 'sites' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', paddingRight: '4px' }} className="custom-scrollbar">
                 
                 {/* Triage Dashboard Tab */}
                 {activeTab === "dashboard" && (
@@ -699,8 +699,8 @@ export default function CiscoIsePage() {
 
                 {/* Read-Only Site Directory Tab */}
                 {activeTab === "sites" && (
-                    <div>
-                        <div className="glass-card mb-6" style={{ padding: '20px', borderTop: '4px solid var(--accent-primary)', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', overflow: 'hidden' }}>
+                        <div className="glass-card mb-6" style={{ padding: '20px', borderTop: '4px solid var(--accent-primary)', textAlign: 'center', flexShrink: 0 }}>
                             <h3 style={{ margin: 0, marginBottom: '8px' }}>Site Codes and Locations</h3>
                             <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                                 Click any address to open Google Maps in a new tab for rapid physical location triage.
@@ -708,7 +708,7 @@ export default function CiscoIsePage() {
                         </div>
 
                         {/* Search Filter Controls Bar */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexShrink: 0 }}>
                             <div style={{ position: 'relative', width: '300px' }}>
                                 <input 
                                     type="text"
@@ -729,18 +729,18 @@ export default function CiscoIsePage() {
                         </div>
 
                         {sitesLoading ? (
-                            <div className="glass-card" style={{ padding: '60px', textAlign: 'center' }}>
+                            <div className="glass-card" style={{ padding: '60px', textAlign: 'center', flexShrink: 0 }}>
                                 <div className="spinner-small" style={{ margin: '0 auto 16px' }}></div>
                                 <p style={{ color: 'var(--text-secondary)' }}>Loading configured site definitions...</p>
                             </div>
                         ) : (
-                            <div className="table-responsive custom-scrollbar" style={{ maxHeight: '450px', overflowY: 'auto', position: 'relative' }}>
+                            <div className="table-responsive custom-scrollbar" style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
                                 <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
                                     <thead>
                                         <tr>
                                             <th 
                                                 onClick={() => setSiteDirSortDir(prev => prev === "asc" ? "desc" : "asc")}
-                                                style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-card)', textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', cursor: 'pointer' }}
+                                                style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-surface)', textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', cursor: 'pointer' }}
                                                 title="Click to sort by Site Code"
                                             >
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -750,9 +750,9 @@ export default function CiscoIsePage() {
                                                     </span>
                                                 </div>
                                             </th>
-                                            <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-card)', textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Site Name / Description</th>
-                                            <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-card)', textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Status</th>
-                                            <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-card)', textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Physical Address Mapping</th>
+                                            <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-surface)', textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Site Name / Description</th>
+                                            <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-surface)', textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Status</th>
+                                            <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-surface)', textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Physical Address Mapping</th>
                                         </tr>
                                     </thead>
                                     <tbody>
