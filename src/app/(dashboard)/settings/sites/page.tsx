@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { 
     Upload, 
     Download, 
@@ -63,7 +64,9 @@ export default function SiteManagementPage() {
         }
     }, []);
 
+    const [mounted, setMounted] = useState(false);
     useEffect(() => {
+        setMounted(true);
         fetchVersions();
     }, [fetchVersions]);
 
@@ -563,33 +566,33 @@ export default function SiteManagementPage() {
                 </div>
             </div>
 
-            {/* Modal for Add Site */}
-            {isModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="glass-card w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 relative overflow-hidden">
+            {/* Modal for Add Site rendered via React Portal to guarantee viewport top-level floating popup */}
+            {mounted && isModalOpen && createPortal(
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+                    <div className="glass-card w-full max-w-md shadow-[0_0_50px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-200 relative overflow-hidden border border-white/20">
                         {actionLoading && (
-                            <div className="absolute inset-0 z-10 bg-black/40 backdrop-blur-sm flex items-center justify-center">
+                            <div className="absolute inset-0 z-10 bg-black/60 backdrop-blur-sm flex items-center justify-center">
                                 <div className="flex flex-col items-center gap-4">
                                     <div className="w-8 h-8 rounded-full border-4 border-accent-primary border-t-transparent animate-spin"></div>
                                     <p className="text-sm font-bold animate-pulse text-white">Adding Site Directory...</p>
                                 </div>
                             </div>
                         )}
-                        <div className="flex items-center justify-between p-6 border-b border-white/5 bg-white-5">
-                            <h3 className="text-lg font-black tracking-tight">Add New Site Directory</h3>
-                            <button onClick={() => setIsModalOpen(false)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+                        <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/[0.02]">
+                            <h3 className="text-lg font-black tracking-tight text-white">Add New Site Directory</h3>
+                            <button onClick={() => setIsModalOpen(false)} className="p-2 rounded-full hover:bg-white/10 text-muted hover:text-white transition-colors">
                                 <X size={20} />
                             </button>
                         </div>
-                        <div className="p-6 space-y-4">
+                        <div className="p-6 space-y-5">
                             <div>
-                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-2">Site Code (3-4 Chars)</label>
+                                <label className="block text-xs font-bold text-accent-primary uppercase tracking-widest mb-2">Site Code (3-4 Chars)</label>
                                 <input 
                                     type="text" 
                                     value={currentSite.code} 
                                     onChange={e => setCurrentSite({...currentSite, code: e.target.value.toUpperCase()})}
                                     placeholder="e.g. NYC"
-                                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-bold text-white"
+                                    className="w-full px-4 py-3 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary transition-all font-black text-white text-sm"
                                 />
                             </div>
                             <div>
@@ -599,7 +602,7 @@ export default function SiteManagementPage() {
                                     value={currentSite.name} 
                                     onChange={e => setCurrentSite({...currentSite, name: e.target.value})}
                                     placeholder="e.g. New York HQ"
-                                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all text-white"
+                                    className="w-full px-4 py-3 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary transition-all font-bold text-white text-sm"
                                 />
                             </div>
                             <div>
@@ -609,7 +612,7 @@ export default function SiteManagementPage() {
                                     value={currentSite.address} 
                                     onChange={e => setCurrentSite({...currentSite, address: e.target.value})}
                                     placeholder="e.g. 123 Broadway, NY 10001"
-                                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all text-sm text-white"
+                                    className="w-full px-4 py-3 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary transition-all text-sm text-white font-medium"
                                 />
                             </div>
                             <div>
@@ -617,7 +620,7 @@ export default function SiteManagementPage() {
                                 <select 
                                     value={currentSite.status} 
                                     onChange={e => setCurrentSite({...currentSite, status: e.target.value})}
-                                    className="w-full px-4 py-3 bg-[#111111] border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-medium appearance-none text-white"
+                                    className="w-full px-4 py-3 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary transition-all font-bold appearance-none text-white text-sm"
                                 >
                                     <option value="Active">🟢 Active</option>
                                     <option value="Future">🟡 Future</option>
@@ -625,25 +628,26 @@ export default function SiteManagementPage() {
                                 </select>
                             </div>
                         </div>
-                        <div className="p-6 border-t border-white/5 flex flex-wrap justify-end gap-2 bg-white/5">
-                            <button onClick={() => setIsModalOpen(false)} className="btn-secondary px-4 py-2 text-xs font-bold" disabled={actionLoading}>Cancel</button>
+                        <div className="p-6 border-t border-white/10 flex flex-wrap justify-end gap-3 bg-white/[0.02]">
+                            <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-xs font-bold rounded-xl bg-white-5 hover:bg-white-10 border border-white/10 text-muted hover:text-white transition-all" disabled={actionLoading}>Cancel</button>
                             <button 
                                 onClick={() => performAction('add', currentSite, true)} 
-                                className="btn-secondary bg-accent-primary/10 hover:bg-accent-primary/20 text-accent-primary border-accent-primary/20 px-4 py-2 text-xs font-bold"
+                                className="px-4 py-2 text-xs font-black rounded-xl bg-accent-primary/10 hover:bg-accent-primary/20 text-accent-primary border border-accent-primary/30 transition-all"
                                 disabled={actionLoading || !currentSite.code.trim()}
                             >
                                 Save & Add Another
                             </button>
                             <button 
                                 onClick={() => performAction('add', currentSite, false)} 
-                                className="btn-primary px-5 py-2 text-xs font-bold"
+                                className="px-5 py-2 text-xs font-black rounded-xl bg-accent-primary hover:bg-accent-primary/90 text-black shadow-[0_0_15px_rgba(var(--accent-primary-rgb),0.5)] transition-all"
                                 disabled={actionLoading || !currentSite.code.trim()}
                             >
                                 Save
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
