@@ -58,6 +58,7 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
         setEditingUserId(user.id);
         setEditingUserData({
             username: user.username || "",
+            password: "",
             firstName: user.firstName || "",
             lastName: user.lastName || "",
             role: user.role || "USER",
@@ -70,6 +71,9 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
         try {
             const formData = new FormData();
             formData.append("username", editingUserData.username);
+            if (editingUserData.password) {
+                formData.append("password", editingUserData.password);
+            }
             formData.append("firstName", editingUserData.firstName);
             formData.append("lastName", editingUserData.lastName);
             formData.append("role", editingUserData.role);
@@ -152,6 +156,15 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                         onChange={e => setEditingUserData({...editingUserData, username: e.target.value})}
                                         style={{ width: '100%', padding: '6px 8px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '0.875rem' }}
                                     />
+                                    {!editingUserData.isExternal && (
+                                        <input 
+                                            type="password"
+                                            placeholder="New Password (optional)"
+                                            value={editingUserData.password || ""}
+                                            onChange={e => setEditingUserData({...editingUserData, password: e.target.value})}
+                                            style={{ width: '100%', padding: '6px 8px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '0.875rem', marginTop: '6px' }}
+                                        />
+                                    )}
                                 </td>
                                 <td style={{ padding: '12px 8px' }}>
                                     <div style={{ display: 'flex', gap: '4px' }}>

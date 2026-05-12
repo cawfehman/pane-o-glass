@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { 
     Upload, 
     Download, 
@@ -183,7 +183,7 @@ export default function SiteManagementPage() {
     const latestVersion = versions.length > 0 ? versions[0] : null;
 
     // Client-side parser for preview
-    const parsePreview = (csv: string) => {
+    const parsePreview = useCallback((csv: string) => {
         if (!csv) return [];
         const lines = csv.split(/\r?\n/).filter(line => line.trim() !== "");
         if (lines.length <= 1) return [];
@@ -213,10 +213,12 @@ export default function SiteManagementPage() {
 
         if (codeIdx === -1) return [];
 
-        return lines.slice(1).map(line => {
+        return lines.slice(1).map((line, index) => {
             const parts = splitCsvRow(line);
-            const code = parts[codeIdx]?.toUpperCase() || "UNK";
+            const rawCode = parts[codeIdx]?.toUpperCase()?.trim();
+            const code = rawCode || `UNK-${index}`;
             return {
+                id: `${code}-${index}`,
                 code,
                 name: (nameIdx !== -1 ? parts[nameIdx] : "") || code,
                 address: addrIdx !== -1 ? parts[addrIdx] || "" : "",
@@ -224,24 +226,29 @@ export default function SiteManagementPage() {
                 notes: notesIdx !== -1 ? parts[notesIdx] || "" : ""
             };
         });
-    };
+    }, []);
 
-    const parsedPreview = latestVersion?.content ? parsePreview(latestVersion.content) : [];
+    const parsedPreview = useMemo(() => {
+        return latestVersion?.content ? parsePreview(latestVersion.content) : [];
+    }, [latestVersion?.content, parsePreview]);
+
     const totalSites = latestVersion?.content ? latestVersion.content.split(/\r?\n/).filter(l => l.trim()).length - 1 : 0;
 
-    const sortedSites = [...parsedPreview].sort((a, b) => {
-        if (sortField === 'code') {
-            return sortDirection === 'asc' 
-                ? a.code.localeCompare(b.code) 
-                : b.code.localeCompare(a.code);
-        } else {
-            const statusA = a.status || 'Active';
-            const statusB = b.status || 'Active';
-            return sortDirection === 'asc' 
-                ? statusA.localeCompare(statusB) 
-                : statusB.localeCompare(statusA);
-        }
-    });
+    const sortedSites = useMemo(() => {
+        return [...parsedPreview].sort((a, b) => {
+            if (sortField === 'code') {
+                return sortDirection === 'asc' 
+                    ? a.code.localeCompare(b.code) 
+                    : b.code.localeCompare(a.code);
+            } else {
+                const statusA = a.status || 'Active';
+                const statusB = b.status || 'Active';
+                return sortDirection === 'asc' 
+                    ? statusA.localeCompare(statusB) 
+                    : statusB.localeCompare(statusA);
+            }
+        });
+    }, [parsedPreview, sortField, sortDirection]);
 
     return (
         <div className="internal-scroll-layout animate-in fade-in duration-400">
@@ -262,7 +269,7 @@ export default function SiteManagementPage() {
                         {/* Primary Trigger renamed to Add Site and made clear outline */}
                         <button 
                             onClick={handleAddClick}
-                            className="flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg transition-all text-white border border-white/15 hover:border-white/40 cursor-pointer"
+                            className="flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg transition-all text-white border border-white/10 hover:border-white/25 cursor-pointer"
                             style={{ background: 'transparent' }}
                         >
                             <Plus size={14} strokeWidth={2.5} />
@@ -276,7 +283,7 @@ export default function SiteManagementPage() {
                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
                                     isCsvMenuOpen 
                                         ? 'text-accent-primary border-accent-primary shadow-lg shadow-accent-primary/20' 
-                                        : 'text-white border-white/15 hover:border-white/40'
+                                        : 'text-white border-white/10 hover:border-white/25'
                                 }`}
                                 style={{ background: 'transparent' }}
                             >
@@ -337,7 +344,7 @@ export default function SiteManagementPage() {
                             onClick={() => setActiveTab('directory')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                                 activeTab === 'directory'
-                                    ? 'text-white border border-white/25 shadow-sm'
+                                    ? 'text-white border border-white/10 shadow-sm'
                                     : 'text-muted hover:text-white border border-transparent'
                             }`}
                             style={{ background: 'transparent' }}
@@ -351,7 +358,7 @@ export default function SiteManagementPage() {
                             onClick={() => setActiveTab('archive')}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                                 activeTab === 'archive'
-                                    ? 'text-white border border-white/25 shadow-sm'
+                                    ? 'text-white border border-white/10 shadow-sm'
                                     : 'text-muted hover:text-white border border-transparent'
                             }`}
                             style={{ background: 'transparent' }}
@@ -367,10 +374,10 @@ export default function SiteManagementPage() {
                             <button 
                                 onClick={() => {
                                     const allExpanded: Record<string, boolean> = {};
-                                    parsedPreview.forEach(s => { allExpanded[s.code] = true; });
+                                    parsedPreview.forEach((s: any) => { allExpanded[s.id] = true; });
                                     setExpandedSites(allExpanded);
                                 }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-white border border-white/15 hover:border-white/40 cursor-pointer"
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-white border border-white/5 hover:border-white/20 cursor-pointer"
                                 style={{ background: 'transparent' }}
                                 title="Expand all rows"
                             >
@@ -378,7 +385,7 @@ export default function SiteManagementPage() {
                             </button>
                             <button 
                                 onClick={() => setExpandedSites({})}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-white border border-white/15 hover:border-white/40 cursor-pointer"
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-white border border-white/5 hover:border-white/20 cursor-pointer"
                                 style={{ background: 'transparent' }}
                                 title="Collapse all rows"
                             >
@@ -443,36 +450,36 @@ export default function SiteManagementPage() {
                                 </div>
                             )}
 
-                            {sortedSites.map((s) => {
+                            {sortedSites.map((s: any) => {
                                 const isEditing = editingSiteCode === s.code;
                                 
                                 // Process inline custom edits state view
                                 if (isEditing) {
                                     return (
-                                        <div key={s.code} style={{ padding: '20px', border: '1px solid var(--accent-primary)', borderRadius: '12px', marginBottom: '12px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px', marginBottom: '16px' }}>
-                                                <span style={{ fontWeight: 800, fontFamily: 'monospace', fontSize: '1.1rem', color: 'var(--accent-primary)' }}>{s.code}</span>
-                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Inline Editor</span>
+                                        <div key={s.id} style={{ padding: '12px', border: '1px solid var(--accent-primary)', borderRadius: '10px', marginBottom: '8px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', marginBottom: '12px' }}>
+                                                <span style={{ fontWeight: 800, fontFamily: 'monospace', fontSize: '1.05rem', color: 'var(--accent-primary)' }}>{s.code}</span>
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Inline Editor</span>
                                             </div>
                                             
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                                <div style={{ display: 'flex', gap: '16px' }}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                <div style={{ display: 'flex', gap: '12px' }}>
                                                     <div style={{ flex: 1 }}>
-                                                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>Site Code</label>
+                                                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '2px' }}>Site Code</label>
                                                         <input 
                                                             type="text" 
                                                             value={editingSiteData.name} 
                                                             onChange={e => setEditingSiteData({...editingSiteData, name: e.target.value})}
-                                                            style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', fontSize: '0.95rem' }}
+                                                            style={{ width: '100%', padding: '6px 10px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '0.9rem' }}
                                                             placeholder="Site Name"
                                                         />
                                                     </div>
-                                                    <div style={{ width: '150px' }}>
-                                                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>Status</label>
+                                                    <div style={{ width: '130px' }}>
+                                                        <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '2px' }}>Status</label>
                                                         <select 
                                                             value={editingSiteData.status} 
                                                             onChange={e => setEditingSiteData({...editingSiteData, status: e.target.value})}
-                                                            style={{ width: '100%', padding: '8px 12px', background: '#000', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', fontSize: '0.95rem' }}
+                                                            style={{ width: '100%', padding: '6px 10px', background: '#000', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '0.9rem' }}
                                                         >
                                                             <option value="Active">Active</option>
                                                             <option value="Future">Future</option>
@@ -482,40 +489,40 @@ export default function SiteManagementPage() {
                                                 </div>
 
                                                 <div>
-                                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>Address</label>
+                                                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '2px' }}>Address</label>
                                                     <textarea 
-                                                        rows={3}
+                                                        rows={1}
                                                         value={editingSiteData.address} 
                                                         onChange={e => setEditingSiteData({...editingSiteData, address: e.target.value})}
-                                                        style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', fontSize: '0.95rem', lineHeight: '1.4' }}
+                                                        style={{ width: '100%', padding: '6px 10px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '0.9rem', lineHeight: '1.3' }}
                                                         placeholder="Full Address"
                                                     />
                                                 </div>
 
                                                 <div>
-                                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>Notes</label>
+                                                    <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '2px' }}>Notes</label>
                                                     <textarea 
-                                                        rows={3}
+                                                        rows={2}
                                                         value={editingSiteData.notes} 
                                                         onChange={e => setEditingSiteData({...editingSiteData, notes: e.target.value})}
-                                                        style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', fontSize: '0.95rem', lineHeight: '1.4' }}
+                                                        style={{ width: '100%', padding: '6px 10px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontSize: '0.9rem', lineHeight: '1.3' }}
                                                         placeholder="Notes"
                                                     />
                                                 </div>
                                             </div>
 
-                                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                                                 <button 
                                                     onClick={() => setEditingSiteCode(null)} 
                                                     disabled={actionLoading}
-                                                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'var(--text-muted)', padding: '6px 14px', borderRadius: '6px', fontSize: '0.85rem', cursor: 'pointer' }}
+                                                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'var(--text-muted)', padding: '4px 12px', borderRadius: '4px', fontSize: '0.8rem', cursor: 'pointer' }}
                                                 >
                                                     Cancel
                                                 </button>
                                                 <button 
                                                     onClick={() => performAction('update', { code: s.code, ...editingSiteData })} 
                                                     disabled={actionLoading}
-                                                    style={{ background: 'transparent', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', padding: '6px 14px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}
+                                                    style={{ background: 'transparent', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', padding: '4px 12px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
                                                 >
                                                     {actionLoading ? "Saving..." : "Save"}
                                                 </button>
@@ -532,15 +539,15 @@ export default function SiteManagementPage() {
                                     formattedStatus === 'Retired' ? '#f87171' :
                                     '#facc15';
 
-                                const isExpanded = !!expandedSites[s.code];
+                                const isExpanded = !!expandedSites[s.id];
                                 const toggleExpand = () => {
-                                    setExpandedSites(prev => ({ ...prev, [s.code]: !prev[s.code] }));
+                                    setExpandedSites(prev => ({ ...prev, [s.id]: !prev[s.id] }));
                                 };
 
                                 // FLAT LINE-SEPARATED ENTRY ROW DUPLICATING ACCOUNT MANAGEMENT PATTERN WITH EXPAND CAPABILITY
                                 return (
                                     <div 
-                                        key={s.code} 
+                                        key={s.id} 
                                         style={{ 
                                             display: 'flex', 
                                             flexDirection: 'column',
