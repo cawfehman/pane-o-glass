@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { AlertCircle, RefreshCw, History } from "lucide-react";
 import ConnectionPath from "@/components/ise/ConnectionPath";
 import EnrichedEndpointCard from "@/components/ise/EnrichedEndpointCard";
@@ -35,6 +35,25 @@ export default function CiscoIsePage() {
     // Configured sites state tracker
     const [sitesList, setSitesList] = useState<any[]>([]);
     const [sitesLoading, setSitesLoading] = useState(false);
+    const [siteDirSortDir, setSiteDirSortDir] = useState<"asc" | "desc">("asc");
+    const [siteDirFilter, setSiteDirFilter] = useState("");
+
+    const processedSitesList = useMemo(() => {
+        let list = sitesList;
+        if (siteDirFilter.trim()) {
+            const q = siteDirFilter.toLowerCase();
+            list = list.filter(s => 
+                (s.code && s.code.toLowerCase().includes(q)) || 
+                (s.name && s.name.toLowerCase().includes(q)) || 
+                (s.address && s.address.toLowerCase().includes(q)) || 
+                (s.notes && s.notes.toLowerCase().includes(q))
+            );
+        }
+        return [...list].sort((a, b) => {
+            const comp = (a.code || "").localeCompare(b.code || "");
+            return siteDirSortDir === "asc" ? comp : -comp;
+        });
+    }, [sitesList, siteDirFilter, siteDirSortDir]);
 
     useEffect(() => {
         if (hasIsePerm) {
@@ -664,11 +683,32 @@ export default function CiscoIsePage() {
                 {/* Read-Only Site Directory Tab */}
                 {activeTab === "sites" && (
                     <div>
-                        <div className="glass-card mb-6" style={{ padding: '20px', borderLeft: '4px solid var(--accent-primary)' }}>
-                            <h3 style={{ margin: 0, marginBottom: '8px' }}>Active Site Topology Directory</h3>
+                        <div className="glass-card mb-6" style={{ padding: '20px', borderTop: '4px solid var(--accent-primary)', textAlign: 'center' }}>
+                            <h3 style={{ margin: 0, marginBottom: '8px' }}>Site Codes and Locations</h3>
                             <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                                Read-only global mapping table. Click any address to open Google Maps in a new tab for rapid physical location triage.
+                                Click any address to open Google Maps in a new tab for rapid physical location triage.
                             </p>
+                        </div>
+
+                        {/* Search Filter Controls Bar */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                            <div style={{ position: 'relative', width: '300px' }}>
+                                <input 
+                                    type="text"
+                                    placeholder="Filter sites by code, name, address..."
+                                    value={siteDirFilter}
+                                    onChange={(e) => setSiteDirFilter(e.target.value)}
+                                    style={{ 
+                                        width: '100%', padding: '8px 12px 8px 34px', borderRadius: '8px', 
+                                        border: '1px solid var(--border-color)', background: 'var(--bg-card)', 
+                                        color: 'var(--text-primary)', fontSize: '0.85rem', outline: 'none'
+                                    }}
+                                />
+                                <svg style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-muted)' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            </div>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                Showing {processedSitesList.length} of {sitesList.length} mapped sites
+                            </span>
                         </div>
 
                         {sitesLoading ? (
@@ -681,14 +721,25 @@ export default function CiscoIsePage() {
                                 <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px' }}>
                                     <thead>
                                         <tr>
-                                            <th style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Site Code</th>
+                                            <th 
+                                                onClick={() => setSiteDirSortDir(prev => prev === "asc" ? "desc" : "asc")}
+                                                style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', cursor: 'pointer' }}
+                                                title="Click to sort by Site Code"
+                                            >
+                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                    Site Code
+                                                    <span style={{ fontSize: '0.65rem', color: 'var(--accent-primary)' }}>
+                                                        {siteDirSortDir === "asc" ? "▲" : "▼"}
+                                                    </span>
+                                                </div>
+                                            </th>
                                             <th style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Site Name / Description</th>
                                             <th style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Status</th>
                                             <th style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Physical Address Mapping</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {sitesList.map((site, index) => {
+                                        {processedSitesList.map((site, index) => {
                                             let statusColor = '#4ade80';
                                             if (site.status === 'Retired') statusColor = '#f87171';
                                             else if (site.status === 'Future') statusColor = '#facc15';
@@ -696,7 +747,7 @@ export default function CiscoIsePage() {
                                             return (
                                                 <tr key={index} style={{ background: 'rgba(255, 255, 255, 0.01)', transition: 'background 0.2s' }}>
                                                     <td style={{ padding: '16px', borderBottom: '1px solid var(--border-color)' }}>
-                                                        <span style={{ fontFamily: 'monospace', fontWeight: 'bold', fontSize: '1rem', color: 'var(--text-primary)' }}>
+                                                        <span style={{ fontWeight: 800, fontFamily: 'monospace', fontSize: '1.05rem', color: 'var(--accent-primary)' }} className="uppercase tracking-wider">
                                                             {site.code}
                                                         </span>
                                                     </td>
@@ -749,10 +800,10 @@ export default function CiscoIsePage() {
                                                 </tr>
                                             );
                                         })}
-                                        {sitesList.length === 0 && !sitesLoading && (
+                                        {processedSitesList.length === 0 && !sitesLoading && (
                                             <tr>
                                                 <td colSpan={4} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                                                    No site mappings available. Configure sites in the Site Operations directory.
+                                                    No site mappings match your filter discovery criteria.
                                                 </td>
                                             </tr>
                                         )}
