@@ -97,7 +97,8 @@ export async function PATCH(req: Request) {
         let sites = currentCsv ? parseSiteCsv(currentCsv) : [];
 
         // Apply action
-        const siteIndex = sites.findIndex(s => s.code.toUpperCase() === site.code.toUpperCase());
+        const targetCode = site.oldCode || site.code;
+        const siteIndex = sites.findIndex(s => s.code.toUpperCase() === targetCode.toUpperCase());
 
         if (action === 'add') {
             if (siteIndex !== -1) {
@@ -116,6 +117,7 @@ export async function PATCH(req: Request) {
             }
             sites[siteIndex] = {
                 ...sites[siteIndex],
+                code: site.code ? site.code.toUpperCase() : sites[siteIndex].code,
                 name: site.name || sites[siteIndex].name,
                 address: site.address ?? sites[siteIndex].address,
                 status: site.status || sites[siteIndex].status,
