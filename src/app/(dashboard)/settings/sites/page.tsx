@@ -38,7 +38,7 @@ export default function SiteManagementPage() {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [dragActive, setDragActive] = useState(false);
-    const [showPreview, setShowPreview] = useState(false);
+    const [showDirectory, setShowDirectory] = useState(false);
     
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -208,11 +208,11 @@ export default function SiteManagementPage() {
                 </div>
                 <div className="flex gap-3">
                     <button 
-                        onClick={() => setShowPreview(!showPreview)}
-                        className={`btn-secondary flex items-center gap-2 px-6 ${showPreview ? 'bg-white/10 text-white' : ''}`}
+                        onClick={() => setShowDirectory(!showDirectory)}
+                        className={`btn-secondary flex items-center gap-2 px-6 ${showDirectory ? 'bg-white/10 text-white' : ''}`}
                     >
                         <Eye size={18} />
-                        {showPreview ? "Hide Preview" : "Preview Active List"}
+                        {showDirectory ? "Hide Directory" : "View Active Directory"}
                     </button>
                     <a href="/api/settings/sites/download" className="btn-primary flex items-center gap-2 px-6">
                         <Download size={18} />
@@ -327,7 +327,7 @@ export default function SiteManagementPage() {
                 {/* Right: History (8 cols) */}
                 <div className="col-span-12 lg:col-span-8 space-y-6">
                     
-                    {showPreview && (
+                    {showDirectory && (
                         <div className="glass-card p-6 border-l-4 border-emerald-500 animate-in slide-in-from-right-4 flex flex-col h-full max-h-[600px]">
                             <div className="flex justify-between items-center mb-4 shrink-0">
                                 <div>
@@ -368,13 +368,23 @@ export default function SiteManagementPage() {
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3 text-muted truncate max-w-[200px]">{s.address}</td>
-                                                <td className="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        <button onClick={() => handleEditClick(s)} className="p-1.5 rounded-lg hover:bg-white/10 text-muted hover:text-white transition-colors" title="Edit Site">
-                                                            <Edit2 size={14} />
+                                                <td className="px-4 py-3 text-right">
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        <button 
+                                                            onClick={() => handleEditClick(s)} 
+                                                            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent-primary/10 hover:bg-accent-primary text-accent-primary hover:text-black font-bold transition-all text-[10px]" 
+                                                            title="Edit Site"
+                                                        >
+                                                            <Edit2 size={12} />
+                                                            Edit
                                                         </button>
-                                                        <button onClick={() => handleDeleteClick(s.code)} className="p-1.5 rounded-lg hover:bg-red-500/20 text-muted hover:text-red-400 transition-colors" title="Delete Site">
-                                                            <Trash2 size={14} />
+                                                        <button 
+                                                            onClick={() => handleDeleteClick(s.code)} 
+                                                            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white font-bold transition-all text-[10px]" 
+                                                            title="Delete Site"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                            Delete
                                                         </button>
                                                     </div>
                                                 </td>
