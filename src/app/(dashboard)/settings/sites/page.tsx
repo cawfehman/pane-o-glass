@@ -369,34 +369,34 @@ export default function SiteManagementPage() {
                                         {parsedPreview.map((s, idx) => {
                                             const isEditing = editingSiteCode === s.code;
                                             return (
-                                                <tr key={idx} className={`hover:bg-white/5 transition-colors group ${isEditing ? 'bg-accent-primary/5' : ''}`}>
-                                                    <td className="px-4 py-3 font-bold text-accent-primary">{s.code}</td>
-                                                    <td className="px-4 py-3">
+                                                <tr key={idx} className={`hover:bg-white/5 transition-all duration-200 group ${isEditing ? 'bg-accent-primary/[0.08] shadow-inner' : ''}`}>
+                                                    <td className="px-4 py-3.5 font-black text-accent-primary tracking-wider text-xs">{s.code}</td>
+                                                    <td className="px-4 py-3.5">
                                                         {isEditing ? (
                                                             <input 
                                                                 type="text" 
                                                                 value={editingSiteData.name} 
                                                                 onChange={e => setEditingSiteData({...editingSiteData, name: e.target.value})}
-                                                                className="w-full px-2 py-1 bg-black/60 border border-white/20 rounded focus:border-accent-primary focus:outline-none text-xs font-medium text-white"
+                                                                className="w-full min-w-[180px] px-3 py-1.5 bg-black/80 border border-accent-primary/40 rounded-lg focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white shadow-sm transition-all"
                                                                 placeholder="Site Name"
                                                             />
                                                         ) : (
-                                                            <span className="text-secondary font-medium">{s.name}</span>
+                                                            <span className="text-secondary font-bold tracking-tight">{s.name}</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-3">
+                                                    <td className="px-4 py-3.5">
                                                         {isEditing ? (
                                                             <select 
                                                                 value={editingSiteData.status} 
                                                                 onChange={e => setEditingSiteData({...editingSiteData, status: e.target.value})}
-                                                                className="px-2 py-1 bg-black/60 border border-white/20 rounded focus:border-accent-primary focus:outline-none text-[10px] font-bold uppercase text-white"
+                                                                className="px-3 py-1.5 bg-black/80 border border-accent-primary/40 rounded-lg focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-[10px] font-black uppercase tracking-wider text-white shadow-sm transition-all"
                                                             >
                                                                 <option value="Active">Active</option>
                                                                 <option value="Future">Future</option>
                                                                 <option value="Retired">Retired</option>
                                                             </select>
                                                         ) : (
-                                                            <span className={`text-[9px] uppercase px-2 py-1 rounded-full font-bold ${
+                                                            <span className={`text-[9px] uppercase px-2.5 py-1 rounded-full font-black tracking-wider ${
                                                                 s.status?.toLowerCase() === 'active' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
                                                                 s.status?.toLowerCase() === 'retired' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
                                                                 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
@@ -405,26 +405,26 @@ export default function SiteManagementPage() {
                                                             </span>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-3">
+                                                    <td className="px-4 py-3.5">
                                                         {isEditing ? (
                                                             <input 
                                                                 type="text" 
                                                                 value={editingSiteData.address} 
                                                                 onChange={e => setEditingSiteData({...editingSiteData, address: e.target.value})}
-                                                                className="w-full px-2 py-1 bg-black/60 border border-white/20 rounded focus:border-accent-primary focus:outline-none text-xs text-white"
+                                                                className="w-full min-w-[280px] px-3 py-1.5 bg-black/80 border border-accent-primary/40 rounded-lg focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs text-white shadow-sm transition-all"
                                                                 placeholder="Physical Address"
                                                             />
                                                         ) : (
-                                                            <span className="text-muted truncate block max-w-[200px]">{s.address}</span>
+                                                            <span className="text-muted block break-words leading-relaxed font-medium max-w-xl">{s.address}</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-3 text-right">
+                                                    <td className="px-4 py-3.5 text-right">
                                                         {isEditing ? (
-                                                            <div className="flex items-center justify-end gap-1">
+                                                            <div className="flex items-center justify-end gap-2">
                                                                 <button 
                                                                     onClick={() => performAction('update', { code: s.code, ...editingSiteData })} 
                                                                     disabled={actionLoading}
-                                                                    className="px-2 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[10px] transition-all"
+                                                                    className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.3)] text-black font-black text-[10px] transition-all tracking-wider uppercase"
                                                                     title="Save Changes"
                                                                 >
                                                                     {actionLoading ? "..." : "Save"}
@@ -432,29 +432,29 @@ export default function SiteManagementPage() {
                                                                 <button 
                                                                     onClick={() => setEditingSiteCode(null)} 
                                                                     disabled={actionLoading}
-                                                                    className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-muted hover:text-white font-bold text-[10px] transition-all"
+                                                                    className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.1] text-muted hover:text-white font-bold text-[10px] transition-all tracking-wide"
                                                                     title="Cancel"
                                                                 >
                                                                     Cancel
                                                                 </button>
                                                             </div>
                                                         ) : (
-                                                            <div className="flex items-center justify-end gap-1.5">
+                                                            <div className="flex items-center justify-end gap-2">
                                                                 <button 
                                                                     onClick={() => handleEditClick(s)} 
-                                                                    className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent-primary/10 hover:bg-accent-primary text-accent-primary hover:text-black font-bold transition-all text-[10px]" 
-                                                                    title="Edit Site"
+                                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.03] hover:bg-accent-primary hover:shadow-[0_0_12px_rgba(var(--accent-primary-rgb),0.4)] border border-white/[0.08] hover:border-transparent text-accent-primary hover:text-black font-bold transition-all text-[10px] tracking-wide" 
+                                                                    title="Edit Site Directory"
                                                                 >
-                                                                    <Edit2 size={12} />
-                                                                    Edit
+                                                                    <Edit2 size={11} className="stroke-[2.5]" />
+                                                                    <span>Edit</span>
                                                                 </button>
                                                                 <button 
                                                                     onClick={() => handleDeleteClick(s.code)} 
-                                                                    className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white font-bold transition-all text-[10px]" 
+                                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.03] hover:bg-red-500/20 hover:shadow-[0_0_12px_rgba(239,68,68,0.2)] border border-white/[0.08] hover:border-red-500/30 text-muted hover:text-red-400 font-bold transition-all text-[10px] tracking-wide" 
                                                                     title="Delete Site"
                                                                 >
-                                                                    <Trash2 size={12} />
-                                                                    Delete
+                                                                    <Trash2 size={11} className="stroke-[2.5]" />
+                                                                    <span>Delete</span>
                                                                 </button>
                                                             </div>
                                                         )}
