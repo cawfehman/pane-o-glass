@@ -265,53 +265,34 @@ export default function SiteManagementPage() {
                             <ChevronDown size={14} className={`transition-transform duration-200 ${isCsvMenuOpen ? 'rotate-180' : ''}`} />
                         </button>
 
-                        {/* Custom dropdown content overlay containing export download link and drag/drop ingest card */}
+                        {/* Clean minimal dropdown menu containing straightforward export and native OS file browser triggers */}
                         {isCsvMenuOpen && (
-                            <div className="absolute right-0 mt-2 w-80 rounded-2xl bg-black/95 border border-white/15 p-4 shadow-2xl backdrop-blur-xl z-50 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                                <div>
-                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted block mb-1.5">Extraction</span>
-                                    <a 
-                                        href="/api/settings/sites/download" 
-                                        onClick={() => setIsCsvMenuOpen(false)}
-                                        className="flex items-center justify-between p-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-white text-xs font-bold transition-all group"
-                                    >
-                                        <span className="flex items-center gap-2">
-                                            <Download size={14} className="text-accent-primary" />
-                                            <span>Export Live Mapping CSV</span>
-                                        </span>
-                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-accent-primary/10 text-accent-primary font-black uppercase">CSV</span>
-                                    </a>
-                                </div>
-
-                                <div className="border-t border-white/10 pt-3">
-                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted block mb-1.5">Ingest / Import</span>
-                                    
-                                    {/* Compacted Drag/Drop chooser zone */}
-                                    <div 
-                                        className={`rounded-xl border border-dashed p-4 text-center transition-all duration-200 relative ${
-                                            dragActive ? 'border-accent-primary bg-accent-primary/10' : 'border-white/15 bg-white/[0.01] hover:border-white/25'
-                                        }`}
-                                        onDragEnter={handleDrag}
-                                        onDragLeave={handleDrag}
-                                        onDragOver={handleDrag}
-                                        onDrop={handleDrop}
-                                    >
-                                        <input 
-                                            type="file" 
-                                            accept=".csv" 
-                                            className="hidden" 
-                                            id="dropdown-csv-upload" 
-                                            onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} 
-                                            disabled={uploading} 
-                                        />
-                                        <label htmlFor="dropdown-csv-upload" className="cursor-pointer block">
-                                            <Upload className={`mx-auto mb-1.5 ${uploading ? 'animate-spin text-accent-primary' : 'text-muted'}`} size={16} />
-                                            <span className="text-xs font-bold text-white block">Choose CSV File</span>
-                                            <span className="text-[10px] text-muted block mt-0.5">{uploading ? 'Parsing schema...' : 'or drop file here'}</span>
-                                        </label>
-                                    </div>
-                                    <span className="text-[8px] text-muted/60 block text-center mt-1.5 font-mono">Columns: Code, Name, Address, Status, Notes</span>
-                                </div>
+                            <div className="absolute right-0 mt-2 w-56 rounded-xl bg-black/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-xl z-50 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                                <a 
+                                    href="/api/settings/sites/download" 
+                                    onClick={() => setIsCsvMenuOpen(false)}
+                                    className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-white/5 text-white text-xs font-bold transition-all"
+                                >
+                                    <Download size={14} className="text-accent-primary" />
+                                    <span>Export Mapping CSV</span>
+                                </a>
+                                
+                                <label 
+                                    className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-white/5 text-white text-xs font-bold transition-all cursor-pointer block"
+                                >
+                                    <Upload size={14} className="text-emerald-400" />
+                                    <span>{uploading ? 'Importing...' : 'Import CSV File...'}</span>
+                                    <input 
+                                        type="file" 
+                                        accept=".csv" 
+                                        className="hidden" 
+                                        onChange={(e) => {
+                                            setIsCsvMenuOpen(false);
+                                            if (e.target.files?.[0]) handleUpload(e.target.files[0]);
+                                        }} 
+                                        disabled={uploading} 
+                                    />
+                                </label>
                             </div>
                         )}
                     </div>
@@ -487,39 +468,35 @@ export default function SiteManagementPage() {
                                 // COMPACT LIST VIEW NORMALIZATION
                                 if (isCompactView) {
                                     return (
-                                        <div key={s.code} className="px-4 py-2.5 bg-white/[0.015] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-150 flex items-center justify-between gap-4 group">
-                                            <div className="flex items-center gap-4 min-w-0 flex-1">
-                                                {/* Site Code */}
-                                                <span className="w-16 shrink-0 text-sm font-black text-accent-primary font-mono uppercase tracking-wider">{s.code}</span>
-                                                
-                                                {/* Site Name normalizer */}
-                                                <span className="text-xs font-bold text-white tracking-tight truncate max-w-[280px]">{s.name}</span>
-                                                
-                                                {/* Address partial view when room available */}
-                                                <span className="text-[11px] text-muted truncate flex-1 hidden md:inline">{s.address || <span className="italic opacity-40">No address specified</span>}</span>
+                                        <div key={s.code} className="px-5 py-3 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-150 flex items-center justify-between gap-4 group">
+                                            {/* Left side: ONLY SITE CODE */}
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-2 h-2 rounded-full bg-accent-primary/50 group-hover:bg-accent-primary transition-colors"></div>
+                                                <span className="text-base font-black text-white font-mono uppercase tracking-widest">{s.code}</span>
                                             </div>
 
-                                            {/* Status Badge pushed securely to the far right alongside spaced operation handles */}
-                                            <div className="flex items-center gap-4 shrink-0">
-                                                <span className={`text-xs italic font-semibold w-16 text-right ${statusColorClass}`}>
+                                            {/* Right side: Status and Premium Action buttons */}
+                                            <div className="flex items-center gap-6 shrink-0">
+                                                <span className={`text-xs italic font-semibold ${statusColorClass}`}>
                                                     {formattedStatus}
                                                 </span>
 
-                                                {/* Action controls separated by beautiful gap-3 spacing parameter */}
-                                                <div className="flex items-center gap-3 border-l border-white/10 pl-3">
+                                                <div className="flex items-center gap-2.5">
                                                     <button 
                                                         onClick={() => handleEditClick(s)} 
-                                                        className="px-2 py-1 rounded bg-white/5 hover:bg-white border border-white/5 text-muted hover:text-black font-extrabold text-[10px] transition-all"
-                                                        title="Edit Site Record"
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-primary/[0.08] hover:bg-accent-primary/[0.15] border border-accent-primary/20 text-accent-primary font-bold text-xs transition-all"
+                                                        title="Edit Record"
                                                     >
-                                                        Edit
+                                                        <Edit2 size={12} strokeWidth={2.5} />
+                                                        <span>Edit</span>
                                                     </button>
                                                     <button 
                                                         onClick={() => handleDeleteClick(s.code)} 
-                                                        className="px-2 py-1 rounded bg-red-500/10 hover:bg-red-500 border border-red-500/10 text-red-400/90 hover:text-white font-extrabold text-[10px] transition-all"
-                                                        title="Delete Site Record"
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/[0.08] hover:bg-red-500/[0.15] border border-red-500/20 text-red-400 font-bold text-xs transition-all"
+                                                        title="Delete Record"
                                                     >
-                                                        Del
+                                                        <Trash2 size={12} strokeWidth={2.5} />
+                                                        <span>Delete</span>
                                                     </button>
                                                 </div>
                                             </div>
@@ -529,61 +506,62 @@ export default function SiteManagementPage() {
 
                                 // EXPANDED CARD VIEW NORMALIZATION
                                 return (
-                                    <div key={s.code} className="p-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-200 group relative">
+                                    <div key={s.code} className="p-5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-200 group relative">
                                         <div className="flex items-start justify-between gap-4">
-                                            <div className="flex-1 min-w-0 pr-4">
+                                            <div className="flex-1 min-w-0 pr-4 space-y-1">
                                                 {/* 1. Site Code */}
-                                                <div className="mb-1">
-                                                    <span className="text-base font-black text-accent-primary tracking-wider uppercase font-mono drop-shadow-sm">
+                                                <div>
+                                                    <span className="text-lg font-black text-accent-primary tracking-wider uppercase font-mono">
                                                         {s.code}
                                                     </span>
                                                 </div>
 
                                                 {/* 2. Site Name */}
-                                                <h4 className="text-xs font-bold text-white tracking-tight mb-1 truncate">
+                                                <h4 className="text-sm font-bold text-white tracking-tight truncate">
                                                     {s.name}
                                                 </h4>
 
                                                 {/* 3. Address */}
                                                 {s.address ? (
-                                                    <p className="text-[11px] text-muted font-medium break-words leading-relaxed">
+                                                    <p className="text-xs text-muted font-medium break-words leading-relaxed pt-0.5">
                                                         {s.address}
                                                     </p>
                                                 ) : (
-                                                    <p className="text-[11px] text-muted/30 italic">No physical address specified</p>
+                                                    <p className="text-xs text-muted/40 italic pt-0.5">No physical address specified</p>
                                                 )}
 
                                                 {/* Optional Notes */}
                                                 {s.notes && (
-                                                    <div className="mt-2 p-2 rounded-lg bg-black/40 border border-white/5 text-[11px] text-secondary/90 whitespace-pre-wrap font-mono relative overflow-hidden">
-                                                        <div className="absolute top-0 left-0 bottom-0 w-0.5 bg-accent-primary/30"></div>
-                                                        <span className="text-[8px] block uppercase font-bold tracking-widest text-accent-primary/60 mb-0.5">Notes</span>
+                                                    <div className="mt-2.5 p-2.5 rounded-lg bg-black/40 border border-white/5 text-xs text-secondary/90 whitespace-pre-wrap font-mono relative overflow-hidden">
+                                                        <div className="absolute top-0 left-0 bottom-0 w-1 bg-accent-primary/40"></div>
+                                                        <span className="text-[9px] block uppercase font-black tracking-widest text-accent-primary/80 mb-1">Notes</span>
                                                         {s.notes}
                                                     </div>
                                                 )}
                                             </div>
 
-                                            {/* Status Badge clearly partitioned from Site Code, locked on the far right row container */}
-                                            <div className="flex items-center gap-4 shrink-0 pl-3 border-l border-white/5 pt-0.5">
+                                            {/* Right side: Status Badge and Gorgeous Premium Controls */}
+                                            <div className="flex flex-col items-end justify-between gap-4 shrink-0 pl-4 border-l border-white/5 h-full min-h-[80px]">
                                                 <span className={`text-xs italic font-semibold tracking-wide ${statusColorClass}`}>
                                                     {formattedStatus}
                                                 </span>
 
-                                                {/* Actions block with expanded horizontal layout spacing mapping directly to gap-3 request */}
-                                                <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-2.5 mt-auto">
                                                     <button 
                                                         onClick={() => handleEditClick(s)} 
-                                                        className="px-2.5 py-1 rounded bg-white/5 hover:bg-white border border-white/10 text-muted/90 hover:text-black font-extrabold text-[10px] transition-all"
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-primary/[0.08] hover:bg-accent-primary/[0.15] border border-accent-primary/20 text-accent-primary font-bold text-xs transition-all"
                                                         title="Edit Record"
                                                     >
-                                                        Edit
+                                                        <Edit2 size={12} strokeWidth={2.5} />
+                                                        <span>Edit</span>
                                                     </button>
                                                     <button 
                                                         onClick={() => handleDeleteClick(s.code)} 
-                                                        className="px-2.5 py-1 rounded bg-red-500/10 hover:bg-red-500 border border-red-500/20 text-red-400/90 hover:text-white font-extrabold text-[10px] transition-all"
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/[0.08] hover:bg-red-500/[0.15] border border-red-500/20 text-red-400 font-bold text-xs transition-all"
                                                         title="Delete Record"
                                                     >
-                                                        Del
+                                                        <Trash2 size={12} strokeWidth={2.5} />
+                                                        <span>Delete</span>
                                                     </button>
                                                 </div>
                                             </div>
