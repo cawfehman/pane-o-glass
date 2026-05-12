@@ -40,11 +40,14 @@ export default function SiteManagementPage() {
     const [dragActive, setDragActive] = useState(false);
     const [showDirectory, setShowDirectory] = useState(false);
     
-    // Modal State
+    // Modal State (Add Site)
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [modalMode, setModalMode] = useState<"add" | "edit">("add");
     const [currentSite, setCurrentSite] = useState<any>({ code: "", name: "", address: "", status: "Active" });
     const [actionLoading, setActionLoading] = useState(false);
+
+    // Inline Edit State
+    const [editingSiteCode, setEditingSiteCode] = useState<string | null>(null);
+    const [editingSiteData, setEditingSiteData] = useState<any>({ name: "", address: "", status: "Active" });
 
     const fetchVersions = useCallback(async () => {
         setLoading(true);
@@ -64,7 +67,7 @@ export default function SiteManagementPage() {
         fetchVersions();
     }, [fetchVersions]);
 
-    const performAction = async (action: 'add' | 'update' | 'delete', siteData: any) => {
+    const performAction = async (action: 'add' | 'update' | 'delete', siteData: any, addAnother: boolean = false) => {
         setActionLoading(true);
         setError("");
         setSuccess("");
@@ -78,10 +81,21 @@ export default function SiteManagementPage() {
             if (data.error) throw new Error(data.error);
             
             setSuccess(`Site successfully ${action === 'add' ? 'added' : action === 'update' ? 'updated' : 'deleted'}.`);
-            setIsModalOpen(false);
+            
+            if (action === 'update') {
+                setEditingSiteCode(null);
+            } else if (action === 'add') {
+                if (addAnother) {
+                    setCurrentSite({ code: "", name: "", address: "", status: "Active" });
+                } else {
+                    setIsModalOpen(false);
+                }
+            }
             fetchVersions();
+            return true;
         } catch (e: any) {
             setError(e.message);
+            return false;
         } finally {
             setActionLoading(false);
             setTimeout(() => { setError(""); setSuccess(""); }, 5000);
@@ -89,15 +103,13 @@ export default function SiteManagementPage() {
     };
 
     const handleAddClick = () => {
-        setModalMode("add");
         setCurrentSite({ code: "", name: "", address: "", status: "Active" });
         setIsModalOpen(true);
     };
 
     const handleEditClick = (site: any) => {
-        setModalMode("edit");
-        setCurrentSite({ ...site });
-        setIsModalOpen(true);
+        setEditingSiteCode(site.code);
+        setEditingSiteData({ name: site.name, address: site.address, status: site.status || "Active" });
     };
 
     const handleDeleteClick = async (code: string) => {
@@ -212,7 +224,7 @@ export default function SiteManagementPage() {
                         className={`btn-secondary flex items-center gap-2 px-6 ${showDirectory ? 'bg-white/10 text-white' : ''}`}
                     >
                         <Eye size={18} />
-                        {showDirectory ? "Hide Directory" : "View Active Directory"}
+                        {showDirectory ? "Hide Site Directory" : "View Site Directory"}
                     </button>
                     <a href="/api/settings/sites/download" className="btn-primary flex items-center gap-2 px-6">
                         <Download size={18} />
@@ -354,42 +366,102 @@ export default function SiteManagementPage() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/5">
-                                        {parsedPreview.map((s, idx) => (
-                                            <tr key={idx} className="hover:bg-white/5 transition-colors group">
-                                                <td className="px-4 py-3 font-bold text-accent-primary">{s.code}</td>
-                                                <td className="px-4 py-3 text-secondary font-medium">{s.name}</td>
-                                                <td className="px-4 py-3">
-                                                    <span className={`text-[9px] uppercase px-2 py-1 rounded-full font-bold ${
-                                                        s.status?.toLowerCase() === 'active' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
-                                                        s.status?.toLowerCase() === 'retired' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                                                        'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
-                                                    }`}>
-                                                        {s.status || 'Active'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-4 py-3 text-muted truncate max-w-[200px]">{s.address}</td>
-                                                <td className="px-4 py-3 text-right">
-                                                    <div className="flex items-center justify-end gap-1.5">
-                                                        <button 
-                                                            onClick={() => handleEditClick(s)} 
-                                                            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent-primary/10 hover:bg-accent-primary text-accent-primary hover:text-black font-bold transition-all text-[10px]" 
-                                                            title="Edit Site"
-                                                        >
-                                                            <Edit2 size={12} />
-                                                            Edit
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => handleDeleteClick(s.code)} 
-                                                            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white font-bold transition-all text-[10px]" 
-                                                            title="Delete Site"
-                                                        >
-                                                            <Trash2 size={12} />
-                                                            Delete
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {parsedPreview.map((s, idx) => {
+                                            const isEditing = editingSiteCode === s.code;
+                                            return (
+                                                <tr key={idx} className={`hover:bg-white/5 transition-colors group ${isEditing ? 'bg-accent-primary/5' : ''}`}>
+                                                    <td className="px-4 py-3 font-bold text-accent-primary">{s.code}</td>
+                                                    <td className="px-4 py-3">
+                                                        {isEditing ? (
+                                                            <input 
+                                                                type="text" 
+                                                                value={editingSiteData.name} 
+                                                                onChange={e => setEditingSiteData({...editingSiteData, name: e.target.value})}
+                                                                className="w-full px-2 py-1 bg-black/60 border border-white/20 rounded focus:border-accent-primary focus:outline-none text-xs font-medium text-white"
+                                                                placeholder="Site Name"
+                                                            />
+                                                        ) : (
+                                                            <span className="text-secondary font-medium">{s.name}</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        {isEditing ? (
+                                                            <select 
+                                                                value={editingSiteData.status} 
+                                                                onChange={e => setEditingSiteData({...editingSiteData, status: e.target.value})}
+                                                                className="px-2 py-1 bg-black/60 border border-white/20 rounded focus:border-accent-primary focus:outline-none text-[10px] font-bold uppercase text-white"
+                                                            >
+                                                                <option value="Active">Active</option>
+                                                                <option value="Future">Future</option>
+                                                                <option value="Retired">Retired</option>
+                                                            </select>
+                                                        ) : (
+                                                            <span className={`text-[9px] uppercase px-2 py-1 rounded-full font-bold ${
+                                                                s.status?.toLowerCase() === 'active' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
+                                                                s.status?.toLowerCase() === 'retired' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                                                                'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
+                                                            }`}>
+                                                                {s.status || 'Active'}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        {isEditing ? (
+                                                            <input 
+                                                                type="text" 
+                                                                value={editingSiteData.address} 
+                                                                onChange={e => setEditingSiteData({...editingSiteData, address: e.target.value})}
+                                                                className="w-full px-2 py-1 bg-black/60 border border-white/20 rounded focus:border-accent-primary focus:outline-none text-xs text-white"
+                                                                placeholder="Physical Address"
+                                                            />
+                                                        ) : (
+                                                            <span className="text-muted truncate block max-w-[200px]">{s.address}</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right">
+                                                        {isEditing ? (
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <button 
+                                                                    onClick={() => performAction('update', { code: s.code, ...editingSiteData })} 
+                                                                    disabled={actionLoading}
+                                                                    className="px-2 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-[10px] transition-all"
+                                                                    title="Save Changes"
+                                                                >
+                                                                    {actionLoading ? "..." : "Save"}
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => setEditingSiteCode(null)} 
+                                                                    disabled={actionLoading}
+                                                                    className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-muted hover:text-white font-bold text-[10px] transition-all"
+                                                                    title="Cancel"
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center justify-end gap-1.5">
+                                                                <button 
+                                                                    onClick={() => handleEditClick(s)} 
+                                                                    className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-accent-primary/10 hover:bg-accent-primary text-accent-primary hover:text-black font-bold transition-all text-[10px]" 
+                                                                    title="Edit Site"
+                                                                >
+                                                                    <Edit2 size={12} />
+                                                                    Edit
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => handleDeleteClick(s.code)} 
+                                                                    className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white font-bold transition-all text-[10px]" 
+                                                                    title="Delete Site"
+                                                                >
+                                                                    <Trash2 size={12} />
+                                                                    Delete
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                         {parsedPreview.length === 0 && (
                                             <tr className="text-muted italic">
                                                 <td colSpan={5} className="px-4 py-12 text-center">No active mapping found. Please upload a CSV.</td>
@@ -491,7 +563,7 @@ export default function SiteManagementPage() {
                 </div>
             </div>
 
-            {/* Modal for Add/Edit Site */}
+            {/* Modal for Add Site */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="glass-card w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 relative overflow-hidden">
@@ -499,12 +571,12 @@ export default function SiteManagementPage() {
                             <div className="absolute inset-0 z-10 bg-black/40 backdrop-blur-sm flex items-center justify-center">
                                 <div className="flex flex-col items-center gap-4">
                                     <div className="w-8 h-8 rounded-full border-4 border-accent-primary border-t-transparent animate-spin"></div>
-                                    <p className="text-sm font-bold animate-pulse text-white">{modalMode === 'add' ? 'Adding' : 'Updating'} Site...</p>
+                                    <p className="text-sm font-bold animate-pulse text-white">Adding Site Directory...</p>
                                 </div>
                             </div>
                         )}
                         <div className="flex items-center justify-between p-6 border-b border-white/5 bg-white-5">
-                            <h3 className="text-lg font-black tracking-tight">{modalMode === 'add' ? 'Add New Site' : 'Edit Site Directory'}</h3>
+                            <h3 className="text-lg font-black tracking-tight">Add New Site Directory</h3>
                             <button onClick={() => setIsModalOpen(false)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
                                 <X size={20} />
                             </button>
@@ -517,8 +589,7 @@ export default function SiteManagementPage() {
                                     value={currentSite.code} 
                                     onChange={e => setCurrentSite({...currentSite, code: e.target.value.toUpperCase()})}
                                     placeholder="e.g. NYC"
-                                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-bold"
-                                    disabled={modalMode === 'edit'}
+                                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-bold text-white"
                                 />
                             </div>
                             <div>
@@ -528,7 +599,7 @@ export default function SiteManagementPage() {
                                     value={currentSite.name} 
                                     onChange={e => setCurrentSite({...currentSite, name: e.target.value})}
                                     placeholder="e.g. New York HQ"
-                                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all"
+                                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all text-white"
                                 />
                             </div>
                             <div>
@@ -538,7 +609,7 @@ export default function SiteManagementPage() {
                                     value={currentSite.address} 
                                     onChange={e => setCurrentSite({...currentSite, address: e.target.value})}
                                     placeholder="e.g. 123 Broadway, NY 10001"
-                                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all text-sm"
+                                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all text-sm text-white"
                                 />
                             </div>
                             <div>
@@ -546,7 +617,7 @@ export default function SiteManagementPage() {
                                 <select 
                                     value={currentSite.status} 
                                     onChange={e => setCurrentSite({...currentSite, status: e.target.value})}
-                                    className="w-full px-4 py-3 bg-[#111111] border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-medium appearance-none"
+                                    className="w-full px-4 py-3 bg-[#111111] border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-medium appearance-none text-white"
                                 >
                                     <option value="Active">🟢 Active</option>
                                     <option value="Future">🟡 Future</option>
@@ -554,14 +625,21 @@ export default function SiteManagementPage() {
                                 </select>
                             </div>
                         </div>
-                        <div className="p-6 border-t border-white/5 flex justify-end gap-3 bg-white/5">
-                            <button onClick={() => setIsModalOpen(false)} className="btn-secondary px-6" disabled={actionLoading}>Cancel</button>
+                        <div className="p-6 border-t border-white/5 flex flex-wrap justify-end gap-2 bg-white/5">
+                            <button onClick={() => setIsModalOpen(false)} className="btn-secondary px-4 py-2 text-xs font-bold" disabled={actionLoading}>Cancel</button>
                             <button 
-                                onClick={() => performAction(modalMode, currentSite)} 
-                                className="btn-primary px-8"
+                                onClick={() => performAction('add', currentSite, true)} 
+                                className="btn-secondary bg-accent-primary/10 hover:bg-accent-primary/20 text-accent-primary border-accent-primary/20 px-4 py-2 text-xs font-bold"
                                 disabled={actionLoading || !currentSite.code.trim()}
                             >
-                                {modalMode === 'add' ? 'Save New Site' : 'Apply Changes'}
+                                Save & Add Another
+                            </button>
+                            <button 
+                                onClick={() => performAction('add', currentSite, false)} 
+                                className="btn-primary px-5 py-2 text-xs font-bold"
+                                disabled={actionLoading || !currentSite.code.trim()}
+                            >
+                                Save
                             </button>
                         </div>
                     </div>
