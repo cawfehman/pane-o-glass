@@ -39,7 +39,7 @@ export default function SiteManagementPage() {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [dragActive, setDragActive] = useState(false);
-    const [showDirectory, setShowDirectory] = useState(false);
+    const [showDirectory, setShowDirectory] = useState(true);
     
     // Modal State (Add Site)
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -225,14 +225,14 @@ export default function SiteManagementPage() {
                 </div>
                 <div className="flex gap-3">
                     <button 
-                        onClick={() => setShowDirectory(!showDirectory)}
-                        className={`btn-secondary flex items-center gap-2 px-6 ${showDirectory ? 'bg-white/10 text-white' : ''}`}
+                        onClick={handleAddClick}
+                        className="btn-secondary flex items-center gap-2 px-5 font-black text-xs"
                     >
-                        <Eye size={18} />
-                        {showDirectory ? "Hide Site Directory" : "View Site Directory"}
+                        <Plus size={16} />
+                        Add Site Record
                     </button>
-                    <a href="/api/settings/sites/download" className="btn-primary flex items-center gap-2 px-6">
-                        <Download size={18} />
+                    <a href="/api/settings/sites/download" className="btn-primary flex items-center gap-2 px-5 text-xs font-black">
+                        <Download size={16} />
                         Export CSV
                     </a>
                 </div>
@@ -305,179 +305,176 @@ export default function SiteManagementPage() {
                 {/* Right: History (8 cols) */}
                 <div className="col-span-12 lg:col-span-8 space-y-6">
                     
-                    {showDirectory && (
-                        <div className="glass-card p-6 border-l-4 border-emerald-500 animate-in slide-in-from-right-4 flex flex-col h-full max-h-[700px]">
-                            <div className="flex justify-between items-center mb-6 shrink-0">
-                                <div>
-                                    <h3 className="font-black text-base uppercase tracking-wider text-white">Active Directory</h3>
-                                    <p className="text-xs text-muted">All sites parsed from the current mapping</p>
-                                </div>
-                                <button 
-                                    onClick={handleAddClick} 
-                                    className="btn-primary flex items-center gap-2 px-4 py-2 text-xs font-black shadow-lg shadow-accent-primary/20"
-                                >
-                                    <Plus size={16} strokeWidth={3} />
-                                    Add Site
-                                </button>
+                    <div className="glass-card p-6 border-l-4 border-emerald-500 flex flex-col h-full max-h-[700px]">
+                        <div className="flex justify-between items-center mb-4 shrink-0 border-b border-white/5 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <h3 className="font-black tracking-tight text-white uppercase text-sm">Site Mapping Directory</h3>
+                                <span className="px-2.5 py-0.5 rounded-full bg-accent-primary/10 text-accent-primary font-bold text-xs">
+                                    {totalSites} Total Sites
+                                </span>
                             </div>
-                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
-                                {parsedPreview.map((s) => {
-                                    const isEditing = editingSiteCode === s.code;
-                                    if (isEditing) {
-                                        return (
-                                            <div key={s.code} className="p-6 bg-accent-primary/[0.05] border-2 border-accent-primary/50 rounded-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200 shadow-xl relative overflow-hidden">
-                                                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent-primary to-emerald-400"></div>
-                                                <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                                                    <div className="flex items-center gap-3">
-                                                        <span className="px-3 py-1 rounded-lg bg-accent-primary font-black text-black text-xs tracking-wider">{s.code}</span>
-                                                        <h4 className="text-xs font-black text-white uppercase tracking-wider">Editing Directory Record</h4>
-                                                    </div>
-                                                    <span className="text-[10px] uppercase font-black tracking-widest text-accent-primary">Inline Form</span>
+                            <span className="text-[10px] text-muted font-bold uppercase tracking-widest">Live Metadata Table</span>
+                        </div>
+                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4 pt-2">
+                            {parsedPreview.map((s) => {
+                                const isEditing = editingSiteCode === s.code;
+                                if (isEditing) {
+                                    return (
+                                        <div key={s.code} className="p-6 bg-accent-primary/[0.05] border-2 border-accent-primary/50 rounded-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200 shadow-xl relative overflow-hidden">
+                                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent-primary to-emerald-400"></div>
+                                            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="px-3 py-1 rounded-lg bg-accent-primary font-black text-black text-xs tracking-wider">{s.code}</span>
+                                                    <h4 className="text-xs font-black text-white uppercase tracking-wider">Editing Directory Record</h4>
                                                 </div>
-                                                
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    <div>
-                                                        <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1.5">Descriptive Identity</label>
-                                                        <input 
-                                                            type="text" 
-                                                            value={editingSiteData.name} 
-                                                            onChange={e => setEditingSiteData({...editingSiteData, name: e.target.value})}
-                                                            className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white transition-all shadow-inner"
-                                                            placeholder="e.g. Regional Data Center"
-                                                        />
-                                                    </div>
-                                                    <div>
-                                                        <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1.5">Lifecycle Status</label>
-                                                        <select 
-                                                            value={editingSiteData.status} 
-                                                            onChange={e => setEditingSiteData({...editingSiteData, status: e.target.value})}
-                                                            className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white transition-all appearance-none shadow-inner"
-                                                        >
-                                                            <option value="Active">🟢 Active</option>
-                                                            <option value="Future">🟡 Future</option>
-                                                            <option value="Retired">🔴 Retired</option>
-                                                        </select>
-                                                    </div>
-                                                </div>
-
+                                                <span className="text-[10px] uppercase font-black tracking-widest text-accent-primary">Inline Form</span>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 <div>
-                                                    <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1.5">Physical Address</label>
-                                                    <textarea 
-                                                        rows={2}
-                                                        value={editingSiteData.address} 
-                                                        onChange={e => setEditingSiteData({...editingSiteData, address: e.target.value})}
-                                                        className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-medium text-white transition-all leading-relaxed shadow-inner"
-                                                        placeholder="Full street address, city, state, zip"
-                                                        style={{ resize: 'vertical' }}
+                                                    <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1.5">Descriptive Identity</label>
+                                                    <input 
+                                                        type="text" 
+                                                        value={editingSiteData.name} 
+                                                        onChange={e => setEditingSiteData({...editingSiteData, name: e.target.value})}
+                                                        className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white transition-all shadow-inner"
+                                                        placeholder="e.g. Regional Data Center"
                                                     />
                                                 </div>
-
                                                 <div>
-                                                    <label className="block text-[10px] font-black uppercase tracking-widest text-accent-primary mb-1.5">Optional Notes / Context</label>
-                                                    <textarea 
-                                                        rows={3}
-                                                        value={editingSiteData.notes} 
-                                                        onChange={e => setEditingSiteData({...editingSiteData, notes: e.target.value})}
-                                                        className="w-full px-4 py-2.5 bg-black/90 border border-accent-primary/30 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-medium text-white transition-all leading-relaxed placeholder:text-white/20 shadow-inner"
-                                                        placeholder="Add access procedures, specific rack info, or key contact extensions..."
-                                                        style={{ resize: 'vertical' }}
-                                                    />
-                                                </div>
-
-                                                <div className="flex items-center justify-end gap-3 pt-2 border-t border-white/10">
-                                                    <button 
-                                                        onClick={() => setEditingSiteCode(null)} 
-                                                        disabled={actionLoading}
-                                                        className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-muted hover:text-white font-bold text-xs transition-all"
+                                                    <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1.5">Lifecycle Status</label>
+                                                    <select 
+                                                        value={editingSiteData.status} 
+                                                        onChange={e => setEditingSiteData({...editingSiteData, status: e.target.value})}
+                                                        className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white transition-all appearance-none shadow-inner"
                                                     >
-                                                        Cancel
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => performAction('update', { code: s.code, ...editingSiteData })} 
-                                                        disabled={actionLoading}
-                                                        className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center gap-2"
-                                                    >
-                                                        <CheckCircle2 size={14} strokeWidth={3} />
-                                                        {actionLoading ? "Saving..." : "Save Record"}
-                                                    </button>
+                                                        <option value="Active">🟢 Active</option>
+                                                        <option value="Future">🟡 Future</option>
+                                                        <option value="Retired">🔴 Retired</option>
+                                                    </select>
                                                 </div>
                                             </div>
-                                        );
-                                    }
 
-                                    return (
-                                        <div key={s.code} className="p-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-200 group relative">
-                                            <div className="flex items-start justify-between gap-4">
-                                                <div className="flex-1 min-w-0 pr-2">
-                                                    {/* 1. Site Code with absolute premium prominence */}
-                                                    <div className="flex items-center gap-2.5 mb-1">
-                                                        <span className="text-base font-black text-accent-primary tracking-wider uppercase font-mono drop-shadow-sm">
-                                                            {s.code}
-                                                        </span>
-                                                        <span className={`text-[8px] uppercase px-2 py-0.5 rounded font-black tracking-widest ${
-                                                            s.status?.toLowerCase() === 'active' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
-                                                            s.status?.toLowerCase() === 'retired' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                                                            'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
-                                                        }`}>
-                                                            {s.status || 'Active'}
-                                                        </span>
-                                                    </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1.5">Physical Address</label>
+                                                <textarea 
+                                                    rows={2}
+                                                    value={editingSiteData.address} 
+                                                    onChange={e => setEditingSiteData({...editingSiteData, address: e.target.value})}
+                                                    className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-medium text-white transition-all leading-relaxed shadow-inner"
+                                                    placeholder="Full street address, city, state, zip"
+                                                    style={{ resize: 'vertical' }}
+                                                />
+                                            </div>
 
-                                                    {/* 2. Site Name clearly emphasized below the code */}
-                                                    <h4 className="text-xs font-bold text-white tracking-tight mb-1.5 truncate">
-                                                        {s.name}
-                                                    </h4>
+                                            <div>
+                                                <label className="block text-[10px] font-black uppercase tracking-widest text-accent-primary mb-1.5">Optional Notes / Context</label>
+                                                <textarea 
+                                                    rows={3}
+                                                    value={editingSiteData.notes} 
+                                                    onChange={e => setEditingSiteData({...editingSiteData, notes: e.target.value})}
+                                                    className="w-full px-4 py-2.5 bg-black/90 border border-accent-primary/30 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-medium text-white transition-all leading-relaxed placeholder:text-white/20 shadow-inner"
+                                                    placeholder="Add access procedures, specific rack info, or key contact extensions..."
+                                                    style={{ resize: 'vertical' }}
+                                                />
+                                            </div>
 
-                                                    {/* 3. Address softly displayed below the name */}
-                                                    {s.address ? (
-                                                        <p className="text-[11px] text-muted font-medium break-words leading-relaxed">
-                                                            {s.address}
-                                                        </p>
-                                                    ) : (
-                                                        <p className="text-[11px] text-muted/30 italic">No physical address specified</p>
-                                                    )}
-
-                                                    {/* Optional Notes */}
-                                                    {s.notes && (
-                                                        <div className="mt-2 p-2 rounded-lg bg-black/40 border border-white/5 text-[11px] text-secondary/90 whitespace-pre-wrap font-mono relative overflow-hidden">
-                                                            <div className="absolute top-0 left-0 bottom-0 w-0.5 bg-accent-primary/30"></div>
-                                                            <span className="text-[8px] block uppercase font-bold tracking-widest text-accent-primary/60 mb-0.5">Notes</span>
-                                                            {s.notes}
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* Action buttons locked to the absolute right side, nicely downscaled */}
-                                                <div className="flex items-center gap-1.5 shrink-0 ml-auto pt-0.5">
-                                                    <button 
-                                                        onClick={() => handleEditClick(s)} 
-                                                        style={{ backgroundColor: '#ffffff', color: '#000000', border: 'none', padding: '4px 8px', borderRadius: '4px', fontWeight: 900, fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}
-                                                        title="Edit Record"
-                                                    >
-                                                        <Edit2 size={9} strokeWidth={3} />
-                                                        <span>EDIT</span>
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleDeleteClick(s.code)} 
-                                                        style={{ backgroundColor: '#dc2626', color: '#ffffff', border: 'none', padding: '4px 8px', borderRadius: '4px', fontWeight: 900, fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}
-                                                        title="Delete Record"
-                                                    >
-                                                        <Trash2 size={9} strokeWidth={3} />
-                                                        <span>DEL</span>
-                                                    </button>
-                                                </div>
+                                            <div className="flex items-center justify-end gap-3 pt-2 border-t border-white/10">
+                                                <button 
+                                                    onClick={() => setEditingSiteCode(null)} 
+                                                    disabled={actionLoading}
+                                                    className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-muted hover:text-white font-bold text-xs transition-all"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button 
+                                                    onClick={() => performAction('update', { code: s.code, ...editingSiteData })} 
+                                                    disabled={actionLoading}
+                                                    className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center gap-2"
+                                                >
+                                                    <CheckCircle2 size={14} strokeWidth={3} />
+                                                    {actionLoading ? "Saving..." : "Save Record"}
+                                                </button>
                                             </div>
                                         </div>
                                     );
-                                })}
-                                {parsedPreview.length === 0 && (
-                                    <div className="p-12 border border-white/5 rounded-2xl text-center text-muted italic bg-white/[0.01]">
-                                        No active mapping found. Please upload a CSV directory mapping file.
+                                }
+
+                                const rawStatus = s.status || 'Active';
+                                const formattedStatus = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1).toLowerCase();
+
+                                return (
+                                    <div key={s.code} className="p-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-200 group relative">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="flex-1 min-w-0 pr-2">
+                                                {/* 1. Site Code with absolute premium prominence */}
+                                                <div className="flex items-baseline gap-2.5 mb-1">
+                                                    <span className="text-base font-black text-accent-primary tracking-wider uppercase font-mono drop-shadow-sm">
+                                                        {s.code}
+                                                    </span>
+                                                    <span className={`text-[11px] italic font-semibold tracking-wide ${
+                                                        formattedStatus === 'Active' ? 'text-green-400' :
+                                                        formattedStatus === 'Retired' ? 'text-red-400' :
+                                                        'text-yellow-400'
+                                                    }`}>
+                                                        {formattedStatus}
+                                                    </span>
+                                                </div>
+
+                                                {/* 2. Site Name clearly emphasized below the code */}
+                                                <h4 className="text-xs font-bold text-white tracking-tight mb-1.5 truncate">
+                                                    {s.name}
+                                                </h4>
+
+                                                {/* 3. Address softly displayed below the name */}
+                                                {s.address ? (
+                                                    <p className="text-[11px] text-muted font-medium break-words leading-relaxed">
+                                                        {s.address}
+                                                    </p>
+                                                ) : (
+                                                    <p className="text-[11px] text-muted/30 italic">No physical address specified</p>
+                                                )}
+
+                                                {/* Optional Notes */}
+                                                {s.notes && (
+                                                    <div className="mt-2 p-2 rounded-lg bg-black/40 border border-white/5 text-[11px] text-secondary/90 whitespace-pre-wrap font-mono relative overflow-hidden">
+                                                        <div className="absolute top-0 left-0 bottom-0 w-0.5 bg-accent-primary/30"></div>
+                                                        <span className="text-[8px] block uppercase font-bold tracking-widest text-accent-primary/60 mb-0.5">Notes</span>
+                                                        {s.notes}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Action buttons locked to the absolute right side, beautifully muted styling */}
+                                            <div className="flex items-center gap-1 shrink-0 ml-auto pt-0.5">
+                                                <button 
+                                                    onClick={() => handleEditClick(s)} 
+                                                    className="px-2 py-1 rounded bg-white/5 hover:bg-white text-muted/80 hover:text-black font-bold text-[10px] transition-all flex items-center gap-1"
+                                                    title="Edit Record"
+                                                >
+                                                    <Edit2 size={9} strokeWidth={2.5} />
+                                                    <span>Edit</span>
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDeleteClick(s.code)} 
+                                                    className="px-2 py-1 rounded bg-red-500/10 hover:bg-red-500 text-red-400/80 hover:text-white font-bold text-[10px] transition-all flex items-center gap-1"
+                                                    title="Delete Record"
+                                                >
+                                                    <Trash2 size={9} strokeWidth={2.5} />
+                                                    <span>Del</span>
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
-                                )}
-                            </div>
+                                );
+                            })}
+                            {parsedPreview.length === 0 && (
+                                <div className="p-12 border border-white/5 rounded-2xl text-center text-muted italic bg-white/[0.01]">
+                                    No active mapping found. Please upload a CSV directory mapping file.
+                                </div>
+                            )}
                         </div>
-                    )}
+                    </div>
 
                     <div className="glass-card flex flex-col h-full">
                         <div className="p-6 border-b border-white/5 flex justify-between items-center">
