@@ -473,10 +473,27 @@ export default function CiscoIsePage() {
                                                                                 </span>
                                                                             )}
                                                                         </div>
-                                                                        <p style={{ margin: 0, fontSize: '0.8rem', color: item.isUnknownSite ? '#f59e0b' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                                                                            {item.isUnknownSite ? "SITE CODE NOT IN DIRECTORY (Investigation Required)" : item.siteAddress}
-                                                                        </p>
+                                                                        <div style={{ margin: 0, fontSize: '0.8rem', color: item.isUnknownSite ? '#f59e0b' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                                                                            {item.isUnknownSite ? (
+                                                                                <span>SITE CODE NOT IN DIRECTORY (Investigation Required)</span>
+                                                                            ) : item.siteAddress ? (
+                                                                                <a 
+                                                                                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.siteAddress)}`} 
+                                                                                    target="_blank" 
+                                                                                    rel="noopener noreferrer"
+                                                                                    style={{ color: 'var(--accent-primary)', textDecoration: 'none', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                                                    onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                                                                                    onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+                                                                                    onClick={(e) => e.stopPropagation()}
+                                                                                >
+                                                                                    {item.siteAddress}
+                                                                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                                                                                </a>
+                                                                            ) : (
+                                                                                <span>No physical coordinates populated</span>
+                                                                            )}
+                                                                        </div>
                                                                     </div>
 
                                                                     <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
@@ -717,13 +734,13 @@ export default function CiscoIsePage() {
                                 <p style={{ color: 'var(--text-secondary)' }}>Loading configured site definitions...</p>
                             </div>
                         ) : (
-                            <div className="table-responsive">
-                                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px' }}>
+                            <div className="table-responsive custom-scrollbar" style={{ maxHeight: '450px', overflowY: 'auto', position: 'relative' }}>
+                                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
                                     <thead>
                                         <tr>
                                             <th 
                                                 onClick={() => setSiteDirSortDir(prev => prev === "asc" ? "desc" : "asc")}
-                                                style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', cursor: 'pointer' }}
+                                                style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-card)', textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)', cursor: 'pointer' }}
                                                 title="Click to sort by Site Code"
                                             >
                                                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -733,9 +750,9 @@ export default function CiscoIsePage() {
                                                     </span>
                                                 </div>
                                             </th>
-                                            <th style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Site Name / Description</th>
-                                            <th style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Status</th>
-                                            <th style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Physical Address Mapping</th>
+                                            <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-card)', textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Site Name / Description</th>
+                                            <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-card)', textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Status</th>
+                                            <th style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-card)', textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Physical Address Mapping</th>
                                         </tr>
                                     </thead>
                                     <tbody>
