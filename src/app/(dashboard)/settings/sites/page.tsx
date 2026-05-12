@@ -226,7 +226,15 @@ export default function SiteManagementPage() {
     const totalSites = latestVersion?.content ? latestVersion.content.split(/\r?\n/).filter(l => l.trim()).length - 1 : 0;
 
     return (
-        <div className="flex flex-col h-[calc(100vh-90px)] max-w-7xl mx-auto p-6 overflow-hidden animate-in fade-in duration-400">
+        <div className="flex flex-col h-[calc(100vh-90px)] max-w-7xl mx-auto p-6 overflow-hidden animate-in fade-in duration-400 min-h-0">
+            {/* Global style injection enforcing strict outer scroll container clipping so the main page never scrolls */}
+            <style jsx global>{`
+                .page-container {
+                    overflow: hidden !important;
+                    height: calc(100vh - 60px) !important;
+                    padding-bottom: 0 !important;
+                }
+            `}</style>
             
             {/* Upper Action Banner & Title row locked cleanly at top */}
             <header className="flex justify-between items-center shrink-0 mb-6">
@@ -460,37 +468,47 @@ export default function SiteManagementPage() {
 
                                 const rawStatus = s.status || 'Active';
                                 const formattedStatus = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1).toLowerCase();
-                                const statusColorClass = 
-                                    formattedStatus === 'Active' ? 'text-green-400' :
-                                    formattedStatus === 'Retired' ? 'text-red-400' :
-                                    'text-yellow-400';
+                                // Enforce absolute direct color values for status tags to guarantee visual contrast overrides
+                                const statusColorHex = 
+                                    formattedStatus === 'Active' ? '#4ade80' :
+                                    formattedStatus === 'Retired' ? '#f87171' :
+                                    '#facc15';
 
                                 // COMPACT LIST VIEW NORMALIZATION
                                 if (isCompactView) {
                                     return (
                                         <div key={s.code} className="px-5 py-3 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-150 flex items-center justify-between gap-4 group">
-                                            {/* Left side: ONLY SITE CODE and Status badge immediately near it */}
+                                            {/* Left side: ONLY SITE CODE and explicit Hex Status badge immediately near it */}
                                             <div className="flex items-center gap-3">
                                                 <div className="w-2 h-2 rounded-full bg-accent-primary/50 group-hover:bg-accent-primary transition-colors shrink-0"></div>
                                                 <span className="text-base font-black text-white font-mono uppercase tracking-widest shrink-0">{s.code}</span>
-                                                <span className={`text-xs italic font-bold px-2 py-0.5 rounded bg-white/5 border border-white/5 shrink-0 ${statusColorClass}`}>
+                                                <span 
+                                                    className="text-xs italic font-extrabold px-2 py-0.5 rounded bg-white/[0.05] border border-white/10 shrink-0"
+                                                    style={{ color: statusColorHex }}
+                                                >
                                                     {formattedStatus}
                                                 </span>
                                             </div>
 
-                                            {/* Right side: High-contrast theme-agnostic Action buttons separated by smooth spacing */}
+                                            {/* Right side: Darker gray background buttons separated by smooth layout spacing */}
                                             <div className="flex items-center gap-3 shrink-0">
                                                 <button 
                                                     onClick={() => handleEditClick(s)} 
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white font-bold text-xs transition-all shadow-sm"
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm"
+                                                    style={{ backgroundColor: '#27272a', borderColor: '#3f3f46', borderWidth: '1px', color: '#e4e4e7' }}
+                                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3f3f46'; e.currentTarget.style.color = '#ffffff'; }}
+                                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#27272a'; e.currentTarget.style.color = '#e4e4e7'; }}
                                                     title="Edit Record"
                                                 >
-                                                    <Edit2 size={12} strokeWidth={2.5} className="text-sky-400" />
+                                                    <Edit2 size={12} strokeWidth={2.5} style={{ color: '#38bdf8' }} />
                                                     <span>Edit</span>
                                                 </button>
                                                 <button 
                                                     onClick={() => handleDeleteClick(s.code)} 
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-red-950/40 border border-zinc-700 hover:border-red-800 text-red-400 hover:text-red-300 font-bold text-xs transition-all shadow-sm"
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm"
+                                                    style={{ backgroundColor: '#27272a', borderColor: '#3f3f46', borderWidth: '1px', color: '#f87171' }}
+                                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#450a0a'; e.currentTarget.style.borderColor = '#991b1b'; }}
+                                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#27272a'; e.currentTarget.style.borderColor = '#3f3f46'; }}
                                                     title="Delete Record"
                                                 >
                                                     <Trash2 size={12} strokeWidth={2.5} />
@@ -506,12 +524,15 @@ export default function SiteManagementPage() {
                                     <div key={s.code} className="p-5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-200 group relative">
                                         <div className="flex items-start justify-between gap-4">
                                             <div className="flex-1 min-w-0 pr-4">
-                                                {/* 1. Site Code with Status badging placed snug beside it */}
+                                                {/* 1. Site Code with explicit Hex Status badging placed snug beside it */}
                                                 <div className="flex items-center gap-3 mb-1.5">
                                                     <span className="text-xl font-black text-accent-primary tracking-wider uppercase font-mono">
                                                         {s.code}
                                                     </span>
-                                                    <span className={`text-xs italic font-bold px-2 py-0.5 rounded bg-white/5 border border-white/5 ${statusColorClass}`}>
+                                                    <span 
+                                                        className="text-xs italic font-extrabold px-2 py-0.5 rounded bg-white/[0.05] border border-white/10"
+                                                        style={{ color: statusColorHex }}
+                                                    >
                                                         {formattedStatus}
                                                     </span>
                                                 </div>
@@ -540,19 +561,25 @@ export default function SiteManagementPage() {
                                                 )}
                                             </div>
 
-                                            {/* Right side: High-contrast theme-agnostic Action controls separated by generous gap-3.5 spacing */}
+                                            {/* Right side: Darker gray background buttons separated by generous spacing */}
                                             <div className="flex items-center gap-3.5 shrink-0 ml-4 self-center border-l border-white/5 pl-4.5 py-2">
                                                 <button 
                                                     onClick={() => handleEditClick(s)} 
-                                                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white font-bold text-xs transition-all shadow-sm"
+                                                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
+                                                    style={{ backgroundColor: '#27272a', borderColor: '#3f3f46', borderWidth: '1px', color: '#e4e4e7' }}
+                                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3f3f46'; e.currentTarget.style.color = '#ffffff'; }}
+                                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#27272a'; e.currentTarget.style.color = '#e4e4e7'; }}
                                                     title="Edit Record"
                                                 >
-                                                    <Edit2 size={13} strokeWidth={2.5} className="text-sky-400" />
+                                                    <Edit2 size={13} strokeWidth={2.5} style={{ color: '#38bdf8' }} />
                                                     <span>Edit</span>
                                                 </button>
                                                 <button 
                                                     onClick={() => handleDeleteClick(s.code)} 
-                                                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-zinc-800 hover:bg-red-950/40 border border-zinc-700 hover:border-red-800 text-red-400 hover:text-red-300 font-bold text-xs transition-all shadow-sm"
+                                                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
+                                                    style={{ backgroundColor: '#27272a', borderColor: '#3f3f46', borderWidth: '1px', color: '#f87171' }}
+                                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#450a0a'; e.currentTarget.style.borderColor = '#991b1b'; }}
+                                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#27272a'; e.currentTarget.style.borderColor = '#3f3f46'; }}
                                                     title="Delete Record"
                                                 >
                                                     <Trash2 size={13} strokeWidth={2.5} />
