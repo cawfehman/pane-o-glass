@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { getSiteVersionContent, getCurrentSiteMap } from '@/lib/sites';
 import { prisma } from '@/lib/prisma';
 import { hasPermission } from "@/app/actions/permissions";
+import { logAudit } from "@/lib/audit";
 
 export async function GET(req: Request) {
     try {
@@ -31,6 +32,10 @@ export async function GET(req: Request) {
             content = latest.content;
             filename = latest.filename;
         }
+
+        const userId = (session.user as any)?.id;
+        const clientIp = req.headers.get("x-forwarded-for")?.split(',')[0] || 'internal';
+        await logAudit("SITE_MAP_EXPORT", `Exported mapping spreadsheet version: ${filename}`, userId, clientIp);
 
         return new Response(content, {
             headers: {

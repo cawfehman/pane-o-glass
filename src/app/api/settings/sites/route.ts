@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { hasPermission } from "@/app/actions/permissions";
 import { getSiteVersions, saveSiteMap, getSiteVersionContent, parseSiteCsv, stringifySiteCsv } from '@/lib/sites';
+import { logAudit } from '@/lib/audit';
 
 export async function GET(req: Request) {
     try {
@@ -53,6 +54,9 @@ export async function POST(req: Request) {
         }
 
         const newVersion = await saveSiteMap(content, filename, username);
+        const userId = (session.user as any)?.id;
+        const clientIp = req.headers.get("x-forwarded-for")?.split(',')[0] || 'internal';
+        await logAudit("SITE_MAP_INGEST", `Ingested full directory mapping spreadsheet: ${filename} (v${newVersion.versionNumber})`, userId, clientIp);
         return NextResponse.json({ success: true, version: newVersion });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
@@ -128,6 +132,17 @@ export async function PATCH(req: Request) {
 
         // Save new version
         const newVersion = await saveSiteMap(newCsvContent, filename, username);
+        
+        const userId = (session.user as any)?.id;
+        const clientIp = req.headers.get("x-forwarded-for")?.split(',')[0] || 'internal';
+        const actionLabel = action === 'add' ? 'SITE_CREATE' : action === 'update' ? 'SITE_UPDATE' : 'SITE_DELETE';
+        const actionDesc = action === 'add' 
+            ? `Created site record ${site.code.toUpperCase()} (${site.name || site.code.toUpperCase()})` 
+            : action === 'update' 
+            ? `Updated site record ${site.code.toUpperCase()}` 
+            : `Deleted site record ${site.code.toUpperCase()}`;
+            
+        await logAudit(actionLabel, `${actionDesc} via inline management console (v${newVersion.versionNumber})`, userId, clientIp);
         
         return NextResponse.json({ success: true, version: newVersion });
     } catch (e: any) {
