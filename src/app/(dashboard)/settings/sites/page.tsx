@@ -14,7 +14,11 @@ import {
     Database,
     Clock,
     User,
-    Eye
+    Eye,
+    Plus,
+    Edit2,
+    Trash2,
+    X
 } from "lucide-react";
 
 interface SiteVersion {
@@ -35,6 +39,12 @@ export default function SiteManagementPage() {
     const [success, setSuccess] = useState("");
     const [dragActive, setDragActive] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
+    
+    // Modal State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [modalMode, setModalMode] = useState<"add" | "edit">("add");
+    const [currentSite, setCurrentSite] = useState<any>({ code: "", name: "", address: "", status: "Active" });
+    const [actionLoading, setActionLoading] = useState(false);
 
     const fetchVersions = useCallback(async () => {
         setLoading(true);
@@ -43,9 +53,6 @@ export default function SiteManagementPage() {
             const data = await res.json();
             if (data.error) throw new Error(data.error);
             setVersions(data.versions);
-            
-            // Try to fetch current active sites for preview
-            const previewRes = await fetch('/api/ise/triage'); // Triage returns site distribution we can use, but let's just use the CSV content if available
         } catch (e: any) {
             setError(e.message);
         } finally {
@@ -56,6 +63,47 @@ export default function SiteManagementPage() {
     useEffect(() => {
         fetchVersions();
     }, [fetchVersions]);
+
+    const performAction = async (action: 'add' | 'update' | 'delete', siteData: any) => {
+        setActionLoading(true);
+        setError("");
+        setSuccess("");
+        try {
+            const res = await fetch('/api/settings/sites', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, site: siteData })
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            
+            setSuccess(`Site successfully ${action === 'add' ? 'added' : action === 'update' ? 'updated' : 'deleted'}.`);
+            setIsModalOpen(false);
+            fetchVersions();
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setActionLoading(false);
+            setTimeout(() => { setError(""); setSuccess(""); }, 5000);
+        }
+    };
+
+    const handleAddClick = () => {
+        setModalMode("add");
+        setCurrentSite({ code: "", name: "", address: "", status: "Active" });
+        setIsModalOpen(true);
+    };
+
+    const handleEditClick = (site: any) => {
+        setModalMode("edit");
+        setCurrentSite({ ...site });
+        setIsModalOpen(true);
+    };
+
+    const handleDeleteClick = async (code: string) => {
+        if (!confirm(`Are you sure you want to delete site ${code}?`)) return;
+        await performAction('delete', { code });
+    };
 
     const handleUpload = async (file: File) => {
         if (!file.name.endsWith('.csv')) {
@@ -130,7 +178,7 @@ export default function SiteManagementPage() {
 
         if (codeIdx === -1) return [];
 
-        return lines.slice(1).slice(0, 10).map(line => {
+        return lines.slice(1).map(line => {
             const parts = splitCsvRow(line);
             const code = parts[codeIdx]?.toUpperCase() || "UNK";
             return {
@@ -280,28 +328,38 @@ export default function SiteManagementPage() {
                 <div className="col-span-12 lg:col-span-8 space-y-6">
                     
                     {showPreview && (
-                        <div className="glass-card p-6 border-l-4 border-emerald-500 animate-in slide-in-from-right-4">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="font-bold text-sm uppercase tracking-wider">Live Directory Preview</h3>
-                                <p className="text-[10px] text-muted">First 10 entries parsed from current version</p>
+                        <div className="glass-card p-6 border-l-4 border-emerald-500 animate-in slide-in-from-right-4 flex flex-col h-full max-h-[600px]">
+                            <div className="flex justify-between items-center mb-4 shrink-0">
+                                <div>
+                                    <h3 className="font-bold text-sm uppercase tracking-wider">Active Directory</h3>
+                                    <p className="text-[10px] text-muted">All sites parsed from the current mapping</p>
+                                </div>
+                                <button 
+                                    onClick={handleAddClick} 
+                                    className="btn-primary flex items-center gap-2 px-4 py-2 text-xs"
+                                >
+                                    <Plus size={14} />
+                                    Add Site
+                                </button>
                             </div>
-                            <div className="bg-white-5 rounded-xl overflow-hidden border border-white/5">
-                                <table className="w-full text-xs">
-                                    <thead className="bg-white-5 text-muted uppercase font-bold">
+                            <div className="bg-white-5 rounded-xl border border-white/5 flex-1 overflow-y-auto custom-scrollbar">
+                                <table className="w-full text-xs relative">
+                                    <thead className="bg-white-5 text-muted uppercase font-bold sticky top-0 backdrop-blur-md">
                                         <tr>
-                                            <th className="px-4 py-2 text-left">Code</th>
-                                            <th className="px-4 py-2 text-left">Site Identity</th>
-                                            <th className="px-4 py-2 text-left">Status</th>
-                                            <th className="px-4 py-2 text-left">Physical Address</th>
+                                            <th className="px-4 py-3 text-left">Code</th>
+                                            <th className="px-4 py-3 text-left">Site Identity</th>
+                                            <th className="px-4 py-3 text-left">Status</th>
+                                            <th className="px-4 py-3 text-left">Physical Address</th>
+                                            <th className="px-4 py-3 text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/5">
                                         {parsedPreview.map((s, idx) => (
-                                            <tr key={idx} className="hover:bg-white/5 transition-colors">
-                                                <td className="px-4 py-2 font-bold text-accent-primary">{s.code}</td>
-                                                <td className="px-4 py-2 text-secondary">{s.name}</td>
-                                                <td className="px-4 py-2">
-                                                    <span className={`text-[9px] uppercase px-1.5 py-0.5 rounded-full font-bold ${
+                                            <tr key={idx} className="hover:bg-white/5 transition-colors group">
+                                                <td className="px-4 py-3 font-bold text-accent-primary">{s.code}</td>
+                                                <td className="px-4 py-3 text-secondary font-medium">{s.name}</td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`text-[9px] uppercase px-2 py-1 rounded-full font-bold ${
                                                         s.status?.toLowerCase() === 'active' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
                                                         s.status?.toLowerCase() === 'retired' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
                                                         'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
@@ -309,12 +367,22 @@ export default function SiteManagementPage() {
                                                         {s.status || 'Active'}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-2 text-muted truncate max-w-[200px]">{s.address}</td>
+                                                <td className="px-4 py-3 text-muted truncate max-w-[200px]">{s.address}</td>
+                                                <td className="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <button onClick={() => handleEditClick(s)} className="p-1.5 rounded-lg hover:bg-white/10 text-muted hover:text-white transition-colors" title="Edit Site">
+                                                            <Edit2 size={14} />
+                                                        </button>
+                                                        <button onClick={() => handleDeleteClick(s.code)} className="p-1.5 rounded-lg hover:bg-red-500/20 text-muted hover:text-red-400 transition-colors" title="Delete Site">
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                </td>
                                             </tr>
                                         ))}
                                         {parsedPreview.length === 0 && (
                                             <tr className="text-muted italic">
-                                                <td colSpan={4} className="px-4 py-8 text-center">Preview requires active session sync...</td>
+                                                <td colSpan={5} className="px-4 py-12 text-center">No active mapping found. Please upload a CSV.</td>
                                             </tr>
                                         )}
                                     </tbody>
@@ -412,6 +480,83 @@ export default function SiteManagementPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Modal for Add/Edit Site */}
+            {isModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="glass-card w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 relative overflow-hidden">
+                        {actionLoading && (
+                            <div className="absolute inset-0 z-10 bg-black/40 backdrop-blur-sm flex items-center justify-center">
+                                <div className="flex flex-col items-center gap-4">
+                                    <div className="w-8 h-8 rounded-full border-4 border-accent-primary border-t-transparent animate-spin"></div>
+                                    <p className="text-sm font-bold animate-pulse text-white">{modalMode === 'add' ? 'Adding' : 'Updating'} Site...</p>
+                                </div>
+                            </div>
+                        )}
+                        <div className="flex items-center justify-between p-6 border-b border-white/5 bg-white-5">
+                            <h3 className="text-lg font-black tracking-tight">{modalMode === 'add' ? 'Add New Site' : 'Edit Site Directory'}</h3>
+                            <button onClick={() => setIsModalOpen(false)} className="p-2 rounded-full hover:bg-white/10 transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-2">Site Code (3-4 Chars)</label>
+                                <input 
+                                    type="text" 
+                                    value={currentSite.code} 
+                                    onChange={e => setCurrentSite({...currentSite, code: e.target.value.toUpperCase()})}
+                                    placeholder="e.g. NYC"
+                                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-bold"
+                                    disabled={modalMode === 'edit'}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-2">Descriptive Name</label>
+                                <input 
+                                    type="text" 
+                                    value={currentSite.name} 
+                                    onChange={e => setCurrentSite({...currentSite, name: e.target.value})}
+                                    placeholder="e.g. New York HQ"
+                                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-2">Physical Address</label>
+                                <input 
+                                    type="text" 
+                                    value={currentSite.address} 
+                                    onChange={e => setCurrentSite({...currentSite, address: e.target.value})}
+                                    placeholder="e.g. 123 Broadway, NY 10001"
+                                    className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all text-sm"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-2">Lifecycle Status</label>
+                                <select 
+                                    value={currentSite.status} 
+                                    onChange={e => setCurrentSite({...currentSite, status: e.target.value})}
+                                    className="w-full px-4 py-3 bg-[#111111] border border-white/10 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-medium appearance-none"
+                                >
+                                    <option value="Active">🟢 Active</option>
+                                    <option value="Future">🟡 Future</option>
+                                    <option value="Retired">🔴 Retired</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="p-6 border-t border-white/5 flex justify-end gap-3 bg-white/5">
+                            <button onClick={() => setIsModalOpen(false)} className="btn-secondary px-6" disabled={actionLoading}>Cancel</button>
+                            <button 
+                                onClick={() => performAction(modalMode, currentSite)} 
+                                className="btn-primary px-8"
+                                disabled={actionLoading || !currentSite.code.trim()}
+                            >
+                                {modalMode === 'add' ? 'Save New Site' : 'Apply Changes'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

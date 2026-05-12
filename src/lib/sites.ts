@@ -59,6 +59,32 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
     return results;
 }
 
+export function stringifySiteCsv(sites: SiteMetadata[]): string {
+    const headers = ["Code", "Name", "Address", "Status"];
+    const rows = [headers.join(",")];
+
+    for (const site of sites) {
+        // Wrap fields in quotes if they contain commas or quotes
+        const formatField = (field: string) => {
+            if (!field) return "";
+            if (field.includes(",") || field.includes('"')) {
+                return `"${field.replace(/"/g, '""')}"`;
+            }
+            return field;
+        };
+
+        const row = [
+            formatField(site.code),
+            formatField(site.name),
+            formatField(site.address),
+            formatField(site.status)
+        ];
+        rows.push(row.join(","));
+    }
+
+    return rows.join("\n");
+}
+
 export async function getCurrentSiteMap(): Promise<Map<string, SiteMetadata>> {
     const map = new Map<string, SiteMetadata>();
 
