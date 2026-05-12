@@ -82,10 +82,38 @@ export async function PATCH(req: Request) {
         }
 
         const body = await req.json();
-        const { action, site } = body;
+        const { action, site, versionId } = body;
         
-        if (!['add', 'update', 'delete'].includes(action) || !site || !site.code) {
+        if (!['add', 'update', 'delete', 'revert'].includes(action)) {
             return NextResponse.json({ error: 'Invalid request payload' }, { status: 400 });
+        }
+
+        if (action === 'revert') {
+            if (!versionId) {
+                return NextResponse.json({ error: 'Version ID required for revert' }, { status: 400 });
+            }
+            const targetContent = await getSiteVersionContent(versionId);
+            if (!targetContent || !targetContent.content) {
+                return NextResponse.json({ error: 'Target version snapshot not found' }, { status: 404 });
+            }
+
+            const username = session.user.name || 'Admin';
+            const versions = await getSiteVersions();
+            const targetVerObj = versions.find(v => v.id === versionId);
+            const targetVerStr = targetVerObj ? `v${targetVerObj.versionNumber}` : 'archived set';
+
+            const filename = `Reverted_to_${targetVerStr}_${Date.now()}.csv`;
+            const newVersion = await saveSiteMap(targetContent.content, filename, username);
+
+            const userId = (session.user as any)?.id;
+            const clientIp = req.headers.get("x-forwarded-for")?.split(',')[0] || 'internal';
+            await logAudit("SITE_REVERT", `Reverted live mapping engine schema directly to ${targetVerStr} baseline snapshot`, userId, clientIp);
+
+            return NextResponse.json({ success: true, version: newVersion });
+        }
+
+        if (!site || !site.code) {
+            return NextResponse.json({ error: 'Invalid request payload: site data required' }, { status: 400 });
         }
 
         const username = session.user.name || 'Admin';

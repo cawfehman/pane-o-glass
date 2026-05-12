@@ -126,14 +126,14 @@ export async function saveSiteMap(csvContent: string, filename: string, username
         }
     });
 
-    // Prune old versions (keep last 10)
+    // Prune old versions (keep last 100)
     const allVersions = await prisma.siteMapVersion.findMany({
         orderBy: { versionNumber: 'desc' },
         select: { id: true }
     });
 
-    if (allVersions.length > 10) {
-        const idsToDelete = allVersions.slice(10).map(v => v.id);
+    if (allVersions.length > 100) {
+        const idsToDelete = allVersions.slice(100).map(v => v.id);
         await prisma.siteMapVersion.deleteMany({
             where: { id: { in: idsToDelete } }
         });

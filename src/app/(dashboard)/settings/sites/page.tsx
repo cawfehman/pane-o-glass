@@ -37,7 +37,7 @@ export default function SiteManagementPage() {
     const [dragActive, setDragActive] = useState(false);
     
     // Master view navigation tabs
-    const [activeTab, setActiveTab] = useState<'directory' | 'archive'>('directory');
+    const [activeTab, setActiveTab] = useState<'directory' | 'csv' | 'archive'>('directory');
     
     // Unified CSV Dropdown toggle state
     const [isCsvMenuOpen, setIsCsvMenuOpen] = useState(false);
@@ -260,68 +260,13 @@ export default function SiteManagementPage() {
                             <Database size={24} strokeWidth={2.5} />
                         </div>
                         <div>
-                            <h1 className="text-xl font-black tracking-tight uppercase text-white">Site Operations</h1>
+                            <div className="flex items-center gap-2.5">
+                                <h1 className="text-xl font-black tracking-tight uppercase text-white">Site Operations</h1>
+                                <span className="px-2 py-0.5 rounded-full bg-white/5 text-accent-primary text-xs font-black border border-white/10">
+                                    {totalSites} {totalSites === 1 ? 'Site' : 'Sites'}
+                                </span>
+                            </div>
                             <p className="text-xs text-muted font-bold tracking-wide">Mapping Engine & Access Directives</p>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                        {/* Primary Trigger renamed to Add Site and made clear outline */}
-                        <button 
-                            onClick={handleAddClick}
-                            className="flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg transition-all text-accent-primary cursor-pointer"
-                            style={{ background: 'transparent', border: '1px solid var(--border-color)' }}
-                        >
-                            <Plus size={14} strokeWidth={2.5} />
-                            <span>Add Site</span>
-                        </button>
-
-                        {/* Unified CSV Actions Dropdown */}
-                        <div className="relative" ref={csvMenuRef}>
-                            <button 
-                                onClick={() => setIsCsvMenuOpen(!isCsvMenuOpen)}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                    isCsvMenuOpen 
-                                        ? 'text-accent-primary border-accent-primary shadow-lg shadow-accent-primary/20' 
-                                        : 'text-muted hover:text-white'
-                                }`}
-                                style={{ background: 'transparent', border: '1px solid var(--border-color)' }}
-                            >
-                                <FileSpreadsheet size={15} strokeWidth={2.5} />
-                                <span>CSV</span>
-                                <ChevronDown size={14} className={`transition-transform duration-200 ${isCsvMenuOpen ? 'rotate-180' : ''}`} />
-                            </button>
-
-                            {/* Clean minimal dropdown menu containing straightforward export and native OS file browser triggers */}
-                            {isCsvMenuOpen && (
-                                <div className="absolute right-0 mt-2 w-56 rounded-xl bg-black/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-xl z-50 space-y-1 animate-in fade-in zoom-in-95 duration-150">
-                                    <a 
-                                        href="/api/settings/sites/download" 
-                                        onClick={() => setIsCsvMenuOpen(false)}
-                                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-white/5 text-white text-xs font-bold transition-all"
-                                    >
-                                        <Download size={14} className="text-accent-primary" />
-                                        <span>Export Mapping CSV</span>
-                                    </a>
-                                    
-                                    <label 
-                                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-white/5 text-white text-xs font-bold transition-all cursor-pointer block"
-                                    >
-                                        <Upload size={14} className="text-emerald-400" />
-                                        <span>{uploading ? 'Importing...' : 'Import CSV File...'}</span>
-                                        <input 
-                                            type="file" 
-                                            accept=".csv" 
-                                            className="hidden" 
-                                            onChange={(e) => {
-                                                setIsCsvMenuOpen(false);
-                                                if (e.target.files?.[0]) handleUpload(e.target.files[0]);
-                                            }} 
-                                            disabled={uploading} 
-                                        />
-                                    </label>
-                                </div>
-                            )}
                         </div>
                     </div>
                 </header>
@@ -349,10 +294,20 @@ export default function SiteManagementPage() {
                             }`}
                             style={{ background: 'transparent', border: activeTab === 'directory' ? '1px solid var(--border-color)' : 'none' }}
                         >
+                            <List size={13} />
                             <span>Site Directory</span>
-                            <span className="px-1.5 py-0.5 rounded-full text-accent-primary text-[10px] font-black" style={{ background: 'transparent', border: '1px solid var(--border-color)' }}>
-                                {totalSites}
-                            </span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('csv')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                                activeTab === 'csv'
+                                    ? 'text-accent-primary'
+                                    : 'text-muted hover:text-white'
+                            }`}
+                            style={{ background: 'transparent', border: activeTab === 'csv' ? '1px solid var(--border-color)' : 'none' }}
+                        >
+                            <FileSpreadsheet size={13} />
+                            <span>CSV Directives</span>
                         </button>
                         <button 
                             onClick={() => setActiveTab('archive')}
@@ -398,7 +353,19 @@ export default function SiteManagementPage() {
 
             {/* Bottom flex-1 List Container housed inside a glass-card mimicking Account Management container boundaries */}
             <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <h3 style={{ marginBottom: '16px', flexShrink: 0 }}>Configured Sites</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexShrink: 0 }}>
+                    <h3 style={{ margin: 0 }}>Configured Sites</h3>
+                    {activeTab === 'directory' && (
+                        <button 
+                            onClick={handleAddClick}
+                            className="flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg transition-all text-accent-primary hover:bg-accent-primary/10 border border-accent-primary/30 cursor-pointer"
+                            style={{ background: 'transparent' }}
+                        >
+                            <Plus size={14} strokeWidth={2.5} />
+                            <span>Add Site</span>
+                        </button>
+                    )}
+                </div>
                 <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }} className="custom-scrollbar">
                     
                     {/* TAB 1: SITE DIRECTORY */}
@@ -700,13 +667,48 @@ export default function SiteManagementPage() {
                                                     {new Date(v.createdAt).toLocaleString()}
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <a 
-                                                        href={`/api/settings/sites/download?id=${v.id}`}
-                                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-transparent hover:bg-white/[0.05] text-white font-black text-[10px] uppercase transition-all border border-white/15"
-                                                    >
-                                                        <Download size={11} />
-                                                        <span>Extract</span>
-                                                    </a>
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <a 
+                                                            href={`/api/settings/sites/download?id=${v.id}`}
+                                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-transparent hover:bg-white/[0.05] text-white font-black text-[10px] uppercase transition-all border border-white/15"
+                                                            title="Download mapped configuration version state"
+                                                        >
+                                                            <Download size={11} />
+                                                            <span>Extract</span>
+                                                        </a>
+                                                        {v.id !== latestVersion?.id && (
+                                                            <button 
+                                                                onClick={async () => {
+                                                                    if (!confirm(`Are you absolutely sure you want to rollback the active mapping engine straight to version ${v.versionNumber}? This will immediately overwrite current mapped access directives.`)) return;
+                                                                    setActionLoading(true);
+                                                                    setError("");
+                                                                    setSuccess("");
+                                                                    try {
+                                                                        const res = await fetch('/api/settings/sites', {
+                                                                            method: 'PATCH',
+                                                                            headers: { 'Content-Type': 'application/json' },
+                                                                            body: JSON.stringify({ action: 'revert', versionId: v.id })
+                                                                        });
+                                                                        const data = await res.json();
+                                                                        if (data.error) throw new Error(data.error);
+                                                                        setSuccess(`Successfully reverted configuration engine back to v${v.versionNumber}.`);
+                                                                        fetchVersions();
+                                                                    } catch (e: any) {
+                                                                        setError(e.message);
+                                                                    } finally {
+                                                                        setActionLoading(false);
+                                                                        setTimeout(() => { setError(""); setSuccess(""); }, 5000);
+                                                                    }
+                                                                }}
+                                                                disabled={actionLoading}
+                                                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-transparent hover:bg-amber-500/10 text-amber-400 font-black text-[10px] uppercase transition-all border border-amber-500/20 cursor-pointer"
+                                                                title="Rollback active mapping parameters directly to this checkpoint baseline"
+                                                            >
+                                                                <History size={11} />
+                                                                <span>Revert</span>
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             </tr>
                                         ))
@@ -719,6 +721,77 @@ export default function SiteManagementPage() {
                                     )}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+
+                    {/* TAB 3: CSV DIRECTIVES (Dedicated Import / Export Tab) */}
+                    {activeTab === 'csv' && (
+                        <div className="space-y-6">
+                            <div className="p-4 rounded-xl bg-white/[0.02] border border-white/10">
+                                <h4 className="text-xs font-black uppercase text-accent-primary tracking-wider mb-2">CSV Directives & Engine Mapping Rules</h4>
+                                <p className="text-xs text-muted leading-relaxed">
+                                    Upload a standard comma-separated file to completely sync active topology routes. The spreadsheet must enforce a header row starting with the identifier key <code className="text-white font-mono bg-black/40 px-1 py-0.5 rounded">Code</code> alongside any optional metadata attributes (<code className="text-white font-mono bg-black/40 px-1 py-0.5 rounded">Name</code>, <code className="text-white font-mono bg-black/40 px-1 py-0.5 rounded">Address</code>, <code className="text-white font-mono bg-black/40 px-1 py-0.5 rounded">Status</code>, <code className="text-white font-mono bg-black/40 px-1 py-0.5 rounded">Notes</code>).
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Upload / Drop Zone */}
+                                <div 
+                                    onDragEnter={handleDrag}
+                                    onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDragActive(false); }}
+                                    onDragOver={handleDrag}
+                                    onDrop={handleDrop}
+                                    className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all flex flex-col items-center justify-center min-h-[220px] ${
+                                        dragActive 
+                                            ? 'border-accent-primary bg-accent-primary/5 scale-[1.02]' 
+                                            : 'border-white/10 hover:border-accent-primary/40 bg-black/20'
+                                    }`}
+                                >
+                                    <div className="p-3.5 rounded-2xl bg-white/5 text-muted mb-3 group-hover:text-accent-primary transition-colors">
+                                        <Upload size={28} className={uploading ? 'animate-bounce text-accent-primary' : ''} />
+                                    </div>
+                                    <span className="text-xs font-black text-white uppercase tracking-wide mb-1">
+                                        {uploading ? 'Parsing CSV Records...' : 'Drop spreadsheet mapping file here'}
+                                    </span>
+                                    <span className="text-[10px] text-muted font-bold mb-4 block">or click to browse local OS storage</span>
+                                    
+                                    <label className="px-4 py-2 rounded-xl bg-accent-primary/10 hover:bg-accent-primary/20 text-accent-primary border border-accent-primary/30 text-xs font-black transition-all cursor-pointer">
+                                        <span>Select Spreadsheet</span>
+                                        <input 
+                                            type="file" 
+                                            accept=".csv" 
+                                            className="hidden" 
+                                            onChange={(e) => {
+                                                if (e.target.files?.[0]) handleUpload(e.target.files[0]);
+                                            }}
+                                            disabled={uploading}
+                                        />
+                                    </label>
+                                </div>
+
+                                {/* Live Configuration Downloader Card */}
+                                <div className="border border-white/10 rounded-2xl p-6 bg-black/20 flex flex-col justify-between">
+                                    <div>
+                                        <div className="flex items-center gap-2.5 mb-3">
+                                            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+                                                <FileSpreadsheet size={18} />
+                                            </div>
+                                            <span className="text-xs font-black text-white uppercase tracking-wide">Live Base Extraction</span>
+                                        </div>
+                                        <p className="text-xs text-muted mb-4 leading-relaxed">
+                                            Download the exact live base CSV payload currently feeding triage path routing, physical maps mapping, and address telemetry. Use this baseline to seed edits offline before bulk import processing.
+                                        </p>
+                                    </div>
+
+                                    <a 
+                                        href="/api/settings/sites/download" 
+                                        className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-black text-xs transition-all uppercase tracking-wider"
+                                    >
+                                        <Download size={14} className="text-emerald-400" />
+                                        <span>Download Live Base CSV</span>
+                                    </a>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
