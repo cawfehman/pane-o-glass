@@ -251,93 +251,54 @@ export default function SiteManagementPage() {
             <div className="grid grid-cols-12 gap-8">
                 
                 {/* Left: Active Config & Upload (4 cols) */}
-                <div className="col-span-12 lg:col-span-4 space-y-6">
+                <div className="col-span-12 lg:col-span-4 space-y-4 opacity-70 hover:opacity-100 transition-opacity duration-300">
                     
-                    {/* Active Card */}
-                    <div className="glass-card relative overflow-hidden group">
-                        <div className="absolute top-0 left-0 w-full h-1 bg-accent-primary opacity-50" />
-                        <div className="p-6">
-                            <div className="flex justify-between items-start mb-6">
-                                <h3 className="text-xs font-bold text-muted uppercase tracking-widest">Active Mapping</h3>
-                                <span className="px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-400 text-[10px] font-black uppercase border border-emerald-500/20">Live</span>
-                            </div>
-                            
-                            {latestVersion ? (
-                                <div className="space-y-6">
-                                    <div className="flex items-baseline justify-between">
-                                        <div className="flex items-baseline gap-2">
-                                            <span className="text-4xl font-black tracking-tighter">v{latestVersion.versionNumber}</span>
-                                            <span className="text-sm text-muted font-medium italic">/ stable</span>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-[10px] font-black text-accent-primary uppercase tracking-widest">Total Sites</p>
-                                            <p className="text-2xl font-black tracking-tight">{totalSites}</p>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-3 rounded-xl bg-white-5 border border-white/5">
-                                            <p className="text-[10px] text-muted uppercase mb-1 font-bold">Author</p>
-                                            <p className="text-sm font-bold truncate">{latestVersion.createdBy}</p>
-                                        </div>
-                                        <div className="p-3 rounded-xl bg-white-5 border border-white/5">
-                                            <p className="text-[10px] text-muted uppercase mb-1 font-bold">Modified</p>
-                                            <p className="text-sm font-bold">{new Date(latestVersion.createdAt).toLocaleDateString()}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <p className="text-center py-10 text-muted italic text-sm">Waiting for initial configuration...</p>
-                            )}
+                    {/* Compact Subdued Active Mapping */}
+                    <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Directory Version</span>
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[9px] font-bold uppercase tracking-wider">Live</span>
                         </div>
+                        {latestVersion ? (
+                            <div className="space-y-2">
+                                <div className="flex items-baseline justify-between">
+                                    <span className="text-base font-black tracking-tight text-secondary">v{latestVersion.versionNumber}</span>
+                                    <span className="text-xs font-black text-muted">{totalSites} <span className="font-normal text-[10px] text-muted/60 uppercase">sites</span></span>
+                                </div>
+                                <div className="flex items-center justify-between text-[10px] text-muted/70 pt-2 border-t border-white/5">
+                                    <span className="truncate max-w-[120px]">{latestVersion.createdBy}</span>
+                                    <span>{new Date(latestVersion.createdAt).toLocaleDateString()}</span>
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-center py-3 text-muted/50 italic text-xs">Awaiting configuration...</p>
+                        )}
                     </div>
 
-                    {/* Compact Upload */}
+                    {/* Subdued Drag/Drop Upload */}
                     <div 
-                        className={`glass-card p-6 border-2 border-dashed transition-all duration-300 ${
-                            dragActive ? 'border-accent-primary bg-accent-primary/5 scale-[1.02]' : 'border-white/10 hover:border-white/20'
+                        className={`bg-white/[0.01] border border-dashed rounded-xl p-4 text-center transition-all duration-300 ${
+                            dragActive ? 'border-accent-primary/50 bg-accent-primary/5' : 'border-white/10 hover:border-white/15'
                         }`}
                         onDragEnter={handleDrag}
                         onDragLeave={handleDrag}
                         onDragOver={handleDrag}
                         onDrop={handleDrop}
                     >
-                        <div className="flex flex-col items-center text-center gap-4">
-                            <div className={`p-4 rounded-full ${uploading ? 'animate-spin bg-accent-primary-10' : 'bg-white-5'}`}>
-                                <Upload className={uploading ? 'text-accent-primary' : 'text-muted'} size={24} />
-                            </div>
-                            <div>
-                                <h4 className="font-bold text-sm">Sync New Directory</h4>
-                                <p className="text-xs text-muted mt-1">Drag CSV here to update global site mappings</p>
-                            </div>
-                            <input type="file" accept=".csv" className="hidden" id="csv-upload" onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} disabled={uploading} />
-                            <label htmlFor="csv-upload" className={`btn-secondary w-full py-2 text-xs font-bold cursor-pointer transition-all ${uploading ? 'opacity-50 pointer-events-none' : 'hover:bg-white/10'}`}>
-                                {uploading ? 'INGESTING...' : 'BROWSE FILES'}
-                            </label>
-                        </div>
+                        <input type="file" accept=".csv" className="hidden" id="csv-upload" onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} disabled={uploading} />
+                        <label htmlFor="csv-upload" className="cursor-pointer block">
+                            <Upload className={`mx-auto mb-2 ${uploading ? 'animate-spin text-accent-primary' : 'text-muted/60'}`} size={16} />
+                            <span className="text-xs font-bold text-muted block">Sync CSV Mapping</span>
+                            <span className="text-[10px] text-muted/50 block mt-0.5">{uploading ? 'Ingesting mapping...' : 'Click or drag file'}</span>
+                        </label>
                     </div>
 
-                    {/* Quick Specs */}
-                    <div className="glass-card p-6 bg-accent-primary-10 border-l-2 border-accent-primary/20">
-                        <h4 className="text-[10px] font-black text-accent-primary uppercase tracking-widest mb-4">CSV Schema Requirements</h4>
-                        <div className="space-y-3">
-                            <div className="flex items-center gap-3">
-                                <div className="w-5 h-5 rounded bg-white-5 flex items-center justify-center text-[10px] font-bold">1</div>
-                                <p className="text-xs text-secondary font-medium"><strong className="text-primary">Code</strong>: 3-4 char site identifier (NYC)</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <div className="w-5 h-5 rounded bg-white-5 flex items-center justify-center text-[10px] font-bold">2</div>
-                                <p className="text-xs text-secondary font-medium"><strong className="text-primary">Name</strong>: Full descriptive site name</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <div className="w-5 h-5 rounded bg-white-5 flex items-center justify-center text-[10px] font-bold">3</div>
-                                <p className="text-xs text-secondary font-medium"><strong className="text-primary">Address</strong>: Physical location details</p>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <div className="w-5 h-5 rounded bg-white-5 flex items-center justify-center text-[10px] font-bold">4</div>
-                                <p className="text-xs text-secondary font-medium"><strong className="text-primary">Status</strong>: Active, Retired, or Future</p>
-                            </div>
-                        </div>
+                    {/* Highly Compacted Specs */}
+                    <div className="p-3 rounded-xl bg-white/[0.01] border border-white/5 text-center">
+                        <span className="text-[9px] font-bold text-muted/60 uppercase tracking-widest block">CSV Schema Columns</span>
+                        <p className="text-[10px] text-muted/80 font-mono mt-1">
+                            Code, Name, Address, Status, Notes
+                        </p>
                     </div>
                 </div>
 
@@ -445,58 +406,64 @@ export default function SiteManagementPage() {
                                     }
 
                                     return (
-                                        <div key={s.code} className="p-5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl transition-all duration-200 group relative">
-                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                                <div className="flex items-start gap-4">
-                                                    <div className="pt-0.5 shrink-0">
-                                                        <span className="px-3 py-1.5 rounded-xl bg-white-5 border border-white/10 font-black text-accent-primary text-xs tracking-wider block text-center shadow-sm">
+                                        <div key={s.code} className="p-4 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-200 group relative">
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div className="flex-1 min-w-0 pr-2">
+                                                    {/* 1. Site Code with absolute premium prominence */}
+                                                    <div className="flex items-center gap-2.5 mb-1">
+                                                        <span className="text-base font-black text-accent-primary tracking-wider uppercase font-mono drop-shadow-sm">
                                                             {s.code}
                                                         </span>
+                                                        <span className={`text-[8px] uppercase px-2 py-0.5 rounded font-black tracking-widest ${
+                                                            s.status?.toLowerCase() === 'active' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
+                                                            s.status?.toLowerCase() === 'retired' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                                                            'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
+                                                        }`}>
+                                                            {s.status || 'Active'}
+                                                        </span>
                                                     </div>
-                                                    <div className="space-y-1.5">
-                                                        <div className="flex flex-wrap items-center gap-2.5">
-                                                            <h4 className="text-sm font-black text-white tracking-tight">{s.name}</h4>
-                                                            <span className={`text-[9px] uppercase px-2.5 py-0.5 rounded-full font-black tracking-wider ${
-                                                                s.status?.toLowerCase() === 'active' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
-                                                                s.status?.toLowerCase() === 'retired' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
-                                                                'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
-                                                            }`}>
-                                                                {s.status || 'Active'}
-                                                            </span>
+
+                                                    {/* 2. Site Name clearly emphasized below the code */}
+                                                    <h4 className="text-xs font-bold text-white tracking-tight mb-1.5 truncate">
+                                                        {s.name}
+                                                    </h4>
+
+                                                    {/* 3. Address softly displayed below the name */}
+                                                    {s.address ? (
+                                                        <p className="text-[11px] text-muted font-medium break-words leading-relaxed">
+                                                            {s.address}
+                                                        </p>
+                                                    ) : (
+                                                        <p className="text-[11px] text-muted/30 italic">No physical address specified</p>
+                                                    )}
+
+                                                    {/* Optional Notes */}
+                                                    {s.notes && (
+                                                        <div className="mt-2 p-2 rounded-lg bg-black/40 border border-white/5 text-[11px] text-secondary/90 whitespace-pre-wrap font-mono relative overflow-hidden">
+                                                            <div className="absolute top-0 left-0 bottom-0 w-0.5 bg-accent-primary/30"></div>
+                                                            <span className="text-[8px] block uppercase font-bold tracking-widest text-accent-primary/60 mb-0.5">Notes</span>
+                                                            {s.notes}
                                                         </div>
-                                                        {s.address ? (
-                                                            <p className="text-xs text-muted font-medium break-words max-w-2xl leading-relaxed flex items-start gap-1.5">
-                                                                <span className="opacity-40 select-none">📍</span> {s.address}
-                                                            </p>
-                                                        ) : (
-                                                            <p className="text-xs text-muted/40 italic">No physical address specified</p>
-                                                        )}
-                                                        {s.notes && (
-                                                            <div className="mt-3 p-3 rounded-xl bg-black/40 border border-white/5 text-xs text-secondary/90 whitespace-pre-wrap font-mono relative overflow-hidden">
-                                                                <div className="absolute top-0 left-0 bottom-0 w-1 bg-accent-primary/40"></div>
-                                                                <span className="text-[9px] block uppercase font-bold tracking-widest text-accent-primary/70 mb-1">Notes / Instructions</span>
-                                                                {s.notes}
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                                    )}
                                                 </div>
 
-                                                <div className="flex items-center self-end md:self-center gap-2 shrink-0">
+                                                {/* Action buttons locked to the absolute right side, nicely downscaled */}
+                                                <div className="flex items-center gap-1.5 shrink-0 ml-auto pt-0.5">
                                                     <button 
                                                         onClick={() => handleEditClick(s)} 
-                                                        style={{ backgroundColor: '#ffffff', color: '#000000', border: 'none', padding: '7px 14px', borderRadius: '8px', fontWeight: 900, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.3)' }}
-                                                        title="Expand and Edit Record"
+                                                        style={{ backgroundColor: '#ffffff', color: '#000000', border: 'none', padding: '4px 8px', borderRadius: '4px', fontWeight: 900, fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}
+                                                        title="Edit Record"
                                                     >
-                                                        <Edit2 size={12} strokeWidth={3} />
+                                                        <Edit2 size={9} strokeWidth={3} />
                                                         <span>EDIT</span>
                                                     </button>
                                                     <button 
                                                         onClick={() => handleDeleteClick(s.code)} 
-                                                        style={{ backgroundColor: '#dc2626', color: '#ffffff', border: 'none', padding: '7px 14px', borderRadius: '8px', fontWeight: 900, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.3)' }}
+                                                        style={{ backgroundColor: '#dc2626', color: '#ffffff', border: 'none', padding: '4px 8px', borderRadius: '4px', fontWeight: 900, fontSize: '9px', display: 'flex', alignItems: 'center', gap: '3px', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}
                                                         title="Delete Record"
                                                     >
-                                                        <Trash2 size={12} strokeWidth={3} />
-                                                        <span>DELETE</span>
+                                                        <Trash2 size={9} strokeWidth={3} />
+                                                        <span>DEL</span>
                                                     </button>
                                                 </div>
                                             </div>
