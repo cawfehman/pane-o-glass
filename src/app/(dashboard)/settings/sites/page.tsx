@@ -262,7 +262,8 @@ export default function SiteManagementPage() {
                         {/* Primary Trigger renamed to Add Site and made clear outline */}
                         <button 
                             onClick={handleAddClick}
-                            className="flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg transition-all bg-transparent hover:bg-white/[0.05] text-white border border-white/15"
+                            className="flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg transition-all text-white border border-white/15 hover:border-white/40 cursor-pointer"
+                            style={{ background: 'transparent' }}
                         >
                             <Plus size={14} strokeWidth={2.5} />
                             <span>Add Site</span>
@@ -272,11 +273,12 @@ export default function SiteManagementPage() {
                         <div className="relative" ref={csvMenuRef}>
                             <button 
                                 onClick={() => setIsCsvMenuOpen(!isCsvMenuOpen)}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
                                     isCsvMenuOpen 
-                                        ? 'bg-accent-primary text-black border-accent-primary shadow-lg shadow-accent-primary/20' 
-                                        : 'bg-transparent hover:bg-white/[0.05] text-white border-white/15'
+                                        ? 'text-accent-primary border-accent-primary shadow-lg shadow-accent-primary/20' 
+                                        : 'text-white border-white/15 hover:border-white/40'
                                 }`}
+                                style={{ background: 'transparent' }}
                             >
                                 <FileSpreadsheet size={15} strokeWidth={2.5} />
                                 <span>CSV</span>
@@ -333,24 +335,26 @@ export default function SiteManagementPage() {
                     <div className="flex items-center gap-2">
                         <button 
                             onClick={() => setActiveTab('directory')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                                 activeTab === 'directory'
-                                    ? 'bg-transparent text-white border border-white/15'
+                                    ? 'text-white border border-white/25 shadow-sm'
                                     : 'text-muted hover:text-white border border-transparent'
                             }`}
+                            style={{ background: 'transparent' }}
                         >
                             <span>Site Directory</span>
-                            <span className="px-1.5 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary text-[10px] font-black">
+                            <span className="px-1.5 py-0.5 rounded-full text-accent-primary text-[10px] font-black border border-accent-primary/20" style={{ background: 'transparent' }}>
                                 {totalSites}
                             </span>
                         </button>
                         <button 
                             onClick={() => setActiveTab('archive')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                                 activeTab === 'archive'
-                                    ? 'bg-transparent text-white border border-white/15'
+                                    ? 'text-white border border-white/25 shadow-sm'
                                     : 'text-muted hover:text-white border border-transparent'
                             }`}
+                            style={{ background: 'transparent' }}
                         >
                             <History size={13} />
                             <span>Archival Logs</span>
@@ -366,14 +370,16 @@ export default function SiteManagementPage() {
                                     parsedPreview.forEach(s => { allExpanded[s.code] = true; });
                                     setExpandedSites(allExpanded);
                                 }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-transparent hover:bg-white/[0.05] text-white border border-white/15 cursor-pointer"
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-white border border-white/15 hover:border-white/40 cursor-pointer"
+                                style={{ background: 'transparent' }}
                                 title="Expand all rows"
                             >
                                 Expand All
                             </button>
                             <button 
                                 onClick={() => setExpandedSites({})}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-transparent hover:bg-white/[0.05] text-white border border-white/15 cursor-pointer"
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-white border border-white/15 hover:border-white/40 cursor-pointer"
+                                style={{ background: 'transparent' }}
                                 title="Collapse all rows"
                             >
                                 Collapse All
@@ -393,7 +399,7 @@ export default function SiteManagementPage() {
                         <div className="space-y-3">
                             {/* Sortable Column Headers Row */}
                             {sortedSites.length > 0 && (
-                                <div className="flex items-center justify-between border-b border-white/10 px-2 py-2 bg-white/[0.01] text-[10px] text-muted uppercase tracking-widest font-black sticky top-0 z-10 backdrop-blur-md gap-4">
+                                <div className="flex items-center justify-between border-b border-white/10 px-2 py-2 text-[10px] text-muted uppercase tracking-widest font-black sticky top-0 z-10 backdrop-blur-md gap-4" style={{ background: 'transparent' }}>
                                     <div className="flex items-center gap-4 flex-1 min-w-0">
                                         <button 
                                             onClick={() => {
@@ -404,7 +410,8 @@ export default function SiteManagementPage() {
                                                     setSortDirection('asc');
                                                 }
                                             }}
-                                            className="flex items-center gap-1 hover:text-white transition-all cursor-pointer font-black"
+                                            className="flex items-center gap-1 hover:text-white transition-all cursor-pointer font-black border-none"
+                                            style={{ background: 'transparent' }}
                                             title="Click to sort by Site Code"
                                         >
                                             <span>Site Code</span>
@@ -421,7 +428,8 @@ export default function SiteManagementPage() {
                                                     setSortDirection('asc');
                                                 }
                                             }}
-                                            className="flex items-center gap-1 hover:text-white transition-all cursor-pointer font-black ml-4"
+                                            className="flex items-center gap-1 hover:text-white transition-all cursor-pointer font-black ml-4 border-none"
+                                            style={{ background: 'transparent' }}
                                             title="Click to sort by Status"
                                         >
                                             <span>Status</span>
@@ -441,80 +449,75 @@ export default function SiteManagementPage() {
                                 // Process inline custom edits state view
                                 if (isEditing) {
                                     return (
-                                        <div key={s.code} className="p-5 bg-accent-primary/[0.05] border-2 border-accent-primary/50 rounded-2xl space-y-4 shadow-xl relative overflow-hidden animate-in fade-in duration-200">
-                                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent-primary to-emerald-400"></div>
-                                            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
-                                                <div className="flex items-center gap-2.5">
-                                                    <span className="px-2.5 py-0.5 rounded-md bg-accent-primary font-black text-black text-xs tracking-wider font-mono">{s.code}</span>
-                                                    <h4 className="text-xs font-black text-white uppercase tracking-wider">Editing Metadata Record</h4>
-                                                </div>
-                                                <span className="text-[9px] uppercase font-black tracking-widest text-accent-primary">Inline Editor</span>
+                                        <div key={s.code} style={{ padding: '20px', border: '1px solid var(--accent-primary)', borderRadius: '12px', marginBottom: '12px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '12px', marginBottom: '16px' }}>
+                                                <span style={{ fontWeight: 800, fontFamily: 'monospace', fontSize: '1.1rem', color: 'var(--accent-primary)' }}>{s.code}</span>
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Inline Editor</span>
                                             </div>
                                             
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                                <div style={{ display: 'flex', gap: '16px' }}>
+                                                    <div style={{ flex: 1 }}>
+                                                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>Site Code</label>
+                                                        <input 
+                                                            type="text" 
+                                                            value={editingSiteData.name} 
+                                                            onChange={e => setEditingSiteData({...editingSiteData, name: e.target.value})}
+                                                            style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', fontSize: '0.95rem' }}
+                                                            placeholder="Site Name"
+                                                        />
+                                                    </div>
+                                                    <div style={{ width: '150px' }}>
+                                                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>Status</label>
+                                                        <select 
+                                                            value={editingSiteData.status} 
+                                                            onChange={e => setEditingSiteData({...editingSiteData, status: e.target.value})}
+                                                            style={{ width: '100%', padding: '8px 12px', background: '#000', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', fontSize: '0.95rem' }}
+                                                        >
+                                                            <option value="Active">Active</option>
+                                                            <option value="Future">Future</option>
+                                                            <option value="Retired">Retired</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
                                                 <div>
-                                                    <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1">Descriptive Identity</label>
-                                                    <input 
-                                                        type="text" 
-                                                        value={editingSiteData.name} 
-                                                        onChange={e => setEditingSiteData({...editingSiteData, name: e.target.value})}
-                                                        className="w-full px-3 py-2 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white transition-all"
-                                                        placeholder="e.g. Regional Processing Center"
+                                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>Address</label>
+                                                    <textarea 
+                                                        rows={3}
+                                                        value={editingSiteData.address} 
+                                                        onChange={e => setEditingSiteData({...editingSiteData, address: e.target.value})}
+                                                        style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', fontSize: '0.95rem', lineHeight: '1.4' }}
+                                                        placeholder="Full Address"
                                                     />
                                                 </div>
+
                                                 <div>
-                                                    <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1">Lifecycle Status</label>
-                                                    <select 
-                                                        value={editingSiteData.status} 
-                                                        onChange={e => setEditingSiteData({...editingSiteData, status: e.target.value})}
-                                                        className="w-full px-3 py-2 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white transition-all appearance-none"
-                                                    >
-                                                        <option value="Active">🟢 Active</option>
-                                                        <option value="Future">🟡 Future</option>
-                                                        <option value="Retired">🔴 Retired</option>
-                                                    </select>
+                                                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '4px' }}>Notes</label>
+                                                    <textarea 
+                                                        rows={3}
+                                                        value={editingSiteData.notes} 
+                                                        onChange={e => setEditingSiteData({...editingSiteData, notes: e.target.value})}
+                                                        style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', color: '#fff', fontSize: '0.95rem', lineHeight: '1.4' }}
+                                                        placeholder="Notes"
+                                                    />
                                                 </div>
                                             </div>
 
-                                            <div>
-                                                <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1">Physical Address</label>
-                                                <textarea 
-                                                    rows={1}
-                                                    value={editingSiteData.address} 
-                                                    onChange={e => setEditingSiteData({...editingSiteData, address: e.target.value})}
-                                                    className="w-full px-3 py-2 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-medium text-white transition-all leading-relaxed"
-                                                    placeholder="Full address string"
-                                                    style={{ resize: 'vertical' }}
-                                                />
-                                            </div>
-
-                                            <div>
-                                                <label className="block text-[10px] font-black uppercase tracking-widest text-accent-primary mb-1">Optional Notes / Context</label>
-                                                <textarea 
-                                                    rows={2}
-                                                    value={editingSiteData.notes} 
-                                                    onChange={e => setEditingSiteData({...editingSiteData, notes: e.target.value})}
-                                                    className="w-full px-3 py-2 bg-black/90 border border-accent-primary/30 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-medium text-white transition-all leading-relaxed"
-                                                    placeholder="Add direct handling workflows..."
-                                                    style={{ resize: 'vertical' }}
-                                                />
-                                            </div>
-
-                                            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-white/10">
+                                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
                                                 <button 
                                                     onClick={() => setEditingSiteCode(null)} 
                                                     disabled={actionLoading}
-                                                    className="px-3 py-1.5 rounded-lg bg-transparent hover:bg-white/[0.05] border border-white/15 text-muted hover:text-white font-bold text-xs transition-all cursor-pointer"
+                                                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'var(--text-muted)', padding: '6px 14px', borderRadius: '6px', fontSize: '0.85rem', cursor: 'pointer' }}
                                                 >
                                                     Cancel
                                                 </button>
                                                 <button 
                                                     onClick={() => performAction('update', { code: s.code, ...editingSiteData })} 
                                                     disabled={actionLoading}
-                                                    className="px-3 py-1.5 rounded-lg bg-transparent hover:bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-black text-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                                                    style={{ background: 'transparent', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', padding: '6px 14px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer' }}
                                                 >
-                                                    <CheckCircle2 size={13} strokeWidth={2.5} />
-                                                    {actionLoading ? "Saving..." : "Save Record"}
+                                                    {actionLoading ? "Saving..." : "Save"}
                                                 </button>
                                             </div>
                                         </div>
