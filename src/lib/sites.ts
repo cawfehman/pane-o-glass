@@ -5,6 +5,7 @@ export interface SiteMetadata {
     name: string;
     address: string;
     status: string; // Active, Retired, Future
+    notes?: string;
 }
 
 export function parseSiteCsv(csvContent: string): SiteMetadata[] {
@@ -37,6 +38,7 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
     const nameIdx = headers.indexOf('name');
     const addrIdx = headers.indexOf('address');
     const statusIdx = headers.indexOf('status');
+    const notesIdx = headers.indexOf('notes');
 
     if (codeIdx === -1) return [];
 
@@ -51,7 +53,8 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
                 code,
                 name: rawName || code,
                 address: addrIdx !== -1 ? parts[addrIdx] || "" : "",
-                status: statusIdx !== -1 ? parts[statusIdx] || "Active" : "Active"
+                status: statusIdx !== -1 ? parts[statusIdx] || "Active" : "Active",
+                notes: notesIdx !== -1 ? parts[notesIdx] || "" : ""
             });
         }
     }
@@ -60,14 +63,14 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
 }
 
 export function stringifySiteCsv(sites: SiteMetadata[]): string {
-    const headers = ["Code", "Name", "Address", "Status"];
+    const headers = ["Code", "Name", "Address", "Status", "Notes"];
     const rows = [headers.join(",")];
 
     for (const site of sites) {
-        // Wrap fields in quotes if they contain commas or quotes
-        const formatField = (field: string) => {
+        // Wrap fields in quotes if they contain commas, quotes, or newlines
+        const formatField = (field: string | undefined) => {
             if (!field) return "";
-            if (field.includes(",") || field.includes('"')) {
+            if (field.includes(",") || field.includes('"') || field.includes("\n") || field.includes("\r")) {
                 return `"${field.replace(/"/g, '""')}"`;
             }
             return field;
@@ -77,7 +80,8 @@ export function stringifySiteCsv(sites: SiteMetadata[]): string {
             formatField(site.code),
             formatField(site.name),
             formatField(site.address),
-            formatField(site.status)
+            formatField(site.status),
+            formatField(site.notes)
         ];
         rows.push(row.join(","));
     }

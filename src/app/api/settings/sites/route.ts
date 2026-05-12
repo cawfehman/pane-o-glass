@@ -107,7 +107,8 @@ export async function PATCH(req: Request) {
                 code: site.code.toUpperCase(),
                 name: site.name || site.code.toUpperCase(),
                 address: site.address || "",
-                status: site.status || "Active"
+                status: site.status || "Active",
+                notes: site.notes || ""
             });
         } else if (action === 'update') {
             if (siteIndex === -1) {
@@ -117,7 +118,8 @@ export async function PATCH(req: Request) {
                 ...sites[siteIndex],
                 name: site.name || sites[siteIndex].name,
                 address: site.address ?? sites[siteIndex].address,
-                status: site.status || sites[siteIndex].status
+                status: site.status || sites[siteIndex].status,
+                notes: site.notes ?? sites[siteIndex].notes
             };
         } else if (action === 'delete') {
             if (siteIndex === -1) {

@@ -43,12 +43,12 @@ export default function SiteManagementPage() {
     
     // Modal State (Add Site)
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [currentSite, setCurrentSite] = useState<any>({ code: "", name: "", address: "", status: "Active" });
+    const [currentSite, setCurrentSite] = useState<any>({ code: "", name: "", address: "", status: "Active", notes: "" });
     const [actionLoading, setActionLoading] = useState(false);
 
     // Inline Edit State
     const [editingSiteCode, setEditingSiteCode] = useState<string | null>(null);
-    const [editingSiteData, setEditingSiteData] = useState<any>({ name: "", address: "", status: "Active" });
+    const [editingSiteData, setEditingSiteData] = useState<any>({ name: "", address: "", status: "Active", notes: "" });
 
     const fetchVersions = useCallback(async () => {
         setLoading(true);
@@ -89,7 +89,7 @@ export default function SiteManagementPage() {
                 setEditingSiteCode(null);
             } else if (action === 'add') {
                 if (addAnother) {
-                    setCurrentSite({ code: "", name: "", address: "", status: "Active" });
+                    setCurrentSite({ code: "", name: "", address: "", status: "Active", notes: "" });
                 } else {
                     setIsModalOpen(false);
                 }
@@ -106,13 +106,13 @@ export default function SiteManagementPage() {
     };
 
     const handleAddClick = () => {
-        setCurrentSite({ code: "", name: "", address: "", status: "Active" });
+        setCurrentSite({ code: "", name: "", address: "", status: "Active", notes: "" });
         setIsModalOpen(true);
     };
 
     const handleEditClick = (site: any) => {
         setEditingSiteCode(site.code);
-        setEditingSiteData({ name: site.name, address: site.address, status: site.status || "Active" });
+        setEditingSiteData({ name: site.name, address: site.address, status: site.status || "Active", notes: site.notes || "" });
     };
 
     const handleDeleteClick = async (code: string) => {
@@ -190,6 +190,7 @@ export default function SiteManagementPage() {
         const nameIdx = headers.indexOf('name');
         const addrIdx = headers.indexOf('address');
         const statusIdx = headers.indexOf('status');
+        const notesIdx = headers.indexOf('notes');
 
         if (codeIdx === -1) return [];
 
@@ -200,7 +201,8 @@ export default function SiteManagementPage() {
                 code,
                 name: (nameIdx !== -1 ? parts[nameIdx] : "") || code,
                 address: addrIdx !== -1 ? parts[addrIdx] || "" : "",
-                status: statusIdx !== -1 ? parts[statusIdx] || "Active" : "Active"
+                status: statusIdx !== -1 ? parts[statusIdx] || "Active" : "Active",
+                notes: notesIdx !== -1 ? parts[notesIdx] || "" : ""
             };
         });
     };
@@ -343,136 +345,169 @@ export default function SiteManagementPage() {
                 <div className="col-span-12 lg:col-span-8 space-y-6">
                     
                     {showDirectory && (
-                        <div className="glass-card p-6 border-l-4 border-emerald-500 animate-in slide-in-from-right-4 flex flex-col h-full max-h-[600px]">
-                            <div className="flex justify-between items-center mb-4 shrink-0">
+                        <div className="glass-card p-6 border-l-4 border-emerald-500 animate-in slide-in-from-right-4 flex flex-col h-full max-h-[700px]">
+                            <div className="flex justify-between items-center mb-6 shrink-0">
                                 <div>
-                                    <h3 className="font-bold text-sm uppercase tracking-wider">Active Directory</h3>
-                                    <p className="text-[10px] text-muted">All sites parsed from the current mapping</p>
+                                    <h3 className="font-black text-base uppercase tracking-wider text-white">Active Directory</h3>
+                                    <p className="text-xs text-muted">All sites parsed from the current mapping</p>
                                 </div>
                                 <button 
                                     onClick={handleAddClick} 
-                                    className="btn-primary flex items-center gap-2 px-4 py-2 text-xs"
+                                    className="btn-primary flex items-center gap-2 px-4 py-2 text-xs font-black shadow-lg shadow-accent-primary/20"
                                 >
-                                    <Plus size={14} />
+                                    <Plus size={16} strokeWidth={3} />
                                     Add Site
                                 </button>
                             </div>
-                            <div className="bg-white-5 rounded-xl border border-white/5 flex-1 overflow-y-auto custom-scrollbar">
-                                <table className="w-full text-xs relative">
-                                    <thead className="bg-white-5 text-muted uppercase font-bold sticky top-0 backdrop-blur-md">
-                                        <tr>
-                                            <th className="px-4 py-3 text-left">Code</th>
-                                            <th className="px-4 py-3 text-left">Site Identity</th>
-                                            <th className="px-4 py-3 text-left">Status</th>
-                                            <th className="px-4 py-3 text-left">Physical Address</th>
-                                            <th className="px-4 py-3 text-right">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-white/5">
-                                        {parsedPreview.map((s, idx) => {
-                                            const isEditing = editingSiteCode === s.code;
-                                            return (
-                                                <tr key={idx} className={`hover:bg-white/5 transition-all duration-200 group ${isEditing ? 'bg-accent-primary/[0.08] shadow-inner' : ''}`}>
-                                                    <td className="px-4 py-3.5 font-black text-accent-primary tracking-wider text-xs">{s.code}</td>
-                                                    <td className="px-4 py-3.5">
-                                                        {isEditing ? (
-                                                            <input 
-                                                                type="text" 
-                                                                value={editingSiteData.name} 
-                                                                onChange={e => setEditingSiteData({...editingSiteData, name: e.target.value})}
-                                                                className="w-full min-w-[180px] px-3 py-1.5 bg-black/80 border border-accent-primary/40 rounded-lg focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white shadow-sm transition-all"
-                                                                placeholder="Site Name"
-                                                            />
-                                                        ) : (
-                                                            <span className="text-secondary font-bold tracking-tight">{s.name}</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-4 py-3.5">
-                                                        {isEditing ? (
-                                                            <select 
-                                                                value={editingSiteData.status} 
-                                                                onChange={e => setEditingSiteData({...editingSiteData, status: e.target.value})}
-                                                                className="px-3 py-1.5 bg-black/80 border border-accent-primary/40 rounded-lg focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-[10px] font-black uppercase tracking-wider text-white shadow-sm transition-all"
-                                                            >
-                                                                <option value="Active">Active</option>
-                                                                <option value="Future">Future</option>
-                                                                <option value="Retired">Retired</option>
-                                                            </select>
-                                                        ) : (
-                                                            <span className={`text-[9px] uppercase px-2.5 py-1 rounded-full font-black tracking-wider ${
+                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4">
+                                {parsedPreview.map((s) => {
+                                    const isEditing = editingSiteCode === s.code;
+                                    if (isEditing) {
+                                        return (
+                                            <div key={s.code} className="p-6 bg-accent-primary/[0.05] border-2 border-accent-primary/50 rounded-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200 shadow-xl relative overflow-hidden">
+                                                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-accent-primary to-emerald-400"></div>
+                                                <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="px-3 py-1 rounded-lg bg-accent-primary font-black text-black text-xs tracking-wider">{s.code}</span>
+                                                        <h4 className="text-xs font-black text-white uppercase tracking-wider">Editing Directory Record</h4>
+                                                    </div>
+                                                    <span className="text-[10px] uppercase font-black tracking-widest text-accent-primary">Inline Form</span>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1.5">Descriptive Identity</label>
+                                                        <input 
+                                                            type="text" 
+                                                            value={editingSiteData.name} 
+                                                            onChange={e => setEditingSiteData({...editingSiteData, name: e.target.value})}
+                                                            className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white transition-all shadow-inner"
+                                                            placeholder="e.g. Regional Data Center"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1.5">Lifecycle Status</label>
+                                                        <select 
+                                                            value={editingSiteData.status} 
+                                                            onChange={e => setEditingSiteData({...editingSiteData, status: e.target.value})}
+                                                            className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-bold text-white transition-all appearance-none shadow-inner"
+                                                        >
+                                                            <option value="Active">🟢 Active</option>
+                                                            <option value="Future">🟡 Future</option>
+                                                            <option value="Retired">🔴 Retired</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-[10px] font-black uppercase tracking-widest text-muted mb-1.5">Physical Address</label>
+                                                    <textarea 
+                                                        rows={2}
+                                                        value={editingSiteData.address} 
+                                                        onChange={e => setEditingSiteData({...editingSiteData, address: e.target.value})}
+                                                        className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-medium text-white transition-all leading-relaxed shadow-inner"
+                                                        placeholder="Full street address, city, state, zip"
+                                                        style={{ resize: 'vertical' }}
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label className="block text-[10px] font-black uppercase tracking-widest text-accent-primary mb-1.5">Optional Notes / Context</label>
+                                                    <textarea 
+                                                        rows={3}
+                                                        value={editingSiteData.notes} 
+                                                        onChange={e => setEditingSiteData({...editingSiteData, notes: e.target.value})}
+                                                        className="w-full px-4 py-2.5 bg-black/90 border border-accent-primary/30 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs font-medium text-white transition-all leading-relaxed placeholder:text-white/20 shadow-inner"
+                                                        placeholder="Add access procedures, specific rack info, or key contact extensions..."
+                                                        style={{ resize: 'vertical' }}
+                                                    />
+                                                </div>
+
+                                                <div className="flex items-center justify-end gap-3 pt-2 border-t border-white/10">
+                                                    <button 
+                                                        onClick={() => setEditingSiteCode(null)} 
+                                                        disabled={actionLoading}
+                                                        className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-muted hover:text-white font-bold text-xs transition-all"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => performAction('update', { code: s.code, ...editingSiteData })} 
+                                                        disabled={actionLoading}
+                                                        className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-all shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center gap-2"
+                                                    >
+                                                        <CheckCircle2 size={14} strokeWidth={3} />
+                                                        {actionLoading ? "Saving..." : "Save Record"}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div key={s.code} className="p-5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-2xl transition-all duration-200 group relative">
+                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                                <div className="flex items-start gap-4">
+                                                    <div className="pt-0.5 shrink-0">
+                                                        <span className="px-3 py-1.5 rounded-xl bg-white-5 border border-white/10 font-black text-accent-primary text-xs tracking-wider block text-center shadow-sm">
+                                                            {s.code}
+                                                        </span>
+                                                    </div>
+                                                    <div className="space-y-1.5">
+                                                        <div className="flex flex-wrap items-center gap-2.5">
+                                                            <h4 className="text-sm font-black text-white tracking-tight">{s.name}</h4>
+                                                            <span className={`text-[9px] uppercase px-2.5 py-0.5 rounded-full font-black tracking-wider ${
                                                                 s.status?.toLowerCase() === 'active' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
                                                                 s.status?.toLowerCase() === 'retired' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
                                                                 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
                                                             }`}>
                                                                 {s.status || 'Active'}
                                                             </span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-4 py-3.5">
-                                                        {isEditing ? (
-                                                            <textarea 
-                                                                rows={2}
-                                                                value={editingSiteData.address} 
-                                                                onChange={e => setEditingSiteData({...editingSiteData, address: e.target.value})}
-                                                                className="w-full min-w-[320px] px-3 py-1.5 bg-black/90 border border-accent-primary/50 rounded-lg focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs text-white shadow-sm transition-all leading-relaxed"
-                                                                placeholder="Physical Address"
-                                                                style={{ resize: 'vertical' }}
-                                                            />
+                                                        </div>
+                                                        {s.address ? (
+                                                            <p className="text-xs text-muted font-medium break-words max-w-2xl leading-relaxed flex items-start gap-1.5">
+                                                                <span className="opacity-40 select-none">📍</span> {s.address}
+                                                            </p>
                                                         ) : (
-                                                            <span className="text-muted block break-words leading-relaxed font-medium max-w-xl">{s.address}</span>
+                                                            <p className="text-xs text-muted/40 italic">No physical address specified</p>
                                                         )}
-                                                    </td>
-                                                    <td className="px-4 py-3.5 text-right">
-                                                        {isEditing ? (
-                                                            <div className="flex items-center justify-end gap-2">
-                                                                <button 
-                                                                    onClick={() => performAction('update', { code: s.code, ...editingSiteData })} 
-                                                                    disabled={actionLoading}
-                                                                    className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.3)] text-black font-black text-[10px] transition-all tracking-wider uppercase"
-                                                                    title="Save Changes"
-                                                                >
-                                                                    {actionLoading ? "..." : "Save"}
-                                                                </button>
-                                                                <button 
-                                                                    onClick={() => setEditingSiteCode(null)} 
-                                                                    disabled={actionLoading}
-                                                                    className="flex items-center gap-1 px-3 py-1.5 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.1] text-muted hover:text-white font-bold text-[10px] transition-all tracking-wide"
-                                                                    title="Cancel"
-                                                                >
-                                                                    Cancel
-                                                                </button>
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex items-center justify-end gap-2">
-                                                                <button 
-                                                                    onClick={() => handleEditClick(s)} 
-                                                                    style={{ backgroundColor: '#ffffff', color: '#000000', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 900, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}
-                                                                    title="Edit Site Directory"
-                                                                >
-                                                                    <Edit2 size={12} strokeWidth={3} />
-                                                                    <span>EDIT</span>
-                                                                </button>
-                                                                <button 
-                                                                    onClick={() => handleDeleteClick(s.code)} 
-                                                                    style={{ backgroundColor: '#dc2626', color: '#ffffff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontWeight: 900, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}
-                                                                    title="Delete Site"
-                                                                >
-                                                                    <Trash2 size={12} strokeWidth={3} />
-                                                                    <span>DELETE</span>
-                                                                </button>
+                                                        {s.notes && (
+                                                            <div className="mt-3 p-3 rounded-xl bg-black/40 border border-white/5 text-xs text-secondary/90 whitespace-pre-wrap font-mono relative overflow-hidden">
+                                                                <div className="absolute top-0 left-0 bottom-0 w-1 bg-accent-primary/40"></div>
+                                                                <span className="text-[9px] block uppercase font-bold tracking-widest text-accent-primary/70 mb-1">Notes / Instructions</span>
+                                                                {s.notes}
                                                             </div>
                                                         )}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                        {parsedPreview.length === 0 && (
-                                            <tr className="text-muted italic">
-                                                <td colSpan={5} className="px-4 py-12 text-center">No active mapping found. Please upload a CSV.</td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex items-center self-end md:self-center gap-2 shrink-0">
+                                                    <button 
+                                                        onClick={() => handleEditClick(s)} 
+                                                        style={{ backgroundColor: '#ffffff', color: '#000000', border: 'none', padding: '7px 14px', borderRadius: '8px', fontWeight: 900, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.3)' }}
+                                                        title="Expand and Edit Record"
+                                                    >
+                                                        <Edit2 size={12} strokeWidth={3} />
+                                                        <span>EDIT</span>
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleDeleteClick(s.code)} 
+                                                        style={{ backgroundColor: '#dc2626', color: '#ffffff', border: 'none', padding: '7px 14px', borderRadius: '8px', fontWeight: 900, fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', boxShadow: '0 2px 10px rgba(0,0,0,0.3)' }}
+                                                        title="Delete Record"
+                                                    >
+                                                        <Trash2 size={12} strokeWidth={3} />
+                                                        <span>DELETE</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {parsedPreview.length === 0 && (
+                                    <div className="p-12 border border-white/5 rounded-2xl text-center text-muted italic bg-white/[0.01]">
+                                        No active mapping found. Please upload a CSV directory mapping file.
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -597,48 +632,60 @@ export default function SiteManagementPage() {
                                 &times;
                             </button>
                         </div>
-                        <div className="p-6 space-y-5">
+                        <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
                             <div>
-                                <label className="block text-xs font-bold text-accent-primary uppercase tracking-widest mb-2">Site Code (3-4 Chars)</label>
+                                <label className="block text-xs font-bold text-accent-primary uppercase tracking-widest mb-1.5">Site Code (3-4 Chars)</label>
                                 <input 
                                     type="text" 
                                     value={currentSite.code} 
                                     onChange={e => setCurrentSite({...currentSite, code: e.target.value.toUpperCase()})}
                                     placeholder="e.g. NYC"
-                                    className="w-full px-4 py-3 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary transition-all font-black text-white text-sm"
+                                    className="w-full px-4 py-2.5 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-black text-white text-sm shadow-inner"
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-2">Descriptive Name</label>
+                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-1.5">Descriptive Name</label>
                                 <input 
                                     type="text" 
                                     value={currentSite.name} 
                                     onChange={e => setCurrentSite({...currentSite, name: e.target.value})}
                                     placeholder="e.g. New York HQ"
-                                    className="w-full px-4 py-3 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary transition-all font-bold text-white text-sm"
+                                    className="w-full px-4 py-2.5 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-bold text-white text-sm shadow-inner"
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-2">Physical Address</label>
-                                <input 
-                                    type="text" 
+                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-1.5">Physical Address</label>
+                                <textarea 
+                                    rows={2}
                                     value={currentSite.address} 
                                     onChange={e => setCurrentSite({...currentSite, address: e.target.value})}
                                     placeholder="e.g. 123 Broadway, NY 10001"
-                                    className="w-full px-4 py-3 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary transition-all text-sm text-white font-medium"
+                                    className="w-full px-4 py-2.5 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all text-xs text-white font-medium shadow-inner"
+                                    style={{ resize: 'vertical' }}
                                 />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-2">Lifecycle Status</label>
+                                <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-1.5">Lifecycle Status</label>
                                 <select 
                                     value={currentSite.status} 
                                     onChange={e => setCurrentSite({...currentSite, status: e.target.value})}
-                                    className="w-full px-4 py-3 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-2 focus:ring-accent-primary transition-all font-bold appearance-none text-white text-sm"
+                                    className="w-full px-4 py-2.5 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all font-bold appearance-none text-white text-sm shadow-inner"
                                 >
                                     <option value="Active">🟢 Active</option>
                                     <option value="Future">🟡 Future</option>
                                     <option value="Retired">🔴 Retired</option>
                                 </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-accent-primary uppercase tracking-widest mb-1.5">Optional Notes / Instructions</label>
+                                <textarea 
+                                    rows={3}
+                                    value={currentSite.notes} 
+                                    onChange={e => setCurrentSite({...currentSite, notes: e.target.value})}
+                                    placeholder="Add site specific administrative access steps, internal tags, or emergency point of contact info..."
+                                    className="w-full px-4 py-2.5 bg-black/80 border border-accent-primary/30 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all text-xs text-white font-medium shadow-inner placeholder:text-white/20"
+                                    style={{ resize: 'vertical' }}
+                                />
                             </div>
                         </div>
                         <div className="p-6 border-t border-white/10 flex flex-wrap justify-end gap-3 bg-white/[0.02]">
