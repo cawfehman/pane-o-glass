@@ -226,7 +226,7 @@ export default function SiteManagementPage() {
     const totalSites = latestVersion?.content ? latestVersion.content.split(/\r?\n/).filter(l => l.trim()).length - 1 : 0;
 
     return (
-        <div className="flex flex-col h-[calc(100vh-90px)] max-w-7xl mx-auto p-6 overflow-hidden animate-in fade-in duration-400">
+        <div className="max-w-7xl mx-auto animate-in fade-in duration-400 space-y-6">
             
             {/* Upper Action Banner & Title row */}
             <header className="flex justify-between items-center shrink-0 mb-6">
@@ -328,8 +328,8 @@ export default function SiteManagementPage() {
                 </div>
             )}
 
-            {/* Main Content Workspace Stack */}
-            <div className="glass-card flex-1 flex flex-col overflow-hidden border border-white/10 rounded-2xl">
+            {/* Main Content Workspace Stack without outer bounding box */}
+            <div className="flex flex-col space-y-4">
                 
                 {/* Secondary Header Row: Tab Selectors & Directory Master collapse tool */}
                 <div className="flex flex-wrap items-center justify-between border-b border-white/10 px-6 py-3 shrink-0 bg-white/[0.01] gap-4">
@@ -385,12 +385,12 @@ export default function SiteManagementPage() {
                     )}
                 </div>
 
-                {/* Main Scrollable View Area locked exactly to active tab flow logic */}
-                <div className="flex-1 overflow-hidden flex flex-col relative">
+                {/* Main View Area allowing independent scrolling of lists without global page blocking */}
+                <div>
                     
                     {/* TAB 1: SITE DIRECTORY */}
                     {activeTab === 'directory' && (
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-3">
+                        <div className="max-h-[calc(100vh-240px)] overflow-y-auto custom-scrollbar space-y-3 pr-2">
                             {parsedPreview.map((s) => {
                                 const isEditing = editingSiteCode === s.code;
                                 
@@ -602,7 +602,7 @@ export default function SiteManagementPage() {
 
                     {/* TAB 2: ARCHIVAL LOGS (Isolated configuration historical view) */}
                     {activeTab === 'archive' && (
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+                        <div className="max-h-[calc(100vh-240px)] overflow-y-auto custom-scrollbar pr-2">
                             <div className="mb-4 flex justify-between items-center shrink-0">
                                 <span className="text-xs font-bold text-secondary uppercase tracking-wider">Version History Repository</span>
                                 <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Retained Archive Sets</span>
