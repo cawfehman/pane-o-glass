@@ -92,22 +92,24 @@ export default async function UsersPage() {
                                     <td style={{ padding: '12px 8px', color: 'var(--text-muted)' }}>
                                         {new Date(user.createdAt).toLocaleDateString()}
                                     </td>
-                                    <td style={{ padding: '12px 8px', textAlign: 'right', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                                        <a href={`/users/${user.id}`} style={{
-                                            background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px'
-                                        }} className="nav-link">
-                                            Edit
-                                        </a>
-                                        <form action={async () => {
-                                            "use server"
-                                            await deleteUser(user.id)
-                                        }}>
-                                            <button type="submit" style={{
-                                                background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px'
+                                    <td style={{ padding: '12px 8px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
+                                            <a href={`/users/${user.id}`} style={{
+                                                background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px'
                                             }} className="nav-link">
-                                                Delete
-                                            </button>
-                                        </form>
+                                                Edit
+                                            </a>
+                                            <form action={async () => {
+                                                "use server"
+                                                await deleteUser(user.id)
+                                            }}>
+                                                <button type="submit" style={{
+                                                    background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px'
+                                                }} className="nav-link">
+                                                    Delete
+                                                </button>
+                                            </form>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

@@ -226,102 +226,91 @@ export default function SiteManagementPage() {
     const totalSites = latestVersion?.content ? latestVersion.content.split(/\r?\n/).filter(l => l.trim()).length - 1 : 0;
 
     return (
-        <div className="flex flex-col h-[calc(100vh-90px)] max-w-7xl mx-auto p-6 overflow-hidden animate-in fade-in duration-400 min-h-0">
-            {/* Global style injection enforcing strict outer scroll container clipping so the main page never scrolls */}
-            <style jsx global>{`
-                .page-container {
-                    overflow: hidden !important;
-                    height: calc(100vh - 60px) !important;
-                    padding-bottom: 0 !important;
-                }
-            `}</style>
-            
-            {/* Upper Action Banner & Title row locked cleanly at top */}
-            <header className="flex justify-between items-center shrink-0 mb-6">
-                <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-xl bg-accent-primary/10 text-accent-primary border border-accent-primary/20">
-                        <Database size={24} strokeWidth={2.5} />
+        <div className="internal-scroll-layout animate-in fade-in duration-400">
+            {/* Top fixed sections layout housing standard actions and view configurations */}
+            <div style={{ flexShrink: 0 }}>
+                <header className="flex justify-between items-center mb-6">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-accent-primary/10 text-accent-primary border border-accent-primary/20">
+                            <Database size={24} strokeWidth={2.5} />
+                        </div>
+                        <div>
+                            <h1 className="text-xl font-black tracking-tight uppercase text-white">Site Operations</h1>
+                            <p className="text-xs text-muted font-bold tracking-wide">Mapping Engine & Access Directives</p>
+                        </div>
                     </div>
-                    <div>
-                        <h1 className="text-xl font-black tracking-tight uppercase text-white">Site Operations</h1>
-                        <p className="text-xs text-muted font-bold tracking-wide">Mapping Engine & Access Directives</p>
-                    </div>
-                </div>
 
-                <div className="flex items-center gap-3">
-                    {/* Primary Trigger renamed to Add Site and made smaller */}
-                    <button 
-                        onClick={handleAddClick}
-                        className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg transition-all"
-                    >
-                        <Plus size={14} strokeWidth={2.5} />
-                        <span>Add Site</span>
-                    </button>
-
-                    {/* Unified CSV Actions Dropdown */}
-                    <div className="relative" ref={csvMenuRef}>
+                    <div className="flex items-center gap-3">
+                        {/* Primary Trigger renamed to Add Site and made smaller */}
                         <button 
-                            onClick={() => setIsCsvMenuOpen(!isCsvMenuOpen)}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all border ${
-                                isCsvMenuOpen 
-                                    ? 'bg-accent-primary text-black border-accent-primary shadow-lg shadow-accent-primary/20' 
-                                    : 'bg-white/5 hover:bg-white/10 text-white border-white/10'
-                            }`}
+                            onClick={handleAddClick}
+                            className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg transition-all"
                         >
-                            <FileSpreadsheet size={15} strokeWidth={2.5} />
-                            <span>CSV</span>
-                            <ChevronDown size={14} className={`transition-transform duration-200 ${isCsvMenuOpen ? 'rotate-180' : ''}`} />
+                            <Plus size={14} strokeWidth={2.5} />
+                            <span>Add Site</span>
                         </button>
 
-                        {/* Clean minimal dropdown menu containing straightforward export and native OS file browser triggers */}
-                        {isCsvMenuOpen && (
-                            <div className="absolute right-0 mt-2 w-56 rounded-xl bg-black/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-xl z-50 space-y-1 animate-in fade-in zoom-in-95 duration-150">
-                                <a 
-                                    href="/api/settings/sites/download" 
-                                    onClick={() => setIsCsvMenuOpen(false)}
-                                    className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-white/5 text-white text-xs font-bold transition-all"
-                                >
-                                    <Download size={14} className="text-accent-primary" />
-                                    <span>Export Mapping CSV</span>
-                                </a>
-                                
-                                <label 
-                                    className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-white/5 text-white text-xs font-bold transition-all cursor-pointer block"
-                                >
-                                    <Upload size={14} className="text-emerald-400" />
-                                    <span>{uploading ? 'Importing...' : 'Import CSV File...'}</span>
-                                    <input 
-                                        type="file" 
-                                        accept=".csv" 
-                                        className="hidden" 
-                                        onChange={(e) => {
-                                            setIsCsvMenuOpen(false);
-                                            if (e.target.files?.[0]) handleUpload(e.target.files[0]);
-                                        }} 
-                                        disabled={uploading} 
-                                    />
-                                </label>
-                            </div>
-                        )}
+                        {/* Unified CSV Actions Dropdown */}
+                        <div className="relative" ref={csvMenuRef}>
+                            <button 
+                                onClick={() => setIsCsvMenuOpen(!isCsvMenuOpen)}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all border ${
+                                    isCsvMenuOpen 
+                                        ? 'bg-accent-primary text-black border-accent-primary shadow-lg shadow-accent-primary/20' 
+                                        : 'bg-white/5 hover:bg-white/10 text-white border-white/10'
+                                }`}
+                            >
+                                <FileSpreadsheet size={15} strokeWidth={2.5} />
+                                <span>CSV</span>
+                                <ChevronDown size={14} className={`transition-transform duration-200 ${isCsvMenuOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {/* Clean minimal dropdown menu containing straightforward export and native OS file browser triggers */}
+                            {isCsvMenuOpen && (
+                                <div className="absolute right-0 mt-2 w-56 rounded-xl bg-black/95 border border-white/10 p-1.5 shadow-2xl backdrop-blur-xl z-50 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                                    <a 
+                                        href="/api/settings/sites/download" 
+                                        onClick={() => setIsCsvMenuOpen(false)}
+                                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-white/5 text-white text-xs font-bold transition-all"
+                                    >
+                                        <Download size={14} className="text-accent-primary" />
+                                        <span>Export Mapping CSV</span>
+                                    </a>
+                                    
+                                    <label 
+                                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-white/5 text-white text-xs font-bold transition-all cursor-pointer block"
+                                    >
+                                        <Upload size={14} className="text-emerald-400" />
+                                        <span>{uploading ? 'Importing...' : 'Import CSV File...'}</span>
+                                        <input 
+                                            type="file" 
+                                            accept=".csv" 
+                                            className="hidden" 
+                                            onChange={(e) => {
+                                                setIsCsvMenuOpen(false);
+                                                if (e.target.files?.[0]) handleUpload(e.target.files[0]);
+                                            }} 
+                                            disabled={uploading} 
+                                        />
+                                    </label>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
-            </header>
+                </header>
 
-            {/* Error / Success Notifications */}
-            {(error || success) && (
-                <div className={`mb-4 p-3.5 rounded-xl border flex items-center gap-3 shrink-0 animate-in slide-in-from-top-2 ${
-                    error ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                }`}>
-                    {error ? <AlertCircle size={16} className="shrink-0" /> : <CheckCircle2 size={16} className="shrink-0" />}
-                    <p className="font-bold text-xs">{error || success}</p>
-                </div>
-            )}
+                {/* Error / Success Notifications */}
+                {(error || success) && (
+                    <div className={`mb-4 p-3.5 rounded-xl border flex items-center gap-3 shrink-0 animate-in slide-in-from-top-2 ${
+                        error ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                    }`}>
+                        {error ? <AlertCircle size={16} className="shrink-0" /> : <CheckCircle2 size={16} className="shrink-0" />}
+                        <p className="font-bold text-xs">{error || success}</p>
+                    </div>
+                )}
 
-            {/* Main Content Workspace Stack without outer bounding box */}
-            <div className="flex-1 flex flex-col min-h-0 space-y-4">
-                
                 {/* Secondary Header Row: Tab Selectors & Directory Master collapse tool */}
-                <div className="flex flex-wrap items-center justify-between border-b border-white/10 px-6 py-3 shrink-0 bg-white/[0.01] gap-4">
+                <div className="flex flex-wrap items-center justify-between border-b border-white/10 pb-4 mb-4 gap-4">
                     {/* Tab routes */}
                     <div className="flex items-center gap-2">
                         <button 
@@ -373,9 +362,12 @@ export default function SiteManagementPage() {
                         </div>
                     )}
                 </div>
+            </div>
 
-                {/* Main View Area strictly configured for isolated custom inner list scrolling */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-3">
+            {/* Bottom flex-1 List Container housed inside a glass-card mimicking Account Management container boundaries */}
+            <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <h3 style={{ marginBottom: '16px', flexShrink: 0 }}>Configured Sites</h3>
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }} className="custom-scrollbar">
                     
                     {/* TAB 1: SITE DIRECTORY */}
                     {activeTab === 'directory' && (
@@ -474,118 +466,81 @@ export default function SiteManagementPage() {
                                     formattedStatus === 'Retired' ? '#f87171' :
                                     '#facc15';
 
-                                // COMPACT LIST VIEW NORMALIZATION
-                                if (isCompactView) {
-                                    return (
-                                        <div key={s.code} className="px-5 py-3 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-150 flex items-center justify-between gap-4 group">
-                                            {/* Left side: ONLY SITE CODE and explicit Hex Status badge immediately near it */}
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-2 h-2 rounded-full bg-accent-primary/50 group-hover:bg-accent-primary transition-colors shrink-0"></div>
-                                                <span className="text-base font-black text-white font-mono uppercase tracking-widest shrink-0">{s.code}</span>
-                                                <span 
-                                                    className="text-xs italic font-extrabold px-2 py-0.5 rounded bg-white/[0.05] border border-white/10 shrink-0"
-                                                    style={{ color: statusColorHex }}
-                                                >
-                                                    {formattedStatus}
-                                                </span>
-                                            </div>
-
-                                            {/* Right side: Darker gray background buttons separated by smooth layout spacing */}
-                                            <div className="flex items-center gap-3 shrink-0">
-                                                <button 
-                                                    onClick={() => handleEditClick(s)} 
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm"
-                                                    style={{ backgroundColor: '#27272a', borderColor: '#3f3f46', borderWidth: '1px', color: '#e4e4e7' }}
-                                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3f3f46'; e.currentTarget.style.color = '#ffffff'; }}
-                                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#27272a'; e.currentTarget.style.color = '#e4e4e7'; }}
-                                                    title="Edit Record"
-                                                >
-                                                    <Edit2 size={12} strokeWidth={2.5} style={{ color: '#38bdf8' }} />
-                                                    <span>Edit</span>
-                                                </button>
-                                                <button 
-                                                    onClick={() => handleDeleteClick(s.code)} 
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm"
-                                                    style={{ backgroundColor: '#27272a', borderColor: '#3f3f46', borderWidth: '1px', color: '#f87171' }}
-                                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#450a0a'; e.currentTarget.style.borderColor = '#991b1b'; }}
-                                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#27272a'; e.currentTarget.style.borderColor = '#3f3f46'; }}
-                                                    title="Delete Record"
-                                                >
-                                                    <Trash2 size={12} strokeWidth={2.5} />
-                                                    <span>Delete</span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    );
-                                }
-
-                                // EXPANDED CARD VIEW NORMALIZATION
+                                // FLAT LINE-SEPARATED ENTRY ROW DUPLICATING ACCOUNT MANAGEMENT PATTERN
                                 return (
-                                    <div key={s.code} className="p-5 bg-white/[0.02] hover:bg-white/[0.04] border border-white/5 rounded-xl transition-all duration-200 group relative">
-                                        <div className="flex items-start justify-between gap-4">
-                                            <div className="flex-1 min-w-0 pr-4">
-                                                {/* 1. Site Code with explicit Hex Status badging placed snug beside it */}
-                                                <div className="flex items-center gap-3 mb-1.5">
-                                                    <span className="text-xl font-black text-accent-primary tracking-wider uppercase font-mono">
-                                                        {s.code}
+                                    <div 
+                                        key={s.code} 
+                                        style={{ 
+                                            display: 'flex', 
+                                            alignItems: isCompactView ? 'center' : 'start', 
+                                            justifyContent: 'space-between', 
+                                            padding: '16px 8px', 
+                                            borderBottom: '1px solid var(--border-color)',
+                                            gap: '16px'
+                                        }}
+                                    >
+                                        {/* Left Side: Identity structures */}
+                                        <div style={{ display: 'flex', alignItems: isCompactView ? 'center' : 'start', gap: '16px', flex: 1, minWidth: 0 }}>
+                                            {/* Site Code */}
+                                            <span style={{ fontWeight: 800, fontFamily: 'monospace', fontSize: '1.05rem', color: 'var(--accent-primary)', flexShrink: 0 }} className="uppercase tracking-wider">
+                                                {s.code}
+                                            </span>
+
+                                            {/* Status badging */}
+                                            <span style={{
+                                                padding: '4px 8px',
+                                                borderRadius: '12px',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 700,
+                                                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                                color: statusColorHex,
+                                                flexShrink: 0
+                                            }}>
+                                                {formattedStatus}
+                                            </span>
+
+                                            {/* Extended payload: Show Name, Address, Notes when detailed view enabled */}
+                                            {!isCompactView && (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, paddingLeft: '8px' }}>
+                                                    <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }} className="truncate">
+                                                        {s.name}
                                                     </span>
-                                                    <span 
-                                                        className="text-xs italic font-extrabold px-2 py-0.5 rounded bg-white/[0.05] border border-white/10"
-                                                        style={{ color: statusColorHex }}
-                                                    >
-                                                        {formattedStatus}
-                                                    </span>
+                                                    {s.address ? (
+                                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }} className="truncate">
+                                                            {s.address}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', opacity: 0.5 }}>
+                                                            No address set
+                                                        </span>
+                                                    )}
+                                                    {s.notes && (
+                                                        <div style={{ marginTop: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', backgroundColor: 'rgba(0,0,0,0.3)', padding: '6px 10px', borderRadius: '6px', borderLeft: '2px solid var(--accent-primary)' }}>
+                                                            {s.notes}
+                                                        </div>
+                                                    )}
                                                 </div>
+                                            )}
+                                        </div>
 
-                                                {/* 2. Site Name */}
-                                                <h4 className="text-sm font-extrabold text-white tracking-tight mb-1 truncate">
-                                                    {s.name}
-                                                </h4>
-
-                                                {/* 3. Address */}
-                                                {s.address ? (
-                                                    <p className="text-xs text-muted font-medium break-words leading-relaxed pt-0.5">
-                                                        {s.address}
-                                                    </p>
-                                                ) : (
-                                                    <p className="text-xs text-muted/40 italic pt-0.5">No physical address specified</p>
-                                                )}
-
-                                                {/* Optional Notes */}
-                                                {s.notes && (
-                                                    <div className="mt-3 p-2.5 rounded-lg bg-black/40 border border-white/5 text-xs text-secondary/90 whitespace-pre-wrap font-mono relative overflow-hidden">
-                                                        <div className="absolute top-0 left-0 bottom-0 w-1 bg-accent-primary/40"></div>
-                                                        <span className="text-[9px] block uppercase font-black tracking-widest text-accent-primary/80 mb-1">Notes</span>
-                                                        {s.notes}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Right side: Darker gray background buttons separated by generous spacing */}
-                                            <div className="flex items-center gap-3.5 shrink-0 ml-4 self-center border-l border-white/5 pl-4.5 py-2">
-                                                <button 
-                                                    onClick={() => handleEditClick(s)} 
-                                                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
-                                                    style={{ backgroundColor: '#27272a', borderColor: '#3f3f46', borderWidth: '1px', color: '#e4e4e7' }}
-                                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#3f3f46'; e.currentTarget.style.color = '#ffffff'; }}
-                                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#27272a'; e.currentTarget.style.color = '#e4e4e7'; }}
-                                                    title="Edit Record"
-                                                >
-                                                    <Edit2 size={13} strokeWidth={2.5} style={{ color: '#38bdf8' }} />
-                                                    <span>Edit</span>
-                                                </button>
-                                                <button 
-                                                    onClick={() => handleDeleteClick(s.code)} 
-                                                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
-                                                    style={{ backgroundColor: '#27272a', borderColor: '#3f3f46', borderWidth: '1px', color: '#f87171' }}
-                                                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#450a0a'; e.currentTarget.style.borderColor = '#991b1b'; }}
-                                                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#27272a'; e.currentTarget.style.borderColor = '#3f3f46'; }}
-                                                    title="Delete Record"
-                                                >
-                                                    <Trash2 size={13} strokeWidth={2.5} />
-                                                    <span>Delete</span>
-                                                </button>
-                                            </div>
+                                        {/* Right Side: Action controls perfectly duplicating Account Management look and feel */}
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                                            <button 
+                                                onClick={() => handleEditClick(s)} 
+                                                style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontWeight: 600, fontSize: '0.8rem' }}
+                                                className="nav-link"
+                                                title="Edit Record"
+                                            >
+                                                Edit
+                                            </button>
+                                            <button 
+                                                onClick={() => handleDeleteClick(s.code)} 
+                                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontWeight: 600, fontSize: '0.8rem' }}
+                                                className="nav-link"
+                                                title="Delete Record"
+                                            >
+                                                Delete
+                                            </button>
                                         </div>
                                     </div>
                                 );
