@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import UserForm from "@/components/UserForm";
 
-export default async function UsersPage() {
+export default async function UsersPage({ searchParams }: { searchParams?: { sort?: string; dir?: string } }) {
     const session = await auth();
     const isAdmin = (session?.user as any)?.role === 'ADMIN';
 
@@ -12,9 +12,30 @@ export default async function UsersPage() {
         redirect('/');
     }
 
+    const sort = searchParams?.sort || 'username';
+    const dir = searchParams?.dir === 'desc' ? 'desc' : 'asc';
+
+    let orderBy: any = {};
+    if (sort === 'username') orderBy = { username: dir };
+    else if (sort === 'name') orderBy = { firstName: dir };
+    else if (sort === 'role') orderBy = { role: dir };
+    else if (sort === 'lastLogin') orderBy = { lastLogin: dir };
+    else if (sort === 'createdAt') orderBy = { createdAt: dir };
+    else orderBy = { username: 'asc' };
+
     const users = await prisma.user.findMany({
-        orderBy: { createdAt: 'desc' }
+        orderBy
     });
+
+    const getSortLink = (column: string) => {
+        const nextDir = sort === column && dir === 'asc' ? 'desc' : 'asc';
+        return `?sort=${column}&dir=${nextDir}`;
+    };
+
+    const renderIndicator = (column: string) => {
+        if (sort !== column) return null;
+        return <span style={{ fontSize: '0.75rem', marginLeft: '4px' }}>{dir === 'asc' ? '↑' : '↓'}</span>;
+    };
 
     return (
         <div className="internal-scroll-layout">
@@ -35,11 +56,31 @@ export default async function UsersPage() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                         <thead className="sticky-header">
                             <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-                                <th style={{ padding: '12px 8px' }}>Username</th>
-                                <th style={{ padding: '12px 8px' }}>Name</th>
-                                <th style={{ padding: '12px 8px' }}>Role</th>
-                                <th style={{ padding: '12px 8px' }}>Last Login</th>
-                                <th style={{ padding: '12px 8px' }}>Created At</th>
+                                <th style={{ padding: '12px 8px' }}>
+                                    <a href={getSortLink('username')} style={{ color: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                                        Username {renderIndicator('username')}
+                                    </a>
+                                </th>
+                                <th style={{ padding: '12px 8px' }}>
+                                    <a href={getSortLink('name')} style={{ color: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                                        Name {renderIndicator('name')}
+                                    </a>
+                                </th>
+                                <th style={{ padding: '12px 8px' }}>
+                                    <a href={getSortLink('role')} style={{ color: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                                        Role {renderIndicator('role')}
+                                    </a>
+                                </th>
+                                <th style={{ padding: '12px 8px' }}>
+                                    <a href={getSortLink('lastLogin')} style={{ color: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                                        Last Login {renderIndicator('lastLogin')}
+                                    </a>
+                                </th>
+                                <th style={{ padding: '12px 8px' }}>
+                                    <a href={getSortLink('createdAt')} style={{ color: 'inherit', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                                        Created At {renderIndicator('createdAt')}
+                                    </a>
+                                </th>
                                 <th style={{ padding: '12px 8px', textAlign: 'right' }}>Actions</th>
                             </tr>
                         </thead>

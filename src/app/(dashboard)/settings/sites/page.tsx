@@ -44,7 +44,7 @@ export default function SiteManagementPage() {
     const csvMenuRef = useRef<HTMLDivElement>(null);
     
     // High-Density layout collapse controller
-    const [isCompactView, setIsCompactView] = useState(false);
+    const [expandedSites, setExpandedSites] = useState<Record<string, boolean>>({});
 
     // Modal State (Add Site)
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -54,6 +54,10 @@ export default function SiteManagementPage() {
     // Inline Edit State
     const [editingSiteCode, setEditingSiteCode] = useState<string | null>(null);
     const [editingSiteData, setEditingSiteData] = useState<any>({ name: "", address: "", status: "Active", notes: "" });
+
+    // Client Sort State
+    const [sortField, setSortField] = useState<'code' | 'status'>('code');
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
     // Close CSV dropdown menu when clicking outside
     useEffect(() => {
@@ -225,6 +229,20 @@ export default function SiteManagementPage() {
     const parsedPreview = latestVersion?.content ? parsePreview(latestVersion.content) : [];
     const totalSites = latestVersion?.content ? latestVersion.content.split(/\r?\n/).filter(l => l.trim()).length - 1 : 0;
 
+    const sortedSites = [...parsedPreview].sort((a, b) => {
+        if (sortField === 'code') {
+            return sortDirection === 'asc' 
+                ? a.code.localeCompare(b.code) 
+                : b.code.localeCompare(a.code);
+        } else {
+            const statusA = a.status || 'Active';
+            const statusB = b.status || 'Active';
+            return sortDirection === 'asc' 
+                ? statusA.localeCompare(statusB) 
+                : statusB.localeCompare(statusA);
+        }
+    });
+
     return (
         <div className="internal-scroll-layout animate-in fade-in duration-400">
             {/* Top fixed sections layout housing standard actions and view configurations */}
@@ -241,10 +259,10 @@ export default function SiteManagementPage() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                        {/* Primary Trigger renamed to Add Site and made smaller */}
+                        {/* Primary Trigger renamed to Add Site and made clear outline */}
                         <button 
                             onClick={handleAddClick}
-                            className="btn-secondary flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg transition-all"
+                            className="flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg transition-all bg-transparent hover:bg-white/[0.05] text-white border border-white/15"
                         >
                             <Plus size={14} strokeWidth={2.5} />
                             <span>Add Site</span>
@@ -254,10 +272,10 @@ export default function SiteManagementPage() {
                         <div className="relative" ref={csvMenuRef}>
                             <button 
                                 onClick={() => setIsCsvMenuOpen(!isCsvMenuOpen)}
-                                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all border ${
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
                                     isCsvMenuOpen 
                                         ? 'bg-accent-primary text-black border-accent-primary shadow-lg shadow-accent-primary/20' 
-                                        : 'bg-white/5 hover:bg-white/10 text-white border-white/10'
+                                        : 'bg-transparent hover:bg-white/[0.05] text-white border-white/15'
                                 }`}
                             >
                                 <FileSpreadsheet size={15} strokeWidth={2.5} />
@@ -315,10 +333,10 @@ export default function SiteManagementPage() {
                     <div className="flex items-center gap-2">
                         <button 
                             onClick={() => setActiveTab('directory')}
-                            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
                                 activeTab === 'directory'
-                                    ? 'bg-white/10 text-white shadow-inner border border-white/5'
-                                    : 'text-muted hover:text-white/80'
+                                    ? 'bg-transparent text-white border border-white/15'
+                                    : 'text-muted hover:text-white border border-transparent'
                             }`}
                         >
                             <span>Site Directory</span>
@@ -328,10 +346,10 @@ export default function SiteManagementPage() {
                         </button>
                         <button 
                             onClick={() => setActiveTab('archive')}
-                            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
                                 activeTab === 'archive'
-                                    ? 'bg-white/10 text-white shadow-inner border border-white/5'
-                                    : 'text-muted hover:text-white/80'
+                                    ? 'bg-transparent text-white border border-white/15'
+                                    : 'text-muted hover:text-white border border-transparent'
                             }`}
                         >
                             <History size={13} />
@@ -339,26 +357,27 @@ export default function SiteManagementPage() {
                         </button>
                     </div>
 
-                    {/* View Controls normalizer (Available when on Site Directory tab) */}
+                    {/* Bulk Expand/Collapse Actions */}
                     {activeTab === 'directory' && (
                         <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-muted uppercase tracking-widest">Density View:</span>
-                            <div className="flex items-center rounded-lg bg-black/40 p-0.5 border border-white/5">
-                                <button 
-                                    onClick={() => setIsCompactView(false)}
-                                    className={`p-1.5 rounded-md transition-all ${!isCompactView ? 'bg-white/10 text-accent-primary' : 'text-muted hover:text-white'}`}
-                                    title="Detailed Card View"
-                                >
-                                    <LayoutGrid size={13} strokeWidth={2.5} />
-                                </button>
-                                <button 
-                                    onClick={() => setIsCompactView(true)}
-                                    className={`p-1.5 rounded-md transition-all ${isCompactView ? 'bg-white/10 text-accent-primary' : 'text-muted hover:text-white'}`}
-                                    title="Compact List View"
-                                >
-                                    <List size={13} strokeWidth={2.5} />
-                                </button>
-                            </div>
+                            <button 
+                                onClick={() => {
+                                    const allExpanded: Record<string, boolean> = {};
+                                    parsedPreview.forEach(s => { allExpanded[s.code] = true; });
+                                    setExpandedSites(allExpanded);
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-transparent hover:bg-white/[0.05] text-white border border-white/15 cursor-pointer"
+                                title="Expand all rows"
+                            >
+                                Expand All
+                            </button>
+                            <button 
+                                onClick={() => setExpandedSites({})}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-transparent hover:bg-white/[0.05] text-white border border-white/15 cursor-pointer"
+                                title="Collapse all rows"
+                            >
+                                Collapse All
+                            </button>
                         </div>
                     )}
                 </div>
@@ -372,7 +391,51 @@ export default function SiteManagementPage() {
                     {/* TAB 1: SITE DIRECTORY */}
                     {activeTab === 'directory' && (
                         <div className="space-y-3">
-                            {parsedPreview.map((s) => {
+                            {/* Sortable Column Headers Row */}
+                            {sortedSites.length > 0 && (
+                                <div className="flex items-center justify-between border-b border-white/10 px-2 py-2 bg-white/[0.01] text-[10px] text-muted uppercase tracking-widest font-black sticky top-0 z-10 backdrop-blur-md gap-4">
+                                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                                        <button 
+                                            onClick={() => {
+                                                if (sortField === 'code') {
+                                                    setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+                                                } else {
+                                                    setSortField('code');
+                                                    setSortDirection('asc');
+                                                }
+                                            }}
+                                            className="flex items-center gap-1 hover:text-white transition-all cursor-pointer font-black"
+                                            title="Click to sort by Site Code"
+                                        >
+                                            <span>Site Code</span>
+                                            <span style={{ color: sortField === 'code' ? 'var(--accent-primary)' : 'inherit' }}>
+                                                {sortField === 'code' ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+                                            </span>
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                if (sortField === 'status') {
+                                                    setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+                                                } else {
+                                                    setSortField('status');
+                                                    setSortDirection('asc');
+                                                }
+                                            }}
+                                            className="flex items-center gap-1 hover:text-white transition-all cursor-pointer font-black ml-4"
+                                            title="Click to sort by Status"
+                                        >
+                                            <span>Status</span>
+                                            <span style={{ color: sortField === 'status' ? 'var(--accent-primary)' : 'inherit' }}>
+                                                {sortField === 'status' ? (sortDirection === 'asc' ? '↑' : '↓') : '↕'}
+                                            </span>
+                                        </button>
+                                        <span className="ml-12 text-muted/60">Details</span>
+                                    </div>
+                                    <span className="text-right pr-2">Actions</span>
+                                </div>
+                            )}
+
+                            {sortedSites.map((s) => {
                                 const isEditing = editingSiteCode === s.code;
                                 
                                 // Process inline custom edits state view
@@ -441,16 +504,16 @@ export default function SiteManagementPage() {
                                                 <button 
                                                     onClick={() => setEditingSiteCode(null)} 
                                                     disabled={actionLoading}
-                                                    className="px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-muted hover:text-white font-bold text-xs transition-all"
+                                                    className="px-3 py-1.5 rounded-lg bg-transparent hover:bg-white/[0.05] border border-white/15 text-muted hover:text-white font-bold text-xs transition-all cursor-pointer"
                                                 >
                                                     Cancel
                                                 </button>
                                                 <button 
                                                     onClick={() => performAction('update', { code: s.code, ...editingSiteData })} 
                                                     disabled={actionLoading}
-                                                    className="px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] flex items-center gap-1.5"
+                                                    className="px-3 py-1.5 rounded-lg bg-transparent hover:bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-black text-xs transition-all flex items-center gap-1.5 cursor-pointer"
                                                 >
-                                                    <CheckCircle2 size={13} strokeWidth={3} />
+                                                    <CheckCircle2 size={13} strokeWidth={2.5} />
                                                     {actionLoading ? "Saving..." : "Save Record"}
                                                 </button>
                                             </div>
@@ -466,87 +529,116 @@ export default function SiteManagementPage() {
                                     formattedStatus === 'Retired' ? '#f87171' :
                                     '#facc15';
 
-                                // FLAT LINE-SEPARATED ENTRY ROW DUPLICATING ACCOUNT MANAGEMENT PATTERN
+                                const isExpanded = !!expandedSites[s.code];
+                                const toggleExpand = () => {
+                                    setExpandedSites(prev => ({ ...prev, [s.code]: !prev[s.code] }));
+                                };
+
+                                // FLAT LINE-SEPARATED ENTRY ROW DUPLICATING ACCOUNT MANAGEMENT PATTERN WITH EXPAND CAPABILITY
                                 return (
                                     <div 
                                         key={s.code} 
                                         style={{ 
                                             display: 'flex', 
-                                            alignItems: isCompactView ? 'center' : 'start', 
-                                            justifyContent: 'space-between', 
+                                            flexDirection: 'column',
                                             padding: '16px 8px', 
                                             borderBottom: '1px solid var(--border-color)',
-                                            gap: '16px'
+                                            gap: '8px'
                                         }}
                                     >
-                                        {/* Left Side: Identity structures */}
-                                        <div style={{ display: 'flex', alignItems: isCompactView ? 'center' : 'start', gap: '16px', flex: 1, minWidth: 0 }}>
-                                            {/* Site Code */}
-                                            <span style={{ fontWeight: 800, fontFamily: 'monospace', fontSize: '1.05rem', color: 'var(--accent-primary)', flexShrink: 0 }} className="uppercase tracking-wider">
-                                                {s.code}
-                                            </span>
+                                        {/* Main Summary Header Row */}
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+                                            {/* Left Side: Clickable trigger for individual expanding/collapsing */}
+                                            <div 
+                                                onClick={toggleExpand}
+                                                style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1, minWidth: 0, cursor: 'pointer' }}
+                                                className="group"
+                                                title="Click to expand/collapse site metadata"
+                                            >
+                                                {/* Chevron Indicator */}
+                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                                                    ▶
+                                                </span>
 
-                                            {/* Status badging */}
-                                            <span style={{
-                                                padding: '4px 8px',
-                                                borderRadius: '12px',
-                                                fontSize: '0.75rem',
-                                                fontWeight: 700,
-                                                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                                                color: statusColorHex,
-                                                flexShrink: 0
-                                            }}>
-                                                {formattedStatus}
-                                            </span>
+                                                {/* Site Code with hover title listing site name */}
+                                                <span 
+                                                    style={{ fontWeight: 800, fontFamily: 'monospace', fontSize: '1.05rem', color: 'var(--accent-primary)', flexShrink: 0 }} 
+                                                    className="uppercase tracking-wider group-hover:underline"
+                                                    title={s.name}
+                                                >
+                                                    {s.code}
+                                                </span>
 
-                                            {/* Extended payload: Show Name, Address, Notes when detailed view enabled */}
-                                            {!isCompactView && (
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, paddingLeft: '8px' }}>
-                                                    <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }} className="truncate">
-                                                        {s.name}
+                                                {/* Status badging */}
+                                                <span style={{
+                                                    padding: '4px 8px',
+                                                    borderRadius: '12px',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: 700,
+                                                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                                    color: statusColorHex,
+                                                    flexShrink: 0
+                                                }}>
+                                                    {formattedStatus}
+                                                </span>
+
+                                                {/* Summary line if collapsed */}
+                                                {!isExpanded && (
+                                                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }} className="truncate ml-2">
+                                                        {s.name} {s.address ? `• ${s.address}` : ''}
                                                     </span>
-                                                    {s.address ? (
-                                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }} className="truncate">
-                                                            {s.address}
-                                                        </span>
-                                                    ) : (
-                                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontStyle: 'italic', opacity: 0.5 }}>
-                                                            No address set
-                                                        </span>
-                                                    )}
-                                                    {s.notes && (
-                                                        <div style={{ marginTop: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', backgroundColor: 'rgba(0,0,0,0.3)', padding: '6px 10px', borderRadius: '6px', borderLeft: '2px solid var(--accent-primary)' }}>
+                                                )}
+                                            </div>
+
+                                            {/* Right Side Action controls */}
+                                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+                                                <button 
+                                                    onClick={() => handleEditClick(s)} 
+                                                    style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontWeight: 600, fontSize: '0.8rem' }}
+                                                    className="nav-link"
+                                                    title="Edit Record"
+                                                >
+                                                    Edit
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDeleteClick(s.code)} 
+                                                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontWeight: 600, fontSize: '0.8rem' }}
+                                                    className="nav-link"
+                                                    title="Delete Record"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Expanded Payload Container */}
+                                        {isExpanded && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '32px', marginTop: '4px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                                                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', width: '70px', flexShrink: 0 }}>Name</span>
+                                                    <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>{s.name}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                                                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', width: '70px', flexShrink: 0 }}>Address</span>
+                                                    <span style={{ fontSize: '0.85rem', color: s.address ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
+                                                        {s.address || <span style={{ fontStyle: 'italic', opacity: 0.5 }}>No physical address specified</span>}
+                                                    </span>
+                                                </div>
+                                                {s.notes && (
+                                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '4px' }}>
+                                                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', width: '70px', flexShrink: 0, marginTop: '2px' }}>Notes</span>
+                                                        <div style={{ flex: 1, fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'monospace', whiteSpace: 'pre-wrap', backgroundColor: 'rgba(0,0,0,0.3)', padding: '6px 10px', borderRadius: '6px', borderLeft: '2px solid var(--accent-primary)' }}>
                                                             {s.notes}
                                                         </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Right Side: Action controls perfectly duplicating Account Management look and feel */}
-                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
-                                            <button 
-                                                onClick={() => handleEditClick(s)} 
-                                                style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontWeight: 600, fontSize: '0.8rem' }}
-                                                className="nav-link"
-                                                title="Edit Record"
-                                            >
-                                                Edit
-                                            </button>
-                                            <button 
-                                                onClick={() => handleDeleteClick(s.code)} 
-                                                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontWeight: 600, fontSize: '0.8rem' }}
-                                                className="nav-link"
-                                                title="Delete Record"
-                                            >
-                                                Delete
-                                            </button>
-                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
 
-                            {parsedPreview.length === 0 && (
+                            {sortedSites.length === 0 && (
                                 <div className="p-12 border border-white/5 rounded-2xl text-center text-muted italic bg-white/[0.01]">
                                     No active mapping found. Please provision a site record or select CSV import tools.
                                 </div>
@@ -603,7 +695,7 @@ export default function SiteManagementPage() {
                                                 <td className="px-6 py-4 text-right">
                                                     <a 
                                                         href={`/api/settings/sites/download?id=${v.id}`}
-                                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-white font-black text-[10px] uppercase transition-all border border-white/5"
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-transparent hover:bg-white/[0.05] text-white font-black text-[10px] uppercase transition-all border border-white/15"
                                                     >
                                                         <Download size={11} />
                                                         <span>Extract</span>
@@ -710,17 +802,17 @@ export default function SiteManagementPage() {
                             </div>
                         </div>
                         <div className="p-4 border-t border-white/10 flex flex-wrap justify-end gap-2.5 bg-white/[0.02]">
-                            <button onClick={() => setIsModalOpen(false)} className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-muted hover:text-white transition-all" disabled={actionLoading}>Cancel</button>
+                            <button onClick={() => setIsModalOpen(false)} className="px-3 py-1.5 text-xs font-bold rounded-lg bg-transparent hover:bg-white/[0.05] border border-white/15 text-muted hover:text-white transition-all cursor-pointer" disabled={actionLoading}>Cancel</button>
                             <button 
                                 onClick={() => performAction('add', currentSite, true)} 
-                                className="px-3.5 py-1.5 text-xs font-black rounded-xl bg-accent-primary/10 hover:bg-accent-primary/20 text-accent-primary border border-accent-primary/30 transition-all"
+                                className="px-3 py-1.5 text-xs font-black rounded-lg bg-transparent hover:bg-accent-primary/10 text-accent-primary border border-accent-primary/30 transition-all cursor-pointer"
                                 disabled={actionLoading || !currentSite.code.trim()}
                             >
                                 Save & Add Another
                             </button>
                             <button 
                                 onClick={() => performAction('add', currentSite, false)} 
-                                className="px-4 py-1.5 text-xs font-black rounded-xl bg-accent-primary hover:bg-accent-primary/90 text-black shadow-lg transition-all"
+                                className="px-3 py-1.5 text-xs font-black rounded-lg bg-transparent hover:bg-accent-primary/10 text-accent-primary border border-accent-primary transition-all cursor-pointer"
                                 disabled={actionLoading || !currentSite.code.trim()}
                             >
                                 Save Record
