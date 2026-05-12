@@ -11,6 +11,15 @@ export async function GET(req: Request) {
         }
 
         const versions = await getSiteVersions();
+        
+        // Attach content to the latest version so the frontend can render the preview/stats
+        if (versions.length > 0) {
+            const latestContent = await getSiteVersionContent(versions[0].id);
+            if (latestContent) {
+                (versions[0] as any).content = latestContent.content;
+            }
+        }
+        
         return NextResponse.json({ versions });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
