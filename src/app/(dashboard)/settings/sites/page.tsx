@@ -260,14 +260,22 @@ export default function SiteManagementPage() {
                             <Database size={24} strokeWidth={2.5} />
                         </div>
                         <div>
-                            <div className="flex items-center gap-2.5">
-                                <h1 className="text-xl font-black tracking-tight uppercase text-white">Site Operations</h1>
-                                <span className="px-2 py-0.5 rounded-full bg-white/5 text-accent-primary text-xs font-black border border-white/10">
-                                    {totalSites} {totalSites === 1 ? 'Site' : 'Sites'}
-                                </span>
-                            </div>
+                            <h1 className="text-xl font-black tracking-tight uppercase text-white">Site Operations</h1>
                             <p className="text-xs text-muted font-bold tracking-wide">Mapping Engine & Access Directives</p>
                         </div>
+                    </div>
+
+                    {/* Premium Bold Configuration Metrics Card on the extreme right */}
+                    <div className="flex items-center gap-3 text-right">
+                        <div>
+                            <div className="text-2xl font-black tracking-tighter text-accent-primary leading-none">
+                                {totalSites}
+                            </div>
+                            <span className="text-[10px] font-black text-muted uppercase tracking-widest block mt-0.5">
+                                {totalSites === 1 ? 'Configured Site' : 'Configured Sites'}
+                            </span>
+                        </div>
+                        <div className="h-8 w-1 rounded-full bg-accent-primary/20"></div>
                     </div>
                 </header>
 
