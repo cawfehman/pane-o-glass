@@ -12,7 +12,7 @@ export async function GET(req: Request) {
             return NextResponse.json({ error: 'Unauthorized: Site Management permission required' }, { status: 403 });
         }
 
-        const versions = await getSiteVersions();
+        let versions = await getSiteVersions();
         
         // Attach content to the latest version so the frontend can render the preview/stats
         if (versions.length > 0) {
@@ -20,6 +20,16 @@ export async function GET(req: Request) {
             if (latestContent) {
                 (versions[0] as any).content = latestContent.content;
             }
+        } else {
+            const defaultCsvContent = `Code,Name,Address,Status,Notes\nCAM,Camden Main Campus,"1 Cooper Plaza, Camden, NJ 08103",Active,Primary enterprise complex & acute care facility\nVOO,Voorhees Specialty Care,"900 Centennial Blvd, Voorhees Township, NJ 08043",Active,Ambulatory surgical suites and specialist wings\nCHE,Cherry Hill Outpatient,"1210 Brace Rd, Cherry Hill, NJ 08034",Active,Regional diagnostic labs and family medicine\nMOO,Moorestown Corporate Center,"401 Young Ave, Moorestown, NJ 08057",Active,IT operations, corporate accounting, billing`;
+            versions = [{
+                id: 'default-seeded-v1',
+                filename: 'Initial_Seed_v1.csv',
+                versionNumber: 1,
+                createdBy: 'System Provisioner',
+                createdAt: new Date(),
+                content: defaultCsvContent
+            } as any];
         }
         
         return NextResponse.json({ versions });
@@ -91,6 +101,8 @@ export async function PATCH(req: Request) {
                 currentCsv = latestContent.content;
             }
             versionNum = versions[0].versionNumber + 1;
+        } else {
+            currentCsv = `Code,Name,Address,Status,Notes\nCAM,Camden Main Campus,"1 Cooper Plaza, Camden, NJ 08103",Active,Primary enterprise complex & acute care facility\nVOO,Voorhees Specialty Care,"900 Centennial Blvd, Voorhees Township, NJ 08043",Active,Ambulatory surgical suites and specialist wings\nCHE,Cherry Hill Outpatient,"1210 Brace Rd, Cherry Hill, NJ 08034",Active,Regional diagnostic labs and family medicine\nMOO,Moorestown Corporate Center,"401 Young Ave, Moorestown, NJ 08057",Active,IT operations, corporate accounting, billing`;
         }
 
         // Parse current sites

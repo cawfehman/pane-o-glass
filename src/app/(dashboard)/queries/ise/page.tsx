@@ -11,7 +11,7 @@ export default function CiscoIsePage() {
     const [endpointResult, setEndpointResult] = useState<any>(null);
     const [historyResult, setHistoryResult] = useState<any>(null);
     const [discoveryResult, setDiscoveryResult] = useState<any>(null);
-    const [activeTab, setActiveTab] = useState<"dashboard" | "live" | "history">("dashboard");
+    const [activeTab, setActiveTab] = useState<"dashboard" | "live" | "history" | "sites">("dashboard");
     const [error, setError] = useState("");
     
     // RBAC state
@@ -31,6 +31,71 @@ export default function CiscoIsePage() {
         };
         fetchPerms();
     }, []);
+
+    // Configured sites state tracker
+    const [sitesList, setSitesList] = useState<any[]>([]);
+    const [sitesLoading, setSitesLoading] = useState(false);
+
+    useEffect(() => {
+        if (hasIsePerm) {
+            const fetchSites = async () => {
+                setSitesLoading(true);
+                try {
+                    const res = await fetch('/api/settings/sites');
+                    const data = await res.json();
+                    if (data?.versions?.[0]?.content) {
+                        const content = data.versions[0].content;
+                        const lines = content.split(/\r?\n/).filter((l: string) => l.trim() !== "");
+                        if (lines.length > 1) {
+                            const splitRow = (row: string) => {
+                                const result = [];
+                                let curr = '';
+                                let inQ = false;
+                                for (let i = 0; i < row.length; i++) {
+                                    if (row[i] === '"') inQ = !inQ;
+                                    else if (row[i] === ',' && !inQ) {
+                                        result.push(curr.trim().replace(/^"|"$/g, ''));
+                                        curr = '';
+                                    } else curr += row[i];
+                                }
+                                result.push(curr.trim().replace(/^"|"$/g, ''));
+                                return result;
+                            };
+                            const headers = splitRow(lines[0]).map((h: string) => h.toLowerCase());
+                            const cIdx = headers.indexOf('code');
+                            const nIdx = headers.indexOf('name');
+                            const aIdx = headers.indexOf('address');
+                            const sIdx = headers.indexOf('status');
+                            const ntIdx = headers.indexOf('notes');
+
+                            const parsed = [];
+                            for (let i = 1; i < lines.length; i++) {
+                                const pts = splitRow(lines[i]);
+                                if (pts.length > 0 && pts[cIdx]) {
+                                    const code = pts[cIdx]?.toUpperCase() || "";
+                                    if (code) {
+                                        parsed.push({
+                                            code,
+                                            name: nIdx !== -1 ? pts[nIdx] || code : code,
+                                            address: aIdx !== -1 ? pts[aIdx] || "" : "",
+                                            status: sIdx !== -1 ? pts[sIdx] || "Active" : "Active",
+                                            notes: ntIdx !== -1 ? pts[ntIdx] || "" : ""
+                                        });
+                                    }
+                                }
+                            }
+                            setSitesList(parsed);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to load site list directory", e);
+                } finally {
+                    setSitesLoading(false);
+                }
+            };
+            fetchSites();
+        }
+    }, [hasIsePerm]);
 
     const [triageData, setTriageData] = useState<any>(null);
     const [triageLoading, setTriageLoading] = useState(false);
@@ -231,7 +296,8 @@ export default function CiscoIsePage() {
                 {([
                     { id: 'dashboard', label: 'Triage Heatmap' },
                     { id: 'live', label: 'Live Session' },
-                    { id: 'history', label: 'Failure History' }
+                    { id: 'history', label: 'Failure History' },
+                    { id: 'sites', label: 'Site Directory' }
                 ] as const).map(tab => (
                     <button
                         key={tab.id}
@@ -590,6 +656,108 @@ export default function CiscoIsePage() {
                             <div className="glass-card" style={{ textAlign: 'center', padding: '60px 20px' }}>
                                 <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>No Forensic History Available</p>
                                 <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>ISE hasn't logged any RADIUS events for this target in the last 30 days.</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Read-Only Site Directory Tab */}
+                {activeTab === "sites" && (
+                    <div>
+                        <div className="glass-card mb-6" style={{ padding: '20px', borderLeft: '4px solid var(--accent-primary)' }}>
+                            <h3 style={{ margin: 0, marginBottom: '8px' }}>Active Site Topology Directory</h3>
+                            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                                Read-only global mapping table. Click any address to open Google Maps in a new tab for rapid physical location triage.
+                            </p>
+                        </div>
+
+                        {sitesLoading ? (
+                            <div className="glass-card" style={{ padding: '60px', textAlign: 'center' }}>
+                                <div className="spinner-small" style={{ margin: '0 auto 16px' }}></div>
+                                <p style={{ color: 'var(--text-secondary)' }}>Loading configured site definitions...</p>
+                            </div>
+                        ) : (
+                            <div className="table-responsive">
+                                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 8px' }}>
+                                    <thead>
+                                        <tr>
+                                            <th style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Site Code</th>
+                                            <th style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Site Name / Description</th>
+                                            <th style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Status</th>
+                                            <th style={{ textAlign: 'left', padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-color)' }}>Physical Address Mapping</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {sitesList.map((site, index) => {
+                                            let statusColor = '#4ade80';
+                                            if (site.status === 'Retired') statusColor = '#f87171';
+                                            else if (site.status === 'Future') statusColor = '#facc15';
+
+                                            return (
+                                                <tr key={index} style={{ background: 'rgba(255, 255, 255, 0.01)', transition: 'background 0.2s' }}>
+                                                    <td style={{ padding: '16px', borderBottom: '1px solid var(--border-color)' }}>
+                                                        <span style={{ fontFamily: 'monospace', fontWeight: 'bold', fontSize: '1rem', color: 'var(--text-primary)' }}>
+                                                            {site.code}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '16px', borderBottom: '1px solid var(--border-color)' }}>
+                                                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                                                            {site.name}
+                                                        </div>
+                                                        {site.notes && (
+                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                                {site.notes}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td style={{ padding: '16px', borderBottom: '1px solid var(--border-color)' }}>
+                                                        <span style={{ 
+                                                            display: 'inline-flex', 
+                                                            alignItems: 'center', 
+                                                            gap: '6px', 
+                                                            padding: '4px 10px', 
+                                                            borderRadius: '12px', 
+                                                            fontSize: '0.75rem', 
+                                                            fontWeight: 'bold',
+                                                            background: 'rgba(255,255,255,0.03)',
+                                                            border: '1px solid var(--border-color)',
+                                                            color: statusColor 
+                                                        }}>
+                                                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: statusColor }} />
+                                                            {site.status}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '16px', borderBottom: '1px solid var(--border-color)' }}>
+                                                        {site.address ? (
+                                                            <a 
+                                                                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.address)}`} 
+                                                                target="_blank" 
+                                                                rel="noopener noreferrer"
+                                                                style={{ color: 'var(--accent-primary)', textDecoration: 'none', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                                                                onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                                                                onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+                                                            >
+                                                                {site.address}
+                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                                                            </a>
+                                                        ) : (
+                                                            <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                                                                No physical coordinates populated
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                        {sitesList.length === 0 && !sitesLoading && (
+                                            <tr>
+                                                <td colSpan={4} style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                                    No site mappings available. Configure sites in the Site Operations directory.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
                             </div>
                         )}
                     </div>
