@@ -204,7 +204,13 @@ export async function resetPermissions(targetRoles?: string[]) {
             { toolId: 'ise', role: 'SYSTEMS', isEnabled: false },
             { toolId: 'ise-tacacs', role: 'SYSTEMS', isEnabled: false },
             { toolId: 'hibp-account', role: 'SYSTEMS', isEnabled: true },
-            { toolId: 'hibp-domain', role: 'SYSTEMS', isEnabled: true }
+            { toolId: 'hibp-domain', role: 'SYSTEMS', isEnabled: true },
+            { toolId: 'site-management', role: 'ADMIN', isEnabled: true },
+            { toolId: 'site-management', role: 'ANALYST', isEnabled: false },
+            { toolId: 'site-management', role: 'USER', isEnabled: false },
+            { toolId: 'site-management', role: 'NETWORK', isEnabled: true },
+            { toolId: 'site-management', role: 'DESKTOP', isEnabled: false },
+            { toolId: 'site-management', role: 'SYSTEMS', isEnabled: false }
         ];
 
         const filteredPermissions = rolesToReset 

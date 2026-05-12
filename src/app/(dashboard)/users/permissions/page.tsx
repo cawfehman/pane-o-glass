@@ -17,6 +17,7 @@ const TOOLS = [
     { id: 'hibp-account', name: 'HIBP Account Security' },
     { id: 'hibp-domain', name: 'HIBP Domain Security' },
     { id: 'vectra', name: 'Vectra Forensic Analysis' },
+    { id: 'site-management', name: 'Site Metadata Directory' },
 ];
 
 const ROLES = ["ADMIN", "ANALYST", "NETWORK", "DESKTOP", "SYSTEMS", "USER"];

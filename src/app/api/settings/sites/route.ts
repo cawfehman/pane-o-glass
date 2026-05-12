@@ -6,8 +6,9 @@ import { getSiteVersions, saveSiteMap, getSiteVersionContent, parseSiteCsv, stri
 export async function GET(req: Request) {
     try {
         const session = await auth();
-        if (!session?.user || (session.user as any).role !== 'ADMIN') {
-            return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 403 });
+        const role = (session?.user as any)?.role || 'USER';
+        if (!session?.user || !(await hasPermission(role, 'site-management'))) {
+            return NextResponse.json({ error: 'Unauthorized: Site Management permission required' }, { status: 403 });
         }
 
         const versions = await getSiteVersions();
@@ -29,8 +30,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
     try {
         const session = await auth();
-        if (!session?.user || (session.user as any).role !== 'ADMIN') {
-            return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 403 });
+        const role = (session?.user as any)?.role || 'USER';
+        if (!session?.user || !(await hasPermission(role, 'site-management'))) {
+            return NextResponse.json({ error: 'Unauthorized: Site Management permission required' }, { status: 403 });
         }
 
         const formData = await req.formData();
@@ -60,8 +62,9 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
     try {
         const session = await auth();
-        if (!session?.user || (session.user as any).role !== 'ADMIN') {
-            return NextResponse.json({ error: 'Unauthorized: Admin access required' }, { status: 403 });
+        const role = (session?.user as any)?.role || 'USER';
+        if (!session?.user || !(await hasPermission(role, 'site-management'))) {
+            return NextResponse.json({ error: 'Unauthorized: Site Management permission required' }, { status: 403 });
         }
 
         const body = await req.json();
