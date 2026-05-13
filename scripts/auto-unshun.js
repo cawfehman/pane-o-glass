@@ -116,6 +116,17 @@ async function runAutoUnshun() {
                                         ipCountryCode: ipInfo?.country_code || "IN"
                                     }
                                 });
+
+                                // Write to master System Audit trail
+                                await prisma.auditLog.create({
+                                    data: {
+                                        action: "AUTO_UNSHUN_TRIGGER",
+                                        details: `Guardian automated safety engine successfully cleared unauthorized shun for critical watched asset IP: ${ip} on firewall ${fw.name}`,
+                                        userId: guardianUser.id,
+                                        ipAddress: "internal-subagent"
+                                    }
+                                });
+
                                 console.log(`[GUARDIAN] Successfully unshunned and logged ${ip}.`);
                             }
                         }
