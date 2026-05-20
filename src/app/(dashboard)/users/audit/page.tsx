@@ -3,7 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
-export default async function AuditLogsPage() {
+export default async function AuditLogsPage(props: {
+    searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+    const searchParams = await props.searchParams;
     const session = await auth();
     const isAdmin = (session?.user as any)?.role === 'ADMIN';
 
@@ -11,11 +14,26 @@ export default async function AuditLogsPage() {
         redirect("/");
     }
 
+    const userFilter = typeof searchParams.user === 'string' ? searchParams.user : undefined;
+    const actionFilter = typeof searchParams.action === 'string' ? searchParams.action : undefined;
+
+    const whereClause: any = {};
+    if (actionFilter) {
+        whereClause.action = { contains: actionFilter };
+    }
+    if (userFilter) {
+        whereClause.OR = [
+            { userId: { contains: userFilter } },
+            { user: { username: { contains: userFilter } } }
+        ];
+    }
+
     const logs = await prisma.auditLog.findMany({
+        where: whereClause,
         orderBy: {
             createdAt: 'desc'
         },
-        take: 100, // Limit to 100 latest for performance on UI
+        take: 500,
         include: {
             user: {
                 select: {
@@ -38,6 +56,27 @@ export default async function AuditLogsPage() {
                     </a>
                 </div>
             </div>
+
+            <form method="GET" style={{ flexShrink: 0, display: 'flex', gap: '16px', marginBottom: '24px' }}>
+                <input 
+                    type="text" 
+                    name="user" 
+                    placeholder="Filter by user..." 
+                    defaultValue={userFilter || ''}
+                    style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-surface)', color: 'var(--text-primary)', width: '200px' }}
+                />
+                <input 
+                    type="text" 
+                    name="action" 
+                    placeholder="Filter by action..." 
+                    defaultValue={actionFilter || ''}
+                    style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-surface)', color: 'var(--text-primary)', width: '200px' }}
+                />
+                <button type="submit" className="btn-primary">Filter</button>
+                <Link href="/users/audit" className="btn-primary" style={{ textDecoration: 'none', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}>
+                    Clear
+                </Link>
+            </form>
 
             <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
