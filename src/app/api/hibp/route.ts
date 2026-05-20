@@ -23,9 +23,10 @@ export async function POST(request: Request) {
         // Domain restriction for cooperhealth.edu
         const sessionUsername = session.user?.name?.toLowerCase();
         const searchAccount = account.toLowerCase();
-        if (searchAccount.endsWith("@cooperhealth.edu")) {
+        const privilegedRoles = ['ADMIN', 'ANALYST', 'SYSTEMS'];
+        if (searchAccount.endsWith("@cooperhealth.edu") && !privilegedRoles.includes(role)) {
             if (searchAccount !== sessionUsername && searchAccount !== `${sessionUsername}@cooperhealth.edu`) {
-                return new NextResponse("Forbidden: You are only authorized to search your own cooperhealth.edu account.", { status: 403 });
+                return new NextResponse("Forbidden: You are only authorized to search your own cooperhealth.edu account. You can request assistance with additional account queries by reaching out to infosec@cooperhealth.edu", { status: 403 });
             }
         }
 
