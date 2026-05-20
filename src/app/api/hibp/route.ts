@@ -6,11 +6,14 @@ import { obfuscateAuditAccount } from "@/lib/obfuscation";
 
 export async function POST(request: Request) {
     try {
+        const clientIp = request.headers.get("x-forwarded-for")?.split(',')[0] || 'unknown';
+
         // 1. Verify Authentication & Authorization
         const session = await auth();
         const role = (session?.user as any)?.role;
 
         if (!session?.user || !(await hasPermission(role, 'hibp-account'))) {
+            await logAudit("UNAUTHORIZED_ACCESS", "Attempted to access HIBP Account Security tool without permission.", session?.user?.id, clientIp);
             return new NextResponse("Forbidden: Access to this tool is restricted.", { status: 403 });
         }
 
@@ -26,6 +29,8 @@ export async function POST(request: Request) {
         const privilegedRoles = ['ADMIN', 'ANALYST', 'SYSTEMS'];
         if (searchAccount.endsWith("@cooperhealth.edu") && !privilegedRoles.includes(role)) {
             if (searchAccount !== sessionUsername && searchAccount !== `${sessionUsername}@cooperhealth.edu`) {
+                const auditAccount = obfuscateAuditAccount(account);
+                await logAudit("HIBP_ACCOUNT_SEARCH_BLOCKED", `Blocked unauthorized search for cooperhealth.edu account: ${auditAccount}`, session.user?.id, clientIp);
                 return new NextResponse("Forbidden: cooperhealth.edu queries are limited to your own account. You may search for public addresses that you own, but other cooperhealth.edu queries are restricted. You can request assistance with additional account queries by reaching out to infosec@cooperhealth.edu", { status: 403 });
             }
         }
@@ -37,7 +42,6 @@ export async function POST(request: Request) {
         }
 
         // 3. Make the Request to HIBP (URL encoding the account per spec required)
-        const clientIp = request.headers.get("x-forwarded-for")?.split(',')[0] || 'unknown';
         const auditAccount = obfuscateAuditAccount(account);
         await logAudit("HIBP_ACCOUNT_SEARCH", `Searched breaches for account: ${auditAccount}`, session.user?.id, clientIp);
 
