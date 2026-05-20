@@ -26,7 +26,7 @@ export async function POST(request: Request) {
         const privilegedRoles = ['ADMIN', 'ANALYST', 'SYSTEMS'];
         if (searchAccount.endsWith("@cooperhealth.edu") && !privilegedRoles.includes(role)) {
             if (searchAccount !== sessionUsername && searchAccount !== `${sessionUsername}@cooperhealth.edu`) {
-                return new NextResponse("Forbidden: You are only authorized to search your own cooperhealth.edu account. You can request assistance with additional account queries by reaching out to infosec@cooperhealth.edu", { status: 403 });
+                return new NextResponse("Forbidden: cooperhealth.edu queries are limited to your own account. You may search for public addresses that you own, but other cooperhealth.edu queries are restricted. You can request assistance with additional account queries by reaching out to infosec@cooperhealth.edu", { status: 403 });
             }
         }
 
