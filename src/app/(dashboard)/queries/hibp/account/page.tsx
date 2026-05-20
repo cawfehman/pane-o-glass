@@ -64,6 +64,10 @@ export default function AccountSecurityPage() {
                         Queries the HIBP database to see if this email was involved in a known breach.
                     </p>
 
+                    <div style={{ backgroundColor: 'rgba(234,179,8,0.1)', color: '#eab308', padding: '12px', borderRadius: '8px', border: '1px solid #eab308', marginBottom: '1.5rem', fontSize: '0.875rem' }}>
+                        <strong>Compliance Notice:</strong> By using this tool, you affirm that the email addresses searched belong to you or your organization. All usage of this tool is monitored and recorded for compliance and auditing purposes.
+                    </div>
+
                     <form onSubmit={handleEmailSearch} style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', marginBottom: '2rem' }}>
                         <div className="input-group" style={{ flex: 1 }}>
                             <label htmlFor="account">Email Address or Username</label>
