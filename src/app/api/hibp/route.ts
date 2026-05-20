@@ -20,6 +20,15 @@ export async function POST(request: Request) {
             return new NextResponse("Account parameter is required", { status: 400 });
         }
 
+        // Domain restriction for cooperhealth.edu
+        const sessionUsername = session.user?.name?.toLowerCase();
+        const searchAccount = account.toLowerCase();
+        if (searchAccount.endsWith("@cooperhealth.edu")) {
+            if (searchAccount !== sessionUsername && searchAccount !== `${sessionUsername}@cooperhealth.edu`) {
+                return new NextResponse("Forbidden: You are only authorized to search your own cooperhealth.edu account.", { status: 403 });
+            }
+        }
+
         // 2. Read HIBP API Key
         const apiKey = process.env.HIBP_API_KEY;
         if (!apiKey) {
