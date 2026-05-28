@@ -14,6 +14,7 @@ export async function GET() {
 
         return NextResponse.json({
             isLive,
+            status: guardianJob?.status || "UNKNOWN",
             lastRun: guardianJob?.lastRun || null,
             watchList
         });

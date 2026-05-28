@@ -16,7 +16,7 @@ export default function CiscoFirewallPage() {
     const [history, setHistory] = useState<any[]>([]);
     const [loadingHistory, setLoadingHistory] = useState(true);
 
-    const [guardianStatus, setGuardianStatus] = useState<{ isLive: boolean; lastRun: string | null; watchList: string[] } | null>(null);
+    const [guardianStatus, setGuardianStatus] = useState<{ isLive: boolean; lastRun: string | null; watchList: string[]; status?: string } | null>(null);
 
     const fetchHistory = async () => {
         try {
@@ -128,7 +128,13 @@ export default function CiscoFirewallPage() {
 
                     {guardianStatus && (
                         <div 
-                            title={`Guardian is monitoring: ${guardianStatus.watchList.join(', ')}`}
+                            title={
+                                !guardianStatus.isLive 
+                                    ? `STALLED: Guardian heartbeat not detected in the last 5 minutes.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
+                                    : guardianStatus.status === 'WARNING'
+                                        ? `WARNING: Guardian is running but encountered an error on its last scan.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
+                                        : `ACTIVE: Guardian is running successfully.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
+                            }
                             style={{ 
                                 display: 'flex', 
                                 alignItems: 'center', 
@@ -144,11 +150,11 @@ export default function CiscoFirewallPage() {
                                 width: '8px', 
                                 height: '8px', 
                                 borderRadius: '50%', 
-                                backgroundColor: guardianStatus.isLive ? '#10b981' : '#ef4444',
-                                boxShadow: guardianStatus.isLive ? '0 0 8px #10b981' : 'none'
+                                backgroundColor: !guardianStatus.isLive ? '#ef4444' : (guardianStatus.status === 'WARNING' ? '#f59e0b' : '#10b981'),
+                                boxShadow: !guardianStatus.isLive ? 'none' : (guardianStatus.status === 'WARNING' ? '0 0 8px #f59e0b' : '0 0 8px #10b981')
                             }}></div>
-                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: guardianStatus.isLive ? '#10b981' : '#ef4444' }}>
-                                GUARDIAN: {guardianStatus.isLive ? "ACTIVE" : "STALLED"}
+                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: !guardianStatus.isLive ? '#ef4444' : (guardianStatus.status === 'WARNING' ? '#f59e0b' : '#10b981') }}>
+                                GUARDIAN: {!guardianStatus.isLive ? "STALLED" : (guardianStatus.status === 'WARNING' ? "WARNING" : "ACTIVE")}
                             </span>
                         </div>
                     )}

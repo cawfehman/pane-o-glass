@@ -81,6 +81,8 @@ async function runAutoUnshun() {
     console.log(`[GUARDIAN] Starting scan...`);
     console.log(`[GUARDIAN] Monitoring: ${watchList.join(', ')}`);
 
+    let guardianStatus = "SUCCESS";
+
     for (const fw of firewalls) {
         const ssh = new NodeSSH();
         try {
@@ -122,8 +124,28 @@ async function runAutoUnshun() {
                             if (match) {
                                 console.log(`[!!!] TRUE MATCH: Found active shun for ${ip} on ${fw.name}. Removing...`);
                                 
+                                buffer = ""; // Clear buffer before unshun
                                 stream.write(`no shun ${ip}\n`);
-                                await new Promise(r => setTimeout(r, 1000));
+                                await new Promise(r => setTimeout(r, 1500));
+                                
+                                const removeLines = buffer.split('\n').map(l => l.trim().toLowerCase());
+                                const isError = removeLines.some(line => line.includes('error') || line.includes('invalid') || line.includes('incomplete'));
+                                
+                                if (isError) {
+                                    console.error(`[GUARDIAN] FAILED to unshun ${ip} on ${fw.name}. Firewall response: ${buffer.trim().replace(/\n/g, ' ')}`);
+                                    guardianStatus = "WARNING";
+                                    await prisma.auditLog.create({
+                                        data: {
+                                            action: "AUTO_UNSHUN_FAILURE",
+                                            details: `Guardian automated safety engine FAILED to clear unauthorized shun for IP: ${ip} on firewall ${fw.name}. Response: ${buffer.trim().replace(/\n/g, ' ')}`,
+                                            userId: guardianUser.id,
+                                            ipAddress: "internal-subagent"
+                                        }
+                                    });
+                                    continue; // Skip logging success to DB
+                                }
+                                
+                                console.log(`[GUARDIAN] Firewall confirmed unshun for ${ip} on ${fw.name}.`);
                                 
                                 // Enrichment & Logging
                                 const ipInfo = await getIpInfo(ip);
@@ -164,6 +186,7 @@ async function runAutoUnshun() {
             ssh.dispose();
         } catch (err) {
             console.error(`[GUARDIAN] Error on ${fw.name}: ${err.message}`);
+            guardianStatus = "WARNING";
             ssh.dispose();
         }
     }
@@ -174,8 +197,8 @@ async function runAutoUnshun() {
     try {
         await prisma.backgroundJob.upsert({
             where: { name: "Firewall Guardian" },
-            update: { lastRun: new Date(), status: "SUCCESS" },
-            create: { name: "Firewall Guardian", status: "SUCCESS" }
+            update: { lastRun: new Date(), status: guardianStatus },
+            create: { name: "Firewall Guardian", status: guardianStatus }
         });
     } catch (e) {
         console.error("[GUARDIAN] Failed to update heartbeat:", e.message);
