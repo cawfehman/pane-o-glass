@@ -5,9 +5,37 @@ const axios = require('axios');
 const fs = require('fs');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
-const logFile = path.resolve(__dirname, 'guardian.log');
 const originalLog = console.log;
 const originalError = console.error;
+
+function getLogFile() {
+    const today = new Date().toISOString().split('T')[0];
+    return path.resolve(__dirname, `guardian-${today}.log`);
+}
+
+function cleanOldLogs() {
+    try {
+        const files = fs.readdirSync(__dirname);
+        const logPattern = /^guardian-\d{4}-\d{2}-\d{2}\.log$/;
+        const now = Date.now();
+        const maxAgeMs = 14 * 24 * 60 * 60 * 1000;
+
+        for (const file of files) {
+            if (logPattern.test(file)) {
+                const filePath = path.resolve(__dirname, file);
+                const stats = fs.statSync(filePath);
+                if (now - stats.mtimeMs > maxAgeMs) {
+                    fs.unlinkSync(filePath);
+                }
+            }
+        }
+    } catch (e) {
+        originalError("[GUARDIAN] Failed to clean old logs:", e.message);
+    }
+}
+
+// Clean old logs once when the script starts
+cleanOldLogs();
 
 function formatMsg(msg) {
     const ts = new Date().toISOString();
@@ -18,14 +46,14 @@ console.log = (...args) => {
     const msg = args.join(' ');
     const formatted = formatMsg(msg);
     originalLog(formatted);
-    fs.appendFileSync(logFile, formatted + '\n');
+    fs.appendFileSync(getLogFile(), formatted + '\n');
 };
 
 console.error = (...args) => {
     const msg = args.join(' ');
     const formatted = formatMsg(msg);
     originalError(formatted);
-    fs.appendFileSync(logFile, formatted + '\n');
+    fs.appendFileSync(getLogFile(), formatted + '\n');
 };
 
 const prisma = new PrismaClient();
