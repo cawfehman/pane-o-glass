@@ -2,7 +2,31 @@ const { NodeSSH } = require('node-ssh');
 const { PrismaClient } = require('@prisma/client');
 const path = require('path');
 const axios = require('axios');
+const fs = require('fs');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+const logFile = path.resolve(__dirname, 'guardian.log');
+const originalLog = console.log;
+const originalError = console.error;
+
+function formatMsg(msg) {
+    const ts = new Date().toISOString();
+    return `[${ts}] ${msg}`;
+}
+
+console.log = (...args) => {
+    const msg = args.join(' ');
+    const formatted = formatMsg(msg);
+    originalLog(formatted);
+    fs.appendFileSync(logFile, formatted + '\n');
+};
+
+console.error = (...args) => {
+    const msg = args.join(' ');
+    const formatted = formatMsg(msg);
+    originalError(formatted);
+    fs.appendFileSync(logFile, formatted + '\n');
+};
 
 const prisma = new PrismaClient();
 
