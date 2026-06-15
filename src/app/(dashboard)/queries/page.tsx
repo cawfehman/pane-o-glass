@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { getPermissionsForRole } from "@/app/actions/permissions";
-import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck } from "lucide-react";
+import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi } from "lucide-react";
 
 export default async function QueriesPage() {
     const session = await auth();
@@ -27,6 +27,13 @@ export default async function QueriesPage() {
             href: "/queries/ise",
             description: "Monitor real-time network authentication sessions and identity services for wired and wireless clients.",
             icon: <Activity size={24} />
+        },
+        {
+            id: 'vpn',
+            title: "VPN Troubleshooting",
+            href: "/queries/vpn",
+            description: "Analyze, search, and troubleshoot Secure Client (AnyConnect) VPN session connectivity, duration, bandwidth, and failures.",
+            icon: <Wifi size={24} />
         },
         {
             id: 'ise-tacacs',

@@ -14,6 +14,7 @@ const TOOLS = [
     { id: 'firewall', name: 'Cisco Firewall' },
     { id: 'ise', name: 'Cisco ISE Center' },
     { id: 'ise-tacacs', name: 'Cisco ISE TACACS' },
+    { id: 'vpn', name: 'VPN Troubleshooting' },
     { id: 'hibp-account', name: 'HIBP Account Security' },
     { id: 'hibp-domain', name: 'HIBP Domain Security' },
     { id: 'vectra', name: 'Vectra Forensic Analysis' },

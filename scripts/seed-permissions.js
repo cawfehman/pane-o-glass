@@ -8,6 +8,7 @@ const DEFAULT_PERMISSIONS = [
     { toolId: 'ise-failures', role: 'ADMIN', isEnabled: true },
     { toolId: 'hibp-account', role: 'ADMIN', isEnabled: true },
     { toolId: 'hibp-domain', role: 'ADMIN', isEnabled: true },
+    { toolId: 'vpn', role: 'ADMIN', isEnabled: true },
 
     // ANALYST: Core tools enabled
     { toolId: 'firewall', role: 'ANALYST', isEnabled: true },
@@ -15,6 +16,7 @@ const DEFAULT_PERMISSIONS = [
     { toolId: 'ise-failures', role: 'ANALYST', isEnabled: true },
     { toolId: 'hibp-account', role: 'ANALYST', isEnabled: true },
     { toolId: 'hibp-domain', role: 'ANALYST', isEnabled: false },
+    { toolId: 'vpn', role: 'ANALYST', isEnabled: true },
 
     // USER: Minimal tools enabled
     { toolId: 'firewall', role: 'USER', isEnabled: false },
@@ -22,6 +24,7 @@ const DEFAULT_PERMISSIONS = [
     { toolId: 'ise-failures', role: 'USER', isEnabled: false },
     { toolId: 'hibp-account', role: 'USER', isEnabled: true },
     { toolId: 'hibp-domain', role: 'USER', isEnabled: false },
+    { toolId: 'vpn', role: 'USER', isEnabled: false },
 ];
 
 async function main() {
