@@ -127,7 +127,12 @@ async function runSync() {
 
     try {
         const searchUrl = `${url}/api/search/universal/relative`;
-        const authHeader = `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
+        
+        // Support both username:password format and raw API token
+        const authHeader = token.includes(":") 
+            ? `Basic ${Buffer.from(token).toString("base64")}`
+            : `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
+        
         const agent = new https.Agent({ rejectUnauthorized: false });
 
         const response = await axios.get(searchUrl, {
