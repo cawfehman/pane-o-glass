@@ -31,8 +31,8 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
         ? rawStreams.replace(/^"|"$/g, '').split(",").map(id => id.trim()).filter(Boolean)
         : [];
 
-    // Construct Lucene query
-    const signatures = '("113039" OR "113019" OR "113015")';
+    // Construct Lucene query using the indexed MessageClass field
+    const signatures = 'MessageClass:(FTD-6-113039 OR FTD-4-113019 OR FTD-6-113015 OR FTD-4-113015)';
     let query = signatures;
 
     if (streamIds.length > 0) {

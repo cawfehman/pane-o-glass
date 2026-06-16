@@ -114,7 +114,7 @@ async function runSync() {
         ? rawStreams.replace(/^"|"$/g, '').split(",").map(id => id.trim()).filter(Boolean)
         : [];
 
-    const signatures = '("113039" OR "113019" OR "113015")';
+    const signatures = 'MessageClass:(FTD-6-113039 OR FTD-4-113019 OR FTD-6-113015 OR FTD-4-113015)';
     let query = signatures;
 
     if (streamIds.length > 0) {
