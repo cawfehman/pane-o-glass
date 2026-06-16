@@ -11,6 +11,8 @@ export default function VpnTroubleshootingPage() {
     const [searching, setSearching] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [syncing, setSyncing] = useState(false);
+    const [lastSync, setLastSync] = useState<any>(null);
 
     const [successfulIps, setSuccessfulIps] = useState<any[]>([]);
     const [failedIps, setFailedIps] = useState<any[]>([]);
@@ -26,10 +28,32 @@ export default function VpnTroubleshootingPage() {
             setSuccessfulIps(data.successfulIps || []);
             setFailedIps(data.failedIps || []);
             setRecentEvents(data.recentEvents || []);
+            setLastSync(data.lastSync || null);
         } catch (err: any) {
             setError(err.message || "An error occurred while loading dashboard data.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSync = async () => {
+        setSyncing(true);
+        setError("");
+        try {
+            const res = await fetch("/api/vpn/events", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ range: 1800 })
+            });
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || "Sync request failed");
+            }
+            await fetchDashboardData();
+        } catch (err: any) {
+            setError(err.message || "Failed to trigger log sync.");
+        } finally {
+            setSyncing(false);
         }
     };
 
@@ -100,6 +124,59 @@ export default function VpnTroubleshootingPage() {
                     Real-time ingestion, intelligence, and search for Secure Client VPN sessions.
                 </p>
             </header>
+
+            {/* Graylog Sync Status Widget */}
+            <div className="glass-card" style={{ 
+                marginBottom: '2rem', 
+                padding: '16px 20px', 
+                background: 'var(--bg-surface)', 
+                border: '1px solid var(--border-color)', 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                flexWrap: 'wrap',
+                gap: '12px'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ 
+                        background: lastSync?.status === "FAILURE" ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)', 
+                        color: lastSync?.status === "FAILURE" ? '#ef4444' : '#22c55e', 
+                        padding: '10px', 
+                        borderRadius: '8px' 
+                    }}>
+                        <Wifi size={20} />
+                    </div>
+                    <div>
+                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>Graylog SIEM Poller</h4>
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            {lastSync ? (
+                                <>
+                                    Last Sync: <strong>{formatDate(lastSync.lastRun)}</strong> ({lastSync.message})
+                                </>
+                            ) : (
+                                "No sync has run yet. Poller idle."
+                            )}
+                        </p>
+                    </div>
+                </div>
+                <button 
+                    onClick={handleSync} 
+                    disabled={syncing}
+                    className="btn-secondary"
+                    style={{ 
+                        padding: '8px 16px', 
+                        borderRadius: '8px', 
+                        fontSize: '0.875rem', 
+                        fontWeight: 600, 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '6px' 
+                    }}
+                >
+                    <Clock size={14} />
+                    {syncing ? "Syncing Logs..." : "Sync Now"}
+                </button>
+            </div>
 
             {error && (
                 <div className="glass-card" style={{ 
