@@ -2,6 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const axios = require('axios');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const prisma = new PrismaClient();
@@ -125,33 +126,27 @@ async function runSync() {
     log(`Querying Graylog: ${query}`);
 
     try {
-        const searchUrl = `${url}/api/search/universal/relative?query=${encodeURIComponent(query)}&range=600&limit=200&decorate=false`;
+        const searchUrl = `${url}/api/search/universal/relative`;
         const authHeader = `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
+        const agent = new https.Agent({ rejectUnauthorized: false });
 
-        const requestPromise = () => new Promise((resolve, reject) => {
-            https.get(searchUrl, {
-                headers: {
-                    "Authorization": authHeader,
-                    "Accept": "application/json",
-                    "X-Requested-By": "NextJS-App"
-                }
-            }, (res) => {
-                let rawData = '';
-                res.on('data', (chunk) => { rawData += chunk; });
-                res.on('end', () => {
-                    if (res.statusCode !== 200) {
-                        return reject(new Error(`HTTP ${res.statusCode}: ${rawData}`));
-                    }
-                    try {
-                        resolve(JSON.parse(rawData));
-                    } catch (e) {
-                        reject(e);
-                    }
-                });
-            }).on('error', reject);
+        const response = await axios.get(searchUrl, {
+            params: {
+                query,
+                range: "600",
+                limit: "200",
+                decorate: "false"
+            },
+            headers: {
+                "Authorization": authHeader,
+                "Accept": "application/json",
+                "X-Requested-By": "NextJS-App"
+            },
+            httpsAgent: agent,
+            timeout: 15000
         });
 
-        const data = await requestPromise();
+        const data = response.data;
         const messages = data.messages || [];
         log(`Fetched ${messages.length} total messages from Graylog matching VPN criteria.`);
 

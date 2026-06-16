@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getIpInfoLite } from "@/lib/ipinfo";
+import axios from "axios";
+import https from "https";
 
 // Helper to parse duration string (e.g. 0h:05m:30s) to seconds
 function parseDuration(durationStr: string): number | null {
@@ -41,30 +43,28 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
     }
 
     try {
-        // Build Graylog search URL
-        // Endpoint: /api/search/universal/relative
-        const searchUrl = new URL(`${url}/api/search/universal/relative`);
-        searchUrl.searchParams.append("query", query);
-        searchUrl.searchParams.append("range", rangeSeconds.toString());
-        searchUrl.searchParams.append("limit", "200");
-        searchUrl.searchParams.append("decorate", "false");
-
+        const searchUrl = `${url}/api/search/universal/relative`;
         const authHeader = `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
-        const response = await fetch(searchUrl.toString(), {
-            method: "GET",
+        
+        const agent = new https.Agent({ rejectUnauthorized: false });
+        
+        const response = await axios.get(searchUrl, {
+            params: {
+                query,
+                range: rangeSeconds.toString(),
+                limit: "200",
+                decorate: "false"
+            },
             headers: {
                 "Authorization": authHeader,
                 "Accept": "application/json",
                 "X-Requested-By": "NextJS-App"
-            }
+            },
+            httpsAgent: agent,
+            timeout: 15000
         });
 
-        if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`Graylog API returned status ${response.status}: ${errText}`);
-        }
-
-        const data = await response.json();
+        const data = response.data;
         const messages = data.messages || [];
         let newEventsCount = 0;
 
