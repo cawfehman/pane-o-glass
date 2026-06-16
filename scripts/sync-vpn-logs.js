@@ -145,7 +145,7 @@ async function runSync() {
             headers: {
                 "Authorization": authHeader,
                 "Accept": "application/json",
-                "X-Requested-By": "NextJS-App"
+                "X-Requested-By": "cli"
             },
             httpsAgent: agent,
             timeout: 15000
