@@ -267,13 +267,12 @@ export default function VpnTroubleshootingPage() {
                 </div>
             )}
 
-            {/* Sticky Search Bar (retains position on scroll with glass background) */}
+            {/* Sticky Search Bar (retains position on scroll with solid background & z-index) */}
             <section style={{ 
                 position: 'sticky', 
                 top: '0px', 
-                zIndex: 90, 
-                background: 'rgba(10, 11, 15, 0.85)', 
-                backdropFilter: 'blur(12px)',
+                zIndex: 110, 
+                background: 'var(--bg-background)', 
                 padding: '16px 0',
                 borderBottom: '1px solid var(--border-color)',
                 marginBottom: '2.5rem'
@@ -340,17 +339,17 @@ export default function VpnTroubleshootingPage() {
                         Search Results ({searchResults.length})
                     </h2>
                     <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
-                        <div style={{ overflowX: 'auto' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                        <div style={{ overflowY: 'auto', overflowX: 'auto', maxHeight: '400px', width: '100%' }}>
+                            <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead>
-                                    <tr style={{ borderBottom: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.02)' }}>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>Timestamp</th>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>User</th>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>Source IP</th>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>ISP / AS Info</th>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>Status</th>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>Duration</th>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>Total Tx/Rx</th>
+                                    <tr style={{ position: 'sticky', top: 0, zIndex: 10, borderBottom: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>Timestamp</th>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>User</th>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>Source IP</th>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>ISP / AS Info</th>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>Status</th>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>Duration</th>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>Total Tx/Rx</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -429,8 +428,8 @@ export default function VpnTroubleshootingPage() {
             {/* Main Dashboard Stats cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '2.5rem' }}>
                 
-                {/* Last 10 Successful Source IPs (Redesigned with ISP directly below IP) */}
-                <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                {/* Last 10 Successful Source IPs (with internal scrolling) */}
+                <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '480px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
                         <div style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '8px', borderRadius: '8px' }}>
                             <Wifi size={20} />
@@ -445,7 +444,7 @@ export default function VpnTroubleshootingPage() {
                     ) : successfulIps.length === 0 ? (
                         <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No successful connections recorded yet.</p>
                     ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
                             {successfulIps.map((evt) => (
                                 <div key={evt.id} style={{ 
                                     display: 'flex', 
@@ -488,15 +487,15 @@ export default function VpnTroubleshootingPage() {
                     )}
                 </div>
 
-                {/* Last 10 Failed Source IPs (Redesigned with ISP directly below IP) */}
-                <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                {/* Last 10 Failed Source IPs (with internal scrolling) */}
+                <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '480px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
                         <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '8px', borderRadius: '8px' }}>
                             <ShieldAlert size={20} />
                         </div>
                         <div>
                             <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Last 10 Unique Failed Source IPs</h3>
-                            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Recent authentication/connection failures</p>
+                            <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Recent failures</p>
                         </div>
                     </div>
                     {loading ? (
@@ -504,7 +503,7 @@ export default function VpnTroubleshootingPage() {
                     ) : failedIps.length === 0 ? (
                         <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No connection failures recorded yet.</p>
                     ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
                             {failedIps.map((evt) => (
                                 <div key={evt.id} style={{ 
                                     display: 'flex', 
@@ -549,24 +548,24 @@ export default function VpnTroubleshootingPage() {
 
             </div>
 
-            {/* Recent activity timeline */}
+            {/* Recent activity timeline (With sticky table headers and internal scroll container) */}
             <section style={{ width: '100%' }}>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Database size={20} style={{ color: 'var(--accent-primary)' }} />
                     Recent Activity Feed
                 </h2>
                 <div className="glass-card" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
-                    <div style={{ overflowX: 'auto', width: '100%' }}>
+                    <div style={{ overflowY: 'auto', overflowX: 'auto', maxHeight: '550px', width: '100%' }}>
                         <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', textAlign: 'left' }}>
                             <thead>
-                                <tr style={{ borderBottom: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.02)' }}>
-                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>Timestamp</th>
-                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>User</th>
-                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>Source IP</th>
-                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>ISP / AS Info</th>
-                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>Status</th>
-                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>Duration</th>
-                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>Data Transfer</th>
+                                <tr style={{ position: 'sticky', top: 0, zIndex: 10, borderBottom: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
+                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>Timestamp</th>
+                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>User</th>
+                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>Source IP</th>
+                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>ISP / AS Info</th>
+                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>Status</th>
+                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>Duration</th>
+                                    <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>Data Transfer</th>
                                 </tr>
                             </thead>
                             <tbody>
