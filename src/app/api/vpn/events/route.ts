@@ -35,12 +35,6 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
 
     // Construct Lucene query using the indexed MessageClass field (escaping hyphens for Lucene parser)
     const signatures = '(MessageClass:FTD\\-6\\-113039 OR MessageClass:FTD\\-4\\-113019 OR MessageClass:FTD\\-6\\-113015 OR MessageClass:FTD\\-4\\-113015)';
-    let query = signatures;
-
-    if (streamIds.length > 0) {
-        const streamQuery = streamIds.map(id => `streams:${id}`).join(" OR ");
-        query = `(${streamQuery}) AND ${signatures}`;
-    }
 
     try {
         const searchUrl = `${url}/api/search/universal/relative`;
@@ -52,13 +46,17 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
         
         const agent = new https.Agent({ rejectUnauthorized: false });
         
+        const params = new URLSearchParams();
+        params.append("query", signatures);
+        params.append("range", rangeSeconds.toString());
+        params.append("limit", "200");
+        params.append("decorate", "false");
+        for (const streamId of streamIds) {
+            params.append("filter", `streams:${streamId}`);
+        }
+
         const response = await axios.get(searchUrl, {
-            params: {
-                query,
-                range: rangeSeconds.toString(),
-                limit: "200",
-                decorate: "false"
-            },
+            params,
             headers: {
                 "Authorization": authHeader,
                 "Accept": "application/json",

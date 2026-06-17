@@ -116,12 +116,6 @@ async function runSync() {
         : [];
 
     const signatures = '(MessageClass:FTD\\-6\\-113039 OR MessageClass:FTD\\-4\\-113019 OR MessageClass:FTD\\-6\\-113015 OR MessageClass:FTD\\-4\\-113015)';
-    let query = signatures;
-
-    if (streamIds.length > 0) {
-        const streamQuery = streamIds.map(id => `streams:${id}`).join(" OR ");
-        query = `(${streamQuery}) AND ${signatures}`;
-    }
 
     log(`Querying Graylog for VPN events (Streams configured: ${streamIds.length > 0 ? streamIds.join(', ') : 'None'})`);
 
@@ -135,13 +129,17 @@ async function runSync() {
         
         const agent = new https.Agent({ rejectUnauthorized: false });
 
+        const params = new URLSearchParams();
+        params.append("query", signatures);
+        params.append("range", "600");
+        params.append("limit", "200");
+        params.append("decorate", "false");
+        for (const streamId of streamIds) {
+            params.append("filter", `streams:${streamId}`);
+        }
+
         const response = await axios.get(searchUrl, {
-            params: {
-                query,
-                range: "600",
-                limit: "200",
-                decorate: "false"
-            },
+            params,
             headers: {
                 "Authorization": authHeader,
                 "Accept": "application/json",
