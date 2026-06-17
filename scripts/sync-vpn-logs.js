@@ -316,20 +316,33 @@ async function runSync() {
     }
 }
 
-// Polling Loop (Run every 5 minutes / 300 seconds)
-const INTERVAL_MS = 5 * 60 * 1000;
+// Check execution mode (Daemon vs Cron Job)
+if (process.argv.includes('--once')) {
+    log("Running sync once (Cron mode)...");
+    runSync()
+        .then(() => prisma.$disconnect())
+        .catch(err => {
+            errorLog("Cron run failed:", err);
+            prisma.$disconnect();
+            process.exit(1);
+        });
+} else {
+    // Polling Loop (Run every 5 minutes / 300 seconds)
+    const INTERVAL_MS = 5 * 60 * 1000;
 
-async function startPolling() {
-    log("Starting background Graylog VPN Sync Daemon...");
-    // Initial run
-    await runSync();
-
-    setInterval(async () => {
-        log("Executing scheduled poll...");
+    async function startPolling() {
+        log("Starting background Graylog VPN Sync Daemon...");
+        // Initial run
         await runSync();
-    }, INTERVAL_MS);
-}
 
-startPolling().catch(err => {
-    errorLog("Daemon crashed:", err);
-});
+        setInterval(async () => {
+            log("Executing scheduled poll...");
+            await runSync();
+        }, INTERVAL_MS);
+    }
+
+    startPolling().catch(err => {
+        errorLog("Daemon crashed:", err);
+        prisma.$disconnect();
+    });
+}
