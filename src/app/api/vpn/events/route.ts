@@ -95,6 +95,11 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
             messages = response.data.messages || [];
         }
 
+        console.log(`[VPN-DEBUG] Total combined messages returned from Graylog: ${messages.length}`);
+        if (messages.length > 0) {
+            console.log(`[VPN-DEBUG] Sample log 0: "${messages[0].message?.message}"`);
+        }
+
         let newEventsCount = 0;
 
         // Regexes for FTD/ASA parsing (making the FTD/ASA header prefix optional in case Graylog stripped it)
