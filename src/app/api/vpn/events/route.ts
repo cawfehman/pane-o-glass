@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getIpInfoLite } from "@/lib/ipinfo";
+import { getUserDetails } from "@/lib/ldap";
 import axios from "axios";
 import https from "https";
 
@@ -242,11 +243,25 @@ export async function GET(req: NextRequest) {
         const { searchParams } = new URL(req.url);
         const query = searchParams.get("q");
 
+        let results: any[] = [];
+        let isSearchMode = false;
+
         if (query) {
+            isSearchMode = true;
             const cleanedQuery = query.trim();
-            // Search by either username or IP address
-            const results = await prisma.vpnEvent.findMany({
-                where: {
+            
+            let dateFilter: any = null;
+            if (cleanedQuery.length >= 6 && !/^[a-zA-Z]+$/.test(cleanedQuery)) {
+                const parsedDate = new Date(cleanedQuery);
+                if (!isNaN(parsedDate.getTime())) {
+                    const start = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
+                    const end = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 23, 59, 59, 999);
+                    dateFilter = { createdAt: { gte: start, lte: end } };
+                }
+            }
+
+            results = await prisma.vpnEvent.findMany({
+                where: dateFilter ? dateFilter : {
                     OR: [
                         { username: { contains: cleanedQuery } },
                         { sourceIp: { contains: cleanedQuery } }
@@ -255,10 +270,9 @@ export async function GET(req: NextRequest) {
                 orderBy: { createdAt: "desc" },
                 take: 100
             });
-            return NextResponse.json(results);
         }
 
-        // Dashboard mode: fetch recent data to parse the last 10 unique successful/failed IPs
+        // Fetch recent data to parse the last 10 unique successful/failed IPs
         const recentSuccessEvents = await prisma.vpnEvent.findMany({
             where: {
                 status: { in: ["SUCCESS", "DISCONNECT"] }
@@ -306,11 +320,39 @@ export async function GET(req: NextRequest) {
             });
         } catch (e) {}
 
+        // Gather unique usernames for AD Info enrichment
+        const uniqueUsernames = Array.from(new Set([
+            ...successfulIps.map(e => e.username),
+            ...failedIps.map(e => e.username),
+            ...recentEvents.map(e => e.username),
+            ...results.map(e => e.username)
+        ].filter(Boolean)));
+
+        const adUsers: Record<string, any> = {};
+        await Promise.all(uniqueUsernames.map(async (uname) => {
+            try {
+                const details = await getUserDetails(uname);
+                if (details) {
+                    adUsers[uname] = details;
+                }
+            } catch (e) {
+                // Ignore LDAP lookup failure
+            }
+        }));
+
+        if (isSearchMode) {
+            return NextResponse.json({
+                results,
+                adUsers
+            });
+        }
+
         return NextResponse.json({
             successfulIps,
             failedIps,
             recentEvents,
-            lastSync: lastSyncStatus
+            lastSync: lastSyncStatus,
+            adUsers
         });
 
     } catch (error: any) {

@@ -18,6 +18,10 @@ export default function VpnTroubleshootingPage() {
     const [failedIps, setFailedIps] = useState<any[]>([]);
     const [recentEvents, setRecentEvents] = useState<any[]>([]);
     const [searchResults, setSearchResults] = useState<any[] | null>(null);
+    
+    // Active Directory user enrichment maps
+    const [adUsers, setAdUsers] = useState<Record<string, any>>({});
+    const [hoveredUser, setHoveredUser] = useState<string | null>(null);
 
     const fetchDashboardData = async () => {
         try {
@@ -29,6 +33,9 @@ export default function VpnTroubleshootingPage() {
             setFailedIps(data.failedIps || []);
             setRecentEvents(data.recentEvents || []);
             setLastSync(data.lastSync || null);
+            if (data.adUsers) {
+                setAdUsers(prev => ({ ...prev, ...data.adUsers }));
+            }
         } catch (err: any) {
             setError(err.message || "An error occurred while loading dashboard data.");
         } finally {
@@ -70,7 +77,10 @@ export default function VpnTroubleshootingPage() {
             const res = await fetch(`/api/vpn/events?q=${encodeURIComponent(searchQuery)}`);
             if (!res.ok) throw new Error("Search request failed");
             const data = await res.json();
-            setSearchResults(data);
+            setSearchResults(data.results || []);
+            if (data.adUsers) {
+                setAdUsers(prev => ({ ...prev, ...data.adUsers }));
+            }
         } catch (err: any) {
             setError(err.message || "An error occurred during search.");
         } finally {
@@ -114,69 +124,131 @@ export default function VpnTroubleshootingPage() {
         });
     };
 
-    return (
-        <div className="page-container" style={{ paddingBottom: '3rem' }}>
-            <header style={{ marginBottom: '2.5rem' }}>
-                <h1 style={{ fontSize: '2.25rem', fontWeight: 800, marginBottom: '0.5rem', letterSpacing: '-0.025em' }}>
-                    VPN Connectivity & Troubleshooting
-                </h1>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem' }}>
-                    Real-time ingestion, intelligence, and search for Secure Client VPN sessions.
-                </p>
-            </header>
+    // Render User with Active Directory hover details
+    const renderUserHover = (username: string, keyId: string) => {
+        const userAd = adUsers[username];
+        return (
+            <span 
+                style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: userAd ? 'help' : 'default' }}
+                onMouseEnter={() => userAd && setHoveredUser(keyId)}
+                onMouseLeave={() => setHoveredUser(null)}
+            >
+                <User size={14} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+                <span style={{ 
+                    borderBottom: userAd ? '1px dotted var(--text-secondary)' : 'none', 
+                    color: 'var(--text-primary)', 
+                    fontWeight: 500 
+                }}>
+                    {username}
+                </span>
+                {hoveredUser === keyId && userAd && (
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '125%',
+                        left: '0',
+                        zIndex: 150,
+                        width: '260px',
+                        padding: '12px',
+                        background: 'rgba(15, 18, 25, 0.98)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '8px',
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.8rem',
+                        textAlign: 'left',
+                        backdropFilter: 'blur(10px)',
+                        pointerEvents: 'none'
+                    }}>
+                        <div style={{ 
+                            fontWeight: 700, 
+                            fontSize: '0.85rem', 
+                            marginBottom: '6px', 
+                            color: 'var(--accent-primary)', 
+                            borderBottom: '1px solid rgba(255,255,255,0.08)', 
+                            paddingBottom: '4px' 
+                        }}>
+                            {userAd.displayName || username}
+                        </div>
+                        {userAd.title && (
+                            <div style={{ marginBottom: '4px' }}><strong>Title:</strong> {userAd.title}</div>
+                        )}
+                        {userAd.department && (
+                            <div style={{ marginBottom: '4px' }}><strong>Dept:</strong> {userAd.department}</div>
+                        )}
+                        {userAd.email && (
+                            <div style={{ marginBottom: '4px' }}><strong>Email:</strong> {userAd.email}</div>
+                        )}
+                        {userAd.phone && (
+                            <div><strong>Phone:</strong> {userAd.phone}</div>
+                        )}
+                    </div>
+                )}
+            </span>
+        );
+    };
 
-            {/* Graylog Sync Status Widget */}
-            <div className="glass-card" style={{ 
+    return (
+        <div className="page-container" style={{ paddingBottom: '3rem', width: '100%', maxWidth: '100%' }}>
+            {/* Header Area containing Title and Less Prominent SIEM Poller widget */}
+            <header style={{ 
                 marginBottom: '2rem', 
-                padding: '16px 20px', 
-                background: 'var(--bg-surface)', 
-                border: '1px solid var(--border-color)', 
                 display: 'flex', 
                 justifyContent: 'space-between', 
                 alignItems: 'center', 
-                flexWrap: 'wrap',
-                gap: '12px'
+                flexWrap: 'wrap', 
+                gap: '16px' 
             }}>
+                <div>
+                    <h1 style={{ fontSize: '2.25rem', fontWeight: 800, marginBottom: '0.5rem', letterSpacing: '-0.025em' }}>
+                        VPN Connectivity & Troubleshooting
+                    </h1>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', margin: 0 }}>
+                        Real-time ingestion, intelligence, and search for Secure Client VPN sessions.
+                    </p>
+                </div>
+
+                {/* Streamlined SIEM Poller Widget */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{ 
-                        background: lastSync?.status === "FAILURE" ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)', 
-                        color: lastSync?.status === "FAILURE" ? '#ef4444' : '#22c55e', 
-                        padding: '10px', 
-                        borderRadius: '8px' 
+                        fontSize: '0.8rem', 
+                        padding: '6px 12px', 
+                        borderRadius: '20px', 
+                        background: 'var(--bg-surface)', 
+                        border: '1px solid var(--border-color)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
                     }}>
-                        <Wifi size={20} />
+                        <span style={{ 
+                            width: '8px', 
+                            height: '8px', 
+                            borderRadius: '50%', 
+                            background: lastSync?.status === "FAILURE" ? '#ef4444' : '#22c55e',
+                            boxShadow: lastSync?.status === "FAILURE" ? '0 0 8px #ef4444' : '0 0 8px #22c55e'
+                        }} />
+                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
+                            SIEM Poller: {lastSync ? `${lastSync.status} (${formatDate(lastSync.lastRun)})` : "Idle"}
+                        </span>
                     </div>
-                    <div>
-                        <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600 }}>Graylog SIEM Poller</h4>
-                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                            {lastSync ? (
-                                <>
-                                    Last Sync: <strong>{formatDate(lastSync.lastRun)}</strong> ({lastSync.message})
-                                </>
-                            ) : (
-                                "No sync has run yet. Poller idle."
-                            )}
-                        </p>
-                    </div>
+                    <button 
+                        onClick={handleSync} 
+                        disabled={syncing}
+                        className="btn-secondary"
+                        style={{ 
+                            padding: '6px 12px', 
+                            borderRadius: '8px', 
+                            fontSize: '0.8rem', 
+                            fontWeight: 600, 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '6px' 
+                        }}
+                    >
+                        <Clock size={12} />
+                        {syncing ? "Syncing..." : "Sync Now"}
+                    </button>
                 </div>
-                <button 
-                    onClick={handleSync} 
-                    disabled={syncing}
-                    className="btn-secondary"
-                    style={{ 
-                        padding: '8px 16px', 
-                        borderRadius: '8px', 
-                        fontSize: '0.875rem', 
-                        fontWeight: 600, 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '6px' 
-                    }}
-                >
-                    <Clock size={14} />
-                    {syncing ? "Syncing Logs..." : "Sync Now"}
-                </button>
-            </div>
+            </header>
 
             {error && (
                 <div className="glass-card" style={{ 
@@ -195,8 +267,17 @@ export default function VpnTroubleshootingPage() {
                 </div>
             )}
 
-            {/* Search Controls */}
-            <section style={{ marginBottom: '2.5rem' }}>
+            {/* Sticky Search Bar (retains position on scroll with glass background) */}
+            <section style={{ 
+                position: 'sticky', 
+                top: '0px', 
+                zIndex: 90, 
+                background: 'rgba(10, 11, 15, 0.85)', 
+                backdropFilter: 'blur(12px)',
+                padding: '16px 0',
+                borderBottom: '1px solid var(--border-color)',
+                marginBottom: '2.5rem'
+            }}>
                 <form onSubmit={handleSearch} style={{ display: 'flex', gap: '12px' }}>
                     <div style={{ position: 'relative', flex: 1 }}>
                         <Search size={20} style={{ 
@@ -208,9 +289,10 @@ export default function VpnTroubleshootingPage() {
                         }} />
                         <input
                             type="text"
-                            placeholder="Search by Username or IP address..."
+                            placeholder="Search by Username, IP address, or Date (e.g. YYYY-MM-DD)..."
                             value={searchQuery}
                             onChange={(e) => {
+                                // Allow searching by Username, IP, or Day/Date
                                 setSearchQuery(e.target.value);
                                 if (!e.target.value.trim()) setSearchResults(null);
                             }}
@@ -283,10 +365,7 @@ export default function VpnTroubleshootingPage() {
                                             <tr key={evt.id} style={{ borderBottom: '1px solid var(--border-color)', transition: 'background-color 0.2s' }} className="table-row-hover">
                                                 <td style={{ padding: '14px 16px', fontSize: '0.9rem' }}>{formatDate(evt.createdAt)}</td>
                                                 <td style={{ padding: '14px 16px', fontWeight: 500 }}>
-                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <User size={14} style={{ color: 'var(--accent-primary)' }} />
-                                                        {evt.username}
-                                                    </span>
+                                                    {renderUserHover(evt.username, evt.id + "-search")}
                                                 </td>
                                                 <td style={{ padding: '14px 16px', fontFamily: 'monospace', fontSize: '0.95rem' }}>{evt.sourceIp}</td>
                                                 <td style={{ padding: '14px 16px', fontSize: '0.875rem' }}>
@@ -350,7 +429,7 @@ export default function VpnTroubleshootingPage() {
             {/* Main Dashboard Stats cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '2.5rem' }}>
                 
-                {/* Last 10 Successful Source IPs */}
+                {/* Last 10 Successful Source IPs (Redesigned with ISP directly below IP) */}
                 <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
                         <div style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '8px', borderRadius: '8px' }}>
@@ -372,27 +451,36 @@ export default function VpnTroubleshootingPage() {
                                     display: 'flex', 
                                     alignItems: 'center', 
                                     justifyContent: 'space-between', 
-                                    padding: '10px 12px',
+                                    padding: '12px 14px',
                                     borderRadius: '8px', 
                                     background: 'rgba(255,255,255,0.01)',
-                                    border: '1px solid var(--border-color)'
+                                    border: '1px solid var(--border-color)',
+                                    gap: '12px'
                                 }}>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                        <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1.05rem', color: 'var(--text-primary)' }}>
                                             {evt.sourceIp}
                                         </span>
-                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <User size={12} /> {evt.username} • {formatDate(evt.createdAt)}
-                                        </span>
-                                    </div>
-                                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
                                         {evt.ipAsName ? (
-                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', background: 'rgba(255,255,255,0.04)', padding: '2px 6px', borderRadius: '4px', color: 'var(--text-muted)' }}>
-                                                <Globe size={10} /> {evt.ipAsName.length > 20 ? `${evt.ipAsName.substring(0, 18)}...` : evt.ipAsName}
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={`${evt.ipAsn} • ${evt.ipCountryCode || evt.ipCountry || "Unknown"}`}>
+                                                <Globe size={11} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
+                                                    {evt.ipAsName}
+                                                </span>
                                             </span>
                                         ) : (
-                                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Private / Local IP</span>
+                                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                <Globe size={11} style={{ flexShrink: 0 }} /> Private / Local IP
+                                            </span>
                                         )}
+                                    </div>
+                                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                            {renderUserHover(evt.username, evt.id + "-succ")}
+                                        </span>
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <Clock size={11} /> {formatDate(evt.createdAt)}
+                                        </span>
                                     </div>
                                 </div>
                             ))}
@@ -400,7 +488,7 @@ export default function VpnTroubleshootingPage() {
                     )}
                 </div>
 
-                {/* Last 10 Failed Source IPs */}
+                {/* Last 10 Failed Source IPs (Redesigned with ISP directly below IP) */}
                 <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
                         <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '8px', borderRadius: '8px' }}>
@@ -422,28 +510,36 @@ export default function VpnTroubleshootingPage() {
                                     display: 'flex', 
                                     alignItems: 'center', 
                                     justifyContent: 'space-between', 
-                                    padding: '10px 12px',
+                                    padding: '12px 14px',
                                     borderRadius: '8px', 
                                     background: 'rgba(255,255,255,0.01)',
-                                    border: '1px solid var(--border-color)'
+                                    border: '1px solid var(--border-color)',
+                                    gap: '12px'
                                 }}>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                        <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1rem', color: '#f87171' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1.05rem', color: '#f87171' }}>
                                             {evt.sourceIp}
                                         </span>
-                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <User size={12} /> {evt.username} • {formatDate(evt.createdAt)}
-                                        </span>
-                                    </div>
-                                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                                        <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 500 }}>
-                                            {evt.failureReason || "Authentication Failed"}
-                                        </span>
-                                        {evt.ipAsName && (
-                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                                {evt.ipAsName.length > 20 ? `${evt.ipAsName.substring(0, 18)}...` : evt.ipAsName}
+                                        {evt.ipAsName ? (
+                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={`${evt.ipAsn} • ${evt.ipCountryCode || evt.ipCountry || "Unknown"}`}>
+                                                <Globe size={11} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
+                                                    {evt.ipAsName}
+                                                </span>
+                                            </span>
+                                        ) : (
+                                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                <Globe size={11} style={{ flexShrink: 0 }} /> Private / Local IP
                                             </span>
                                         )}
+                                    </div>
+                                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                            {renderUserHover(evt.username, evt.id + "-fail")}
+                                        </span>
+                                        <span style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: 500, display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
+                                            <ShieldAlert size={11} /> {evt.failureReason || "Failed"}
+                                        </span>
                                     </div>
                                 </div>
                             ))}
@@ -454,14 +550,14 @@ export default function VpnTroubleshootingPage() {
             </div>
 
             {/* Recent activity timeline */}
-            <section>
+            <section style={{ width: '100%' }}>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Database size={20} style={{ color: 'var(--accent-primary)' }} />
                     Recent Activity Feed
                 </h2>
-                <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                <div className="glass-card" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
+                    <div style={{ overflowX: 'auto', width: '100%' }}>
+                        <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', textAlign: 'left' }}>
                             <thead>
                                 <tr style={{ borderBottom: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.02)' }}>
                                     <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600 }}>Timestamp</th>
@@ -491,10 +587,7 @@ export default function VpnTroubleshootingPage() {
                                         <tr key={evt.id} style={{ borderBottom: '1px solid var(--border-color)', transition: 'background-color 0.2s' }} className="table-row-hover">
                                             <td style={{ padding: '14px 16px', fontSize: '0.9rem' }}>{formatDate(evt.createdAt)}</td>
                                             <td style={{ padding: '14px 16px', fontWeight: 500 }}>
-                                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                    <User size={14} style={{ color: 'var(--accent-primary)' }} />
-                                                    {evt.username}
-                                                </span>
+                                                {renderUserHover(evt.username, evt.id + "-timeline")}
                                             </td>
                                             <td style={{ padding: '14px 16px', fontFamily: 'monospace', fontSize: '0.95rem' }}>{evt.sourceIp}</td>
                                             <td style={{ padding: '14px 16px', fontSize: '0.875rem' }}>
