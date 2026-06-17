@@ -179,10 +179,10 @@ async function runSync() {
 
         log(`Fetched ${messages.length} total messages from Graylog matching VPN criteria.`);
 
-        // Regexes for FTD/ASA parsing
-        const connRegex = /%(?:FTD|ASA)-\d-113039:\s+Group\s+<[^>]+>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>/i;
-        const failRegex = /%(?:FTD|ASA)-\d-113015:\s+AAA\s+user\s+authentication\s+Rejected\s+:\s+reason\s+=\s+(.+?)\s+:\s+User\s+=\s+(.+?)\s+:\s+IP\s+=\s+([^\s]+)/i;
-        const discRegex = /%(?:FTD|ASA)-\d-113019:\s+Group\s+<[^>]+>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>.*?Duration:\s*([^,]+).*?Bytes\s+Tx:\s*(\d+).*?Bytes\s+Rx:\s*(\d+)/i;
+        // Regexes for FTD/ASA parsing (making the FTD/ASA header prefix optional in case Graylog stripped it)
+        const connRegex = /(?:%(?:FTD|ASA)-\d-113039:\s+)?Group\s+<[^>]+>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>\s+session\s+established/i;
+        const failRegex = /(?:%(?:FTD|ASA)-\d-113015:\s+)?AAA\s+user\s+authentication\s+Rejected\s+:\s+reason\s+=\s+(.+?)\s+:\s+User\s+=\s+(.+?)\s+:\s+IP\s+=\s+([^\s]+)/i;
+        const discRegex = /(?:%(?:FTD|ASA)-\d-113019:\s+)?Group\s+<[^>]+>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>.*?Duration:\s*([^,]+).*?Bytes\s+Tx:\s*(\d+).*?Bytes\s+Rx:\s*(\d+)/i;
 
         let addedCount = 0;
 
