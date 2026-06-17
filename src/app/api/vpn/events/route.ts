@@ -136,17 +136,42 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
 
             if (!username || !sourceIp) continue;
 
-            // Deduplication: check if exact same event already exists in database
+            const bytesTotal = (bytesSent !== null || bytesReceived !== null) 
+                ? (bytesSent || 0) + (bytesReceived || 0) 
+                : null;
+
+            // Deduplication: check if an event for same user/IP/status exists within 5 seconds of the timestamp
+            const fiveSeconds = 5 * 1000;
+            const rangeStart = new Date(logTimestamp.getTime() - fiveSeconds);
+            const rangeEnd = new Date(logTimestamp.getTime() + fiveSeconds);
+
             const existing = await prisma.vpnEvent.findFirst({
                 where: {
                     username,
                     sourceIp,
                     status,
-                    createdAt: logTimestamp
+                    createdAt: {
+                        gte: rangeStart,
+                        lte: rangeEnd
+                    }
                 }
             });
 
-            if (existing) continue; // Event already imported
+            if (existing) {
+                // If it is a disconnect event and we now have a log with actual byte counts, update the existing record
+                if (status === "DISCONNECT" && (!existing.bytesTotal || existing.bytesTotal === 0) && bytesTotal && bytesTotal > 0) {
+                    await prisma.vpnEvent.update({
+                        where: { id: existing.id },
+                        data: {
+                            bytesSent,
+                            bytesReceived,
+                            bytesTotal,
+                            duration: duration || existing.duration
+                        }
+                    });
+                }
+                continue; // Skip creating a duplicate record
+            }
 
             // Perform IP info enrichment
             let ipInfo = null;
@@ -155,10 +180,6 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
             } catch (enrichError) {
                 console.error(`Failed to enrich IP ${sourceIp}:`, enrichError);
             }
-
-            const bytesTotal = (bytesSent !== null || bytesReceived !== null) 
-                ? (bytesSent || 0) + (bytesReceived || 0) 
-                : null;
 
             // Save to database
             await prisma.vpnEvent.create({
