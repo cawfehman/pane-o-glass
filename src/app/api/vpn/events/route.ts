@@ -4,13 +4,21 @@ import { getIpInfoLite } from "@/lib/ipinfo";
 import axios from "axios";
 import https from "https";
 
-// Helper to parse duration string (e.g. 0h:05m:30s) to seconds
+// Helper to parse duration string (e.g. 0h:05m:30s or 1d 0h:05m:30s) to seconds
 function parseDuration(durationStr: string): number | null {
     if (!durationStr) return null;
-    const match = durationStr.trim().match(/(\d+)\s*h\s*:\s*(\d+)\s*m\s*:\s*(\d+)\s*s/i);
-    if (match) {
-        return parseInt(match[1], 10) * 3600 + parseInt(match[2], 10) * 60 + parseInt(match[3], 10);
+    
+    let days = 0;
+    const dayMatch = durationStr.trim().match(/(\d+)\s*d/i);
+    if (dayMatch) {
+        days = parseInt(dayMatch[1], 10);
     }
+    
+    const timeMatch = durationStr.trim().match(/(\d+)\s*h\s*:\s*(\d+)\s*m\s*:\s*(\d+)\s*s/i);
+    if (timeMatch) {
+        return (days * 86400) + parseInt(timeMatch[1], 10) * 3600 + parseInt(timeMatch[2], 10) * 60 + parseInt(timeMatch[3], 10);
+    }
+    
     const seconds = parseInt(durationStr, 10);
     return isNaN(seconds) ? null : seconds;
 }
@@ -77,9 +85,9 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
         let newEventsCount = 0;
 
         // Regexes for FTD/ASA parsing (making the FTD/ASA header prefix optional in case Graylog stripped it)
-        const connRegex = /(?:%(?:FTD|ASA)-\d-113039:\s+)?Group\s+<[^>]+>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>\s+session\s+established/i;
+        const connRegex = /(?:Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>|Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+))/i;
         const failRegex = /(?:%(?:FTD|ASA)-\d-113015:\s+)?AAA\s+user\s+authentication\s+Rejected\s+:\s+reason\s+=\s+(.+?)\s+:\s+User\s+=\s+(.+?)\s+:\s+IP\s+=\s+([^\s]+)/i;
-        const discRegex = /(?:%(?:FTD|ASA)-\d-113019:\s+)?Group\s+<[^>]+>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>.*?Duration:\s*([^,]+).*?Bytes\s+Tx:\s*(\d+).*?Bytes\s+Rx:\s*(\d+)/i;
+        const discRegex = /(?:Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+)|Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>).*?Duration:\s*([^,]+).*?Bytes\s+(?:Tx|xmt):\s*(\d+).*?Bytes\s+(?:Rx|rcv):\s*(\d+)/i;
 
         for (const msgObj of messages) {
             const rawLog = msgObj.message?.message || "";
@@ -96,14 +104,14 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
             let bytesReceived: number | null = null;
             let failureReason: string | null = null;
 
-            if (connRegex.test(rawLog)) {
+            if (rawLog.includes("113039") && connRegex.test(rawLog)) {
                 const match = rawLog.match(connRegex);
                 if (match) {
-                    username = match[1];
-                    sourceIp = match[2];
+                    username = match[2] || match[5];
+                    sourceIp = match[3] || match[6];
                     status = "SUCCESS";
                 }
-            } else if (failRegex.test(rawLog)) {
+            } else if (rawLog.includes("113015") && failRegex.test(rawLog)) {
                 const match = rawLog.match(failRegex);
                 if (match) {
                     failureReason = match[1].trim();
@@ -111,15 +119,15 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
                     sourceIp = match[3].trim();
                     status = "FAILURE";
                 }
-            } else if (discRegex.test(rawLog)) {
+            } else if (rawLog.includes("113019") && discRegex.test(rawLog)) {
                 const match = rawLog.match(discRegex);
                 if (match) {
-                    username = match[1];
-                    sourceIp = match[2];
+                    username = match[2] || match[5];
+                    sourceIp = match[3] || match[6];
                     status = "DISCONNECT";
-                    duration = parseDuration(match[3]);
-                    bytesSent = parseFloat(match[4]);
-                    bytesReceived = parseFloat(match[5]);
+                    duration = parseDuration(match[7]);
+                    bytesSent = parseFloat(match[8]);
+                    bytesReceived = parseFloat(match[9]);
                 }
             } else {
                 continue; // Skip logs that don't match our signatures
