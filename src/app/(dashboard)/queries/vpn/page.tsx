@@ -22,6 +22,7 @@ export default function VpnTroubleshootingPage() {
     // Active Directory user enrichment maps
     const [adUsers, setAdUsers] = useState<Record<string, any>>({});
     const [hoveredUser, setHoveredUser] = useState<string | null>(null);
+    const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
 
     const fetchDashboardData = async () => {
         try {
@@ -124,13 +125,38 @@ export default function VpnTroubleshootingPage() {
         });
     };
 
+    const handleMouseEnter = (e: React.MouseEvent, username: string) => {
+        const userAd = adUsers[username];
+        if (!userAd) return;
+        
+        const rect = e.currentTarget.getBoundingClientRect();
+        
+        // Position it above the hovered element (approx height 140px, width 260px)
+        let top = rect.top - 145;
+        let left = rect.left + (rect.width / 2) - 130;
+        
+        // Bounds checking
+        if (top < 10) {
+            // Not enough space at the top, position it below
+            top = rect.bottom + 10;
+        }
+        if (left < 10) {
+            left = 10;
+        } else if (left + 260 > window.innerWidth - 10) {
+            left = window.innerWidth - 270;
+        }
+        
+        setTooltipPos({ top, left });
+        setHoveredUser(username);
+    };
+
     // Render User with Active Directory hover details
     const renderUserHover = (username: string, keyId: string) => {
         const userAd = adUsers[username];
         return (
             <span 
-                style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: userAd ? 'help' : 'default' }}
-                onMouseEnter={() => userAd && setHoveredUser(keyId)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: userAd ? 'help' : 'default' }}
+                onMouseEnter={(e) => handleMouseEnter(e, username)}
                 onMouseLeave={() => setHoveredUser(null)}
             >
                 <User size={14} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
@@ -141,48 +167,6 @@ export default function VpnTroubleshootingPage() {
                 }}>
                     {username}
                 </span>
-                {hoveredUser === keyId && userAd && (
-                    <div style={{
-                        position: 'absolute',
-                        bottom: '125%',
-                        left: '0',
-                        zIndex: 150,
-                        width: '260px',
-                        padding: '12px',
-                        background: 'rgba(15, 18, 25, 0.98)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '8px',
-                        boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-                        color: 'var(--text-primary)',
-                        fontSize: '0.8rem',
-                        textAlign: 'left',
-                        backdropFilter: 'blur(10px)',
-                        pointerEvents: 'none'
-                    }}>
-                        <div style={{ 
-                            fontWeight: 700, 
-                            fontSize: '0.85rem', 
-                            marginBottom: '6px', 
-                            color: 'var(--accent-primary)', 
-                            borderBottom: '1px solid rgba(255,255,255,0.08)', 
-                            paddingBottom: '4px' 
-                        }}>
-                            {userAd.displayName || username}
-                        </div>
-                        {userAd.title && (
-                            <div style={{ marginBottom: '4px' }}><strong>Title:</strong> {userAd.title}</div>
-                        )}
-                        {userAd.department && (
-                            <div style={{ marginBottom: '4px' }}><strong>Dept:</strong> {userAd.department}</div>
-                        )}
-                        {userAd.email && (
-                            <div style={{ marginBottom: '4px' }}><strong>Email:</strong> {userAd.email}</div>
-                        )}
-                        {userAd.phone && (
-                            <div><strong>Phone:</strong> {userAd.phone}</div>
-                        )}
-                    </div>
-                )}
             </span>
         );
     };
@@ -343,13 +327,13 @@ export default function VpnTroubleshootingPage() {
                             <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead>
                                     <tr style={{ position: 'sticky', top: 0, zIndex: 10, borderBottom: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>Timestamp</th>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>User</th>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>Source IP</th>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>ISP / AS Info</th>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>Status</th>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>Duration</th>
-                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0 }}>Total Tx/Rx</th>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>Timestamp</th>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>User</th>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>Source IP</th>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>ISP / AS Info</th>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>Status</th>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>Duration</th>
+                                        <th style={{ padding: '14px 16px', color: 'var(--text-secondary)', fontWeight: 600, background: 'var(--bg-surface)', position: 'sticky', top: 0, zIndex: 10 }}>Total Tx/Rx</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -654,6 +638,50 @@ export default function VpnTroubleshootingPage() {
                     </div>
                 </div>
             </section>
+
+            {/* Global viewport-fixed tooltip to avoid container clipping or screen edge overflow */}
+            {hoveredUser && adUsers[hoveredUser] && (
+                <div style={{
+                    position: 'fixed',
+                    top: `${tooltipPos.top}px`,
+                    left: `${tooltipPos.left}px`,
+                    zIndex: 9999, // Render over everything
+                    width: '260px',
+                    padding: '12px',
+                    background: 'rgba(15, 18, 25, 0.99)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.6)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.8rem',
+                    textAlign: 'left',
+                    backdropFilter: 'blur(10px)',
+                    pointerEvents: 'none'
+                }}>
+                    <div style={{ 
+                        fontWeight: 700, 
+                        fontSize: '0.85rem', 
+                        marginBottom: '6px', 
+                        color: 'var(--accent-primary)', 
+                        borderBottom: '1px solid rgba(255,255,255,0.08)', 
+                        paddingBottom: '4px' 
+                    }}>
+                        {adUsers[hoveredUser].displayName || hoveredUser}
+                    </div>
+                    {adUsers[hoveredUser].title && (
+                        <div style={{ marginBottom: '4px' }}><strong>Title:</strong> {adUsers[hoveredUser].title}</div>
+                    )}
+                    {adUsers[hoveredUser].department && (
+                        <div style={{ marginBottom: '4px' }}><strong>Dept:</strong> {adUsers[hoveredUser].department}</div>
+                    )}
+                    {adUsers[hoveredUser].email && (
+                        <div style={{ marginBottom: '4px' }}><strong>Email:</strong> {adUsers[hoveredUser].email}</div>
+                    )}
+                    {adUsers[hoveredUser].phone && (
+                        <div><strong>Phone:</strong> {adUsers[hoveredUser].phone}</div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
