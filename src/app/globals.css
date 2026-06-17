@@ -328,6 +328,11 @@ body {
   height: calc(100vh - 60px);
 }
 
+/* Wide Layout Mode */
+.page-container:has(.wide-layout) {
+  max-width: 95% !important;
+}
+
 .internal-scroll-layout {
   display: flex;
   flex-direction: column;

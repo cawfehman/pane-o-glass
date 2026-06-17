@@ -188,7 +188,7 @@ export default function VpnTroubleshootingPage() {
     };
 
     return (
-        <div className="page-container" style={{ paddingBottom: '3rem', width: '100%', maxWidth: '100%' }}>
+        <div className="wide-layout" style={{ paddingBottom: '3rem', width: '100%' }}>
             {/* Header Area containing Title and Less Prominent SIEM Poller widget */}
             <header style={{ 
                 marginBottom: '2rem', 
