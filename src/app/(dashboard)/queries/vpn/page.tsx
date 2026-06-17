@@ -13,6 +13,7 @@ export default function VpnTroubleshootingPage() {
     const [error, setError] = useState("");
     const [syncing, setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<any>(null);
+    const [syncNotification, setSyncNotification] = useState<string | null>(null);
 
     const [successfulIps, setSuccessfulIps] = useState<any[]>([]);
     const [failedIps, setFailedIps] = useState<any[]>([]);
@@ -47,6 +48,7 @@ export default function VpnTroubleshootingPage() {
     const handleSync = async () => {
         setSyncing(true);
         setError("");
+        setSyncNotification(null);
         try {
             const res = await fetch("/api/vpn/events", {
                 method: "POST",
@@ -57,6 +59,15 @@ export default function VpnTroubleshootingPage() {
                 const errData = await res.json().catch(() => ({}));
                 throw new Error(errData.error || "Sync request failed");
             }
+            const data = await res.json();
+            const count = data.syncedCount ?? 0;
+            setSyncNotification(`Sync complete! Retransmitted/synced ${count} event${count === 1 ? "" : "s"} from the last 35 minutes.`);
+            
+            // Auto-clear notification after 5 seconds
+            setTimeout(() => {
+                setSyncNotification(null);
+            }, 5000);
+
             await fetchDashboardData();
         } catch (err: any) {
             setError(err.message || "Failed to trigger log sync.");
@@ -189,6 +200,10 @@ export default function VpnTroubleshootingPage() {
                     <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', margin: 0 }}>
                         Real-time ingestion, intelligence, and search for Secure Client VPN sessions.
                     </p>
+                    <p style={{ color: 'rgba(255, 255, 255, 0.45)', fontSize: '0.825rem', marginTop: '6px', marginBottom: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Clock size={12} />
+                        Data may be up to 30 minutes old. For the latest logs, click <strong>Sync Now</strong>.
+                    </p>
                 </div>
 
                 {/* Streamlined SIEM Poller Widget */}
@@ -233,6 +248,23 @@ export default function VpnTroubleshootingPage() {
                     </button>
                 </div>
             </header>
+
+            {syncNotification && (
+                <div className="glass-card" style={{ 
+                    border: '1px solid rgba(34, 197, 94, 0.2)', 
+                    background: 'rgba(34, 197, 94, 0.05)', 
+                    color: '#22c55e', 
+                    padding: '16px', 
+                    borderRadius: '8px',
+                    marginBottom: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px'
+                }}>
+                    <CheckCircle size={20} style={{ color: '#22c55e' }} />
+                    <span>{syncNotification}</span>
+                </div>
+            )}
 
             {error && (
                 <div className="glass-card" style={{ 
