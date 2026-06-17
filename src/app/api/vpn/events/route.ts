@@ -35,41 +35,66 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
 
     // Construct Lucene query using the indexed MessageClass field (escaping hyphens for Lucene parser)
     const signatures = 'MessageClass:(FTD\\-6\\-113039 OR FTD\\-4\\-113019 OR FTD\\-6\\-113015 OR FTD\\-4\\-113015)';
-    let query = signatures;
-
-    if (streamIds.length > 0) {
-        const streamQuery = streamIds.map(id => `streams:${id}`).join(" OR ");
-        query = `(${streamQuery}) AND ${signatures}`;
-    }
 
     try {
-        const searchUrl = `${url}/api/search/universal/relative`;
-        
         // Support both username:password format and raw API token
         const authHeader = token.includes(":") 
             ? `Basic ${Buffer.from(token).toString("base64")}`
             : `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
         
         const agent = new https.Agent({ rejectUnauthorized: false });
-        
-        const response = await axios.get(searchUrl, {
-            params: {
-                query,
-                range: rangeSeconds.toString(),
-                limit: "200",
-                decorate: "false"
-            },
-            headers: {
-                "Authorization": authHeader,
-                "Accept": "application/json",
-                "X-Requested-By": "cli"
-            },
-            httpsAgent: agent,
-            timeout: 15000
-        });
+        let messages: any[] = [];
 
-        const data = response.data;
-        const messages = data.messages || [];
+        if (streamIds.length > 0) {
+            // Query stream-specific endpoints to support restricted stream users (who get 403 on universal endpoints)
+            for (const streamId of streamIds) {
+                try {
+                    const searchUrl = `${url}/api/streams/${streamId}/search/relative`;
+                    const response = await axios.get(searchUrl, {
+                        params: {
+                            query: signatures,
+                            range: rangeSeconds.toString(),
+                            limit: "150",
+                            decorate: "false"
+                        },
+                        headers: {
+                            "Authorization": authHeader,
+                            "Accept": "application/json",
+                            "X-Requested-By": "cli"
+                        },
+                        httpsAgent: agent,
+                        timeout: 15000
+                    });
+                    
+                    if (response.data && response.data.messages) {
+                        messages = messages.concat(response.data.messages);
+                    }
+                } catch (streamErr: any) {
+                    console.error(`Error querying Graylog stream ${streamId}:`, streamErr.message);
+                    // Continue to next stream even if one fails
+                }
+            }
+        } else {
+            // Fallback to Universal relative search if no streams are configured
+            const searchUrl = `${url}/api/search/universal/relative`;
+            const response = await axios.get(searchUrl, {
+                params: {
+                    query: signatures,
+                    range: rangeSeconds.toString(),
+                    limit: "200",
+                    decorate: "false"
+                },
+                headers: {
+                    "Authorization": authHeader,
+                    "Accept": "application/json",
+                    "X-Requested-By": "cli"
+                },
+                httpsAgent: agent,
+                timeout: 15000
+            });
+            messages = response.data.messages || [];
+        }
+
         let newEventsCount = 0;
 
         // Regexes for FTD/ASA parsing

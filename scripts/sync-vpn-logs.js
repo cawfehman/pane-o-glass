@@ -116,43 +116,67 @@ async function runSync() {
         : [];
 
     const signatures = 'MessageClass:(FTD\\-6\\-113039 OR FTD\\-4\\-113019 OR FTD\\-6\\-113015 OR FTD\\-4\\-113015)';
-    let query = signatures;
 
-    if (streamIds.length > 0) {
-        const streamQuery = streamIds.map(id => `streams:${id}`).join(" OR ");
-        query = `(${streamQuery}) AND ${signatures}`;
-    }
-
-    log(`Querying Graylog: ${query}`);
+    log(`Querying Graylog for VPN events (Streams configured: ${streamIds.length > 0 ? streamIds.join(', ') : 'None'})`);
 
     try {
-        const searchUrl = `${url}/api/search/universal/relative`;
-        
         // Support both username:password format and raw API token
         const authHeader = token.includes(":") 
             ? `Basic ${Buffer.from(token).toString("base64")}`
             : `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
         
         const agent = new https.Agent({ rejectUnauthorized: false });
+        let messages = [];
 
-        const response = await axios.get(searchUrl, {
-            params: {
-                query,
-                range: "600",
-                limit: "200",
-                decorate: "false"
-            },
-            headers: {
-                "Authorization": authHeader,
-                "Accept": "application/json",
-                "X-Requested-By": "cli"
-            },
-            httpsAgent: agent,
-            timeout: 15000
-        });
+        if (streamIds.length > 0) {
+            // Query stream-specific endpoints to support restricted stream users (who get 403 on universal endpoints)
+            for (const streamId of streamIds) {
+                try {
+                    const searchUrl = `${url}/api/streams/${streamId}/search/relative`;
+                    const response = await axios.get(searchUrl, {
+                        params: {
+                            query: signatures,
+                            range: "600",
+                            limit: "150",
+                            decorate: "false"
+                        },
+                        headers: {
+                            "Authorization": authHeader,
+                            "Accept": "application/json",
+                            "X-Requested-By": "cli"
+                        },
+                        httpsAgent: agent,
+                        timeout: 15000
+                    });
+                    
+                    if (response.data && response.data.messages) {
+                        messages = messages.concat(response.data.messages);
+                    }
+                } catch (streamErr) {
+                    errorLog(`Error querying Graylog stream ${streamId}:`, streamErr.message);
+                }
+            }
+        } else {
+            // Fallback to Universal relative search if no streams are configured
+            const searchUrl = `${url}/api/search/universal/relative`;
+            const response = await axios.get(searchUrl, {
+                params: {
+                    query: signatures,
+                    range: "600",
+                    limit: "200",
+                    decorate: "false"
+                },
+                headers: {
+                    "Authorization": authHeader,
+                    "Accept": "application/json",
+                    "X-Requested-By": "cli"
+                },
+                httpsAgent: agent,
+                timeout: 15000
+            });
+            messages = response.data.messages || [];
+        }
 
-        const data = response.data;
-        const messages = data.messages || [];
         log(`Fetched ${messages.length} total messages from Graylog matching VPN criteria.`);
 
         // Regexes for FTD/ASA parsing
