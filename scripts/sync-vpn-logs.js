@@ -139,7 +139,7 @@ async function runSync() {
 
         const params = new URLSearchParams();
         params.append("query", signatures);
-        params.append("range", "600");
+        params.append("range", "2100");
         params.append("limit", "200");
         params.append("decorate", "false");
         for (const streamId of streamIds) {

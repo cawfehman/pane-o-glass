@@ -51,7 +51,7 @@ export default function VpnTroubleshootingPage() {
             const res = await fetch("/api/vpn/events", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ range: 86400 }) // Fetch last 24 hours to capture historical events
+                body: JSON.stringify({ range: 2100 }) // Fetch last 35 minutes to capture recent events
             });
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
