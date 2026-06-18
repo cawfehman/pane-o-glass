@@ -264,7 +264,7 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json().catch(() => ({}));
-        const range = body.range || 1800; // default 30 minutes
+        const range = body.range || 2100; // default 35 minutes
 
         const result = await syncFromGraylog(range);
 
