@@ -15,6 +15,7 @@ export default function VpnTroubleshootingPage() {
     const [lastSync, setLastSync] = useState<any>(null);
     const [syncNotification, setSyncNotification] = useState<string | null>(null);
     const [syncRange, setSyncRange] = useState<number>(2100);
+    const [syncStatus, setSyncStatus] = useState("Syncing...");
 
     const [activeTab, setActiveTab] = useState<"feed" | "security" | "bandwidth">("feed");
     const [sortKey, setSortKey] = useState<string>("createdAt");
@@ -59,6 +60,24 @@ export default function VpnTroubleshootingPage() {
         setSyncing(true);
         setError("");
         setSyncNotification(null);
+        setSyncStatus("Initializing connection to Graylog...");
+
+        const statuses = [
+            "Contacting Graylog SIEM API...",
+            "Retrieving AnyConnect connection logs...",
+            "Parsing client IP leases & authentication codes...",
+            "Enriching geolocation & AS intelligence...",
+            "Correlating active session logs in SQLite DB...",
+            "Updating dashboard metrics..."
+        ];
+        let currentIdx = 0;
+        const intervalId = setInterval(() => {
+            if (currentIdx < statuses.length) {
+                setSyncStatus(statuses[currentIdx]);
+                currentIdx++;
+            }
+        }, 2200);
+
         try {
             const res = await fetch("/api/vpn/events", {
                 method: "POST",
@@ -89,6 +108,7 @@ export default function VpnTroubleshootingPage() {
         } catch (err: any) {
             setError(err.message || "Failed to trigger log sync.");
         } finally {
+            clearInterval(intervalId);
             setSyncing(false);
         }
     };
@@ -336,11 +356,16 @@ export default function VpnTroubleshootingPage() {
                                 SIEM Poller: {lastSync ? `${lastSync.status} (${formatDate(lastSync.lastRun)})` : "Idle"}
                             </span>
                         </div>
-                        {lastSync?.message && (
+                        {syncing ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '16px', color: '#3b82f6', fontSize: '0.75rem', fontWeight: 600 }}>
+                                <span style={{ animation: 'pulse 1.5s infinite' }}>🔄</span>
+                                <span>{syncStatus}</span>
+                            </div>
+                        ) : lastSync?.message ? (
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', paddingLeft: '16px' }}>
                                 {lastSync.message}
                             </span>
-                        )}
+                        ) : null}
                     </div>
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
