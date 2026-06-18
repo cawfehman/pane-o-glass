@@ -58,7 +58,7 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
         const params = new URLSearchParams();
         params.append("query", signatures);
         params.append("range", rangeSeconds.toString());
-        params.append("limit", "200");
+        params.append("limit", rangeSeconds > 3600 ? "5000" : "200");
         params.append("decorate", "false");
         for (const streamId of streamIds) {
             params.append("filter", `streams:${streamId}`);

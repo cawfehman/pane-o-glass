@@ -14,6 +14,7 @@ export default function VpnTroubleshootingPage() {
     const [syncing, setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<any>(null);
     const [syncNotification, setSyncNotification] = useState<string | null>(null);
+    const [syncRange, setSyncRange] = useState<number>(2100);
 
     const [activeTab, setActiveTab] = useState<"feed" | "security" | "bandwidth">("feed");
     const [sortKey, setSortKey] = useState<string>("createdAt");
@@ -61,7 +62,7 @@ export default function VpnTroubleshootingPage() {
             const res = await fetch("/api/vpn/events", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ range: 2100 }) // Fetch last 35 minutes to capture recent events
+                body: JSON.stringify({ range: syncRange })
             });
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
@@ -69,7 +70,14 @@ export default function VpnTroubleshootingPage() {
             }
             const data = await res.json();
             const count = data.syncedCount ?? 0;
-            setSyncNotification(`Sync complete! Retransmitted/synced ${count} event${count === 1 ? "" : "s"} from the last 35 minutes.`);
+            
+            const minutes = Math.round(syncRange / 60);
+            const rangeStr = minutes >= 1440 
+                ? `${Math.round(minutes / 1440)} day(s)` 
+                : minutes >= 60 
+                ? `${Math.round(minutes / 60)} hour(s)` 
+                : `${minutes} minute(s)`;
+            setSyncNotification(`Sync complete! Retransmitted/synced ${count} event${count === 1 ? "" : "s"} from the last ${rangeStr}.`);
             
             // Auto-clear notification after 5 seconds
             setTimeout(() => {
@@ -285,45 +293,78 @@ export default function VpnTroubleshootingPage() {
                 </div>
 
                 {/* Streamlined SIEM Poller Widget */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                     <div style={{ 
                         fontSize: '0.8rem', 
                         padding: '6px 12px', 
-                        borderRadius: '20px', 
+                        borderRadius: '12px', 
                         background: 'var(--bg-surface)', 
                         border: '1px solid var(--border-color)',
                         display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px'
-                    }}>
-                        <span style={{ 
-                            width: '8px', 
-                            height: '8px', 
-                            borderRadius: '50%', 
-                            background: lastSync?.status === "FAILURE" ? '#ef4444' : '#22c55e',
-                            boxShadow: lastSync?.status === "FAILURE" ? '0 0 8px #ef4444' : '0 0 8px #22c55e'
-                        }} />
-                        <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
-                            SIEM Poller: {lastSync ? `${lastSync.status} (${formatDate(lastSync.lastRun)})` : "Idle"}
-                        </span>
+                        flexDirection: 'column',
+                        gap: '2px',
+                        alignItems: 'flex-start'
+                    }} title={lastSync?.message || undefined}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ 
+                                width: '8px', 
+                                height: '8px', 
+                                borderRadius: '50%', 
+                                background: lastSync?.status === "FAILURE" ? '#ef4444' : '#22c55e',
+                                boxShadow: lastSync?.status === "FAILURE" ? '0 0 8px #ef4444' : '0 0 8px #22c55e'
+                            }} />
+                            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
+                                SIEM Poller: {lastSync ? `${lastSync.status} (${formatDate(lastSync.lastRun)})` : "Idle"}
+                            </span>
+                        </div>
+                        {lastSync?.message && (
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', paddingLeft: '16px' }}>
+                                {lastSync.message}
+                            </span>
+                        )}
                     </div>
-                    <button 
-                        onClick={handleSync} 
-                        disabled={syncing}
-                        className="btn-secondary"
-                        style={{ 
-                            padding: '6px 12px', 
-                            borderRadius: '8px', 
-                            fontSize: '0.8rem', 
-                            fontWeight: 600, 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '6px' 
-                        }}
-                    >
-                        <Clock size={12} />
-                        {syncing ? "Syncing..." : "Sync Now"}
-                    </button>
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <select
+                            value={syncRange}
+                            onChange={(e) => setSyncRange(Number(e.target.value))}
+                            disabled={syncing}
+                            style={{
+                                padding: '6px 10px',
+                                borderRadius: '8px',
+                                fontSize: '0.8rem',
+                                fontWeight: 500,
+                                background: 'var(--bg-surface)',
+                                border: '1px solid var(--border-color)',
+                                color: 'var(--text-primary)',
+                                outline: 'none',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <option value={2100}>Last 35 Mins</option>
+                            <option value={14400}>Last 4 Hours</option>
+                            <option value={86400}>Last 24 Hours</option>
+                            <option value={604800}>Last 7 Days</option>
+                            <option value={2592000}>Last 30 Days</option>
+                        </select>
+                        <button 
+                            onClick={handleSync} 
+                            disabled={syncing}
+                            className="btn-secondary"
+                            style={{ 
+                                padding: '6px 12px', 
+                                borderRadius: '8px', 
+                                fontSize: '0.8rem', 
+                                fontWeight: 600, 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '6px' 
+                            }}
+                        >
+                            <Clock size={12} />
+                            {syncing ? "Syncing..." : "Sync Now"}
+                        </button>
+                    </div>
                 </div>
             </header>
 
