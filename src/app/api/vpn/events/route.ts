@@ -72,7 +72,7 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
                 "X-Requested-By": "cli"
             },
             httpsAgent: agent,
-            timeout: 15000
+            timeout: 60000
         });
 
         const data = response.data;
