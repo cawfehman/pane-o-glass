@@ -333,6 +333,23 @@ export async function GET(req: NextRequest) {
             take: 20
         });
 
+        // Fetch top 10 sessions by upload (bytesSent) and download (bytesReceived)
+        const topUploadEvents = await prisma.vpnEvent.findMany({
+            where: {
+                bytesSent: { not: null, gt: 0 }
+            },
+            orderBy: { bytesSent: "desc" },
+            take: 10
+        });
+
+        const topDownloadEvents = await prisma.vpnEvent.findMany({
+            where: {
+                bytesReceived: { not: null, gt: 0 }
+            },
+            orderBy: { bytesReceived: "desc" },
+            take: 10
+        });
+
         // Get status of the last background job sync
         let lastSyncStatus = null;
         try {
@@ -346,6 +363,8 @@ export async function GET(req: NextRequest) {
             ...successfulIps.map(e => e.username),
             ...failedIps.map(e => e.username),
             ...recentEvents.map(e => e.username),
+            ...topUploadEvents.map(e => e.username),
+            ...topDownloadEvents.map(e => e.username),
             ...results.map(e => e.username)
         ].filter(Boolean)));
 
@@ -372,6 +391,8 @@ export async function GET(req: NextRequest) {
             successfulIps,
             failedIps,
             recentEvents,
+            topUploadEvents,
+            topDownloadEvents,
             lastSync: lastSyncStatus,
             adUsers
         });
