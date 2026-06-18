@@ -100,11 +100,13 @@ async function runHistoricalSync() {
         ? rawStreams.replace(/^"|"$/g, '').split(",").map(id => id.trim()).filter(Boolean)
         : [];
 
-    const signatures = '(MessageClass:FTD\\-6\\-113039 OR MessageClass:FTD\\-4\\-113019 OR MessageClass:FTD\\-6\\-113015 OR MessageClass:FTD\\-4\\-113015)';
+    const signatures = '(MessageClass:FTD\\-6\\-113039 OR MessageClass:FTD\\-4\\-113019 OR MessageClass:FTD\\-6\\-113015 OR MessageClass:FTD\\-4\\-113015 OR MessageClass:FTD\\-4\\-722051 OR MessageClass:ASA\\-4\\-722051 OR MessageClass:FTD\\-6\\-113005 OR MessageClass:ASA\\-6\\-113005)';
     
     const connRegex = /(?:Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>|Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+))/i;
     const failRegex = /(?:%(?:FTD|ASA)-\d-113015:\s+)?AAA\s+user\s+authentication\s+Rejected\s+:\s+reason\s+=\s+(.+?)\s+:\s+User\s+=\s+(.+?)\s+:\s+IP\s+=\s+([^\s]+)/i;
+    const failRegex113005 = /AAA\s+user\s+authentication\s+Rejected\s+:\s+reason\s+=\s+(.+?)\s+:\s+server\s+=\s+[^\s]+\s+:\s+user\s+=\s+(.+?)\s+:\s+user\s+IP\s+=\s+([^\s]+)/i;
     const discRegex = /(?:Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+)|Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>).*?Duration:\s*([^,]+).*?Bytes\s+(?:Tx|xmt):\s*(\d+).*?Bytes\s+(?:Rx|rcv):\s*(\d+)/i;
+    const ipAssignRegex = /(?:Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>\s+Address\s+<([^>]+)>\s+assigned\s+to\s+session|Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+),\s*Address\s*=\s*([^\s,]+)\s*assigned\s*to\s*session)/i;
 
     const authHeader = token.includes(":") 
         ? `Basic ${Buffer.from(token).toString("base64")}`
@@ -165,6 +167,7 @@ async function runHistoricalSync() {
 
                 let username = "";
                 let sourceIp = "";
+                let assignedIp = null;
                 let status = "SUCCESS";
                 let duration = null;
                 let bytesSent = null;
@@ -178,8 +181,24 @@ async function runHistoricalSync() {
                         sourceIp = match[3] || match[6];
                         status = "SUCCESS";
                     }
+                } else if (rawLog.includes("722051") && ipAssignRegex.test(rawLog)) {
+                    const match = rawLog.match(ipAssignRegex);
+                    if (match) {
+                        username = match[2] || match[6];
+                        sourceIp = match[3] || match[7];
+                        assignedIp = match[4] || match[8];
+                        status = "SUCCESS";
+                    }
                 } else if (rawLog.includes("113015") && failRegex.test(rawLog)) {
                     const match = rawLog.match(failRegex);
+                    if (match) {
+                        failureReason = match[1].trim();
+                        username = match[2].trim();
+                        sourceIp = match[3].trim();
+                        status = "FAILURE";
+                    }
+                } else if (rawLog.includes("113005") && failRegex113005.test(rawLog)) {
+                    const match = rawLog.match(failRegex113005);
                     if (match) {
                         failureReason = match[1].trim();
                         username = match[2].trim();
@@ -224,6 +243,13 @@ async function runHistoricalSync() {
                 });
 
                 if (existing) {
+                    // If we got the assignedIp now (from 722051) and existing doesn't have it, update it
+                    if (status === "SUCCESS" && assignedIp && !existing.assignedIp) {
+                        await prisma.vpnEvent.update({
+                            where: { id: existing.id },
+                            data: { assignedIp }
+                        });
+                    }
                     // If it is a disconnect event and we now have a log with actual byte counts, update the existing record
                     if (status === "DISCONNECT" && (!existing.bytesTotal || existing.bytesTotal === 0) && bytesTotal && bytesTotal > 0) {
                         await prisma.vpnEvent.update({
@@ -239,12 +265,34 @@ async function runHistoricalSync() {
                     continue; // Skip creating a duplicate record
                 }
 
+                // Carry over assignedIp to disconnect events if not already present
+                let finalAssignedIp = assignedIp;
+                if (status === "DISCONNECT" && !finalAssignedIp) {
+                    const recentSuccess = await prisma.vpnEvent.findFirst({
+                        where: {
+                            username,
+                            sourceIp,
+                            status: "SUCCESS",
+                            assignedIp: { not: null },
+                            createdAt: {
+                                gte: new Date(logTimestamp.getTime() - 24 * 60 * 60 * 1000), // 24 hours back
+                                lte: logTimestamp
+                            }
+                        },
+                        orderBy: { createdAt: "desc" }
+                    });
+                    if (recentSuccess) {
+                        finalAssignedIp = recentSuccess.assignedIp;
+                    }
+                }
+
                 const ipInfo = await getIpInfo(sourceIp);
 
                 await prisma.vpnEvent.create({
                     data: {
                         username,
                         sourceIp,
+                        assignedIp: finalAssignedIp || assignedIp || null,
                         status,
                         duration,
                         bytesSent,

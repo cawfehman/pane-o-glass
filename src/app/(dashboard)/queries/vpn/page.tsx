@@ -586,7 +586,14 @@ export default function VpnTroubleshootingPage() {
                                                         <td style={{ padding: '14px 16px', fontWeight: 500 }}>
                                                             {renderUserHover(evt.username, evt.id + "-search")}
                                                         </td>
-                                                        <td style={{ padding: '14px 16px', fontFamily: 'monospace', fontSize: '0.95rem' }}>{evt.sourceIp}</td>
+                                                        <td style={{ padding: '14px 16px', fontFamily: 'monospace', fontSize: '0.95rem' }}>
+                                                         <div>{evt.sourceIp}</div>
+                                                         {evt.assignedIp && (
+                                                             <div style={{ fontSize: '0.75rem', color: '#10b981', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                 <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px', background: 'rgba(16, 185, 129, 0.1)', padding: '1px 4px', borderRadius: '3px', fontWeight: 600 }}>Assigned:</span> <span>{evt.assignedIp}</span>
+                                                             </div>
+                                                         )}
+                                                     </td>
                                                         <td style={{ padding: '14px 16px', fontSize: '0.875rem' }}>
                                                             {evt.ipAsName ? (
                                                                 <span style={{ display: 'flex', flexDirection: 'column' }}>
@@ -708,7 +715,14 @@ export default function VpnTroubleshootingPage() {
                                                     <td style={{ padding: '14px 16px', fontWeight: 500 }}>
                                                         {renderUserHover(evt.username, evt.id + "-timeline")}
                                                     </td>
-                                                    <td style={{ padding: '14px 16px', fontFamily: 'monospace', fontSize: '0.95rem' }}>{evt.sourceIp}</td>
+                                                    <td style={{ padding: '14px 16px', fontFamily: 'monospace', fontSize: '0.95rem' }}>
+                                                        <div>{evt.sourceIp}</div>
+                                                        {evt.assignedIp && (
+                                                            <div style={{ fontSize: '0.75rem', color: '#10b981', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px', background: 'rgba(16, 185, 129, 0.1)', padding: '1px 4px', borderRadius: '3px', fontWeight: 600 }}>Assigned:</span> <span>{evt.assignedIp}</span>
+                                                            </div>
+                                                        )}
+                                                    </td>
                                                     <td style={{ padding: '14px 16px', fontSize: '0.875rem' }}>
                                                         {evt.ipAsName ? (
                                                             <span style={{ display: 'flex', flexDirection: 'column' }}>
@@ -835,6 +849,11 @@ export default function VpnTroubleshootingPage() {
                                                         </span>
                                                     )}
                                                 </span>
+                                                {evt.assignedIp && (
+                                                    <div style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px', background: 'rgba(16, 185, 129, 0.1)', padding: '1px 4px', borderRadius: '3px', fontWeight: 600 }}>Assigned:</span> <span>{evt.assignedIp}</span>
+                                                    </div>
+                                                )}
                                                 {evt.ipAsName ? (
                                                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={`${evt.ipAsn} • ${evt.ipCountryCode || evt.ipCountry || "Unknown"}`}>
                                                         <Globe size={11} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />

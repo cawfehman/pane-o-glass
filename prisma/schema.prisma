@@ -99,6 +99,7 @@ model VpnEvent {
   id            String   @id @default(cuid())
   username      String
   sourceIp      String
+  assignedIp    String?
   status        String   // "SUCCESS", "FAILURE", "DISCONNECT"
   duration      Int?     // session duration in seconds
   bytesSent     Float?   // bytes sent
