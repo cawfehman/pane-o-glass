@@ -19,6 +19,7 @@ export default function VpnTroubleshootingPage() {
     const [activeTab, setActiveTab] = useState<"feed" | "security" | "bandwidth">("feed");
     const [sortKey, setSortKey] = useState<string>("createdAt");
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+    const [bandwidthScope, setBandwidthScope] = useState<string>("last30days");
 
     const [successfulIps, setSuccessfulIps] = useState<any[]>([]);
     const [failedIps, setFailedIps] = useState<any[]>([]);
@@ -35,7 +36,7 @@ export default function VpnTroubleshootingPage() {
     const fetchDashboardData = async () => {
         try {
             setError("");
-            const res = await fetch("/api/vpn/events");
+            const res = await fetch(`/api/vpn/events?bandwidthScope=${bandwidthScope}`);
             if (!res.ok) throw new Error("Failed to load VPN events");
             const data = await res.json();
             setSuccessfulIps(data.successfulIps || []);
@@ -118,7 +119,7 @@ export default function VpnTroubleshootingPage() {
 
     useEffect(() => {
         fetchDashboardData();
-    }, []);
+    }, [bandwidthScope]);
 
     const isNonUs = (evt: any) => {
         return evt?.ipCountryCode && evt.ipCountryCode.toUpperCase() !== "US";
@@ -191,6 +192,24 @@ export default function VpnTroubleshootingPage() {
             minute: "2-digit",
             second: "2-digit"
         });
+    };
+
+    const formatSessionTimes = (evt: any) => {
+        if (!evt.createdAt || !evt.duration) return "No duration data";
+        const stop = new Date(evt.createdAt);
+        const start = new Date(stop.getTime() - (evt.duration * 1000));
+        
+        const formatTime = (d: Date) => {
+            return d.toLocaleString(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: true
+            });
+        };
+        
+        return `${formatTime(start)} to ${formatTime(stop)}`;
     };
 
     const handleMouseEnter = (e: React.MouseEvent, username: string) => {
@@ -923,137 +942,188 @@ export default function VpnTroubleshootingPage() {
 
             {/* TAB CONTENT: bandwidth */}
             {activeTab === "bandwidth" && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '2.5rem' }}>
-                    {/* Top 10 Sessions by Upload (Tx) */}
-                    <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '520px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-                            <div style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', padding: '8px', borderRadius: '8px' }}>
-                                <ArrowUpRight size={20} />
-                            </div>
-                            <div>
-                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Top 10 Sessions by Upload (Tx)</h3>
-                                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Highest outbound data transfer</p>
-                            </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' }}>
+                    {/* Time Scope selector */}
+                    <div style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center', 
+                        background: 'var(--bg-surface)', 
+                        padding: '12px 18px', 
+                        borderRadius: '12px',
+                        border: '1px solid var(--border-color)',
+                        flexWrap: 'wrap',
+                        gap: '12px'
+                    }}>
+                        <div>
+                            <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                Analytics Period (Individual VPN Sessions)
+                            </span>
+                            <p style={{ margin: '2px 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                Shows maximum bandwidth consumption per connection (not aggregated across sessions).
+                            </p>
                         </div>
-                        {loading ? (
-                            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Loading bandwidth stats...</p>
-                        ) : topUploadEvents.length === 0 ? (
-                            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No session data transfer recorded yet.</p>
-                        ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
-                                {topUploadEvents.map((evt) => {
-                                    const nonUs = isNonUs(evt);
-                                    return (
-                                        <div key={evt.id} style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'space-between', 
-                                            padding: '12px 14px',
-                                            borderRadius: '8px', 
-                                            background: nonUs ? 'rgba(245, 158, 11, 0.04)' : 'rgba(255,255,255,0.01)',
-                                            border: '1px solid var(--border-color)',
-                                            borderLeft: nonUs ? '4px solid #f59e0b' : '1px solid var(--border-color)',
-                                            gap: '12px'
-                                        }}>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1.05rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    {evt.sourceIp}
-                                                    {nonUs && (
-                                                        <span style={{ 
-                                                            fontSize: '0.65rem', 
-                                                            background: 'rgba(245, 158, 11, 0.15)', 
-                                                            color: '#fbbf24', 
-                                                            padding: '1px 5px', 
-                                                            borderRadius: '4px',
-                                                            fontWeight: 700
-                                                        }}>
-                                                            ⚠️ Non-US ({evt.ipCountryCode})
-                                                        </span>
-                                                    )}
-                                                </span>
-                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
-                                                    {evt.ipAsName || "Private / Local IP"}
-                                                </span>
-                                            </div>
-                                            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                                    {renderUserHover(evt.username, evt.id + "-top-up")}
-                                                </span>
-                                                <span style={{ fontSize: '0.8rem', color: 'var(--accent-primary)', fontWeight: 700 }}>
-                                                    {formatBytes(evt.bytesSent)}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
+                        <select
+                            value={bandwidthScope}
+                            onChange={(e) => setBandwidthScope(e.target.value)}
+                            style={{
+                                padding: '6px 12px',
+                                borderRadius: '8px',
+                                fontSize: '0.85rem',
+                                fontWeight: 600,
+                                background: 'var(--bg-background)',
+                                border: '1px solid var(--border-color)',
+                                color: 'var(--text-primary)',
+                                outline: 'none',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <option value="today">Today (Since 00:00)</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="last7days">Last 7 Days</option>
+                            <option value="last14days">Last 2 Weeks</option>
+                            <option value="last30days">Last 30 Days</option>
+                        </select>
                     </div>
 
-                    {/* Top 10 Sessions by Download (Rx) */}
-                    <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '520px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-                            <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '8px', borderRadius: '8px' }}>
-                                <ArrowDownLeft size={20} />
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '2.5rem' }}>
+                        {/* Top 10 Sessions by Upload (Tx) */}
+                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '540px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                                <div style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', padding: '8px', borderRadius: '8px' }}>
+                                    <ArrowUpRight size={20} />
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Top 10 Individual Sessions by Upload (Tx)</h3>
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Highest outbound data transfer</p>
+                                </div>
                             </div>
-                            <div>
-                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Top 10 Sessions by Download (Rx)</h3>
-                                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Highest inbound data transfer</p>
-                            </div>
+                            {loading ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Loading bandwidth stats...</p>
+                            ) : topUploadEvents.length === 0 ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No session data transfer recorded for this period.</p>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
+                                    {topUploadEvents.map((evt) => {
+                                        const nonUs = isNonUs(evt);
+                                        return (
+                                            <div key={evt.id} style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                justifyContent: 'space-between', 
+                                                padding: '12px 14px',
+                                                borderRadius: '8px', 
+                                                background: nonUs ? 'rgba(245, 158, 11, 0.04)' : 'rgba(255,255,255,0.01)',
+                                                border: '1px solid var(--border-color)',
+                                                borderLeft: nonUs ? '4px solid #f59e0b' : '1px solid var(--border-color)',
+                                                gap: '12px'
+                                            }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                    <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1.05rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        {evt.sourceIp}
+                                                        {nonUs && (
+                                                            <span style={{ 
+                                                                fontSize: '0.65rem', 
+                                                                background: 'rgba(245, 158, 11, 0.15)', 
+                                                                color: '#fbbf24', 
+                                                                padding: '1px 5px', 
+                                                                borderRadius: '4px',
+                                                                fontWeight: 700
+                                                            }}>
+                                                                ⚠️ Non-US ({evt.ipCountryCode})
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
+                                                        {evt.ipAsName || "Private / Local IP"}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <Clock size={11} style={{ flexShrink: 0 }} /> {formatSessionTimes(evt)}
+                                                    </span>
+                                                </div>
+                                                <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                        {renderUserHover(evt.username, evt.id + "-top-up")}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.85rem', color: 'var(--accent-primary)', fontWeight: 700 }}>
+                                                        {formatBytes(evt.bytesSent)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
-                        {loading ? (
-                            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Loading bandwidth stats...</p>
-                        ) : topDownloadEvents.length === 0 ? (
-                            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No session data transfer recorded yet.</p>
-                        ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
-                                {topDownloadEvents.map((evt) => {
-                                    const nonUs = isNonUs(evt);
-                                    return (
-                                        <div key={evt.id} style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'space-between', 
-                                            padding: '12px 14px',
-                                            borderRadius: '8px', 
-                                            background: nonUs ? 'rgba(245, 158, 11, 0.04)' : 'rgba(255,255,255,0.01)',
-                                            border: '1px solid var(--border-color)',
-                                            borderLeft: nonUs ? '4px solid #f59e0b' : '1px solid var(--border-color)',
-                                            gap: '12px'
-                                        }}>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1.05rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    {evt.sourceIp}
-                                                    {nonUs && (
-                                                        <span style={{ 
-                                                            fontSize: '0.65rem', 
-                                                            background: 'rgba(245, 158, 11, 0.15)', 
-                                                            color: '#fbbf24', 
-                                                            padding: '1px 5px', 
-                                                            borderRadius: '4px',
-                                                            fontWeight: 700
-                                                        }}>
-                                                            ⚠️ Non-US ({evt.ipCountryCode})
-                                                        </span>
-                                                    )}
-                                                </span>
-                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
-                                                    {evt.ipAsName || "Private / Local IP"}
-                                                </span>
-                                            </div>
-                                            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                                    {renderUserHover(evt.username, evt.id + "-top-dl")}
-                                                </span>
-                                                <span style={{ fontSize: '0.8rem', color: '#3b82f6', fontWeight: 700 }}>
-                                                    {formatBytes(evt.bytesReceived)}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+
+                        {/* Top 10 Sessions by Download (Rx) */}
+                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '540px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                                <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '8px', borderRadius: '8px' }}>
+                                    <ArrowDownLeft size={20} />
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Top 10 Individual Sessions by Download (Rx)</h3>
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Highest inbound data transfer</p>
+                                </div>
                             </div>
-                        )}
+                            {loading ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Loading bandwidth stats...</p>
+                            ) : topDownloadEvents.length === 0 ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No session data transfer recorded for this period.</p>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
+                                    {topDownloadEvents.map((evt) => {
+                                        const nonUs = isNonUs(evt);
+                                        return (
+                                            <div key={evt.id} style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                justifyContent: 'space-between', 
+                                                padding: '12px 14px',
+                                                borderRadius: '8px', 
+                                                background: nonUs ? 'rgba(245, 158, 11, 0.04)' : 'rgba(255,255,255,0.01)',
+                                                border: '1px solid var(--border-color)',
+                                                borderLeft: nonUs ? '4px solid #f59e0b' : '1px solid var(--border-color)',
+                                                gap: '12px'
+                                            }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                    <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1.05rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        {evt.sourceIp}
+                                                        {nonUs && (
+                                                            <span style={{ 
+                                                                fontSize: '0.65rem', 
+                                                                background: 'rgba(245, 158, 11, 0.15)', 
+                                                                color: '#fbbf24', 
+                                                                padding: '1px 5px', 
+                                                                borderRadius: '4px',
+                                                                fontWeight: 700
+                                                            }}>
+                                                                ⚠️ Non-US ({evt.ipCountryCode})
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
+                                                        {evt.ipAsName || "Private / Local IP"}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <Clock size={11} style={{ flexShrink: 0 }} /> {formatSessionTimes(evt)}
+                                                    </span>
+                                                </div>
+                                                <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                        {renderUserHover(evt.username, evt.id + "-top-dl")}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.85rem', color: '#3b82f6', fontWeight: 700 }}>
+                                                        {formatBytes(evt.bytesReceived)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

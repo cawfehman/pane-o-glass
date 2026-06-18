@@ -333,10 +333,37 @@ export async function GET(req: NextRequest) {
             take: 20
         });
 
-        // Fetch top 10 sessions by upload (bytesSent) and download (bytesReceived)
+        // Parse bandwidthScope filter
+        const bandwidthScope = searchParams.get("bandwidthScope") || "last30days";
+        let bandwidthDateFilter: any = {};
+        const now = new Date();
+        
+        if (bandwidthScope === "today") {
+            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            bandwidthDateFilter = { gte: start };
+        } else if (bandwidthScope === "yesterday") {
+            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+            const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+            bandwidthDateFilter = { gte: start, lte: end };
+        } else if (bandwidthScope === "last7days") {
+            const start = new Date();
+            start.setDate(now.getDate() - 7);
+            bandwidthDateFilter = { gte: start };
+        } else if (bandwidthScope === "last14days") {
+            const start = new Date();
+            start.setDate(now.getDate() - 14);
+            bandwidthDateFilter = { gte: start };
+        } else { // default last30days
+            const start = new Date();
+            start.setDate(now.getDate() - 30);
+            bandwidthDateFilter = { gte: start };
+        }
+
+        // Fetch top 10 sessions by upload (bytesSent) and download (bytesReceived) within date filter
         const topUploadEvents = await prisma.vpnEvent.findMany({
             where: {
-                bytesSent: { not: null, gt: 0 }
+                bytesSent: { not: null, gt: 0 },
+                createdAt: bandwidthDateFilter
             },
             orderBy: { bytesSent: "desc" },
             take: 10
@@ -344,7 +371,8 @@ export async function GET(req: NextRequest) {
 
         const topDownloadEvents = await prisma.vpnEvent.findMany({
             where: {
-                bytesReceived: { not: null, gt: 0 }
+                bytesReceived: { not: null, gt: 0 },
+                createdAt: bandwidthDateFilter
             },
             orderBy: { bytesReceived: "desc" },
             take: 10
