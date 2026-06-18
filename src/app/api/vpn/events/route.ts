@@ -436,7 +436,7 @@ export async function GET(req: NextRequest) {
         } catch (e) {}
 
         // Gather unique usernames for AD Info enrichment (filtering to only lookup name-name formats)
-        const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+$/;
+        const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
         const uniqueUsernames = Array.from(new Set([
             ...successfulIps.map(e => e.username),
             ...failedIps.map(e => e.username),
