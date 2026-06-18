@@ -22,6 +22,21 @@ export default function VpnTroubleshootingPage() {
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
     const [bandwidthScope, setBandwidthScope] = useState<string>("last30days");
     const [feedSubTab, setFeedSubTab] = useState<"all" | "success" | "failure">("all");
+    const [displayRows, setDisplayRows] = useState<number>(() => {
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("vpn_display_rows");
+            if (saved) {
+                const parsed = parseInt(saved, 10);
+                if ([25, 50, 100, 200].includes(parsed)) return parsed;
+            }
+        }
+        return 25;
+    });
+
+    const handleDisplayRowsChange = (val: number) => {
+        setDisplayRows(val);
+        localStorage.setItem("vpn_display_rows", val.toString());
+    };
 
     const [successfulIps, setSuccessfulIps] = useState<any[]>([]);
     const [failedIps, setFailedIps] = useState<any[]>([]);
@@ -583,59 +598,86 @@ export default function VpnTroubleshootingPage() {
                             )}
                         </form>
                         
-                        {/* Subtabs Selector */}
-                        <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                            <button
-                                onClick={() => setFeedSubTab("all")}
-                                style={{
-                                    padding: '6px 14px',
-                                    borderRadius: '8px',
-                                    fontSize: '0.8rem',
-                                    fontWeight: 600,
-                                    background: feedSubTab === "all" ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-surface)',
-                                    color: feedSubTab === "all" ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                                    border: '1px solid',
-                                    borderColor: feedSubTab === "all" ? 'rgba(99, 102, 241, 0.3)' : 'var(--border-color)',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s'
-                                }}
-                            >
-                                All Events
-                            </button>
-                            <button
-                                onClick={() => setFeedSubTab("success")}
-                                style={{
-                                    padding: '6px 14px',
-                                    borderRadius: '8px',
-                                    fontSize: '0.8rem',
-                                    fontWeight: 600,
-                                    background: feedSubTab === "success" ? 'rgba(34, 197, 94, 0.15)' : 'var(--bg-surface)',
-                                    color: feedSubTab === "success" ? '#22c55e' : 'var(--text-secondary)',
-                                    border: '1px solid',
-                                    borderColor: feedSubTab === "success" ? 'rgba(34, 197, 94, 0.3)' : 'var(--border-color)',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s'
-                                }}
-                            >
-                                Successful Connections
-                            </button>
-                            <button
-                                onClick={() => setFeedSubTab("failure")}
-                                style={{
-                                    padding: '6px 14px',
-                                    borderRadius: '8px',
-                                    fontSize: '0.8rem',
-                                    fontWeight: 600,
-                                    background: feedSubTab === "failure" ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-surface)',
-                                    color: feedSubTab === "failure" ? '#ef4444' : 'var(--text-secondary)',
-                                    border: '1px solid',
-                                    borderColor: feedSubTab === "failure" ? 'rgba(239, 68, 68, 0.3)' : 'var(--border-color)',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s'
-                                }}
-                            >
-                                Authentication Failures
-                            </button>
+                        {/* Subtabs Selector & Row Limit */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', gap: '12px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                <button
+                                    onClick={() => setFeedSubTab("all")}
+                                    style={{
+                                        padding: '6px 14px',
+                                        borderRadius: '8px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 600,
+                                        background: feedSubTab === "all" ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-surface)',
+                                        color: feedSubTab === "all" ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                                        border: '1px solid',
+                                        borderColor: feedSubTab === "all" ? 'rgba(99, 102, 241, 0.3)' : 'var(--border-color)',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    All Events
+                                </button>
+                                <button
+                                    onClick={() => setFeedSubTab("success")}
+                                    style={{
+                                        padding: '6px 14px',
+                                        borderRadius: '8px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 600,
+                                        background: feedSubTab === "success" ? 'rgba(34, 197, 94, 0.15)' : 'var(--bg-surface)',
+                                        color: feedSubTab === "success" ? '#22c55e' : 'var(--text-secondary)',
+                                        border: '1px solid',
+                                        borderColor: feedSubTab === "success" ? 'rgba(34, 197, 94, 0.3)' : 'var(--border-color)',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    Successful Connections
+                                </button>
+                                <button
+                                    onClick={() => setFeedSubTab("failure")}
+                                    style={{
+                                        padding: '6px 14px',
+                                        borderRadius: '8px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 600,
+                                        background: feedSubTab === "failure" ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-surface)',
+                                        color: feedSubTab === "failure" ? '#ef4444' : 'var(--text-secondary)',
+                                        border: '1px solid',
+                                        borderColor: feedSubTab === "failure" ? 'rgba(239, 68, 68, 0.3)' : 'var(--border-color)',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    Authentication Failures
+                                </button>
+                            </div>
+
+                            {/* Row Limit Selector */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Rows:</span>
+                                <select
+                                    value={displayRows}
+                                    onChange={(e) => handleDisplayRowsChange(Number(e.target.value))}
+                                    style={{
+                                        padding: '6px 10px',
+                                        borderRadius: '8px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 600,
+                                        background: 'var(--bg-surface)',
+                                        border: '1px solid var(--border-color)',
+                                        color: 'var(--text-primary)',
+                                        outline: 'none',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <option value={25}>25</option>
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                    <option value={200}>200</option>
+                                </select>
+                            </div>
                         </div>
                     </section>
 
@@ -668,7 +710,7 @@ export default function VpnTroubleshootingPage() {
                                                     </td>
                                                 </tr>
                                             ) : (
-                                                getSortedData(getFilteredEvents(searchResults)).map((evt) => (
+                                                getSortedData(getFilteredEvents(searchResults)).slice(0, displayRows).map((evt) => (
                                                     <tr key={evt.id} style={{ 
                                                         borderBottom: '1px solid var(--border-color)', 
                                                         transition: 'background-color 0.2s',
@@ -797,7 +839,7 @@ export default function VpnTroubleshootingPage() {
                                                 </td>
                                             </tr>
                                         ) : (
-                                            getSortedData(getFilteredEvents(recentEvents)).map((evt) => (
+                                            getSortedData(getFilteredEvents(recentEvents)).slice(0, displayRows).map((evt) => (
                                                 <tr key={evt.id} style={{ 
                                                     borderBottom: '1px solid var(--border-color)', 
                                                     transition: 'background-color 0.2s',

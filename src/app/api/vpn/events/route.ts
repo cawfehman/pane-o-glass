@@ -338,7 +338,7 @@ export async function GET(req: NextRequest) {
                     ]
                 },
                 orderBy: { createdAt: "desc" },
-                take: 100
+                take: 200
             });
         }
 
@@ -379,7 +379,7 @@ export async function GET(req: NextRequest) {
 
         const recentEvents = await prisma.vpnEvent.findMany({
             orderBy: { createdAt: "desc" },
-            take: 20
+            take: 200
         });
 
         // Parse bandwidthScope filter
