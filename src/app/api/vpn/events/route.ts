@@ -435,7 +435,8 @@ export async function GET(req: NextRequest) {
             });
         } catch (e) {}
 
-        // Gather unique usernames for AD Info enrichment
+        // Gather unique usernames for AD Info enrichment (filtering to only lookup name-name formats)
+        const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+$/;
         const uniqueUsernames = Array.from(new Set([
             ...successfulIps.map(e => e.username),
             ...failedIps.map(e => e.username),
@@ -443,7 +444,7 @@ export async function GET(req: NextRequest) {
             ...topUploadEvents.map(e => e.username),
             ...topDownloadEvents.map(e => e.username),
             ...results.map(e => e.username)
-        ].filter(Boolean)));
+        ].filter(uname => uname && nameNameRegex.test(uname))));
 
         const adUsers: Record<string, any> = {};
         await Promise.all(uniqueUsernames.map(async (uname) => {

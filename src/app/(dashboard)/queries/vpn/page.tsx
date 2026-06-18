@@ -21,6 +21,7 @@ export default function VpnTroubleshootingPage() {
     const [sortKey, setSortKey] = useState<string>("createdAt");
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
     const [bandwidthScope, setBandwidthScope] = useState<string>("last30days");
+    const [feedSubTab, setFeedSubTab] = useState<"all" | "success" | "failure">("all");
 
     const [successfulIps, setSuccessfulIps] = useState<any[]>([]);
     const [failedIps, setFailedIps] = useState<any[]>([]);
@@ -152,6 +153,17 @@ export default function VpnTroubleshootingPage() {
         }
         setSortKey(key);
         setSortOrder(direction);
+    };
+
+    const getFilteredEvents = (events: any[] | null) => {
+        if (!events) return [];
+        if (feedSubTab === "success") {
+            return events.filter(evt => evt.status === "SUCCESS" || evt.status === "DISCONNECT");
+        }
+        if (feedSubTab === "failure") {
+            return events.filter(evt => evt.status === "FAILURE");
+        }
+        return events;
     };
 
     const getSortedData = (dataList: any[]) => {
@@ -569,6 +581,61 @@ export default function VpnTroubleshootingPage() {
                                 </button>
                             )}
                         </form>
+                        
+                        {/* Subtabs Selector */}
+                        <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                            <button
+                                onClick={() => setFeedSubTab("all")}
+                                style={{
+                                    padding: '6px 14px',
+                                    borderRadius: '8px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600,
+                                    background: feedSubTab === "all" ? 'rgba(99, 102, 241, 0.15)' : 'var(--bg-surface)',
+                                    color: feedSubTab === "all" ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                                    border: '1px solid',
+                                    borderColor: feedSubTab === "all" ? 'rgba(99, 102, 241, 0.3)' : 'var(--border-color)',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                All Events
+                            </button>
+                            <button
+                                onClick={() => setFeedSubTab("success")}
+                                style={{
+                                    padding: '6px 14px',
+                                    borderRadius: '8px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600,
+                                    background: feedSubTab === "success" ? 'rgba(34, 197, 94, 0.15)' : 'var(--bg-surface)',
+                                    color: feedSubTab === "success" ? '#22c55e' : 'var(--text-secondary)',
+                                    border: '1px solid',
+                                    borderColor: feedSubTab === "success" ? 'rgba(34, 197, 94, 0.3)' : 'var(--border-color)',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                Successful Connections
+                            </button>
+                            <button
+                                onClick={() => setFeedSubTab("failure")}
+                                style={{
+                                    padding: '6px 14px',
+                                    borderRadius: '8px',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600,
+                                    background: feedSubTab === "failure" ? 'rgba(239, 68, 68, 0.15)' : 'var(--bg-surface)',
+                                    color: feedSubTab === "failure" ? '#ef4444' : 'var(--text-secondary)',
+                                    border: '1px solid',
+                                    borderColor: feedSubTab === "failure" ? 'rgba(239, 68, 68, 0.3)' : 'var(--border-color)',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                Authentication Failures
+                            </button>
+                        </div>
                     </section>
 
                     {/* Search Results */}
@@ -593,14 +660,14 @@ export default function VpnTroubleshootingPage() {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {searchResults.length === 0 ? (
+                                            {getFilteredEvents(searchResults).length === 0 ? (
                                                 <tr>
                                                     <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                                                        No matching VPN events found.
+                                                        No matching VPN events found for the selected subtab.
                                                     </td>
                                                 </tr>
                                             ) : (
-                                                getSortedData(searchResults).map((evt) => (
+                                                getSortedData(getFilteredEvents(searchResults)).map((evt) => (
                                                     <tr key={evt.id} style={{ 
                                                         borderBottom: '1px solid var(--border-color)', 
                                                         transition: 'background-color 0.2s',
@@ -722,14 +789,14 @@ export default function VpnTroubleshootingPage() {
                                                     Loading recent activities...
                                                 </td>
                                             </tr>
-                                        ) : recentEvents.length === 0 ? (
+                                        ) : getFilteredEvents(recentEvents).length === 0 ? (
                                             <tr>
                                                 <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
                                                     No VPN events captured yet.
                                                 </td>
                                             </tr>
                                         ) : (
-                                            getSortedData(recentEvents).map((evt) => (
+                                            getSortedData(getFilteredEvents(recentEvents)).map((evt) => (
                                                 <tr key={evt.id} style={{ 
                                                     borderBottom: '1px solid var(--border-color)', 
                                                     transition: 'background-color 0.2s',
