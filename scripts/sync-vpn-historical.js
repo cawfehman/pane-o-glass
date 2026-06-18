@@ -113,12 +113,20 @@ async function runHistoricalSync() {
         : `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
     const agent = new https.Agent({ rejectUnauthorized: false });
 
-    // Loop through the last 30 days, day-by-day
-    console.log(`Starting 30-day historical VPN log sync...`);
+    // Determine day range from command line arguments (e.g. node sync-vpn-historical.js 45)
+    let daysToSync = 30;
+    const args = process.argv.slice(2);
+    const parsedDays = parseInt(args[0], 10);
+    if (!isNaN(parsedDays) && parsedDays > 0) {
+        daysToSync = parsedDays;
+    }
+
+    // Loop through the last N days, day-by-day
+    console.log(`Starting ${daysToSync}-day historical VPN log sync...`);
     
     let totalImported = 0;
 
-    for (let dayOffset = 30; dayOffset >= 0; dayOffset--) {
+    for (let dayOffset = daysToSync; dayOffset >= 0; dayOffset--) {
         const toDate = new Date();
         toDate.setDate(toDate.getDate() - dayOffset);
         
