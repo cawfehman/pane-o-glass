@@ -111,6 +111,7 @@ export default function VpnTroubleshootingPage() {
         } finally {
             clearInterval(intervalId);
             setSyncing(false);
+            setSyncRange(2100); // Reset UI selector back to 35 minutes default
         }
     };
 
