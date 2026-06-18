@@ -427,6 +427,67 @@ export async function GET(req: NextRequest) {
             take: 10
         });
 
+        // Parse securityScope filter
+        const securityScope = searchParams.get("securityScope") || "last24hours";
+        let securityDateFilter: any = {};
+        
+        if (securityScope === "today") {
+            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            securityDateFilter = { gte: start };
+        } else if (securityScope === "yesterday") {
+            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+            const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+            securityDateFilter = { gte: start, lte: end };
+        } else if (securityScope === "last7days") {
+            const start = new Date();
+            start.setDate(now.getDate() - 7);
+            securityDateFilter = { gte: start };
+        } else if (securityScope === "last14days") {
+            const start = new Date();
+            start.setDate(now.getDate() - 14);
+            securityDateFilter = { gte: start };
+        } else if (securityScope === "last30days") {
+            const start = new Date();
+            start.setDate(now.getDate() - 30);
+            securityDateFilter = { gte: start };
+        } else { // default last24hours
+            const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            securityDateFilter = { gte: start };
+        }
+
+        // Query grouped failure attempts
+        const rawFailures = await prisma.vpnEvent.groupBy({
+            by: ['username'],
+            _count: {
+                username: true
+            },
+            where: {
+                status: "FAILURE",
+                createdAt: securityDateFilter
+            },
+            orderBy: {
+                _count: {
+                    username: 'desc'
+                }
+            }
+        });
+
+        // Top 25 Failed Usernames (All)
+        const topFailedUsernames = rawFailures.slice(0, 25).map(f => ({
+            username: f.username,
+            count: f._count.username
+        }));
+
+        // Top 25 Failed Valid Usernames (name-name or name-name-name)
+        const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
+        const topFailedValidUsernames = rawFailures
+            .filter(f => nameNameRegex.test(f.username))
+            .slice(0, 25)
+            .map(f => ({
+                username: f.username,
+                count: f._count.username
+            }));
+
         // Get status of the last background job sync
         let lastSyncStatus = null;
         try {
@@ -436,13 +497,14 @@ export async function GET(req: NextRequest) {
         } catch (e) {}
 
         // Gather unique usernames for AD Info enrichment (filtering to only lookup name-name formats)
-        const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
         const uniqueUsernames = Array.from(new Set([
             ...successfulIps.map(e => e.username),
             ...failedIps.map(e => e.username),
             ...recentEvents.map(e => e.username),
             ...topUploadEvents.map(e => e.username),
             ...topDownloadEvents.map(e => e.username),
+            ...topFailedUsernames.map(e => e.username),
+            ...topFailedValidUsernames.map(e => e.username),
             ...results.map(e => e.username)
         ].filter(uname => uname && nameNameRegex.test(uname))));
 
@@ -468,6 +530,8 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
             successfulIps,
             failedIps,
+            topFailedUsernames,
+            topFailedValidUsernames,
             recentEvents,
             topUploadEvents,
             topDownloadEvents,

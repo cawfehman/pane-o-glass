@@ -21,6 +21,7 @@ export default function VpnTroubleshootingPage() {
     const [sortKey, setSortKey] = useState<string>("createdAt");
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
     const [bandwidthScope, setBandwidthScope] = useState<string>("last30days");
+    const [securityScope, setSecurityScope] = useState<string>("last24hours");
     const [feedSubTab, setFeedSubTab] = useState<"all" | "success" | "failure">("all");
     const [displayRows, setDisplayRows] = useState<number>(() => {
         if (typeof window !== "undefined") {
@@ -38,6 +39,9 @@ export default function VpnTroubleshootingPage() {
         localStorage.setItem("vpn_display_rows", val.toString());
     };
 
+    const [topFailedUsernames, setTopFailedUsernames] = useState<any[]>([]);
+    const [topFailedValidUsernames, setTopFailedValidUsernames] = useState<any[]>([]);
+
     const [successfulIps, setSuccessfulIps] = useState<any[]>([]);
     const [failedIps, setFailedIps] = useState<any[]>([]);
     const [topUploadEvents, setTopUploadEvents] = useState<any[]>([]);
@@ -53,13 +57,15 @@ export default function VpnTroubleshootingPage() {
     const fetchDashboardData = async () => {
         try {
             setError("");
-            const res = await fetch(`/api/vpn/events?bandwidthScope=${bandwidthScope}`);
+            const res = await fetch(`/api/vpn/events?bandwidthScope=${bandwidthScope}&securityScope=${securityScope}`);
             if (!res.ok) throw new Error("Failed to load VPN events");
             const data = await res.json();
             setSuccessfulIps(data.successfulIps || []);
             setFailedIps(data.failedIps || []);
             setTopUploadEvents(data.topUploadEvents || []);
             setTopDownloadEvents(data.topDownloadEvents || []);
+            setTopFailedUsernames(data.topFailedUsernames || []);
+            setTopFailedValidUsernames(data.topFailedValidUsernames || []);
             setRecentEvents(data.recentEvents || []);
             setLastSync(data.lastSync || null);
             if (data.adUsers) {
@@ -156,7 +162,7 @@ export default function VpnTroubleshootingPage() {
 
     useEffect(() => {
         fetchDashboardData();
-    }, [bandwidthScope]);
+    }, [bandwidthScope, securityScope]);
 
     const isNonUs = (evt: any) => {
         return evt?.ipCountryCode && evt.ipCountryCode.toUpperCase() !== "US";
@@ -936,162 +942,281 @@ export default function VpnTroubleshootingPage() {
 
             {/* TAB CONTENT: security */}
             {activeTab === "security" && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '2.5rem' }}>
-                    {/* Last 10 Successful Source IPs */}
-                    <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '520px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-                            <div style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '8px', borderRadius: '8px' }}>
-                                <Wifi size={20} />
-                            </div>
-                            <div>
-                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Last 10 Unique Successful Source IPs</h3>
-                                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Latest active connections</p>
-                            </div>
-                        </div>
-                        {loading ? (
-                            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Loading successful IPs...</p>
-                        ) : successfulIps.length === 0 ? (
-                            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No successful connections recorded yet.</p>
-                        ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
-                                {successfulIps.map((evt) => {
-                                    const nonUs = isNonUs(evt);
-                                    return (
-                                        <div key={evt.id} style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'space-between', 
-                                            padding: '12px 14px',
-                                            borderRadius: '8px', 
-                                            background: nonUs ? 'rgba(245, 158, 11, 0.04)' : 'rgba(255,255,255,0.01)',
-                                            border: '1px solid var(--border-color)',
-                                            borderLeft: nonUs ? '4px solid #f59e0b' : '1px solid var(--border-color)',
-                                            gap: '12px'
-                                        }}>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1.05rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    {evt.sourceIp}
-                                                    {nonUs && (
-                                                        <span style={{ 
-                                                            fontSize: '0.65rem', 
-                                                            background: 'rgba(245, 158, 11, 0.15)', 
-                                                            color: '#fbbf24', 
-                                                            padding: '1px 5px', 
-                                                            borderRadius: '4px',
-                                                            fontWeight: 700
-                                                        }}>
-                                                            ⚠️ Non-US ({evt.ipCountryCode})
-                                                        </span>
-                                                    )}
-                                                </span>
-                                                {evt.assignedIp && (
-                                                    <div style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px', background: 'rgba(16, 185, 129, 0.1)', padding: '1px 4px', borderRadius: '3px', fontWeight: 600 }}>Assigned:</span> <span>{evt.assignedIp}</span>
-                                                    </div>
-                                                )}
-                                                {evt.ipAsName ? (
-                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={`${evt.ipAsn} • ${evt.ipCountryCode || evt.ipCountry || "Unknown"}`}>
-                                                        <Globe size={11} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
-                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
-                                                            {evt.ipAsName}
-                                                        </span>
-                                                    </span>
-                                                ) : (
-                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                                        <Globe size={11} style={{ flexShrink: 0 }} /> Private / Local IP
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                                    {renderUserHover(evt.username, evt.id + "-succ")}
-                                                </span>
-                                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                    <Clock size={11} /> {formatDate(evt.createdAt)}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
+                <>
+                    {/* Time Window Selector for Security Insights */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '16px', gap: '8px' }}>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Select Scope:</span>
+                        <select
+                            value={securityScope}
+                            onChange={(e) => setSecurityScope(e.target.value)}
+                            style={{
+                                padding: '6px 12px',
+                                borderRadius: '8px',
+                                fontSize: '0.8rem',
+                                fontWeight: 600,
+                                background: 'var(--bg-surface)',
+                                border: '1px solid var(--border-color)',
+                                color: 'var(--text-primary)',
+                                outline: 'none',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <option value="last24hours">Last 24 Hours</option>
+                            <option value="today">Today</option>
+                            <option value="yesterday">Yesterday</option>
+                            <option value="last7days">Last 7 Days</option>
+                            <option value="last14days">Last 14 Days</option>
+                            <option value="last30days">Last 30 Days</option>
+                        </select>
                     </div>
 
-                    {/* Last 10 Failed Source IPs */}
-                    <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '520px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-                            <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '8px', borderRadius: '8px' }}>
-                                <ShieldAlert size={20} />
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '2.5rem' }}>
+                        {/* Last 10 Successful Source IPs */}
+                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '520px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                                <div style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '8px', borderRadius: '8px' }}>
+                                    <Wifi size={20} />
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Last 10 Unique Successful Source IPs</h3>
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Latest active connections</p>
+                                </div>
                             </div>
-                            <div>
-                                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Last 10 Unique Failed Source IPs</h3>
-                                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Recent failures</p>
-                            </div>
+                            {loading ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Loading successful IPs...</p>
+                            ) : successfulIps.length === 0 ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No successful connections recorded yet.</p>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
+                                    {successfulIps.map((evt) => {
+                                        const nonUs = isNonUs(evt);
+                                        return (
+                                            <div key={evt.id} style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                justifyContent: 'space-between', 
+                                                padding: '12px 14px',
+                                                borderRadius: '8px', 
+                                                background: nonUs ? 'rgba(245, 158, 11, 0.04)' : 'rgba(255,255,255,0.01)',
+                                                border: '1px solid var(--border-color)',
+                                                borderLeft: nonUs ? '4px solid #f59e0b' : '1px solid var(--border-color)',
+                                                gap: '12px'
+                                            }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                    <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1.05rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        {evt.sourceIp}
+                                                        {nonUs && (
+                                                            <span style={{ 
+                                                                fontSize: '0.65rem', 
+                                                                background: 'rgba(245, 158, 11, 0.15)', 
+                                                                color: '#fbbf24', 
+                                                                padding: '1px 5px', 
+                                                                borderRadius: '4px',
+                                                                fontWeight: 700
+                                                            }}>
+                                                                ⚠️ Non-US ({evt.ipCountryCode})
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    {evt.assignedIp && (
+                                                        <div style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <span style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.5px', background: 'rgba(16, 185, 129, 0.1)', padding: '1px 4px', borderRadius: '3px', fontWeight: 600 }}>Assigned:</span> <span>{evt.assignedIp}</span>
+                                                        </div>
+                                                    )}
+                                                    {evt.ipAsName ? (
+                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={`${evt.ipAsn} • ${evt.ipCountryCode || evt.ipCountry || "Unknown"}`}>
+                                                            <Globe size={11} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
+                                                                {evt.ipAsName}
+                                                            </span>
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                            <Globe size={11} style={{ flexShrink: 0 }} /> Private / Local IP
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                        {renderUserHover(evt.username, evt.id + "-succ")}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <Clock size={11} /> {formatDate(evt.createdAt)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
-                        {loading ? (
-                            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Loading failed IPs...</p>
-                        ) : failedIps.length === 0 ? (
-                            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No connection failures recorded yet.</p>
-                        ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
-                                {failedIps.map((evt) => {
-                                    const nonUs = isNonUs(evt);
-                                    return (
-                                        <div key={evt.id} style={{ 
+
+                        {/* Last 10 Failed Source IPs */}
+                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '520px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                                <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '8px', borderRadius: '8px' }}>
+                                    <ShieldAlert size={20} />
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Last 10 Unique Failed Source IPs</h3>
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Recent failures</p>
+                                </div>
+                            </div>
+                            {loading ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Loading failed IPs...</p>
+                            ) : failedIps.length === 0 ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No connection failures recorded yet.</p>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
+                                    {failedIps.map((evt) => {
+                                        const nonUs = isNonUs(evt);
+                                        return (
+                                            <div key={evt.id} style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                justifyContent: 'space-between', 
+                                                padding: '12px 14px',
+                                                borderRadius: '8px', 
+                                                background: nonUs ? 'rgba(245, 158, 11, 0.04)' : 'rgba(255,255,255,0.01)',
+                                                border: '1px solid var(--border-color)',
+                                                borderLeft: nonUs ? '4px solid #f59e0b' : '1px solid var(--border-color)',
+                                                gap: '12px'
+                                            }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                    <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1.05rem', color: '#f87171', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        {evt.sourceIp}
+                                                        {nonUs && (
+                                                            <span style={{ 
+                                                                fontSize: '0.65rem', 
+                                                                background: 'rgba(245, 158, 11, 0.15)', 
+                                                                color: '#fbbf24', 
+                                                                padding: '1px 5px', 
+                                                                borderRadius: '4px',
+                                                                fontWeight: 700
+                                                            }}>
+                                                                ⚠️ Non-US ({evt.ipCountryCode})
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    {evt.ipAsName ? (
+                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={`${evt.ipAsn} • ${evt.ipCountryCode || evt.ipCountry || "Unknown"}`}>
+                                                            <Globe size={11} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
+                                                                {evt.ipAsName}
+                                                            </span>
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                            <Globe size={11} style={{ flexShrink: 0 }} /> Private / Local IP
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                        {renderUserHover(evt.username, evt.id + "-fail")}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: 500, display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
+                                                        <ShieldAlert size={11} /> {evt.failureReason || "Failed"}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Top 25 Failed Usernames (All) */}
+                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '520px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                                <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '8px', borderRadius: '8px' }}>
+                                    <ShieldAlert size={20} />
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Top 25 Failed Usernames (All)</h3>
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Highest connection rejections</p>
+                                </div>
+                            </div>
+                            {loading ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Loading failed usernames...</p>
+                            ) : topFailedUsernames.length === 0 ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No failed username attempts recorded.</p>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
+                                    {topFailedUsernames.map((u, index) => (
+                                        <div key={index} style={{ 
                                             display: 'flex', 
                                             alignItems: 'center', 
                                             justifyContent: 'space-between', 
                                             padding: '12px 14px',
                                             borderRadius: '8px', 
-                                            background: nonUs ? 'rgba(245, 158, 11, 0.04)' : 'rgba(255,255,255,0.01)',
+                                            background: 'rgba(255,255,255,0.01)',
                                             border: '1px solid var(--border-color)',
-                                            borderLeft: nonUs ? '4px solid #f59e0b' : '1px solid var(--border-color)',
                                             gap: '12px'
                                         }}>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1.05rem', color: '#f87171', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    {evt.sourceIp}
-                                                    {nonUs && (
-                                                        <span style={{ 
-                                                            fontSize: '0.65rem', 
-                                                            background: 'rgba(245, 158, 11, 0.15)', 
-                                                            color: '#fbbf24', 
-                                                            padding: '1px 5px', 
-                                                            borderRadius: '4px',
-                                                            fontWeight: 700
-                                                        }}>
-                                                            ⚠️ Non-US ({evt.ipCountryCode})
-                                                        </span>
-                                                    )}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', width: '24px', textAlign: 'center' }}>
+                                                    #{index + 1}
                                                 </span>
-                                                {evt.ipAsName ? (
-                                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={`${evt.ipAsn} • ${evt.ipCountryCode || evt.ipCountry || "Unknown"}`}>
-                                                        <Globe size={11} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
-                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
-                                                            {evt.ipAsName}
-                                                        </span>
-                                                    </span>
-                                                ) : (
-                                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                                        <Globe size={11} style={{ flexShrink: 0 }} /> Private / Local IP
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                                    {renderUserHover(evt.username, evt.id + "-fail")}
-                                                </span>
-                                                <span style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: 500, display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
-                                                    <ShieldAlert size={11} /> {evt.failureReason || "Failed"}
+                                                <span style={{ fontSize: '0.95rem', fontWeight: 600 }}>
+                                                    {renderUserHover(u.username, "sec-fail-all-" + index)}
                                                 </span>
                                             </div>
+                                            <span style={{ fontSize: '0.9rem', color: '#f87171', fontWeight: 700 }}>
+                                                {u.count} attempt{u.count === 1 ? "" : "s"}
+                                            </span>
                                         </div>
-                                    );
-                                })}
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Top 25 Failed Valid Usernames */}
+                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '520px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                                <div style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', padding: '8px', borderRadius: '8px' }}>
+                                    <User size={20} />
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Top 25 Failed Valid Usernames</h3>
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Corporate name-name patterns</p>
+                                </div>
                             </div>
-                        )}
+                            {loading ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Loading failed corporate usernames...</p>
+                            ) : topFailedValidUsernames.length === 0 ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No failed corporate username attempts recorded.</p>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
+                                    {topFailedValidUsernames.map((u, index) => (
+                                        <div key={index} style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'space-between', 
+                                            padding: '12px 14px',
+                                            borderRadius: '8px', 
+                                            background: 'rgba(255,255,255,0.01)',
+                                            border: '1px solid var(--border-color)',
+                                            gap: '12px'
+                                        }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', width: '24px', textAlign: 'center' }}>
+                                                    #{index + 1}
+                                                </span>
+                                                <span style={{ fontSize: '0.95rem', fontWeight: 600 }}>
+                                                    {renderUserHover(u.username, "sec-fail-val-" + index)}
+                                                </span>
+                                            </div>
+                                            <span style={{ fontSize: '0.9rem', color: 'var(--accent-primary)', fontWeight: 700 }}>
+                                                {u.count} attempt{u.count === 1 ? "" : "s"}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
+                </>
             )}
 
             {/* TAB CONTENT: bandwidth */}
