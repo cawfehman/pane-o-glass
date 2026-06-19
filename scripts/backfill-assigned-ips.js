@@ -21,7 +21,7 @@ async function backfillAssignedIps() {
     const streamIds = rawStreams ? rawStreams.replace(/^"|"$/g, '').split(",").map(id => id.trim()).filter(Boolean) : [];
 
     // Query specifically for the IP lease syslog message class
-    const signatures = '(MessageClass:FTD\\-4\\-722051 OR MessageClass:ASA\\-4\\-722051)';
+    const signatures = '(MessageClass:FTD\\-4\\-722051 OR MessageClass:ASA\\-4\\-722051 OR MessageClass:FTD\\-6\\-750003)';
     const authHeader = token.includes(":") 
         ? `Basic ${Buffer.from(token).toString("base64")}`
         : `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
@@ -39,6 +39,7 @@ async function backfillAssignedIps() {
     let totalUpdated = 0;
 
     const ipAssignRegex = /(?:Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>\s+(?:IPv4\s+)?Address\s+<([^>]+)>(?:\s+IPv6\s+address\s+<[^>]*>)?\s+assigned\s+to\s+session|Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+),\s*(?:IPv4\s*)?Address\s*=\s*([^\s,]+)(?:\s*,\s*IPv6\s*address\s*=\s*[^\s,]+)?\s*assigned\s*to\s*session)/i;
+    const ikev2LeaseRegex = /Local:\s*[^\s]+\s+Remote:\s*([^\s:]+)(?::\d+)?\s+Username:\s*([^\s]+)\s+IKEv2\s+Group:\s*[^\s]+\s+(?:IPv4\s+)?Address:\s*<([^>]+)>/i;
 
     for (let dayOffset = daysToSync; dayOffset >= 0; dayOffset--) {
         const toDate = new Date();
@@ -85,11 +86,28 @@ async function backfillAssignedIps() {
                 const logTimestampStr = msgObj.message?.timestamp;
                 if (!rawLog || !logTimestampStr) continue;
 
+                let username = "";
+                let sourceIp = "";
+                let assignedIp = "";
+                let matched = false;
+
                 const match = rawLog.match(ipAssignRegex);
                 if (match) {
-                    const username = match[2] || match[6];
-                    const sourceIp = match[3] || match[7];
-                    const assignedIp = match[4] || match[8];
+                    username = match[2] || match[6];
+                    sourceIp = match[3] || match[7];
+                    assignedIp = match[4] || match[8];
+                    matched = true;
+                } else {
+                    const ikeMatch = rawLog.match(ikev2LeaseRegex);
+                    if (ikeMatch) {
+                        sourceIp = ikeMatch[1];
+                        username = ikeMatch[2];
+                        assignedIp = ikeMatch[3];
+                        matched = true;
+                    }
+                }
+
+                if (matched) {
                     
                     const logTimestamp = new Date(logTimestampStr);
                     const fiveSeconds = 5 * 1000;

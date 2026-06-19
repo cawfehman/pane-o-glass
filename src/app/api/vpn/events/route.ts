@@ -43,7 +43,7 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
         : [];
 
     // Construct Lucene query using the indexed MessageClass field (escaping hyphens for Lucene parser)
-    const signatures = '(MessageClass:FTD\\-6\\-113039 OR MessageClass:FTD\\-4\\-113019 OR MessageClass:FTD\\-6\\-113015 OR MessageClass:FTD\\-4\\-113015 OR MessageClass:FTD\\-4\\-722051 OR MessageClass:ASA\\-4\\-722051 OR MessageClass:FTD\\-6\\-113005 OR MessageClass:ASA\\-6\\-113005)';
+    const signatures = '(MessageClass:FTD\\-6\\-113039 OR MessageClass:FTD\\-4\\-113019 OR MessageClass:FTD\\-6\\-113015 OR MessageClass:FTD\\-4\\-113015 OR MessageClass:FTD\\-4\\-722051 OR MessageClass:ASA\\-4\\-722051 OR MessageClass:FTD\\-6\\-113005 OR MessageClass:ASA\\-6\\-113005 OR MessageClass:FTD\\-6\\-750002 OR MessageClass:FTD\\-6\\-750003)';
 
     try {
         const searchUrl = `${url}/api/search/universal/relative`;
@@ -91,6 +91,10 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
         const failRegex113005 = /AAA\s+user\s+authentication\s+Rejected\s+:\s+reason\s+=\s+(.+?)\s+:\s+server\s+=\s+[^\s]+\s+:\s+user\s+=\s+(.+?)\s+:\s+user\s+IP\s+=\s+([^\s]+)/i;
         const discRegex = /(?:Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+)|Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>).*?Duration:\s*([^,]+).*?Bytes\s+(?:Tx|xmt):\s*(\d+).*?Bytes\s+(?:Rx|rcv):\s*(\d+)/i;
         const ipAssignRegex = /(?:Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>\s+(?:IPv4\s+)?Address\s+<([^>]+)>(?:\s+IPv6\s+address\s+<[^>]*>)?\s+assigned\s+to\s+session|Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+),\s*(?:IPv4\s*)?Address\s*=\s*([^\s,]+)(?:\s*,\s*IPv6\s*address\s*=\s*[^\s,]+)?\s*assigned\s*to\s*session)/i;
+        
+        // IKEv2 IPSec Regexes
+        const ikev2ConnRegex = /Local:\s*([^\s:]+)(?::\d+)?\s+Remote:\s*([^\s:]+)(?::\d+)?\s+Username:\s*([^\s]+)\s+IKEv2\s+SA\s+UP/i;
+        const ikev2LeaseRegex = /Local:\s*[^\s]+\s+Remote:\s*([^\s:]+)(?::\d+)?\s+Username:\s*([^\s]+)\s+IKEv2\s+Group:\s*[^\s]+\s+(?:IPv4\s+)?Address:\s*<([^>]+)>/i;
 
         for (const msgObj of messages) {
             const rawLog = msgObj.message?.message || "";
@@ -138,6 +142,21 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
                     username = match[2].trim();
                     sourceIp = match[3].trim();
                     status = "FAILURE";
+                }
+            } else if (rawLog.includes("750002") && ikev2ConnRegex.test(rawLog)) {
+                const match = rawLog.match(ikev2ConnRegex);
+                if (match) {
+                    username = match[3];
+                    sourceIp = match[2];
+                    status = "SUCCESS";
+                }
+            } else if (rawLog.includes("750003") && ikev2LeaseRegex.test(rawLog)) {
+                const match = rawLog.match(ikev2LeaseRegex);
+                if (match) {
+                    username = match[2];
+                    sourceIp = match[1];
+                    assignedIp = match[3];
+                    status = "SUCCESS";
                 }
             } else if (rawLog.includes("113019") && discRegex.test(rawLog)) {
                 const match = rawLog.match(discRegex);
