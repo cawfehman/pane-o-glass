@@ -42,6 +42,27 @@ export default function VpnTroubleshootingPage() {
     const [topFailedUsernames, setTopFailedUsernames] = useState<any[]>([]);
     const [topFailedValidUsernames, setTopFailedValidUsernames] = useState<any[]>([]);
 
+    const [selectedFailUser, setSelectedFailUser] = useState<string | null>(null);
+    const [failUserDetails, setFailUserDetails] = useState<any[]>([]);
+    const [loadingFailDetails, setLoadingFailDetails] = useState<boolean>(false);
+
+    const loadFailUserDetails = async (username: string) => {
+        setSelectedFailUser(username);
+        setLoadingFailDetails(true);
+        setFailUserDetails([]);
+        try {
+            const res = await fetch(`/api/vpn/events?detailUsername=${encodeURIComponent(username)}&securityScope=${securityScope}`);
+            if (res.ok) {
+                const data = await res.json();
+                setFailUserDetails(data.events || []);
+            }
+        } catch (err) {
+            console.error("Failed to load user fail details:", err);
+        } finally {
+            setLoadingFailDetails(false);
+        }
+    };
+
     const [successfulIps, setSuccessfulIps] = useState<any[]>([]);
     const [failedIps, setFailedIps] = useState<any[]>([]);
     const [topUploadEvents, setTopUploadEvents] = useState<any[]>([]);
@@ -1144,16 +1165,30 @@ export default function VpnTroubleshootingPage() {
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
                                     {topFailedUsernames.map((u, index) => (
-                                        <div key={index} style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'space-between', 
-                                            padding: '12px 14px',
-                                            borderRadius: '8px', 
-                                            background: 'rgba(255,255,255,0.01)',
-                                            border: '1px solid var(--border-color)',
-                                            gap: '12px'
-                                        }}>
+                                        <div 
+                                            key={index} 
+                                            onClick={() => loadFailUserDetails(u.username)}
+                                            style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                justifyContent: 'space-between', 
+                                                padding: '12px 14px',
+                                                borderRadius: '8px', 
+                                                background: 'rgba(255,255,255,0.01)',
+                                                border: '1px solid var(--border-color)',
+                                                gap: '12px',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onMouseEnter={(e) => { 
+                                                e.currentTarget.style.borderColor = 'var(--accent-primary)'; 
+                                                e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; 
+                                            }}
+                                            onMouseLeave={(e) => { 
+                                                e.currentTarget.style.borderColor = 'var(--border-color)'; 
+                                                e.currentTarget.style.background = 'rgba(255,255,255,0.01)'; 
+                                            }}
+                                        >
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                 <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', width: '24px', textAlign: 'center' }}>
                                                     #{index + 1}
@@ -1189,16 +1224,30 @@ export default function VpnTroubleshootingPage() {
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
                                     {topFailedValidUsernames.map((u, index) => (
-                                        <div key={index} style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            justifyContent: 'space-between', 
-                                            padding: '12px 14px',
-                                            borderRadius: '8px', 
-                                            background: 'rgba(255,255,255,0.01)',
-                                            border: '1px solid var(--border-color)',
-                                            gap: '12px'
-                                        }}>
+                                        <div 
+                                            key={index} 
+                                            onClick={() => loadFailUserDetails(u.username)}
+                                            style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                justifyContent: 'space-between', 
+                                                padding: '12px 14px',
+                                                borderRadius: '8px', 
+                                                background: 'rgba(255,255,255,0.01)',
+                                                border: '1px solid var(--border-color)',
+                                                gap: '12px',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onMouseEnter={(e) => { 
+                                                e.currentTarget.style.borderColor = 'var(--accent-primary)'; 
+                                                e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; 
+                                            }}
+                                            onMouseLeave={(e) => { 
+                                                e.currentTarget.style.borderColor = 'var(--border-color)'; 
+                                                e.currentTarget.style.background = 'rgba(255,255,255,0.01)'; 
+                                            }}
+                                        >
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                 <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', width: '24px', textAlign: 'center' }}>
                                                     #{index + 1}
@@ -1448,6 +1497,110 @@ export default function VpnTroubleshootingPage() {
                     {adUsers[hoveredUser].phone && (
                         <div><strong>Phone:</strong> {adUsers[hoveredUser].phone}</div>
                     )}
+                </div>
+            )}
+
+            {/* Failed Attempts Details Modal */}
+            {selectedFailUser && (
+                <div style={{
+                    position: 'fixed',
+                    inset: 0,
+                    backgroundColor: 'rgba(0,0,0,0.85)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 9999,
+                    padding: '24px'
+                }}>
+                    <div className="glass-card" style={{
+                        maxWidth: '750px',
+                        width: '100%',
+                        maxHeight: '80vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        padding: '24px',
+                        background: '#0d1017',
+                        border: '1px solid var(--border-color)',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+                    }}>
+                        {/* Modal Header */}
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            borderBottom: '1px solid var(--border-color)',
+                            paddingBottom: '16px',
+                            marginBottom: '16px'
+                        }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <ShieldAlert style={{ color: '#ef4444' }} /> Rejection Details: {selectedFailUser}
+                                </h3>
+                                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                                    Failed connection attempts recorded for this user during the current period.
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => setSelectedFailUser(null)}
+                                className="btn-secondary"
+                                style={{
+                                    padding: '4px 12px',
+                                    fontSize: '0.8rem',
+                                    borderRadius: '6px'
+                                }}
+                            >
+                                Close
+                            </button>
+                        </div>
+
+                        {/* Modal Content */}
+                        <div style={{ flex: 1, overflowY: 'auto', paddingRight: '4px' }}>
+                            {loadingFailDetails ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Loading attempt records...</p>
+                            ) : failUserDetails.length === 0 ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No details found for this user.</p>
+                            ) : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                                    <thead>
+                                        <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--border-color)' }}>
+                                            <th style={{ textAlign: 'left', padding: '10px', color: 'var(--text-secondary)' }}>Timestamp</th>
+                                            <th style={{ textAlign: 'left', padding: '10px', color: 'var(--text-secondary)' }}>Source IP</th>
+                                            <th style={{ textAlign: 'left', padding: '10px', color: 'var(--text-secondary)' }}>Country</th>
+                                            <th style={{ textAlign: 'left', padding: '10px', color: 'var(--text-secondary)' }}>ISP / Network</th>
+                                            <th style={{ textAlign: 'left', padding: '10px', color: 'var(--text-secondary)' }}>Failure Reason</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {failUserDetails.map((evt, idx) => (
+                                            <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                <td style={{ padding: '10px', whiteSpace: 'nowrap' }}>
+                                                    {new Date(evt.createdAt).toLocaleString()}
+                                                </td>
+                                                <td style={{ padding: '10px', fontFamily: 'monospace', fontWeight: 600 }}>
+                                                    {evt.sourceIp}
+                                                </td>
+                                                <td style={{ padding: '10px' }}>
+                                                    {evt.ipCountry ? (
+                                                        <span>
+                                                            {evt.ipCountryCode === 'US' ? '🇺🇸' : '⚠️'} {evt.ipCountry}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ color: 'var(--text-muted)' }}>Private / Local IP</span>
+                                                    )}
+                                                </td>
+                                                <td style={{ padding: '10px', color: 'var(--text-muted)', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={evt.ipAsName || "Local"}>
+                                                    {evt.ipAsName || "N/A"}
+                                                </td>
+                                                <td style={{ padding: '10px', color: '#f87171', fontWeight: 500 }}>
+                                                    {evt.failureReason || "Authentication failed"}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

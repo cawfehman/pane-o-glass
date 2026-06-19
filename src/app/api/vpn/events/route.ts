@@ -345,6 +345,49 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
     try {
         const { searchParams } = new URL(req.url);
+        const detailUsername = searchParams.get("detailUsername");
+
+        if (detailUsername) {
+            const securityScope = searchParams.get("securityScope") || "last24hours";
+            let securityDateFilter: any = {};
+            const now = new Date();
+
+            if (securityScope === "today") {
+                const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                securityDateFilter = { gte: start };
+            } else if (securityScope === "yesterday") {
+                const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+                const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+                securityDateFilter = { gte: start, lte: end };
+            } else if (securityScope === "last7days") {
+                const start = new Date();
+                start.setDate(now.getDate() - 7);
+                securityDateFilter = { gte: start };
+            } else if (securityScope === "last14days") {
+                const start = new Date();
+                start.setDate(now.getDate() - 14);
+                securityDateFilter = { gte: start };
+            } else if (securityScope === "last30days") {
+                const start = new Date();
+                start.setDate(now.getDate() - 30);
+                securityDateFilter = { gte: start };
+            } else { // default last24hours
+                const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                securityDateFilter = { gte: start };
+            }
+
+            const events = await prisma.vpnEvent.findMany({
+                where: {
+                    username: detailUsername,
+                    status: "FAILURE",
+                    createdAt: securityDateFilter
+                },
+                orderBy: { createdAt: "desc" },
+                take: 100
+            });
+            return NextResponse.json({ success: true, events });
+        }
+
         const query = searchParams.get("q");
 
         let results: any[] = [];
