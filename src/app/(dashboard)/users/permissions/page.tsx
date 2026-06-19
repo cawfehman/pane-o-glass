@@ -46,6 +46,8 @@ export default function PermissionsPage() {
     const [showLogs, setShowLogs] = useState(false);
     const [showResetModal, setShowResetModal] = useState(false);
     const [selectedRolesForReset, setSelectedRolesForReset] = useState<string[]>([]);
+    const [selectedToolsForReset, setSelectedToolsForReset] = useState<string[]>([]);
+    const [resetType, setResetType] = useState<"role" | "tool">("role");
 
     useEffect(() => {
         loadPermissions();
@@ -57,14 +59,21 @@ export default function PermissionsPage() {
         setLoading(false);
     };
 
-    const handleReset = async (roles?: string[]) => {
+    const handleReset = async (roles?: string[], tools?: string[]) => {
         setLoading(true);
         try {
-            await resetPermissions(roles);
+            await resetPermissions(roles, tools);
             router.refresh();
             await loadPermissions();
             setShowResetModal(false);
-            alert(`Permissions reset successfully${roles ? ` for: ${roles.join(', ')}` : ''}!`);
+            if (roles) {
+                alert(`Permissions reset successfully for roles: ${roles.join(', ')}!`);
+            } else if (tools) {
+                const toolNames = tools.map(tid => TOOLS.find(t => t.id === tid)?.name || tid);
+                alert(`Permissions reset successfully for tools: ${toolNames.join(', ')}!`);
+            } else {
+                alert("Permissions reset successfully to system defaults!");
+            }
         } catch (err: any) {
             alert("Failed to reset: " + err.message);
         } finally {
@@ -160,6 +169,8 @@ export default function PermissionsPage() {
                         </button>
                         <button onClick={() => {
                             setSelectedRolesForReset([]);
+                            setSelectedToolsForReset([]);
+                            setResetType("role");
                             setShowResetModal(true);
                         }} className="btn-danger" style={{ fontSize: '0.8rem', background: '#991b1b' }}>
                             Reset Defaults
@@ -275,38 +286,106 @@ export default function PermissionsPage() {
                 {showResetModal && (
                     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '16px' }}>
                         <div style={{ maxWidth: '450px', width: '100%', padding: '24px', border: '1px solid var(--accent-primary)', background: '#0a0a0a', borderRadius: 'var(--radius-md)', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
-                            <h3 style={{ marginBottom: '8px' }}>Reset Role Defaults</h3>
-                            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '24px' }}>
-                                Select the roles you wish to reset to their original system defaults. Other roles will remain unchanged.
-                            </p>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
-                                {ROLES.map(role => (
-                                    <label key={role} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px' }}>
-                                        <input 
-                                            type="checkbox" 
-                                            checked={selectedRolesForReset.includes(role)}
-                                            onChange={(e) => {
-                                                if (e.target.checked) setSelectedRolesForReset([...selectedRolesForReset, role]);
-                                                else setSelectedRolesForReset(selectedRolesForReset.filter(r => r !== role));
-                                            }}
-                                            style={{ width: '18px', height: '18px' }}
-                                        />
-                                        <span style={{ fontWeight: 500 }}>{role}</span>
-                                    </label>
-                                ))}
+                            
+                            <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', marginBottom: '20px' }}>
+                                <button 
+                                    onClick={() => setResetType("role")}
+                                    style={{
+                                        flex: 1,
+                                        padding: '10px',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        borderBottom: resetType === "role" ? '2px solid var(--accent-primary)' : 'none',
+                                        color: resetType === "role" ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                        fontWeight: 600,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Reset by Role
+                                </button>
+                                <button 
+                                    onClick={() => setResetType("tool")}
+                                    style={{
+                                        flex: 1,
+                                        padding: '10px',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        borderBottom: resetType === "tool" ? '2px solid var(--accent-primary)' : 'none',
+                                        color: resetType === "tool" ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                        fontWeight: 600,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Reset by Tool
+                                </button>
                             </div>
+
+                            {resetType === "role" ? (
+                                <>
+                                    <h3 style={{ marginBottom: '8px' }}>Reset Role Defaults</h3>
+                                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '24px' }}>
+                                        Select the roles you wish to reset to their original system defaults. Other roles will remain unchanged.
+                                    </p>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px' }}>
+                                        {ROLES.map(role => (
+                                            <label key={role} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px' }}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={selectedRolesForReset.includes(role)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) setSelectedRolesForReset([...selectedRolesForReset, role]);
+                                                        else setSelectedRolesForReset(selectedRolesForReset.filter(r => r !== role));
+                                                    }}
+                                                    style={{ width: '18px', height: '18px' }}
+                                                />
+                                                <span style={{ fontWeight: 500 }}>{role}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <h3 style={{ marginBottom: '8px' }}>Reset Tool Defaults</h3>
+                                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '24px' }}>
+                                        Select the tools you wish to reset to their original system defaults across all roles. Other tools will remain unchanged.
+                                    </p>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '24px', maxHeight: '200px', overflowY: 'auto', paddingRight: '4px' }}>
+                                        {TOOLS.map(tool => (
+                                            <label key={tool.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '6px' }}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={selectedToolsForReset.includes(tool.id)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) setSelectedToolsForReset([...selectedToolsForReset, tool.id]);
+                                                        else setSelectedToolsForReset(selectedToolsForReset.filter(t => t !== tool.id));
+                                                    }}
+                                                    style={{ width: '18px', height: '18px' }}
+                                                />
+                                                <span style={{ fontWeight: 500 }}>{tool.name}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
 
                             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
                                 <div style={{ display: 'flex', gap: '8px' }}>
                                     <button 
-                                        onClick={() => setSelectedRolesForReset(ROLES)} 
+                                        onClick={() => {
+                                            if (resetType === "role") setSelectedRolesForReset(ROLES);
+                                            else setSelectedToolsForReset(TOOLS.map(t => t.id));
+                                        }} 
                                         style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '0.8rem', cursor: 'pointer' }}
                                     >
                                         Select All
                                     </button>
                                     <button 
-                                        onClick={() => setSelectedRolesForReset([])} 
+                                        onClick={() => {
+                                            if (resetType === "role") setSelectedRolesForReset([]);
+                                            else setSelectedToolsForReset([]);
+                                        }} 
                                         style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.8rem', cursor: 'pointer' }}
                                     >
                                         Clear
@@ -316,16 +395,27 @@ export default function PermissionsPage() {
                                     <button onClick={() => setShowResetModal(false)} className="btn-secondary">Cancel</button>
                                     <button 
                                         onClick={() => {
-                                            if (selectedRolesForReset.length === 0) {
-                                                alert("Please select at least one role to reset.");
-                                                return;
-                                            }
-                                            if (confirm(`Are you sure you want to reset ${selectedRolesForReset.length === ROLES.length ? 'ALL roles' : `the roles: ${selectedRolesForReset.join(', ')}`} to defaults?`)) {
-                                                handleReset(selectedRolesForReset);
+                                            if (resetType === "role") {
+                                                if (selectedRolesForReset.length === 0) {
+                                                    alert("Please select at least one role to reset.");
+                                                    return;
+                                                }
+                                                if (confirm(`Are you sure you want to reset ${selectedRolesForReset.length === ROLES.length ? 'ALL roles' : `the roles: ${selectedRolesForReset.join(', ')}`} to defaults?`)) {
+                                                    handleReset(selectedRolesForReset, undefined);
+                                                }
+                                            } else {
+                                                if (selectedToolsForReset.length === 0) {
+                                                    alert("Please select at least one tool to reset.");
+                                                    return;
+                                                }
+                                                const toolNames = selectedToolsForReset.map(tid => TOOLS.find(t => t.id === tid)?.name || tid);
+                                                if (confirm(`Are you sure you want to reset ${selectedToolsForReset.length === TOOLS.length ? 'ALL tools' : `the tools: ${toolNames.join(', ')}`} to defaults?`)) {
+                                                    handleReset(undefined, selectedToolsForReset);
+                                                }
                                             }
                                         }} 
                                         className="btn-danger"
-                                        disabled={selectedRolesForReset.length === 0}
+                                        disabled={resetType === "role" ? selectedRolesForReset.length === 0 : selectedToolsForReset.length === 0}
                                         style={{ background: '#991b1b' }}
                                     >
                                         Execute Reset

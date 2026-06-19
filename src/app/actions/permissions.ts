@@ -161,14 +161,26 @@ export async function getInternalLogs() {
     return combinedLogs || "No logs found.";
 }
 
-export async function resetPermissions(targetRoles?: string[]) {
+export async function resetPermissions(targetRoles?: string[], targetTools?: string[]) {
     const session = await ensureAdmin();
     const rolesToReset = targetRoles ? targetRoles.map(r => r.toUpperCase()) : null;
+    const toolsToReset = targetTools ? targetTools.map(t => t.toLowerCase()) : null;
 
     try {
-        if (rolesToReset) {
+        if (rolesToReset && toolsToReset) {
+            await prisma.toolPermission.deleteMany({
+                where: { 
+                    role: { in: rolesToReset },
+                    toolId: { in: toolsToReset }
+                }
+            });
+        } else if (rolesToReset) {
             await prisma.toolPermission.deleteMany({
                 where: { role: { in: rolesToReset } }
+            });
+        } else if (toolsToReset) {
+            await prisma.toolPermission.deleteMany({
+                where: { toolId: { in: toolsToReset } }
             });
         } else {
             await prisma.toolPermission.deleteMany({});
@@ -232,17 +244,27 @@ export async function resetPermissions(targetRoles?: string[]) {
             { toolId: 'vectra', role: 'SYSTEMS', isEnabled: false }
         ];
 
-        const filteredPermissions = rolesToReset 
-            ? DEFAULT_PERMISSIONS.filter(p => rolesToReset.includes(p.role))
-            : DEFAULT_PERMISSIONS;
+        let filteredPermissions = DEFAULT_PERMISSIONS;
+        if (rolesToReset && toolsToReset) {
+            filteredPermissions = DEFAULT_PERMISSIONS.filter(p => rolesToReset.includes(p.role) && toolsToReset.includes(p.toolId));
+        } else if (rolesToReset) {
+            filteredPermissions = DEFAULT_PERMISSIONS.filter(p => rolesToReset.includes(p.role));
+        } else if (toolsToReset) {
+            filteredPermissions = DEFAULT_PERMISSIONS.filter(p => toolsToReset.includes(p.toolId));
+        }
 
         for (const perm of filteredPermissions) {
             await prisma.toolPermission.create({ data: perm });
         }
 
-        const auditMsg = rolesToReset 
-            ? `Admin reset tool permissions for roles: ${rolesToReset.join(', ')}`
-            : "Admin reset all tool permissions to defaults";
+        let auditMsg = "Admin reset all tool permissions to defaults";
+        if (rolesToReset && toolsToReset) {
+            auditMsg = `Admin reset tool permissions for roles [${rolesToReset.join(', ')}] on tools [${toolsToReset.join(', ')}]`;
+        } else if (rolesToReset) {
+            auditMsg = `Admin reset tool permissions for roles: ${rolesToReset.join(', ')}`;
+        } else if (toolsToReset) {
+            auditMsg = `Admin reset tool permissions for tools: ${toolsToReset.join(', ')}`;
+        }
 
         await logAudit("PERMISSION_RESET", auditMsg, session?.user?.id);
         revalidatePath("/", "layout");
