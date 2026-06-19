@@ -4,6 +4,8 @@ import { getIpInfoLite } from "@/lib/ipinfo";
 import { getUserDetails } from "@/lib/ldap";
 import axios from "axios";
 import https from "https";
+import { auth } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 
 // Helper to parse duration string (e.g. 0h:05m:30s or 1d 0h:05m:30s) to seconds
 function parseDuration(durationStr: string): number | null {
@@ -311,6 +313,20 @@ export async function POST(req: NextRequest) {
             });
         } catch (e) {
             console.error("Failed to update background job status:", e);
+        }
+
+        // Audit manual sync action
+        try {
+            const session = await auth();
+            if (session?.user) {
+                const forwardedFor = req.headers.get("x-forwarded-for");
+                const clientIp = forwardedFor ? forwardedFor.split(',')[0] : 'unknown';
+                const minutes = Math.round(range / 60);
+                const actionMsg = `Manually triggered VPN sync for the last ${minutes} minute(s) (added ${result.count} new events).`;
+                await logAudit("VPN_LOG_SYNC", actionMsg, session.user.id, clientIp);
+            }
+        } catch (auditError) {
+            console.error("Failed to write manual sync audit log:", auditError);
         }
 
         return NextResponse.json({
