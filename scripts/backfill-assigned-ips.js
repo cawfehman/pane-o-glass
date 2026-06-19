@@ -87,6 +87,18 @@ async function backfillAssignedIps() {
                 const messages = response.data?.messages || [];
                 console.log(`Fetched ${messages.length} lease messages for window ${chunkIdx + 1}/3.`);
 
+                // Pre-fetch all events in this 8h window (+5s safety buffers) in a single query
+                const chunkStartBuffer = new Date(chunkFrom.getTime() - 5000);
+                const chunkEndBuffer = new Date(chunkTo.getTime() + 5000);
+                const existingEvents = await prisma.vpnEvent.findMany({
+                    where: {
+                        createdAt: {
+                            gte: chunkStartBuffer,
+                            lte: chunkEndBuffer
+                        }
+                    }
+                });
+
                 for (const msgObj of messages) {
                     const rawLog = msgObj.message?.message || "";
                     const logTimestampStr = msgObj.message?.timestamp;
@@ -116,21 +128,17 @@ async function backfillAssignedIps() {
                     if (matched) {
                         const logTimestamp = new Date(logTimestampStr);
                         const fiveSeconds = 5 * 1000;
-                        const rangeStart = new Date(logTimestamp.getTime() - fiveSeconds);
-                        const rangeEnd = new Date(logTimestamp.getTime() + fiveSeconds);
+                        const rangeStart = logTimestamp.getTime() - fiveSeconds;
+                        const rangeEnd = logTimestamp.getTime() + fiveSeconds;
 
-                        // Find existing SUCCESS or DISCONNECT record matching username, public source IP, and timestamp
-                        const existing = await prisma.vpnEvent.findFirst({
-                            where: {
-                                username,
-                                sourceIp,
-                                status: { in: ["SUCCESS", "DISCONNECT"] },
-                                createdAt: {
-                                    gte: rangeStart,
-                                    lte: rangeEnd
-                                }
-                            }
-                        });
+                        // Find existing SUCCESS or DISCONNECT record matching username, public source IP, and timestamp in memory
+                        const existing = existingEvents.find(e => 
+                            e.username === username &&
+                            e.sourceIp === sourceIp &&
+                            (e.status === "SUCCESS" || e.status === "DISCONNECT") &&
+                            e.createdAt.getTime() >= rangeStart &&
+                            e.createdAt.getTime() <= rangeEnd
+                        );
 
                         if (existing) {
                             if (!existing.assignedIp) {
@@ -138,13 +146,14 @@ async function backfillAssignedIps() {
                                     where: { id: existing.id },
                                     data: { assignedIp }
                                 });
+                                existing.assignedIp = assignedIp;
                                 updatedThisDay++;
                             }
                         } else {
                             // If no corresponding connect/disconnect event was captured, let's create a stub success event so we still track this session lease
                             let ipInfo = null;
 
-                            await prisma.vpnEvent.create({
+                            const created = await prisma.vpnEvent.create({
                                 data: {
                                     username,
                                     sourceIp,
@@ -158,6 +167,7 @@ async function backfillAssignedIps() {
                                     createdAt: logTimestamp
                                 }
                             });
+                            existingEvents.push(created);
                             updatedThisDay++;
                         }
                     }

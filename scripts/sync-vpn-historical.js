@@ -83,6 +83,14 @@ function getIpInfo(ip) {
     });
 }
 
+const ipCache = new Map();
+async function getIpInfoWithCache(ip) {
+    if (ipCache.has(ip)) return ipCache.get(ip);
+    const info = await getIpInfo(ip);
+    ipCache.set(ip, info);
+    return info;
+}
+
 async function runHistoricalSync() {
     const rawUrl = process.env.GRAYLOG_URL;
     const rawToken = process.env.GRAYLOG_API_TOKEN;
@@ -176,6 +184,32 @@ async function runHistoricalSync() {
                 const messages = response.data?.messages || [];
                 console.log(`Fetched ${messages.length} messages for window ${chunkIdx + 1}/3.`);
 
+                // Pre-fetch all events in the active 8h window (+5s safety buffers) in a single query
+                const chunkStartBuffer = new Date(chunkFrom.getTime() - 5000);
+                const chunkEndBuffer = new Date(chunkTo.getTime() + 5000);
+                const existingEvents = await prisma.vpnEvent.findMany({
+                    where: {
+                        createdAt: {
+                            gte: chunkStartBuffer,
+                            lte: chunkEndBuffer
+                        }
+                    }
+                });
+
+                // Pre-fetch recent success events (with assigned IP) up to 24h prior to this window for session tracking
+                const priorSuccessStart = new Date(chunkFrom.getTime() - 24 * 60 * 60 * 1000);
+                const priorSuccessEvents = await prisma.vpnEvent.findMany({
+                    where: {
+                        status: "SUCCESS",
+                        assignedIp: { not: null },
+                        createdAt: {
+                            gte: priorSuccessStart,
+                            lte: chunkTo
+                        }
+                    },
+                    orderBy: { createdAt: "desc" }
+                });
+
                 for (const msgObj of messages) {
                     const rawLog = msgObj.message?.message || "";
                     const logTimestampStr = msgObj.message?.timestamp;
@@ -258,22 +292,18 @@ async function runHistoricalSync() {
                         ? (bytesSent || 0) + (bytesReceived || 0) 
                         : null;
 
-                    // Check duplication: check if an event for same user/IP/status exists within 5 seconds of the timestamp
+                    // Check duplication in memory
                     const fiveSeconds = 5 * 1000;
-                    const rangeStart = new Date(logTimestamp.getTime() - fiveSeconds);
-                    const rangeEnd = new Date(logTimestamp.getTime() + fiveSeconds);
+                    const rangeStart = logTimestamp.getTime() - fiveSeconds;
+                    const rangeEnd = logTimestamp.getTime() + fiveSeconds;
 
-                    const existing = await prisma.vpnEvent.findFirst({
-                        where: {
-                            username,
-                            sourceIp,
-                            status,
-                            createdAt: {
-                                gte: rangeStart,
-                                lte: rangeEnd
-                            }
-                        }
-                    });
+                    const existing = existingEvents.find(e => 
+                        e.username === username &&
+                        e.sourceIp === sourceIp &&
+                        e.status === status &&
+                        e.createdAt.getTime() >= rangeStart &&
+                        e.createdAt.getTime() <= rangeEnd
+                    );
 
                     if (existing) {
                         // If we got the assignedIp now (from 722051) and existing doesn't have it, update it
@@ -282,6 +312,8 @@ async function runHistoricalSync() {
                                 where: { id: existing.id },
                                 data: { assignedIp }
                             });
+                            existing.assignedIp = assignedIp;
+                            priorSuccessEvents.unshift(existing);
                         }
                         // If it is a disconnect event and we now have a log with actual byte counts, update the existing record
                         if (status === "DISCONNECT" && (!existing.bytesTotal || existing.bytesTotal === 0) && bytesTotal && bytesTotal > 0) {
@@ -294,34 +326,31 @@ async function runHistoricalSync() {
                                     duration: duration || existing.duration
                                 }
                             });
+                            existing.bytesSent = bytesSent;
+                            existing.bytesReceived = bytesReceived;
+                            existing.bytesTotal = bytesTotal;
+                            if (duration) existing.duration = duration;
                         }
                         continue; // Skip creating a duplicate record
                     }
 
-                    // Carry over assignedIp to disconnect events if not already present
+                    // Carry over assignedIp to disconnect events if not already present (using in-memory list)
                     let finalAssignedIp = assignedIp;
                     if (status === "DISCONNECT" && !finalAssignedIp) {
-                        const recentSuccess = await prisma.vpnEvent.findFirst({
-                            where: {
-                                username,
-                                sourceIp,
-                                status: "SUCCESS",
-                                assignedIp: { not: null },
-                                createdAt: {
-                                    gte: new Date(logTimestamp.getTime() - 24 * 60 * 60 * 1000), // 24 hours back
-                                    lte: logTimestamp
-                                }
-                            },
-                            orderBy: { createdAt: "desc" }
-                        });
+                        const recentSuccess = priorSuccessEvents.find(e => 
+                            e.username === username &&
+                            e.sourceIp === sourceIp &&
+                            e.createdAt.getTime() >= (logTimestamp.getTime() - 24 * 60 * 60 * 1000) &&
+                            e.createdAt.getTime() <= logTimestamp.getTime()
+                        );
                         if (recentSuccess) {
                             finalAssignedIp = recentSuccess.assignedIp;
                         }
                     }
 
-                    const ipInfo = await getIpInfo(sourceIp);
+                    const ipInfo = await getIpInfoWithCache(sourceIp);
 
-                    await prisma.vpnEvent.create({
+                    const created = await prisma.vpnEvent.create({
                         data: {
                             username,
                             sourceIp,
@@ -340,6 +369,11 @@ async function runHistoricalSync() {
                             createdAt: logTimestamp
                         }
                     });
+
+                    existingEvents.push(created);
+                    if (created.status === "SUCCESS" && created.assignedIp) {
+                        priorSuccessEvents.unshift(created);
+                    }
 
                     importedThisDay++;
                 }
