@@ -144,10 +144,14 @@ async function backfillAssignedIps() {
 
                         if (existing) {
                             if (!existing.assignedIp) {
-                                operations.push(prisma.vpnEvent.update({
-                                    where: { id: existing.id },
-                                    data: { assignedIp }
-                                }));
+                                if (existing.isMock) {
+                                    existing.dataRef.assignedIp = assignedIp;
+                                } else {
+                                    operations.push(prisma.vpnEvent.update({
+                                        where: { id: existing.id },
+                                        data: { assignedIp }
+                                    }));
+                                }
                                 existing.assignedIp = assignedIp;
                                 updatedThisDay++;
                             }
@@ -155,27 +159,31 @@ async function backfillAssignedIps() {
                             // If no corresponding connect/disconnect event was captured, let's create a stub success event so we still track this session lease
                             let ipInfo = null;
 
+                            const dataObj = {
+                                username,
+                                sourceIp,
+                                assignedIp,
+                                status: "SUCCESS",
+                                ipAsn: ipInfo?.asn || null,
+                                ipAsName: ipInfo?.as_name || null,
+                                ipAsDomain: ipInfo?.as_domain || null,
+                                ipCountry: ipInfo?.country || null,
+                                ipCountryCode: ipInfo?.country_code || null,
+                                createdAt: logTimestamp
+                            };
+
                             const createdMock = {
                                 username,
                                 sourceIp,
                                 assignedIp,
                                 status: "SUCCESS",
-                                createdAt: logTimestamp
+                                createdAt: logTimestamp,
+                                isMock: true,
+                                dataRef: dataObj
                             };
 
                             operations.push(prisma.vpnEvent.create({
-                                data: {
-                                    username,
-                                    sourceIp,
-                                    assignedIp,
-                                    status: "SUCCESS",
-                                    ipAsn: ipInfo?.asn || null,
-                                    ipAsName: ipInfo?.as_name || null,
-                                    ipAsDomain: ipInfo?.as_domain || null,
-                                    ipCountry: ipInfo?.country || null,
-                                    ipCountryCode: ipInfo?.country_code || null,
-                                    createdAt: logTimestamp
-                                }
+                                data: dataObj
                             }));
                             existingEvents.push(createdMock);
                             updatedThisDay++;

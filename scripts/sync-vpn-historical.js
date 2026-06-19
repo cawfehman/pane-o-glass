@@ -357,30 +357,45 @@ async function runHistoricalSync() {
                     );
 
                     if (existing) {
-                        // If we got the assignedIp now (from 722051) and existing doesn't have it, update it
-                        if (status === "SUCCESS" && assignedIp && !existing.assignedIp) {
-                            operations.push(prisma.vpnEvent.update({
-                                where: { id: existing.id },
-                                data: { assignedIp }
-                            }));
-                            existing.assignedIp = assignedIp;
-                            priorSuccessEvents.unshift(existing);
-                        }
-                        // If it is a disconnect event and we now have a log with actual byte counts, update the existing record
-                        if (status === "DISCONNECT" && (!existing.bytesTotal || existing.bytesTotal === 0) && bytesTotal && bytesTotal > 0) {
-                            operations.push(prisma.vpnEvent.update({
-                                where: { id: existing.id },
-                                data: {
-                                    bytesSent,
-                                    bytesReceived,
-                                    bytesTotal,
-                                    duration: duration || existing.duration
-                                }
-                            }));
-                            existing.bytesSent = bytesSent;
-                            existing.bytesReceived = bytesReceived;
-                            existing.bytesTotal = bytesTotal;
-                            if (duration) existing.duration = duration;
+                        if (existing.isMock) {
+                            // If it's a mock event that hasn't been written to the DB yet, directly mutate the pending create data object
+                            if (status === "SUCCESS" && assignedIp && !existing.assignedIp) {
+                                existing.dataRef.assignedIp = assignedIp;
+                                existing.assignedIp = assignedIp;
+                                priorSuccessEvents.unshift(existing);
+                            }
+                            if (status === "DISCONNECT" && (!existing.dataRef.bytesTotal || existing.dataRef.bytesTotal === 0) && bytesTotal && bytesTotal > 0) {
+                                existing.dataRef.bytesSent = bytesSent;
+                                existing.dataRef.bytesReceived = bytesReceived;
+                                existing.dataRef.bytesTotal = bytesTotal;
+                                if (duration) existing.dataRef.duration = duration;
+                            }
+                        } else {
+                            // If we got the assignedIp now (from 722051) and existing doesn't have it, update it
+                            if (status === "SUCCESS" && assignedIp && !existing.assignedIp) {
+                                operations.push(prisma.vpnEvent.update({
+                                    where: { id: existing.id },
+                                    data: { assignedIp }
+                                }));
+                                existing.assignedIp = assignedIp;
+                                priorSuccessEvents.unshift(existing);
+                            }
+                            // If it is a disconnect event and we now have a log with actual byte counts, update the existing record
+                            if (status === "DISCONNECT" && (!existing.bytesTotal || existing.bytesTotal === 0) && bytesTotal && bytesTotal > 0) {
+                                operations.push(prisma.vpnEvent.update({
+                                    where: { id: existing.id },
+                                    data: {
+                                        bytesSent,
+                                        bytesReceived,
+                                        bytesTotal,
+                                        duration: duration || existing.duration
+                                    }
+                                }));
+                                existing.bytesSent = bytesSent;
+                                existing.bytesReceived = bytesReceived;
+                                existing.bytesTotal = bytesTotal;
+                                if (duration) existing.duration = duration;
+                            }
                         }
                         continue; // Skip creating a duplicate record
                     }
@@ -401,32 +416,36 @@ async function runHistoricalSync() {
 
                     const ipInfo = ipCache.get(sourceIp) || null;
 
+                    const dataObj = {
+                        username,
+                        sourceIp,
+                        assignedIp: finalAssignedIp || assignedIp || null,
+                        status,
+                        duration,
+                        bytesSent,
+                        bytesReceived,
+                        bytesTotal,
+                        failureReason,
+                        ipAsn: ipInfo?.asn || null,
+                        ipAsName: ipInfo?.as_name || null,
+                        ipAsDomain: ipInfo?.as_domain || null,
+                        ipCountry: ipInfo?.country || null,
+                        ipCountryCode: ipInfo?.country_code || null,
+                        createdAt: logTimestamp
+                    };
+
                     const createdMock = {
                         username,
                         sourceIp,
                         assignedIp: finalAssignedIp || assignedIp || null,
                         status,
-                        createdAt: logTimestamp
+                        createdAt: logTimestamp,
+                        isMock: true,
+                        dataRef: dataObj
                     };
 
                     operations.push(prisma.vpnEvent.create({
-                        data: {
-                            username,
-                            sourceIp,
-                            assignedIp: finalAssignedIp || assignedIp || null,
-                            status,
-                            duration,
-                            bytesSent,
-                            bytesReceived,
-                            bytesTotal,
-                            failureReason,
-                            ipAsn: ipInfo?.asn || null,
-                            ipAsName: ipInfo?.as_name || null,
-                            ipAsDomain: ipInfo?.as_domain || null,
-                            ipCountry: ipInfo?.country || null,
-                            ipCountryCode: ipInfo?.country_code || null,
-                            createdAt: logTimestamp
-                        }
+                        data: dataObj
                     }));
 
                     existingEvents.push(createdMock);
