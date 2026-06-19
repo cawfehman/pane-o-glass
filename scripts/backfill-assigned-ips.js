@@ -146,10 +146,12 @@ async function backfillAssignedIps() {
                             if (!existing.assignedIp) {
                                 if (existing.isMock) {
                                     existing.dataRef.assignedIp = assignedIp;
-                                } else {
+                                }
+                                if (!existing.isMock) {
+                                    const vpnType = rawLog.match(ikev2LeaseRegex) ? "IKEv2" : "SSL";
                                     operations.push(prisma.vpnEvent.update({
                                         where: { id: existing.id },
-                                        data: { assignedIp }
+                                        data: { assignedIp, vpnType }
                                     }));
                                 }
                                 existing.assignedIp = assignedIp;
@@ -158,12 +160,14 @@ async function backfillAssignedIps() {
                         } else {
                             // If no corresponding connect/disconnect event was captured, let's create a stub success event so we still track this session lease
                             let ipInfo = null;
+                            const vpnType = rawLog.match(ikev2LeaseRegex) ? "IKEv2" : "SSL";
 
                             const dataObj = {
                                 username,
                                 sourceIp,
                                 assignedIp,
                                 status: "SUCCESS",
+                                vpnType,
                                 ipAsn: ipInfo?.asn || null,
                                 ipAsName: ipInfo?.as_name || null,
                                 ipAsDomain: ipInfo?.as_domain || null,
@@ -177,6 +181,7 @@ async function backfillAssignedIps() {
                                 sourceIp,
                                 assignedIp,
                                 status: "SUCCESS",
+                                vpnType,
                                 createdAt: logTimestamp,
                                 isMock: true,
                                 dataRef: dataObj

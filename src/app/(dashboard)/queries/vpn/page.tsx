@@ -785,34 +785,49 @@ export default function VpnTroubleshootingPage() {
                                                             )}
                                                         </td>
                                                         <td style={{ padding: '14px 16px' }}>
-                                                            <span style={{ 
-                                                                display: 'inline-flex', 
-                                                                alignItems: 'center', 
-                                                                gap: '4px',
-                                                                padding: '4px 8px', 
-                                                                borderRadius: '6px', 
-                                                                fontSize: '0.8rem',
-                                                                fontWeight: 600,
-                                                                background: evt.status === "FAILURE" ? 'rgba(239, 68, 68, 0.15)' : evt.status === "SUCCESS" ? 'rgba(34, 197, 94, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-                                                                color: evt.status === "FAILURE" ? '#f87171' : evt.status === "SUCCESS" ? '#4ade80' : '#60a5fa'
-                                                            }}>
-                                                                {evt.status === "FAILURE" ? (
-                                                                    <>
-                                                                        <ShieldAlert size={12} />
-                                                                        FAIL: {evt.failureReason || "Authentication"}
-                                                                    </>
-                                                                ) : evt.status === "SUCCESS" ? (
-                                                                    <>
-                                                                        <CheckCircle size={12} />
-                                                                        CONNECTED
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <Clock size={12} />
-                                                                        DISCONNECTED
-                                                                    </>
-                                                                )}
-                                                            </span>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                <span style={{ 
+                                                                    display: 'inline-flex', 
+                                                                    alignItems: 'center', 
+                                                                    gap: '4px',
+                                                                    padding: '4px 8px', 
+                                                                    borderRadius: '6px', 
+                                                                    fontSize: '0.8rem',
+                                                                    fontWeight: 600,
+                                                                    background: evt.status === "FAILURE" ? 'rgba(239, 68, 68, 0.15)' : evt.status === "SUCCESS" ? 'rgba(34, 197, 94, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                                                                    color: evt.status === "FAILURE" ? '#f87171' : evt.status === "SUCCESS" ? '#4ade80' : '#60a5fa'
+                                                                }}>
+                                                                    {evt.status === "FAILURE" ? (
+                                                                        <>
+                                                                            <ShieldAlert size={12} />
+                                                                            FAIL: {evt.failureReason || "Authentication"}
+                                                                        </>
+                                                                    ) : evt.status === "SUCCESS" ? (
+                                                                        <>
+                                                                            <CheckCircle size={12} />
+                                                                            CONNECTED
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <Clock size={12} />
+                                                                            DISCONNECTED
+                                                                        </>
+                                                                    )}
+                                                                </span>
+                                                                <span style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    padding: '2px 6px',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '0.75rem',
+                                                                    fontWeight: 700,
+                                                                    background: evt.vpnType === "IKEv2" ? 'rgba(168, 85, 247, 0.15)' : 'rgba(14, 165, 233, 0.15)',
+                                                                    color: evt.vpnType === "IKEv2" ? '#c084fc' : '#38bdf8',
+                                                                    border: evt.vpnType === "IKEv2" ? '1px solid rgba(168, 85, 247, 0.3)' : '1px solid rgba(14, 165, 233, 0.3)'
+                                                                }}>
+                                                                    {evt.vpnType || "SSL"}
+                                                                </span>
+                                                            </div>
                                                         </td>
                                                         <td style={{ padding: '14px 16px', fontSize: '0.9rem' }}>
                                                             {evt.duration ? formatDuration(evt.duration) : "-"}
@@ -914,34 +929,49 @@ export default function VpnTroubleshootingPage() {
                                                         )}
                                                     </td>
                                                     <td style={{ padding: '14px 16px' }}>
-                                                        <span style={{ 
-                                                            display: 'inline-flex', 
-                                                            alignItems: 'center', 
-                                                            gap: '4px',
-                                                            padding: '4px 8px', 
-                                                            borderRadius: '6px', 
-                                                            fontSize: '0.8rem',
-                                                            fontWeight: 600,
-                                                            background: evt.status === "FAILURE" ? 'rgba(239, 68, 68, 0.15)' : evt.status === "SUCCESS" ? 'rgba(34, 197, 94, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-                                                            color: evt.status === "FAILURE" ? '#f87171' : evt.status === "SUCCESS" ? '#4ade80' : '#60a5fa'
-                                                        }}>
-                                                            {evt.status === "FAILURE" ? (
-                                                                <>
-                                                                    <ShieldAlert size={12} />
-                                                                    FAIL: {evt.failureReason || "Authentication"}
-                                                                </>
-                                                            ) : evt.status === "SUCCESS" ? (
-                                                                <>
-                                                                    <CheckCircle size={12} />
-                                                                    CONNECTED
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <Clock size={12} />
-                                                                    DISCONNECTED
-                                                                </>
-                                                            )}
-                                                        </span>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <span style={{ 
+                                                                display: 'inline-flex', 
+                                                                alignItems: 'center', 
+                                                                gap: '4px',
+                                                                padding: '4px 8px', 
+                                                                borderRadius: '6px', 
+                                                                fontSize: '0.8rem',
+                                                                fontWeight: 600,
+                                                                background: evt.status === "FAILURE" ? 'rgba(239, 68, 68, 0.15)' : evt.status === "SUCCESS" ? 'rgba(34, 197, 94, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                                                                color: evt.status === "FAILURE" ? '#f87171' : evt.status === "SUCCESS" ? '#4ade80' : '#60a5fa'
+                                                            }}>
+                                                                {evt.status === "FAILURE" ? (
+                                                                    <>
+                                                                        <ShieldAlert size={12} />
+                                                                        FAIL: {evt.failureReason || "Authentication"}
+                                                                    </>
+                                                                ) : evt.status === "SUCCESS" ? (
+                                                                    <>
+                                                                        <CheckCircle size={12} />
+                                                                        CONNECTED
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <Clock size={12} />
+                                                                        DISCONNECTED
+                                                                    </>
+                                                                )}
+                                                            </span>
+                                                            <span style={{
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                padding: '2px 6px',
+                                                                borderRadius: '4px',
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: 700,
+                                                                background: evt.vpnType === "IKEv2" ? 'rgba(168, 85, 247, 0.15)' : 'rgba(14, 165, 233, 0.15)',
+                                                                color: evt.vpnType === "IKEv2" ? '#c084fc' : '#38bdf8',
+                                                                border: evt.vpnType === "IKEv2" ? '1px solid rgba(168, 85, 247, 0.3)' : '1px solid rgba(14, 165, 233, 0.3)'
+                                                            }}>
+                                                                {evt.vpnType || "SSL"}
+                                                            </span>
+                                                        </div>
                                                     </td>
                                                     <td style={{ padding: '14px 16px', fontSize: '0.9rem' }}>
                                                         {evt.duration ? formatDuration(evt.duration) : "-"}
@@ -1565,6 +1595,7 @@ export default function VpnTroubleshootingPage() {
                                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                                     <thead>
                                         <tr style={{ background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid var(--border-color)' }}>
+                                            <th style={{ textAlign: 'left', padding: '10px', color: 'var(--text-secondary)' }}>Type</th>
                                             <th style={{ textAlign: 'left', padding: '10px', color: 'var(--text-secondary)' }}>Timestamp</th>
                                             <th style={{ textAlign: 'left', padding: '10px', color: 'var(--text-secondary)' }}>Source IP</th>
                                             <th style={{ textAlign: 'left', padding: '10px', color: 'var(--text-secondary)' }}>Country</th>
@@ -1575,6 +1606,21 @@ export default function VpnTroubleshootingPage() {
                                     <tbody>
                                         {failUserDetails.map((evt, idx) => (
                                             <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                <td style={{ padding: '10px' }}>
+                                                    <span style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        padding: '2px 6px',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 700,
+                                                        background: evt.vpnType === "IKEv2" ? 'rgba(168, 85, 247, 0.15)' : 'rgba(14, 165, 233, 0.15)',
+                                                        color: evt.vpnType === "IKEv2" ? '#c084fc' : '#38bdf8',
+                                                        border: evt.vpnType === "IKEv2" ? '1px solid rgba(168, 85, 247, 0.3)' : '1px solid rgba(14, 165, 233, 0.3)'
+                                                    }}>
+                                                        {evt.vpnType || "SSL"}
+                                                    </span>
+                                                </td>
                                                 <td style={{ padding: '10px', whiteSpace: 'nowrap' }}>
                                                     {new Date(evt.createdAt).toLocaleString()}
                                                 </td>

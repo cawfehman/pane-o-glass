@@ -276,6 +276,7 @@ async function runHistoricalSync() {
                     let bytesSent = null;
                     let bytesReceived = null;
                     let failureReason = null;
+                    let vpnType = "SSL";
 
                     if (rawLog.includes("113039") && connRegex.test(rawLog)) {
                         const match = rawLog.match(connRegex);
@@ -283,6 +284,7 @@ async function runHistoricalSync() {
                             username = match[2] || match[5];
                             sourceIp = match[3] || match[6];
                             status = "SUCCESS";
+                            vpnType = "SSL";
                         }
                     } else if (rawLog.includes("722051") && ipAssignRegex.test(rawLog)) {
                         const match = rawLog.match(ipAssignRegex);
@@ -291,6 +293,7 @@ async function runHistoricalSync() {
                             sourceIp = match[3] || match[7];
                             assignedIp = match[4] || match[8];
                             status = "SUCCESS";
+                            vpnType = "SSL";
                         }
                     } else if (rawLog.includes("113015") && failRegex.test(rawLog)) {
                         const match = rawLog.match(failRegex);
@@ -299,14 +302,16 @@ async function runHistoricalSync() {
                             username = match[2].trim();
                             sourceIp = match[3].trim();
                             status = "FAILURE";
+                            vpnType = "SSL";
                         }
                     } else if (rawLog.includes("113005") && failRegex113005.test(rawLog)) {
                         const match = rawLog.match(failRegex113005);
                         if (match) {
                             failureReason = match[1].trim();
                             username = match[2].trim();
-                            sourceIp = match[3].trim();
+                            sourceIp = match[2].trim();
                             status = "FAILURE";
+                            vpnType = "SSL";
                         }
                     } else if (rawLog.includes("750002") && ikev2ConnRegex.test(rawLog)) {
                         const match = rawLog.match(ikev2ConnRegex);
@@ -314,6 +319,7 @@ async function runHistoricalSync() {
                             username = match[3];
                             sourceIp = match[2];
                             status = "SUCCESS";
+                            vpnType = "IKEv2";
                         }
                     } else if (rawLog.includes("750003") && ikev2LeaseRegex.test(rawLog)) {
                         const match = rawLog.match(ikev2LeaseRegex);
@@ -322,6 +328,7 @@ async function runHistoricalSync() {
                             sourceIp = match[1];
                             assignedIp = match[3];
                             status = "SUCCESS";
+                            vpnType = "IKEv2";
                         }
                     } else if (rawLog.includes("113019") && discRegex.test(rawLog)) {
                         const match = rawLog.match(discRegex);
@@ -332,6 +339,7 @@ async function runHistoricalSync() {
                             duration = parseDuration(match[7]);
                             bytesSent = parseFloat(match[8]);
                             bytesReceived = parseFloat(match[9]);
+                            vpnType = "SSL";
                         }
                     } else {
                         continue;
@@ -400,9 +408,10 @@ async function runHistoricalSync() {
                         continue; // Skip creating a duplicate record
                     }
 
-                    // Carry over assignedIp to disconnect events if not already present (using in-memory list)
+                    // Carry over assignedIp and vpnType to disconnect events if not already present (using in-memory list)
                     let finalAssignedIp = assignedIp;
-                    if (status === "DISCONNECT" && !finalAssignedIp) {
+                    let finalVpnType = vpnType;
+                    if (status === "DISCONNECT") {
                         const recentSuccess = priorSuccessEvents.find(e => 
                             e.username === username &&
                             e.sourceIp === sourceIp &&
@@ -410,7 +419,8 @@ async function runHistoricalSync() {
                             e.createdAt.getTime() <= logTimestamp.getTime()
                         );
                         if (recentSuccess) {
-                            finalAssignedIp = recentSuccess.assignedIp;
+                            if (!finalAssignedIp) finalAssignedIp = recentSuccess.assignedIp;
+                            if (recentSuccess.vpnType) finalVpnType = recentSuccess.vpnType;
                         }
                     }
 
@@ -420,6 +430,7 @@ async function runHistoricalSync() {
                         username,
                         sourceIp,
                         assignedIp: finalAssignedIp || assignedIp || null,
+                        vpnType: finalVpnType,
                         status,
                         duration,
                         bytesSent,
@@ -438,6 +449,7 @@ async function runHistoricalSync() {
                         username,
                         sourceIp,
                         assignedIp: finalAssignedIp || assignedIp || null,
+                        vpnType: finalVpnType,
                         status,
                         createdAt: logTimestamp,
                         isMock: true,

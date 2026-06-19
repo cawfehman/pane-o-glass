@@ -106,6 +106,7 @@ model VpnEvent {
   bytesReceived Float?   // bytes received
   bytesTotal    Float?   // total bytes transferred
   failureReason String?  // explanation of failure
+  vpnType       String?  // "SSL" or "IKEv2"
   ipAsn         String?
   ipAsName      String?
   ipAsDomain    String?

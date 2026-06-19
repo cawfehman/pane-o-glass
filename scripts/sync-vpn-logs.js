@@ -190,6 +190,7 @@ async function runSync() {
             let bytesSent = null;
             let bytesReceived = null;
             let failureReason = null;
+            let vpnType = "SSL";
 
             if (rawLog.includes("113039") && connRegex.test(rawLog)) {
                 const match = rawLog.match(connRegex);
@@ -197,6 +198,7 @@ async function runSync() {
                     username = match[2] || match[5];
                     sourceIp = match[3] || match[6];
                     status = "SUCCESS";
+                    vpnType = "SSL";
                 }
             } else if (rawLog.includes("722051") && ipAssignRegex.test(rawLog)) {
                 const match = rawLog.match(ipAssignRegex);
@@ -205,6 +207,7 @@ async function runSync() {
                     sourceIp = match[3] || match[7];
                     assignedIp = match[4] || match[8];
                     status = "SUCCESS";
+                    vpnType = "SSL";
                 }
             } else if (rawLog.includes("113015") && failRegex.test(rawLog)) {
                 const match = rawLog.match(failRegex);
@@ -213,6 +216,7 @@ async function runSync() {
                     username = match[2].trim();
                     sourceIp = match[3].trim();
                     status = "FAILURE";
+                    vpnType = "SSL";
                 }
             } else if (rawLog.includes("113005") && failRegex113005.test(rawLog)) {
                 const match = rawLog.match(failRegex113005);
@@ -221,6 +225,7 @@ async function runSync() {
                     username = match[2].trim();
                     sourceIp = match[3].trim();
                     status = "FAILURE";
+                    vpnType = "SSL";
                 }
             } else if (rawLog.includes("750002") && ikev2ConnRegex.test(rawLog)) {
                 const match = rawLog.match(ikev2ConnRegex);
@@ -228,6 +233,7 @@ async function runSync() {
                     username = match[3];
                     sourceIp = match[2];
                     status = "SUCCESS";
+                    vpnType = "IKEv2";
                 }
             } else if (rawLog.includes("750003") && ikev2LeaseRegex.test(rawLog)) {
                 const match = rawLog.match(ikev2LeaseRegex);
@@ -236,6 +242,7 @@ async function runSync() {
                     sourceIp = match[1];
                     assignedIp = match[3];
                     status = "SUCCESS";
+                    vpnType = "IKEv2";
                 }
             } else if (rawLog.includes("113019") && discRegex.test(rawLog)) {
                 const match = rawLog.match(discRegex);
@@ -246,6 +253,7 @@ async function runSync() {
                     duration = parseDuration(match[7]);
                     bytesSent = parseFloat(match[8]);
                     bytesReceived = parseFloat(match[9]);
+                    vpnType = "SSL"; // fallback
                 }
             } else {
                 continue;
@@ -297,15 +305,15 @@ async function runSync() {
                 continue; // Skip creating a duplicate record
             }
 
-            // Carry over assignedIp to disconnect events if not already present
+            // Carry over assignedIp and vpnType to disconnect events if not already present
             let finalAssignedIp = assignedIp;
-            if (status === "DISCONNECT" && !finalAssignedIp) {
+            let finalVpnType = vpnType;
+            if (status === "DISCONNECT") {
                 const recentSuccess = await prisma.vpnEvent.findFirst({
                     where: {
                         username,
                         sourceIp,
                         status: "SUCCESS",
-                        assignedIp: { not: null },
                         createdAt: {
                             gte: new Date(logTimestamp.getTime() - 24 * 60 * 60 * 1000), // 24 hours back
                             lte: logTimestamp
@@ -314,7 +322,12 @@ async function runSync() {
                     orderBy: { createdAt: "desc" }
                 });
                 if (recentSuccess) {
-                    finalAssignedIp = recentSuccess.assignedIp;
+                    if (!finalAssignedIp) {
+                        finalAssignedIp = recentSuccess.assignedIp;
+                    }
+                    if (recentSuccess.vpnType) {
+                        finalVpnType = recentSuccess.vpnType;
+                    }
                 }
             }
 
@@ -332,6 +345,7 @@ async function runSync() {
                     bytesReceived,
                     bytesTotal,
                     failureReason,
+                    vpnType: finalVpnType,
                     ipAsn: ipInfo?.asn || null,
                     ipAsName: ipInfo?.as_name || null,
                     ipAsDomain: ipInfo?.as_domain || null,
