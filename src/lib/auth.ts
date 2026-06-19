@@ -33,9 +33,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     console.error("Failed to extract IP during login", e);
                 }
 
-                const user = await prisma.user.findUnique({
-                    where: { username: credentials.username as string }
+                const inputUsername = credentials.username as string;
+                let user = await prisma.user.findUnique({
+                    where: { username: inputUsername }
                 })
+
+                if (!user && inputUsername.toLowerCase().endsWith("@cooperhealth.edu")) {
+                    const cleanUsername = inputUsername.slice(0, -17);
+                    user = await prisma.user.findUnique({
+                        where: { username: cleanUsername }
+                    })
+                }
 
                 if (!user) {
                     await logAudit("LOGIN_FAILURE", `Login attempt for non-existent user: ${credentials.username}`, undefined, clientIp);

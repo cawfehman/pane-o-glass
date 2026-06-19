@@ -4,6 +4,11 @@ import { Client } from "ldapts";
  * Validates a username and password against an Active Directory / LDAP server.
  */
 export async function authenticateWithAD(username: string, password: string): Promise<boolean> {
+    // Sanitize username by stripping the @cooperhealth.edu suffix case-insensitively
+    const cleanUsername = username.toLowerCase().endsWith("@cooperhealth.edu")
+        ? username.slice(0, -17)
+        : username;
+
     const url = process.env.AD_URL;
     const bindDN = process.env.AD_BIND_DN;
     const bindPassword = process.env.AD_BIND_PASSWORD;
@@ -26,11 +31,11 @@ export async function authenticateWithAD(username: string, password: string): Pr
         await client.bind(bindDN, bindPassword);
         console.log("LDAP: Service account bind successful.");
 
-        console.log(`LDAP: Searching for user "${username}" in baseDN "${baseDN}"`);
+        console.log(`LDAP: Searching for user "${cleanUsername}" (original: "${username}") in baseDN "${baseDN}"`);
         // Step 2: Search for the user to get their full DN
         // We search both sAMAccountName and userPrincipalName to be robust
         const { searchEntries } = await client.search(baseDN, {
-            filter: `(|(sAMAccountName=${username})(userPrincipalName=${username}))`,
+            filter: `(|(sAMAccountName=${cleanUsername})(userPrincipalName=${cleanUsername}@cooperhealth.edu)(userPrincipalName=${username}))`,
             scope: "sub",
             attributes: ["dn"],
         });
@@ -87,6 +92,11 @@ export async function getUserDetails(username: string) {
         return null;
     }
 
+    // Sanitize username by stripping the @cooperhealth.edu suffix case-insensitively
+    const cleanUsername = username.toLowerCase().endsWith("@cooperhealth.edu")
+        ? username.slice(0, -17)
+        : username;
+
     const client = new Client({
         url,
         tlsOptions: url.startsWith("ldaps") ? { rejectUnauthorized } : undefined,
@@ -96,7 +106,7 @@ export async function getUserDetails(username: string) {
         await client.bind(bindDN, bindPassword);
         
         const { searchEntries } = await client.search(baseDN, {
-            filter: `(|(sAMAccountName=${username})(userPrincipalName=${username}))`,
+            filter: `(|(sAMAccountName=${cleanUsername})(userPrincipalName=${cleanUsername}@cooperhealth.edu)(userPrincipalName=${username}))`,
             scope: "sub",
             attributes: ["displayName", "department", "title", "telephoneNumber", "mail"],
         });
