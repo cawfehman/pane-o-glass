@@ -318,7 +318,7 @@ async function runHistoricalSync() {
                         if (match) {
                             failureReason = match[1].trim();
                             username = match[2].trim();
-                            sourceIp = match[2].trim();
+                            sourceIp = match[3].trim();
                             status = "FAILURE";
                             vpnType = "SSL";
                         }
