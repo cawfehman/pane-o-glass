@@ -99,6 +99,8 @@ async function backfillAssignedIps() {
                     }
                 });
 
+                const operations = [];
+
                 for (const msgObj of messages) {
                     const rawLog = msgObj.message?.message || "";
                     const logTimestampStr = msgObj.message?.timestamp;
@@ -142,10 +144,10 @@ async function backfillAssignedIps() {
 
                         if (existing) {
                             if (!existing.assignedIp) {
-                                await prisma.vpnEvent.update({
+                                operations.push(prisma.vpnEvent.update({
                                     where: { id: existing.id },
                                     data: { assignedIp }
-                                });
+                                }));
                                 existing.assignedIp = assignedIp;
                                 updatedThisDay++;
                             }
@@ -153,7 +155,15 @@ async function backfillAssignedIps() {
                             // If no corresponding connect/disconnect event was captured, let's create a stub success event so we still track this session lease
                             let ipInfo = null;
 
-                            const created = await prisma.vpnEvent.create({
+                            const createdMock = {
+                                username,
+                                sourceIp,
+                                assignedIp,
+                                status: "SUCCESS",
+                                createdAt: logTimestamp
+                            };
+
+                            operations.push(prisma.vpnEvent.create({
                                 data: {
                                     username,
                                     sourceIp,
@@ -166,11 +176,16 @@ async function backfillAssignedIps() {
                                     ipCountryCode: ipInfo?.country_code || null,
                                     createdAt: logTimestamp
                                 }
-                            });
-                            existingEvents.push(created);
+                            }));
+                            existingEvents.push(createdMock);
                             updatedThisDay++;
                         }
                     }
+                }
+
+                if (operations.length > 0) {
+                    console.log(`Executing ${operations.length} database operations in a transaction...`);
+                    await prisma.$transaction(operations);
                 }
             } catch (err) {
                 console.error(`Error backfilling for dayOffset ${dayOffset} (window ${chunkIdx + 1}/3):`, err.message);

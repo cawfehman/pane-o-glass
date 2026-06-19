@@ -91,6 +91,41 @@ async function getIpInfoWithCache(ip) {
     return info;
 }
 
+// Global regex variables copies for extractIpFromMessage
+const connRegex = /(?:Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>|Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+))/i;
+const failRegex = /(?:%(?:FTD|ASA)-\d-113015:\s+)?AAA\s+user\s+authentication\s+Rejected\s+:\s+reason\s+=\s+(.+?)\s+:\s+User\s+=\s+(.+?)\s+:\s+IP\s+=\s+([^\s]+)/i;
+const failRegex113005 = /AAA\s+user\s+authentication\s+Rejected\s+:\s+reason\s+=\s+(.+?)\s+:\s+server\s+=\s+[^\s]+\s+:\s+user\s+=\s+(.+?)\s+:\s+user\s+IP\s+=\s+([^\s]+)/i;
+const discRegex = /(?:Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+)|Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>).*?Duration:\s*([^,]+),\s*(?:Rx\s*Rules:[^,]+,\s*Tx\s*Rules:[^,]+,\s*)?Bytes\s+(?:Tx|xmt):\s*(\d+),\s*Bytes\s+(?:Rx|rcv):\s*(\d+)/i;
+const ipAssignRegex = /(?:Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>\s+(?:IPv4\s+)?Address\s+<([^>]+)>(?:\s+IPv6\s+address\s+<[^>]*>)?\s+assigned\s+to\s+session|Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+),\s*(?:IPv4\s*)?Address\s*=\s*([^\s,]+)(?:\s*,\s*IPv6\s*address\s*=\s*[^\s,]+)?\s*assigned\s*to\s*session)/i;
+const ikev2ConnRegex = /Local:\s*([^\s:]+)(?::\d+)?\s+Remote:\s*([^\s:]+)(?::\d+)?\s+Username:\s*([^\s]+)\s+IKEv2\s+SA\s+UP/i;
+const ikev2LeaseRegex = /Local:\s*[^\s]+\s+Remote:\s*([^\s:]+)(?::\d+)?\s+Username:\s*([^\s]+)\s+IKEv2\s+Group:\s*[^\s]+\s+(?:IPv4\s+)?Address:\s*<([^>]+)>/i;
+
+function extractIpFromMessage(rawLog) {
+    if (rawLog.includes("113039")) {
+        const match = rawLog.match(connRegex);
+        if (match) return match[3] || match[6];
+    } else if (rawLog.includes("722051")) {
+        const match = rawLog.match(ipAssignRegex);
+        if (match) return match[3] || match[7];
+    } else if (rawLog.includes("113015")) {
+        const match = rawLog.match(failRegex);
+        if (match) return match[3].trim();
+    } else if (rawLog.includes("113005")) {
+        const match = rawLog.match(failRegex113005);
+        if (match) return match[3].trim();
+    } else if (rawLog.includes("750002")) {
+        const match = rawLog.match(ikev2ConnRegex);
+        if (match) return match[2];
+    } else if (rawLog.includes("750003")) {
+        const match = rawLog.match(ikev2LeaseRegex);
+        if (match) return match[1];
+    } else if (rawLog.includes("113019")) {
+        const match = rawLog.match(discRegex);
+        if (match) return match[3] || match[6];
+    }
+    return null;
+}
+
 async function runHistoricalSync() {
     const rawUrl = process.env.GRAYLOG_URL;
     const rawToken = process.env.GRAYLOG_API_TOKEN;
@@ -184,6 +219,20 @@ async function runHistoricalSync() {
                 const messages = response.data?.messages || [];
                 console.log(`Fetched ${messages.length} messages for window ${chunkIdx + 1}/3.`);
 
+                // Pre-resolve all unique public IPs in parallel to warm the cache
+                const uniqueIps = [...new Set(messages.map(msgObj => {
+                    const rawLog = msgObj.message?.message || "";
+                    return extractIpFromMessage(rawLog);
+                }))].filter(ip => ip && !isPrivateIp(ip) && !ipCache.has(ip));
+
+                if (uniqueIps.length > 0) {
+                    console.log(`Resolving geo info for ${uniqueIps.length} unique public IPs in parallel...`);
+                    await Promise.all(uniqueIps.map(async (ip) => {
+                        const info = await getIpInfo(ip);
+                        ipCache.set(ip, info);
+                    }));
+                }
+
                 // Pre-fetch all events in the active 8h window (+5s safety buffers) in a single query
                 const chunkStartBuffer = new Date(chunkFrom.getTime() - 5000);
                 const chunkEndBuffer = new Date(chunkTo.getTime() + 5000);
@@ -209,6 +258,8 @@ async function runHistoricalSync() {
                     },
                     orderBy: { createdAt: "desc" }
                 });
+
+                const operations = [];
 
                 for (const msgObj of messages) {
                     const rawLog = msgObj.message?.message || "";
@@ -308,16 +359,16 @@ async function runHistoricalSync() {
                     if (existing) {
                         // If we got the assignedIp now (from 722051) and existing doesn't have it, update it
                         if (status === "SUCCESS" && assignedIp && !existing.assignedIp) {
-                            await prisma.vpnEvent.update({
+                            operations.push(prisma.vpnEvent.update({
                                 where: { id: existing.id },
                                 data: { assignedIp }
-                            });
+                            }));
                             existing.assignedIp = assignedIp;
                             priorSuccessEvents.unshift(existing);
                         }
                         // If it is a disconnect event and we now have a log with actual byte counts, update the existing record
                         if (status === "DISCONNECT" && (!existing.bytesTotal || existing.bytesTotal === 0) && bytesTotal && bytesTotal > 0) {
-                            await prisma.vpnEvent.update({
+                            operations.push(prisma.vpnEvent.update({
                                 where: { id: existing.id },
                                 data: {
                                     bytesSent,
@@ -325,7 +376,7 @@ async function runHistoricalSync() {
                                     bytesTotal,
                                     duration: duration || existing.duration
                                 }
-                            });
+                            }));
                             existing.bytesSent = bytesSent;
                             existing.bytesReceived = bytesReceived;
                             existing.bytesTotal = bytesTotal;
@@ -348,9 +399,17 @@ async function runHistoricalSync() {
                         }
                     }
 
-                    const ipInfo = await getIpInfoWithCache(sourceIp);
+                    const ipInfo = ipCache.get(sourceIp) || null;
 
-                    const created = await prisma.vpnEvent.create({
+                    const createdMock = {
+                        username,
+                        sourceIp,
+                        assignedIp: finalAssignedIp || assignedIp || null,
+                        status,
+                        createdAt: logTimestamp
+                    };
+
+                    operations.push(prisma.vpnEvent.create({
                         data: {
                             username,
                             sourceIp,
@@ -368,14 +427,19 @@ async function runHistoricalSync() {
                             ipCountryCode: ipInfo?.country_code || null,
                             createdAt: logTimestamp
                         }
-                    });
+                    }));
 
-                    existingEvents.push(created);
-                    if (created.status === "SUCCESS" && created.assignedIp) {
-                        priorSuccessEvents.unshift(created);
+                    existingEvents.push(createdMock);
+                    if (status === "SUCCESS" && createdMock.assignedIp) {
+                        priorSuccessEvents.unshift(createdMock);
                     }
 
                     importedThisDay++;
+                }
+
+                if (operations.length > 0) {
+                    console.log(`Executing ${operations.length} database operations in a transaction...`);
+                    await prisma.$transaction(operations);
                 }
             } catch (err) {
                 console.error(`Error fetching logs for day offset ${dayOffset} (window ${chunkIdx + 1}/3):`, err.message);
