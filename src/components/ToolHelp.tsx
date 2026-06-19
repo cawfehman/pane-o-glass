@@ -8,11 +8,13 @@ export interface TooltipDetails {
     capabilities: string[];
     colors: { name: string; meaning: string; rgb: string }[];
     backgroundJobs?: string[];
+    version?: string;
 }
 
 export const helpData: Record<string, TooltipDetails> = {
     firewall: {
         title: "Cisco Firewall & Guardian",
+        version: "1.0.0",
         capabilities: [
             "Query current active IP shuns across configured Cisco perimeter firewalls.",
             "Manually remove shuns to unblock false-positive connections.",
@@ -28,6 +30,7 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     ise: {
         title: "Cisco ISE Center",
+        version: "1.0.0",
         capabilities: [
             "Query active wired/wireless endpoint connection parameters by MAC address, username, or IP.",
             "Inspect details of user login sessions, including Auth protocols, Network Devices, and VLAN assignments.",
@@ -42,22 +45,27 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     vpn: {
         title: "VPN Troubleshooting Dashboard",
+        version: "1.1.0",
         capabilities: [
             "Search real-time AnyConnect / Secure Client VPN connection logs.",
             "Troubleshoot logins, inspect session durations, and track total upload (Tx) / download (Rx) bandwidth.",
             "Review 'Security Insights' cards highlighting failed usernames and international Non-US connections.",
-            "Click on corporate usernames (name-name format) to trigger hoverable Active Directory LDAP directory lookup cards."
+            "Click on corporate usernames (name-name format) to trigger hoverable Active Directory LDAP directory lookup cards.",
+            "Differentiate connection protocols (SSL in blue, IKEv2 in purple) and stream sources (R/Reconnect for Kel-3140 in rose, C/Connect for WDC-FTD in green)."
         ],
         colors: [
             { name: "Green (Badge)", meaning: "Client successfully connected to the VPN gateway.", rgb: "#22c55e" },
             { name: "Red (Badge)", meaning: "Connection failed. Displays the rejection reason (e.g. invalid password).", rgb: "#ef4444" },
             { name: "Soft Amber (Highlight)", meaning: "International connection warning. Left-border warning shows when source IP country code is outside the United States.", rgb: "#f59e0b" },
-            { name: "Blue (Badge)", meaning: "Disconnect connection teardown message containing byte stats.", rgb: "#3b82f6" }
+            { name: "Blue (Badge)", meaning: "Disconnect connection teardown message containing byte stats.", rgb: "#3b82f6" },
+            { name: "Sky Blue / Purple (Protocol)", meaning: "SSL vs IKEv2 (IPSec) VPN connection types.", rgb: "#a855f7" },
+            { name: "Rose / Green (Stream)", meaning: "R (Keleman Kel-3140 Reconnect stream) vs C (Wilmington WDC-FTD Connect stream) source badges.", rgb: "#ec4899" }
         ],
         backgroundJobs: ["Graylog VPN Sync: Syncs VPN authentication logs from Graylog to the SQLite database relative or absolute ranges."]
     },
     'ise-tacacs': {
         title: "TACACS+ Administration Audit",
+        version: "1.0.0",
         capabilities: [
             "Search administrative logins into network switches, routers, and firewalls.",
             "Audit the precise CLI commands executed by engineers during sessions.",
@@ -70,6 +78,7 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     'hibp-account': {
         title: "Have I Been Pwned? (HIBP) Account Security",
+        version: "1.0.0",
         capabilities: [
             "Query external databases to check if a specific corporate account has been compromised.",
             "List all known breach names, dates, leaked data types, and severity scales associated with the email address."
@@ -81,6 +90,7 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     'hibp-domain': {
         title: "Have I Been Pwned? (HIBP) Domain Security",
+        version: "1.0.0",
         capabilities: [
             "Track leaked account credentials domain-wide for all corporate domain names.",
             "Identify high-risk compromise groups across department scopes."
@@ -181,9 +191,23 @@ export function ToolHelp({ toolId, iconSize = 20, triggerStyle }: ToolHelpProps)
                             <X size={20} />
                         </button>
 
-                        <h2 style={{ margin: '0 0 16px 0', fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <h2 style={{ margin: '0 0 16px 0', fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                             <HelpCircle size={24} style={{ color: 'var(--accent-primary)' }} />
-                            {details.title}
+                            <span>{details.title}</span>
+                            {details.version && (
+                                <span style={{ 
+                                    fontSize: '0.75rem', 
+                                    background: 'var(--bg-secondary, #1e1e24)', 
+                                    color: 'var(--text-secondary)', 
+                                    padding: '2px 8px', 
+                                    borderRadius: '12px',
+                                    border: '1px solid var(--border-color)',
+                                    fontWeight: 500,
+                                    marginLeft: 'auto'
+                                }}>
+                                    v{details.version}
+                                </span>
+                            )}
                         </h2>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '70vh', overflowY: 'auto', paddingRight: '4px' }}>
