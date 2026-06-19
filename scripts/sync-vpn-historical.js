@@ -277,6 +277,15 @@ async function runHistoricalSync() {
                     let bytesReceived = null;
                     let failureReason = null;
                     let vpnType = "SSL";
+                    let vpnStream = null;
+
+                    const streams = msgObj.message?.streams || [];
+                    const msgSource = msgObj.message?.source || "";
+                    if (streams.includes("69248813fdd3a42c0c71c19e") || msgSource.startsWith("172.18.166.") || rawLog.toLowerCase().includes("kel-2mc-3140") || rawLog.toLowerCase().includes("3140")) {
+                        vpnStream = "Kel-3140";
+                    } else if (streams.includes("692f2262ae54205382c89a5b") || msgSource.startsWith("172.16.2.") || rawLog.toLowerCase().includes("wdc-ftd") || rawLog.toLowerCase().includes("connect")) {
+                        vpnStream = "WDC-FTD";
+                    }
 
                     if (rawLog.includes("113039") && connRegex.test(rawLog)) {
                         const match = rawLog.match(connRegex);
@@ -351,27 +360,23 @@ async function runHistoricalSync() {
                         ? (bytesSent || 0) + (bytesReceived || 0) 
                         : null;
 
-                    // Check duplication in memory
+                    // Deduplication check
                     const fiveSeconds = 5 * 1000;
-                    const rangeStart = logTimestamp.getTime() - fiveSeconds;
-                    const rangeEnd = logTimestamp.getTime() + fiveSeconds;
-
                     const existing = existingEvents.find(e => 
                         e.username === username &&
                         e.sourceIp === sourceIp &&
                         e.status === status &&
-                        e.createdAt.getTime() >= rangeStart &&
-                        e.createdAt.getTime() <= rangeEnd
+                        Math.abs(e.createdAt.getTime() - logTimestamp.getTime()) <= fiveSeconds
                     );
 
                     if (existing) {
                         if (existing.isMock) {
-                            // If it's a mock event that hasn't been written to the DB yet, directly mutate the pending create data object
+                            // If we got the assignedIp now (from 722051) and existing doesn't have it, update it
                             if (status === "SUCCESS" && assignedIp && !existing.assignedIp) {
-                                existing.dataRef.assignedIp = assignedIp;
                                 existing.assignedIp = assignedIp;
-                                priorSuccessEvents.unshift(existing);
+                                existing.dataRef.assignedIp = assignedIp;
                             }
+                            // If it is a disconnect event and we now have a log with actual byte counts, update the existing record
                             if (status === "DISCONNECT" && (!existing.dataRef.bytesTotal || existing.dataRef.bytesTotal === 0) && bytesTotal && bytesTotal > 0) {
                                 existing.dataRef.bytesSent = bytesSent;
                                 existing.dataRef.bytesReceived = bytesReceived;
@@ -408,9 +413,10 @@ async function runHistoricalSync() {
                         continue; // Skip creating a duplicate record
                     }
 
-                    // Carry over assignedIp and vpnType to disconnect events if not already present (using in-memory list)
+                    // Carry over assignedIp, vpnType, and vpnStream to disconnect events if not already present (using in-memory list)
                     let finalAssignedIp = assignedIp;
                     let finalVpnType = vpnType;
+                    let finalVpnStream = vpnStream;
                     if (status === "DISCONNECT") {
                         const recentSuccess = priorSuccessEvents.find(e => 
                             e.username === username &&
@@ -421,6 +427,7 @@ async function runHistoricalSync() {
                         if (recentSuccess) {
                             if (!finalAssignedIp) finalAssignedIp = recentSuccess.assignedIp;
                             if (recentSuccess.vpnType) finalVpnType = recentSuccess.vpnType;
+                            if (recentSuccess.vpnStream) finalVpnStream = recentSuccess.vpnStream;
                         }
                     }
 
@@ -430,13 +437,14 @@ async function runHistoricalSync() {
                         username,
                         sourceIp,
                         assignedIp: finalAssignedIp || assignedIp || null,
-                        vpnType: finalVpnType,
                         status,
                         duration,
                         bytesSent,
                         bytesReceived,
                         bytesTotal,
                         failureReason,
+                        vpnType: finalVpnType,
+                        vpnStream: finalVpnStream,
                         ipAsn: ipInfo?.asn || null,
                         ipAsName: ipInfo?.as_name || null,
                         ipAsDomain: ipInfo?.as_domain || null,
@@ -450,6 +458,7 @@ async function runHistoricalSync() {
                         sourceIp,
                         assignedIp: finalAssignedIp || assignedIp || null,
                         vpnType: finalVpnType,
+                        vpnStream: finalVpnStream,
                         status,
                         createdAt: logTimestamp,
                         isMock: true,

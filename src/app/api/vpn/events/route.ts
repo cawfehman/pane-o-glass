@@ -114,6 +114,15 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
             let bytesReceived: number | null = null;
             let failureReason: string | null = null;
             let vpnType = "SSL";
+            let vpnStream: string | null = null;
+
+            const streams = msgObj.message?.streams || [];
+            const msgSource = msgObj.message?.source || "";
+            if (streams.includes("69248813fdd3a42c0c71c19e") || msgSource.startsWith("172.18.166.") || rawLog.toLowerCase().includes("kel-2mc-3140") || rawLog.toLowerCase().includes("3140")) {
+                vpnStream = "Kel-3140";
+            } else if (streams.includes("692f2262ae54205382c89a5b") || msgSource.startsWith("172.16.2.") || rawLog.toLowerCase().includes("wdc-ftd") || rawLog.toLowerCase().includes("connect")) {
+                vpnStream = "WDC-FTD";
+            }
 
             if (rawLog.includes("113039") && connRegex.test(rawLog)) {
                 const match = rawLog.match(connRegex);
@@ -228,9 +237,10 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
                 continue; // Skip creating a duplicate record
             }
 
-            // Carry over assignedIp and vpnType to disconnect events if not already present
+            // Carry over assignedIp, vpnType, and vpnStream to disconnect events if not already present
             let finalAssignedIp = assignedIp;
             let finalVpnType = vpnType;
+            let finalVpnStream = vpnStream;
             if (status === "DISCONNECT") {
                 const recentSuccess = await prisma.vpnEvent.findFirst({
                     where: {
@@ -250,6 +260,9 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
                     }
                     if (recentSuccess.vpnType) {
                         finalVpnType = recentSuccess.vpnType;
+                    }
+                    if (recentSuccess.vpnStream) {
+                        finalVpnStream = recentSuccess.vpnStream;
                     }
                 }
             }
@@ -275,6 +288,7 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
                     bytesTotal,
                     failureReason,
                     vpnType: finalVpnType,
+                    vpnStream: finalVpnStream,
                     ipAsn: ipInfo?.asn || null,
                     ipAsName: ipInfo?.as_name || null,
                     ipAsDomain: ipInfo?.as_domain || null,

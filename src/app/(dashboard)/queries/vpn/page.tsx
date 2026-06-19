@@ -827,6 +827,27 @@ export default function VpnTroubleshootingPage() {
                                                                 }}>
                                                                     {evt.vpnType || "SSL"}
                                                                 </span>
+                                                                {evt.vpnStream && (
+                                                                    <span 
+                                                                        title={evt.vpnStream === "Kel-3140" ? "Reconnect" : "Connect"}
+                                                                        style={{
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'center',
+                                                                            width: '18px',
+                                                                            height: '18px',
+                                                                            borderRadius: '50%',
+                                                                            fontSize: '0.7rem',
+                                                                            fontWeight: 800,
+                                                                            background: evt.vpnStream === "Kel-3140" ? 'rgba(236, 72, 153, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                                                                            color: evt.vpnStream === "Kel-3140" ? '#f472b6' : '#4ade80',
+                                                                            border: evt.vpnStream === "Kel-3140" ? '1px solid rgba(236, 72, 153, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)',
+                                                                            cursor: 'help'
+                                                                        }}
+                                                                    >
+                                                                        {evt.vpnStream === "Kel-3140" ? "R" : "C"}
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </td>
                                                         <td style={{ padding: '14px 16px', fontSize: '0.9rem' }}>
@@ -971,6 +992,27 @@ export default function VpnTroubleshootingPage() {
                                                             }}>
                                                                 {evt.vpnType || "SSL"}
                                                             </span>
+                                                            {evt.vpnStream && (
+                                                                <span 
+                                                                    title={evt.vpnStream === "Kel-3140" ? "Reconnect" : "Connect"}
+                                                                    style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        width: '18px',
+                                                                        height: '18px',
+                                                                        borderRadius: '50%',
+                                                                        fontSize: '0.7rem',
+                                                                        fontWeight: 800,
+                                                                        background: evt.vpnStream === "Kel-3140" ? 'rgba(236, 72, 153, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                                                                        color: evt.vpnStream === "Kel-3140" ? '#f472b6' : '#4ade80',
+                                                                        border: evt.vpnStream === "Kel-3140" ? '1px solid rgba(236, 72, 153, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)',
+                                                                        cursor: 'help'
+                                                                    }}
+                                                                >
+                                                                    {evt.vpnStream === "Kel-3140" ? "R" : "C"}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </td>
                                                     <td style={{ padding: '14px 16px', fontSize: '0.9rem' }}>
@@ -1607,19 +1649,42 @@ export default function VpnTroubleshootingPage() {
                                         {failUserDetails.map((evt, idx) => (
                                             <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                                                 <td style={{ padding: '10px' }}>
-                                                    <span style={{
-                                                        display: 'inline-flex',
-                                                        alignItems: 'center',
-                                                        padding: '2px 6px',
-                                                        borderRadius: '4px',
-                                                        fontSize: '0.75rem',
-                                                        fontWeight: 700,
-                                                        background: evt.vpnType === "IKEv2" ? 'rgba(168, 85, 247, 0.15)' : 'rgba(14, 165, 233, 0.15)',
-                                                        color: evt.vpnType === "IKEv2" ? '#c084fc' : '#38bdf8',
-                                                        border: evt.vpnType === "IKEv2" ? '1px solid rgba(168, 85, 247, 0.3)' : '1px solid rgba(14, 165, 233, 0.3)'
-                                                    }}>
-                                                        {evt.vpnType || "SSL"}
-                                                    </span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            padding: '2px 6px',
+                                                            borderRadius: '4px',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: 700,
+                                                            background: evt.vpnType === "IKEv2" ? 'rgba(168, 85, 247, 0.15)' : 'rgba(14, 165, 233, 0.15)',
+                                                            color: evt.vpnType === "IKEv2" ? '#c084fc' : '#38bdf8',
+                                                            border: evt.vpnType === "IKEv2" ? '1px solid rgba(168, 85, 247, 0.3)' : '1px solid rgba(14, 165, 233, 0.3)'
+                                                        }}>
+                                                            {evt.vpnType || "SSL"}
+                                                        </span>
+                                                        {evt.vpnStream && (
+                                                            <span 
+                                                                title={evt.vpnStream === "Kel-3140" ? "Reconnect" : "Connect"}
+                                                                style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    justifyContent: 'center',
+                                                                    width: '18px',
+                                                                    height: '18px',
+                                                                    borderRadius: '50%',
+                                                                    fontSize: '0.7rem',
+                                                                    fontWeight: 800,
+                                                                    background: evt.vpnStream === "Kel-3140" ? 'rgba(236, 72, 153, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                                                                    color: evt.vpnStream === "Kel-3140" ? '#f472b6' : '#4ade80',
+                                                                    border: evt.vpnStream === "Kel-3140" ? '1px solid rgba(236, 72, 153, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)',
+                                                                    cursor: 'help'
+                                                                }}
+                                                            >
+                                                                {evt.vpnStream === "Kel-3140" ? "R" : "C"}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td style={{ padding: '10px', whiteSpace: 'nowrap' }}>
                                                     {new Date(evt.createdAt).toLocaleString()}
