@@ -48,123 +48,127 @@ async function backfillAssignedIps() {
         const fromDate = new Date(toDate);
         fromDate.setDate(fromDate.getDate() - 1);
 
-        const fromIso = fromDate.toISOString();
-        const toIso = toDate.toISOString();
+        const totalDurationMs = toDate.getTime() - fromDate.getTime();
+        const chunkDurationMs = totalDurationMs / 3;
 
-        console.log(`\nFetching 722051 leases from: ${fromIso} to: ${toIso}...`);
+        let updatedThisDay = 0;
 
-        try {
-            const searchUrl = `${url}/api/search/universal/absolute`;
-            const params = new URLSearchParams();
-            params.append("query", signatures);
-            params.append("from", fromIso);
-            params.append("to", toIso);
-            params.append("limit", "5000");
-            params.append("decorate", "false");
-            for (const streamId of streamIds) {
-                params.append("filter", `streams:${streamId}`);
-            }
+        for (let chunkIdx = 0; chunkIdx < 3; chunkIdx++) {
+            const chunkFrom = new Date(fromDate.getTime() + (chunkIdx * chunkDurationMs));
+            const chunkTo = new Date(fromDate.getTime() + ((chunkIdx + 1) * chunkDurationMs));
+            const fromIso = chunkFrom.toISOString();
+            const toIso = chunkTo.toISOString();
 
-            const response = await axios.get(searchUrl, {
-                params,
-                headers: {
-                    "Authorization": authHeader,
-                    "Accept": "application/json",
-                    "X-Requested-By": "cli"
-                },
-                httpsAgent: agent,
-                timeout: 30000
-            });
+            console.log(`\nFetching 722051 leases (window ${chunkIdx + 1}/3) from: ${fromIso} to: ${toIso}...`);
 
-            const messages = response.data?.messages || [];
-            console.log(`Fetched ${messages.length} lease messages for this period.`);
-
-            let updatedThisPeriod = 0;
-
-            for (const msgObj of messages) {
-                const rawLog = msgObj.message?.message || "";
-                const logTimestampStr = msgObj.message?.timestamp;
-                if (!rawLog || !logTimestampStr) continue;
-
-                let username = "";
-                let sourceIp = "";
-                let assignedIp = "";
-                let matched = false;
-
-                const match = rawLog.match(ipAssignRegex);
-                if (match) {
-                    username = match[2] || match[6];
-                    sourceIp = match[3] || match[7];
-                    assignedIp = match[4] || match[8];
-                    matched = true;
-                } else {
-                    const ikeMatch = rawLog.match(ikev2LeaseRegex);
-                    if (ikeMatch) {
-                        sourceIp = ikeMatch[1];
-                        username = ikeMatch[2];
-                        assignedIp = ikeMatch[3];
-                        matched = true;
-                    }
+            try {
+                const searchUrl = `${url}/api/search/universal/absolute`;
+                const params = new URLSearchParams();
+                params.append("query", signatures);
+                params.append("from", fromIso);
+                params.append("to", toIso);
+                params.append("limit", "5000");
+                params.append("decorate", "false");
+                for (const streamId of streamIds) {
+                    params.append("filter", `streams:${streamId}`);
                 }
 
-                if (matched) {
-                    
-                    const logTimestamp = new Date(logTimestampStr);
-                    const fiveSeconds = 5 * 1000;
-                    const rangeStart = new Date(logTimestamp.getTime() - fiveSeconds);
-                    const rangeEnd = new Date(logTimestamp.getTime() + fiveSeconds);
+                const response = await axios.get(searchUrl, {
+                    params,
+                    headers: {
+                        "Authorization": authHeader,
+                        "Accept": "application/json",
+                        "X-Requested-By": "cli"
+                    },
+                    httpsAgent: agent,
+                    timeout: 30000
+                });
 
-                    // Find existing SUCCESS or DISCONNECT record matching username, public source IP, and timestamp
-                    const existing = await prisma.vpnEvent.findFirst({
-                        where: {
-                            username,
-                            sourceIp,
-                            status: { in: ["SUCCESS", "DISCONNECT"] },
-                            createdAt: {
-                                gte: rangeStart,
-                                lte: rangeEnd
-                            }
-                        }
-                    });
+                const messages = response.data?.messages || [];
+                console.log(`Fetched ${messages.length} lease messages for window ${chunkIdx + 1}/3.`);
 
-                    if (existing) {
-                        if (!existing.assignedIp) {
-                            await prisma.vpnEvent.update({
-                                where: { id: existing.id },
-                                data: { assignedIp }
-                            });
-                            updatedThisPeriod++;
-                        }
+                for (const msgObj of messages) {
+                    const rawLog = msgObj.message?.message || "";
+                    const logTimestampStr = msgObj.message?.timestamp;
+                    if (!rawLog || !logTimestampStr) continue;
+
+                    let username = "";
+                    let sourceIp = "";
+                    let assignedIp = "";
+                    let matched = false;
+
+                    const match = rawLog.match(ipAssignRegex);
+                    if (match) {
+                        username = match[2] || match[6];
+                        sourceIp = match[3] || match[7];
+                        assignedIp = match[4] || match[8];
+                        matched = true;
                     } else {
-                        // If no corresponding connect/disconnect event was captured, let's create a stub success event so we still track this session lease
-                        // Use the local lite check instead of direct importing typescript
-                        let ipInfo = null;
+                        const ikeMatch = rawLog.match(ikev2LeaseRegex);
+                        if (ikeMatch) {
+                            sourceIp = ikeMatch[1];
+                            username = ikeMatch[2];
+                            assignedIp = ikeMatch[3];
+                            matched = true;
+                        }
+                    }
 
-                        await prisma.vpnEvent.create({
-                            data: {
+                    if (matched) {
+                        const logTimestamp = new Date(logTimestampStr);
+                        const fiveSeconds = 5 * 1000;
+                        const rangeStart = new Date(logTimestamp.getTime() - fiveSeconds);
+                        const rangeEnd = new Date(logTimestamp.getTime() + fiveSeconds);
+
+                        // Find existing SUCCESS or DISCONNECT record matching username, public source IP, and timestamp
+                        const existing = await prisma.vpnEvent.findFirst({
+                            where: {
                                 username,
                                 sourceIp,
-                                assignedIp,
-                                status: "SUCCESS",
-                                ipAsn: ipInfo?.asn || null,
-                                ipAsName: ipInfo?.as_name || null,
-                                ipAsDomain: ipInfo?.as_domain || null,
-                                ipCountry: ipInfo?.country || null,
-                                ipCountryCode: ipInfo?.country_code || null,
-                                createdAt: logTimestamp
+                                status: { in: ["SUCCESS", "DISCONNECT"] },
+                                createdAt: {
+                                    gte: rangeStart,
+                                    lte: rangeEnd
+                                }
                             }
                         });
-                        updatedThisPeriod++;
+
+                        if (existing) {
+                            if (!existing.assignedIp) {
+                                await prisma.vpnEvent.update({
+                                    where: { id: existing.id },
+                                    data: { assignedIp }
+                                });
+                                updatedThisDay++;
+                            }
+                        } else {
+                            // If no corresponding connect/disconnect event was captured, let's create a stub success event so we still track this session lease
+                            let ipInfo = null;
+
+                            await prisma.vpnEvent.create({
+                                data: {
+                                    username,
+                                    sourceIp,
+                                    assignedIp,
+                                    status: "SUCCESS",
+                                    ipAsn: ipInfo?.asn || null,
+                                    ipAsName: ipInfo?.as_name || null,
+                                    ipAsDomain: ipInfo?.as_domain || null,
+                                    ipCountry: ipInfo?.country || null,
+                                    ipCountryCode: ipInfo?.country_code || null,
+                                    createdAt: logTimestamp
+                                }
+                            });
+                            updatedThisDay++;
+                        }
                     }
                 }
+            } catch (err) {
+                console.error(`Error backfilling for dayOffset ${dayOffset} (window ${chunkIdx + 1}/3):`, err.message);
             }
-
-            console.log(`Matched and updated/created ${updatedThisPeriod} events.`);
-            totalUpdated += updatedThisPeriod;
-
-        } catch (err) {
-            console.error(`Error backfilling for dayOffset ${dayOffset}:`, err.message);
         }
+
+        console.log(`Matched and updated/created ${updatedThisDay} events for this day.`);
+        totalUpdated += updatedThisDay;
     }
 
     console.log(`\nBackfill completed. Processed ${totalUpdated} IP assignments.`);

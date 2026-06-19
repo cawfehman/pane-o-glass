@@ -137,213 +137,219 @@ async function runHistoricalSync() {
         const fromDate = new Date(toDate);
         fromDate.setDate(fromDate.getDate() - 1);
 
-        const fromIso = fromDate.toISOString();
-        const toIso = toDate.toISOString();
+        const totalDurationMs = toDate.getTime() - fromDate.getTime();
+        const chunkDurationMs = totalDurationMs / 3;
 
-        console.log(`\nFetching logs from: ${fromIso} to: ${toIso}...`);
+        let importedThisDay = 0;
 
-        try {
-            const searchUrl = `${url}/api/search/universal/absolute`;
-            const params = new URLSearchParams();
-            params.append("query", signatures);
-            params.append("from", fromIso);
-            params.append("to", toIso);
-            params.append("limit", "5000"); // Fetch all events in this 24h chunk
-            params.append("decorate", "false");
-            for (const streamId of streamIds) {
-                params.append("filter", `streams:${streamId}`);
-            }
+        for (let chunkIdx = 0; chunkIdx < 3; chunkIdx++) {
+            const chunkFrom = new Date(fromDate.getTime() + (chunkIdx * chunkDurationMs));
+            const chunkTo = new Date(fromDate.getTime() + ((chunkIdx + 1) * chunkDurationMs));
+            const fromIso = chunkFrom.toISOString();
+            const toIso = chunkTo.toISOString();
 
-            const response = await axios.get(searchUrl, {
-                params,
-                headers: {
-                    "Authorization": authHeader,
-                    "Accept": "application/json",
-                    "X-Requested-By": "cli"
-                },
-                httpsAgent: agent,
-                timeout: 30000
-            });
+            console.log(`\nFetching logs (window ${chunkIdx + 1}/3) from: ${fromIso} to: ${toIso}...`);
 
-            const messages = response.data?.messages || [];
-            console.log(`Fetched ${messages.length} messages for this day.`);
-
-            let importedThisDay = 0;
-
-            for (const msgObj of messages) {
-                const rawLog = msgObj.message?.message || "";
-                const logTimestampStr = msgObj.message?.timestamp;
-                if (!rawLog || !logTimestampStr) continue;
-
-                const logTimestamp = new Date(logTimestampStr);
-
-                let username = "";
-                let sourceIp = "";
-                let assignedIp = null;
-                let status = "SUCCESS";
-                let duration = null;
-                let bytesSent = null;
-                let bytesReceived = null;
-                let failureReason = null;
-
-                if (rawLog.includes("113039") && connRegex.test(rawLog)) {
-                    const match = rawLog.match(connRegex);
-                    if (match) {
-                        username = match[2] || match[5];
-                        sourceIp = match[3] || match[6];
-                        status = "SUCCESS";
-                    }
-                } else if (rawLog.includes("722051") && ipAssignRegex.test(rawLog)) {
-                    const match = rawLog.match(ipAssignRegex);
-                    if (match) {
-                        username = match[2] || match[6];
-                        sourceIp = match[3] || match[7];
-                        assignedIp = match[4] || match[8];
-                        status = "SUCCESS";
-                    }
-                } else if (rawLog.includes("113015") && failRegex.test(rawLog)) {
-                    const match = rawLog.match(failRegex);
-                    if (match) {
-                        failureReason = match[1].trim();
-                        username = match[2].trim();
-                        sourceIp = match[3].trim();
-                        status = "FAILURE";
-                    }
-                } else if (rawLog.includes("113005") && failRegex113005.test(rawLog)) {
-                    const match = rawLog.match(failRegex113005);
-                    if (match) {
-                        failureReason = match[1].trim();
-                        username = match[2].trim();
-                        sourceIp = match[3].trim();
-                        status = "FAILURE";
-                    }
-                } else if (rawLog.includes("750002") && ikev2ConnRegex.test(rawLog)) {
-                    const match = rawLog.match(ikev2ConnRegex);
-                    if (match) {
-                        username = match[3];
-                        sourceIp = match[2];
-                        status = "SUCCESS";
-                    }
-                } else if (rawLog.includes("750003") && ikev2LeaseRegex.test(rawLog)) {
-                    const match = rawLog.match(ikev2LeaseRegex);
-                    if (match) {
-                        username = match[2];
-                        sourceIp = match[1];
-                        assignedIp = match[3];
-                        status = "SUCCESS";
-                    }
-                } else if (rawLog.includes("113019") && discRegex.test(rawLog)) {
-                    const match = rawLog.match(discRegex);
-                    if (match) {
-                        username = match[2] || match[5];
-                        sourceIp = match[3] || match[6];
-                        status = "DISCONNECT";
-                        duration = parseDuration(match[7]);
-                        bytesSent = parseFloat(match[8]);
-                        bytesReceived = parseFloat(match[9]);
-                    }
-                } else {
-                    continue;
+            try {
+                const searchUrl = `${url}/api/search/universal/absolute`;
+                const params = new URLSearchParams();
+                params.append("query", signatures);
+                params.append("from", fromIso);
+                params.append("to", toIso);
+                params.append("limit", "5000"); // Fetch all events in this 8h chunk
+                params.append("decorate", "false");
+                for (const streamId of streamIds) {
+                    params.append("filter", `streams:${streamId}`);
                 }
 
-                if (!username || !sourceIp) continue;
-
-                const bytesTotal = (bytesSent !== null || bytesReceived !== null) 
-                    ? (bytesSent || 0) + (bytesReceived || 0) 
-                    : null;
-
-                // Check duplication: check if an event for same user/IP/status exists within 5 seconds of the timestamp
-                const fiveSeconds = 5 * 1000;
-                const rangeStart = new Date(logTimestamp.getTime() - fiveSeconds);
-                const rangeEnd = new Date(logTimestamp.getTime() + fiveSeconds);
-
-                const existing = await prisma.vpnEvent.findFirst({
-                    where: {
-                        username,
-                        sourceIp,
-                        status,
-                        createdAt: {
-                            gte: rangeStart,
-                            lte: rangeEnd
-                        }
-                    }
+                const response = await axios.get(searchUrl, {
+                    params,
+                    headers: {
+                        "Authorization": authHeader,
+                        "Accept": "application/json",
+                        "X-Requested-By": "cli"
+                    },
+                    httpsAgent: agent,
+                    timeout: 30000
                 });
 
-                if (existing) {
-                    // If we got the assignedIp now (from 722051) and existing doesn't have it, update it
-                    if (status === "SUCCESS" && assignedIp && !existing.assignedIp) {
-                        await prisma.vpnEvent.update({
-                            where: { id: existing.id },
-                            data: { assignedIp }
-                        });
-                    }
-                    // If it is a disconnect event and we now have a log with actual byte counts, update the existing record
-                    if (status === "DISCONNECT" && (!existing.bytesTotal || existing.bytesTotal === 0) && bytesTotal && bytesTotal > 0) {
-                        await prisma.vpnEvent.update({
-                            where: { id: existing.id },
-                            data: {
-                                bytesSent,
-                                bytesReceived,
-                                bytesTotal,
-                                duration: duration || existing.duration
-                            }
-                        });
-                    }
-                    continue; // Skip creating a duplicate record
-                }
+                const messages = response.data?.messages || [];
+                console.log(`Fetched ${messages.length} messages for window ${chunkIdx + 1}/3.`);
 
-                // Carry over assignedIp to disconnect events if not already present
-                let finalAssignedIp = assignedIp;
-                if (status === "DISCONNECT" && !finalAssignedIp) {
-                    const recentSuccess = await prisma.vpnEvent.findFirst({
+                for (const msgObj of messages) {
+                    const rawLog = msgObj.message?.message || "";
+                    const logTimestampStr = msgObj.message?.timestamp;
+                    if (!rawLog || !logTimestampStr) continue;
+
+                    const logTimestamp = new Date(logTimestampStr);
+
+                    let username = "";
+                    let sourceIp = "";
+                    let assignedIp = null;
+                    let status = "SUCCESS";
+                    let duration = null;
+                    let bytesSent = null;
+                    let bytesReceived = null;
+                    let failureReason = null;
+
+                    if (rawLog.includes("113039") && connRegex.test(rawLog)) {
+                        const match = rawLog.match(connRegex);
+                        if (match) {
+                            username = match[2] || match[5];
+                            sourceIp = match[3] || match[6];
+                            status = "SUCCESS";
+                        }
+                    } else if (rawLog.includes("722051") && ipAssignRegex.test(rawLog)) {
+                        const match = rawLog.match(ipAssignRegex);
+                        if (match) {
+                            username = match[2] || match[6];
+                            sourceIp = match[3] || match[7];
+                            assignedIp = match[4] || match[8];
+                            status = "SUCCESS";
+                        }
+                    } else if (rawLog.includes("113015") && failRegex.test(rawLog)) {
+                        const match = rawLog.match(failRegex);
+                        if (match) {
+                            failureReason = match[1].trim();
+                            username = match[2].trim();
+                            sourceIp = match[3].trim();
+                            status = "FAILURE";
+                        }
+                    } else if (rawLog.includes("113005") && failRegex113005.test(rawLog)) {
+                        const match = rawLog.match(failRegex113005);
+                        if (match) {
+                            failureReason = match[1].trim();
+                            username = match[2].trim();
+                            sourceIp = match[3].trim();
+                            status = "FAILURE";
+                        }
+                    } else if (rawLog.includes("750002") && ikev2ConnRegex.test(rawLog)) {
+                        const match = rawLog.match(ikev2ConnRegex);
+                        if (match) {
+                            username = match[3];
+                            sourceIp = match[2];
+                            status = "SUCCESS";
+                        }
+                    } else if (rawLog.includes("750003") && ikev2LeaseRegex.test(rawLog)) {
+                        const match = rawLog.match(ikev2LeaseRegex);
+                        if (match) {
+                            username = match[2];
+                            sourceIp = match[1];
+                            assignedIp = match[3];
+                            status = "SUCCESS";
+                        }
+                    } else if (rawLog.includes("113019") && discRegex.test(rawLog)) {
+                        const match = rawLog.match(discRegex);
+                        if (match) {
+                            username = match[2] || match[5];
+                            sourceIp = match[3] || match[6];
+                            status = "DISCONNECT";
+                            duration = parseDuration(match[7]);
+                            bytesSent = parseFloat(match[8]);
+                            bytesReceived = parseFloat(match[9]);
+                        }
+                    } else {
+                        continue;
+                    }
+
+                    if (!username || !sourceIp) continue;
+
+                    const bytesTotal = (bytesSent !== null || bytesReceived !== null) 
+                        ? (bytesSent || 0) + (bytesReceived || 0) 
+                        : null;
+
+                    // Check duplication: check if an event for same user/IP/status exists within 5 seconds of the timestamp
+                    const fiveSeconds = 5 * 1000;
+                    const rangeStart = new Date(logTimestamp.getTime() - fiveSeconds);
+                    const rangeEnd = new Date(logTimestamp.getTime() + fiveSeconds);
+
+                    const existing = await prisma.vpnEvent.findFirst({
                         where: {
                             username,
                             sourceIp,
-                            status: "SUCCESS",
-                            assignedIp: { not: null },
+                            status,
                             createdAt: {
-                                gte: new Date(logTimestamp.getTime() - 24 * 60 * 60 * 1000), // 24 hours back
-                                lte: logTimestamp
+                                gte: rangeStart,
+                                lte: rangeEnd
                             }
-                        },
-                        orderBy: { createdAt: "desc" }
+                        }
                     });
-                    if (recentSuccess) {
-                        finalAssignedIp = recentSuccess.assignedIp;
+
+                    if (existing) {
+                        // If we got the assignedIp now (from 722051) and existing doesn't have it, update it
+                        if (status === "SUCCESS" && assignedIp && !existing.assignedIp) {
+                            await prisma.vpnEvent.update({
+                                where: { id: existing.id },
+                                data: { assignedIp }
+                            });
+                        }
+                        // If it is a disconnect event and we now have a log with actual byte counts, update the existing record
+                        if (status === "DISCONNECT" && (!existing.bytesTotal || existing.bytesTotal === 0) && bytesTotal && bytesTotal > 0) {
+                            await prisma.vpnEvent.update({
+                                where: { id: existing.id },
+                                data: {
+                                    bytesSent,
+                                    bytesReceived,
+                                    bytesTotal,
+                                    duration: duration || existing.duration
+                                }
+                            });
+                        }
+                        continue; // Skip creating a duplicate record
                     }
+
+                    // Carry over assignedIp to disconnect events if not already present
+                    let finalAssignedIp = assignedIp;
+                    if (status === "DISCONNECT" && !finalAssignedIp) {
+                        const recentSuccess = await prisma.vpnEvent.findFirst({
+                            where: {
+                                username,
+                                sourceIp,
+                                status: "SUCCESS",
+                                assignedIp: { not: null },
+                                createdAt: {
+                                    gte: new Date(logTimestamp.getTime() - 24 * 60 * 60 * 1000), // 24 hours back
+                                    lte: logTimestamp
+                                }
+                            },
+                            orderBy: { createdAt: "desc" }
+                        });
+                        if (recentSuccess) {
+                            finalAssignedIp = recentSuccess.assignedIp;
+                        }
+                    }
+
+                    const ipInfo = await getIpInfo(sourceIp);
+
+                    await prisma.vpnEvent.create({
+                        data: {
+                            username,
+                            sourceIp,
+                            assignedIp: finalAssignedIp || assignedIp || null,
+                            status,
+                            duration,
+                            bytesSent,
+                            bytesReceived,
+                            bytesTotal,
+                            failureReason,
+                            ipAsn: ipInfo?.asn || null,
+                            ipAsName: ipInfo?.as_name || null,
+                            ipAsDomain: ipInfo?.as_domain || null,
+                            ipCountry: ipInfo?.country || null,
+                            ipCountryCode: ipInfo?.country_code || null,
+                            createdAt: logTimestamp
+                        }
+                    });
+
+                    importedThisDay++;
                 }
-
-                const ipInfo = await getIpInfo(sourceIp);
-
-                await prisma.vpnEvent.create({
-                    data: {
-                        username,
-                        sourceIp,
-                        assignedIp: finalAssignedIp || assignedIp || null,
-                        status,
-                        duration,
-                        bytesSent,
-                        bytesReceived,
-                        bytesTotal,
-                        failureReason,
-                        ipAsn: ipInfo?.asn || null,
-                        ipAsName: ipInfo?.as_name || null,
-                        ipAsDomain: ipInfo?.as_domain || null,
-                        ipCountry: ipInfo?.country || null,
-                        ipCountryCode: ipInfo?.country_code || null,
-                        createdAt: logTimestamp
-                    }
-                });
-
-                importedThisDay++;
+            } catch (err) {
+                console.error(`Error fetching logs for day offset ${dayOffset} (window ${chunkIdx + 1}/3):`, err.message);
             }
-
-            console.log(`Imported ${importedThisDay} new events for this day.`);
-            totalImported += importedThisDay;
-
-        } catch (err) {
-            console.error(`Error fetching logs for day offset ${dayOffset}:`, err.message);
         }
+
+        console.log(`Imported ${importedThisDay} new events for this day.`);
+        totalImported += importedThisDay;
     }
 
     console.log(`\nHistorical sync completed! Total new events imported: ${totalImported}`);
