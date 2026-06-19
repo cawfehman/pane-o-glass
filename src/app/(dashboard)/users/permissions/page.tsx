@@ -23,6 +23,18 @@ const TOOLS = [
 
 const ROLES = ["ADMIN", "ANALYST", "NETWORK", "DESKTOP", "SYSTEMS", "USER"];
 
+// System default mapping to compare against active database configuration
+const DEFAULT_PERMISSIONS_MAP: Record<string, Record<string, boolean>> = {
+    'firewall': { ADMIN: true, ANALYST: true, NETWORK: true, DESKTOP: true, SYSTEMS: false, USER: false },
+    'ise': { ADMIN: true, ANALYST: true, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'ise-tacacs': { ADMIN: true, ANALYST: true, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'vpn': { ADMIN: true, ANALYST: true, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'hibp-account': { ADMIN: true, ANALYST: true, NETWORK: true, DESKTOP: true, SYSTEMS: true, USER: true },
+    'hibp-domain': { ADMIN: true, ANALYST: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
+    'vectra': { ADMIN: true, ANALYST: true, NETWORK: false, DESKTOP: false, SYSTEMS: false, USER: false },
+    'site-management': { ADMIN: true, ANALYST: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false }
+};
+
 export default function PermissionsPage() {
     const router = useRouter();
     const [permissions, setPermissions] = useState<any[]>([]);
@@ -118,6 +130,12 @@ export default function PermissionsPage() {
         return p ? p.isEnabled : false;
     };
 
+    const isDefault = (toolId: string, role: string) => {
+        const currentEnabled = isEnabled(toolId, role);
+        const defaultEnabled = DEFAULT_PERMISSIONS_MAP[toolId]?.[role] ?? false;
+        return currentEnabled === defaultEnabled;
+    };
+
     const getRawData = (toolId: string, role: string) => {
         const p = permissions.find((per: any) => per.toolId === toolId && per.role === role);
         return p ? JSON.stringify(p) : "Not in DB";
@@ -146,6 +164,41 @@ export default function PermissionsPage() {
                         }} className="btn-danger" style={{ fontSize: '0.8rem', background: '#991b1b' }}>
                             Reset Defaults
                         </button>
+                    </div>
+                </div>
+
+                {/* Permissions Legend */}
+                <div style={{ 
+                    display: 'flex', 
+                    flexWrap: 'wrap', 
+                    gap: '24px', 
+                    marginBottom: '24px', 
+                    padding: '16px 20px', 
+                    background: 'rgba(255,255,255,0.02)', 
+                    borderRadius: '8px', 
+                    border: '1px solid var(--border-color)', 
+                    fontSize: '0.85rem',
+                    alignItems: 'center'
+                }}>
+                    <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>LEGEND:</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: 'var(--accent-primary)' }}></span>
+                        <span>Default Enabled</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)' }}></span>
+                        <span>Default Disabled</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ 
+                            width: '12px', 
+                            height: '12px', 
+                            borderRadius: '50%', 
+                            background: '#fbbf24', 
+                            boxShadow: '0 0 8px rgba(251, 191, 36, 0.8)',
+                            border: '1px solid #fbbf24'
+                        }}></span>
+                        <span style={{ color: '#fbbf24', fontWeight: 600 }}>Modified / Overridden State</span>
                     </div>
                 </div>
 
@@ -306,34 +359,74 @@ export default function PermissionsPage() {
                                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{tool.id}</div>
                                         </div>
                                     </td>
-                                    {ROLES.map(role => (
-                                        <td key={role} style={{ textAlign: 'center', padding: '16px' }}>
-                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                                                <button
-                                                    onClick={() => togglePermission(tool.id, role)}
-                                                    disabled={saving === `${tool.id}-${role}`}
-                                                    style={{
-                                                        background: isEnabled(tool.id, role) ? 'var(--accent-primary)' : 'rgba(255,255,255,0.1)',
-                                                        color: isEnabled(tool.id, role) ? '#000' : 'var(--text-muted)',
-                                                        border: 'none',
-                                                        padding: '6px 16px',
-                                                        borderRadius: '20px',
-                                                        cursor: 'pointer',
-                                                        fontSize: '0.8rem',
-                                                        fontWeight: 600,
-                                                        opacity: saving === `${tool.id}-${role}` ? 0.5 : 1,
-                                                        transition: 'all 0.2s',
-                                                        minWidth: '100px'
-                                                    }}
-                                                >
-                                                    {saving === `${tool.id}-${role}` ? '...' : (isEnabled(tool.id, role) ? 'Enabled' : 'Disabled')}
-                                                </button>
-                                                <div style={{ fontSize: '9px', color: 'var(--text-muted)', fontFamily: 'monospace', maxWidth: '120px', overflow: 'hidden' }}>
-                                                    {getRawData(tool.id, role)}
+                                    {ROLES.map(role => {
+                                        const isValEnabled = isEnabled(tool.id, role);
+                                        const isValDefault = isDefault(tool.id, role);
+                                        return (
+                                            <td key={role} style={{ textAlign: 'center', padding: '16px' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                                                    <button
+                                                        onClick={() => togglePermission(tool.id, role)}
+                                                        disabled={saving === `${tool.id}-${role}`}
+                                                        style={{
+                                                            background: isValEnabled 
+                                                                ? 'var(--accent-primary)' 
+                                                                : 'rgba(255,255,255,0.1)',
+                                                            color: isValEnabled ? '#000' : 'var(--text-muted)',
+                                                            border: isValDefault 
+                                                                ? 'none' 
+                                                                : '2px solid #fbbf24',
+                                                            boxShadow: isValDefault 
+                                                                ? 'none' 
+                                                                : '0 0 10px rgba(251, 191, 36, 0.4)',
+                                                            padding: '6px 16px',
+                                                            borderRadius: '20px',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.8rem',
+                                                            fontWeight: 600,
+                                                            opacity: saving === `${tool.id}-${role}` ? 0.5 : 1,
+                                                            transition: 'all 0.2s',
+                                                            minWidth: '100px'
+                                                        }}
+                                                    >
+                                                        {saving === `${tool.id}-${role}` ? '...' : (isValEnabled ? 'Enabled' : 'Disabled')}
+                                                    </button>
+                                                    
+                                                    {/* State indicator label */}
+                                                    {isValDefault ? (
+                                                        <span style={{ 
+                                                            fontSize: '9px', 
+                                                            padding: '2px 6px', 
+                                                            borderRadius: '4px', 
+                                                            background: 'rgba(255,255,255,0.05)', 
+                                                            color: 'var(--text-muted)',
+                                                            fontFamily: 'monospace'
+                                                        }}>
+                                                            Default
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ 
+                                                            fontSize: '9px', 
+                                                            padding: '2px 6px', 
+                                                            borderRadius: '4px', 
+                                                            background: 'rgba(251, 191, 36, 0.15)', 
+                                                            color: '#fbbf24', 
+                                                            border: '1px solid rgba(251, 191, 36, 0.3)',
+                                                            fontWeight: 600,
+                                                            fontFamily: 'monospace',
+                                                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                                        }}>
+                                                            Modified
+                                                        </span>
+                                                    )}
+
+                                                    <div style={{ fontSize: '8px', color: 'var(--text-muted)', opacity: 0.5, fontFamily: 'monospace', maxWidth: '120px', overflow: 'hidden' }}>
+                                                        {getRawData(tool.id, role)}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </td>
-                                    ))}
+                                            </td>
+                                        );
+                                    })}
                                 </tr>
                             ))}
                         </tbody>

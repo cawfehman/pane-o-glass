@@ -222,7 +222,14 @@ export async function resetPermissions(targetRoles?: string[]) {
             { toolId: 'site-management', role: 'USER', isEnabled: false },
             { toolId: 'site-management', role: 'NETWORK', isEnabled: true },
             { toolId: 'site-management', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'site-management', role: 'SYSTEMS', isEnabled: false }
+            { toolId: 'site-management', role: 'SYSTEMS', isEnabled: false },
+
+            { toolId: 'vectra', role: 'ADMIN', isEnabled: true },
+            { toolId: 'vectra', role: 'ANALYST', isEnabled: true },
+            { toolId: 'vectra', role: 'USER', isEnabled: false },
+            { toolId: 'vectra', role: 'NETWORK', isEnabled: false },
+            { toolId: 'vectra', role: 'DESKTOP', isEnabled: false },
+            { toolId: 'vectra', role: 'SYSTEMS', isEnabled: false }
         ];
 
         const filteredPermissions = rolesToReset 
