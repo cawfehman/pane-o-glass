@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { AlertCircle, RefreshCw, History } from "lucide-react";
+import { ToolHelp } from "@/components/ToolHelp";
 import ConnectionPath from "@/components/ise/ConnectionPath";
 import EnrichedEndpointCard from "@/components/ise/EnrichedEndpointCard";
 
@@ -263,7 +264,10 @@ export default function CiscoIsePage() {
             <div style={{ flexShrink: 0, paddingBottom: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '16px' }}>
                     <div>
-                        <h1 style={{ marginBottom: '8px' }}>Cisco ISE Center</h1>
+                        <h1 style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            Cisco ISE Center
+                            <ToolHelp toolId="ise" iconSize={24} />
+                        </h1>
                         <p style={{ color: 'var(--text-secondary)', maxWidth: '600px' }}>
                             Unified identity and network forensics. Correlated results from ISE, AD, and Vectra AI.
                         </p>

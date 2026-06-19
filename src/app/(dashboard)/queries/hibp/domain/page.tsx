@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { ToolHelp } from "@/components/ToolHelp";
 
 export default function DomainSecurityPage() {
     // Domain Search State
@@ -296,7 +297,10 @@ export default function DomainSecurityPage() {
     return (
         <div className="internal-scroll-layout">
             <div style={{ flexShrink: 0, marginBottom: '32px' }}>
-                <h1>Domain Security</h1>
+                <h1 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    Domain Security
+                    <ToolHelp toolId="hibp-domain" iconSize={24} />
+                </h1>
                 <p style={{ color: 'var(--text-secondary)' }}>
                     Check if your verified organizational domains have been impacted by specific or global data breaches. 
                     Search results are enriched with Active Directory status:

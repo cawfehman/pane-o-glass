@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Shield, Search, RefreshCw, Clock, Wifi, User, Activity, Globe, Save, ChevronDown, ChevronUp, Terminal, ShieldCheck, Key, Hash, Layers, Pocket, ExternalLink, BarChart3, Users, Monitor, MapPin, Calendar, Filter, ArrowUpRight, AlertCircle } from 'lucide-react';
+import { ToolHelp } from '@/components/ToolHelp';
 
 interface TacacsEvent {
     timestamp: string;
@@ -260,6 +261,7 @@ export default function TacacsPage() {
                         <h1 style={{ fontSize: '2.2rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '14px' }}>
                             <Shield size={36} color="var(--accent-primary)" />
                             Forensic Intelligence
+                            <ToolHelp toolId="ise-tacacs" iconSize={24} />
                         </h1>
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>Administrative command accountability & behavioral statistics.</p>
                     </div>

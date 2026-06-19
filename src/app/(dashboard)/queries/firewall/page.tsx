@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { ToolHelp } from "@/components/ToolHelp";
 
 export default function CiscoFirewallPage() {
     const [ipAddress, setIpAddress] = useState("");
@@ -122,7 +123,10 @@ export default function CiscoFirewallPage() {
             <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '2rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
-                        <h1>Cisco Firewall Utilities</h1>
+                        <h1 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            Cisco Firewall Utilities
+                            <ToolHelp toolId="firewall" iconSize={24} />
+                        </h1>
                         <p style={{ color: 'var(--text-secondary)' }}>Query or remove IP address shuns across your configured Cisco devices.</p>
                     </div>
 

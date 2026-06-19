@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ToolHelp } from "@/components/ToolHelp";
 
 // Helper function to hash passwords for k-Anonymity using Web Crypto API
 async function sha1(str: string) {
@@ -51,7 +52,10 @@ export default function AccountSecurityPage() {
     return (
         <div>
             <div style={{ marginBottom: '32px' }}>
-                <h1>Account Security</h1>
+                <h1 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    Account Security
+                    <ToolHelp toolId="hibp-account" iconSize={24} />
+                </h1>
                 <p style={{ color: 'var(--text-secondary)' }}>Check if your email or passwords have been compromised in data breaches.</p>
             </div>
 

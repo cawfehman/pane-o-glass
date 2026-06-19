@@ -5,6 +5,7 @@ import {
     Search, Wifi, ShieldAlert, AlertCircle, CheckCircle, 
     ArrowUpRight, ArrowDownLeft, Clock, Database, Globe, User 
 } from "lucide-react";
+import { ToolHelp } from "@/components/ToolHelp";
 
 export default function VpnTroubleshootingPage() {
     const [searchQuery, setSearchQuery] = useState("");
@@ -374,8 +375,9 @@ export default function VpnTroubleshootingPage() {
                 gap: '16px' 
             }}>
                 <div>
-                    <h1 style={{ fontSize: '2.25rem', fontWeight: 800, marginBottom: '0.5rem', letterSpacing: '-0.025em' }}>
+                    <h1 style={{ fontSize: '2.25rem', fontWeight: 800, marginBottom: '0.5rem', letterSpacing: '-0.025em', display: 'flex', alignItems: 'center', gap: '12px' }}>
                         VPN Connectivity & Troubleshooting
+                        <ToolHelp toolId="vpn" iconSize={24} />
                     </h1>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', margin: 0 }}>
                         Real-time ingestion, intelligence, and search for Secure Client VPN sessions.
@@ -926,7 +928,7 @@ export default function VpnTroubleshootingPage() {
                                                             {evt.status === "FAILURE" ? (
                                                                 <>
                                                                     <ShieldAlert size={12} />
-                                                                    FAIL
+                                                                    FAIL: {evt.failureReason || "Authentication"}
                                                                 </>
                                                             ) : evt.status === "SUCCESS" ? (
                                                                 <>
