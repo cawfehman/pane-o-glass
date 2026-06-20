@@ -1390,18 +1390,18 @@ export default function VpnTroubleshootingPage() {
                                 borderRadius: '8px',
                                 fontSize: '0.85rem',
                                 fontWeight: 600,
-                                background: 'var(--bg-background)',
+                                background: '#1e293b',
                                 border: '1px solid var(--border-color)',
-                                color: 'var(--text-primary)',
+                                color: '#f8fafc',
                                 outline: 'none',
                                 cursor: 'pointer'
                             }}
                         >
-                            <option value="today">Today (Since 00:00)</option>
-                            <option value="yesterday">Yesterday</option>
-                            <option value="last7days">Last 7 Days</option>
-                            <option value="last14days">Last 2 Weeks</option>
-                            <option value="last30days">Last 30 Days</option>
+                            <option value="today" style={{ background: '#1e293b', color: '#f8fafc' }}>Today (Since 00:00)</option>
+                            <option value="yesterday" style={{ background: '#1e293b', color: '#f8fafc' }}>Yesterday</option>
+                            <option value="last7days" style={{ background: '#1e293b', color: '#f8fafc' }}>Last 7 Days</option>
+                            <option value="last14days" style={{ background: '#1e293b', color: '#f8fafc' }}>Last 2 Weeks</option>
+                            <option value="last30days" style={{ background: '#1e293b', color: '#f8fafc' }}>Last 30 Days</option>
                         </select>
                     </div>
 
