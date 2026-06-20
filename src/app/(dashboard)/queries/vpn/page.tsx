@@ -316,20 +316,37 @@ export default function VpnTroubleshootingPage() {
     // Render User with Active Directory hover details
     const renderUserHover = (username: string, keyId: string) => {
         const userAd = adUsers[username];
+        
+        let iconColor = 'var(--accent-primary)';
+        let lockIndicator = null;
+        let warningIndicator = null;
+
+        if (userAd) {
+            if (userAd.exists === false) {
+                iconColor = '#ff4d4d'; // Red for non-existent
+                warningIndicator = <span title="AD Account Not Found" style={{ color: '#ff4d4d', fontSize: '0.75rem', fontWeight: 'bold', marginLeft: '2px' }}>⚠️</span>;
+            } else if (userAd.isLockedOut) {
+                iconColor = '#ffa500'; // Orange for locked out
+                lockIndicator = <span title="AD Account Locked Out" style={{ color: '#ffa500', fontSize: '0.75rem', marginLeft: '2px' }}>🔒</span>;
+            }
+        }
+
         return (
             <span 
-                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', cursor: userAd ? 'help' : 'default' }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: userAd ? 'help' : 'default' }}
                 onMouseEnter={(e) => handleMouseEnter(e, username)}
                 onMouseLeave={() => setHoveredUser(null)}
             >
-                <User size={14} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+                <User size={14} style={{ color: iconColor, flexShrink: 0 }} />
                 <span style={{ 
                     borderBottom: userAd ? '1px dotted var(--text-secondary)' : 'none', 
-                    color: 'var(--text-primary)', 
+                    color: userAd?.exists === false ? '#ff9999' : 'var(--text-primary)', 
                     fontWeight: 500 
                 }}>
                     {username}
                 </span>
+                {lockIndicator}
+                {warningIndicator}
             </span>
         );
     };
@@ -1549,27 +1566,72 @@ export default function VpnTroubleshootingPage() {
                     backdropFilter: 'blur(10px)',
                     pointerEvents: 'none'
                 }}>
-                    <div style={{ 
-                        fontWeight: 700, 
-                        fontSize: '0.85rem', 
-                        marginBottom: '6px', 
-                        color: 'var(--accent-primary)', 
-                        borderBottom: '1px solid rgba(255,255,255,0.08)', 
-                        paddingBottom: '4px' 
-                    }}>
-                        {adUsers[hoveredUser].displayName || hoveredUser}
-                    </div>
-                    {adUsers[hoveredUser].title && (
-                        <div style={{ marginBottom: '4px' }}><strong>Title:</strong> {adUsers[hoveredUser].title}</div>
-                    )}
-                    {adUsers[hoveredUser].department && (
-                        <div style={{ marginBottom: '4px' }}><strong>Dept:</strong> {adUsers[hoveredUser].department}</div>
-                    )}
-                    {adUsers[hoveredUser].email && (
-                        <div style={{ marginBottom: '4px' }}><strong>Email:</strong> {adUsers[hoveredUser].email}</div>
-                    )}
-                    {adUsers[hoveredUser].phone && (
-                        <div><strong>Phone:</strong> {adUsers[hoveredUser].phone}</div>
+                    {adUsers[hoveredUser].exists === false ? (
+                        <div>
+                            <div style={{ 
+                                fontWeight: 700, 
+                                fontSize: '0.85rem', 
+                                marginBottom: '6px', 
+                                color: '#ff4d4d', 
+                                borderBottom: '1px solid rgba(255,77,77,0.15)', 
+                                paddingBottom: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}>
+                                <span>⚠️</span> {hoveredUser}
+                            </div>
+                            <div style={{ color: '#ff9999', fontWeight: 600, marginTop: '8px' }}>
+                                AD Account Not Found
+                            </div>
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: '4px' }}>
+                                This username does not exist in Active Directory.
+                            </div>
+                        </div>
+                    ) : (
+                        <div>
+                            <div style={{ 
+                                fontWeight: 700, 
+                                fontSize: '0.85rem', 
+                                marginBottom: '6px', 
+                                color: 'var(--accent-primary)', 
+                                borderBottom: '1px solid rgba(255,255,255,0.08)', 
+                                paddingBottom: '4px' 
+                            }}>
+                                {adUsers[hoveredUser].displayName || hoveredUser}
+                            </div>
+                            {adUsers[hoveredUser].title && (
+                                <div style={{ marginBottom: '4px' }}><strong>Title:</strong> {adUsers[hoveredUser].title}</div>
+                            )}
+                            {adUsers[hoveredUser].department && (
+                                <div style={{ marginBottom: '4px' }}><strong>Dept:</strong> {adUsers[hoveredUser].department}</div>
+                            )}
+                            {adUsers[hoveredUser].email && (
+                                <div style={{ marginBottom: '4px' }}><strong>Email:</strong> {adUsers[hoveredUser].email}</div>
+                            )}
+                            {adUsers[hoveredUser].phone && (
+                                <div style={{ marginBottom: '6px' }}><strong>Phone:</strong> {adUsers[hoveredUser].phone}</div>
+                            )}
+                            <div style={{ 
+                                borderTop: '1px solid rgba(255,255,255,0.08)', 
+                                paddingTop: '6px', 
+                                marginTop: '6px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                            }}>
+                                <strong>AD Status:</strong>
+                                {adUsers[hoveredUser].isLockedOut ? (
+                                    <span style={{ color: '#ffa500', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                                        🔒 Locked Out
+                                    </span>
+                                ) : (
+                                    <span style={{ color: '#10b981', fontWeight: 600 }}>
+                                        Active (OK)
+                                    </span>
+                                )}
+                            </div>
+                        </div>
                     )}
                 </div>
             )}

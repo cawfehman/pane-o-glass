@@ -445,25 +445,130 @@ export async function GET(req: NextRequest) {
         if (query) {
             isSearchMode = true;
             const cleanedQuery = query.trim();
-            
+
+            let term = cleanedQuery;
             let dateFilter: any = null;
-            if (cleanedQuery.length >= 6 && !/^[a-zA-Z]+$/.test(cleanedQuery)) {
-                const parsedDate = new Date(cleanedQuery);
-                if (!isNaN(parsedDate.getTime())) {
-                    const start = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
-                    const end = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate(), 23, 59, 59, 999);
+
+            // 1. "last X days/hours/weeks/minutes" (with or without term)
+            let lastRangeMatch = cleanedQuery.match(/(.+?)\s+last\s+(\d+)\s+(day|hour|minute|week)s?$/i);
+            if (!lastRangeMatch) {
+                lastRangeMatch = cleanedQuery.match(/^last\s+(\d+)\s+(day|hour|minute|week)s?$/i);
+            }
+            if (lastRangeMatch) {
+                const isStandalone = lastRangeMatch.length === 3;
+                term = isStandalone ? "" : lastRangeMatch[1].trim();
+                const amount = parseInt(isStandalone ? lastRangeMatch[1] : lastRangeMatch[2], 10);
+                const unit = (isStandalone ? lastRangeMatch[2] : lastRangeMatch[3]).toLowerCase();
+                let ms = 0;
+                if (unit.startsWith("day")) ms = amount * 24 * 60 * 60 * 1000;
+                else if (unit.startsWith("hour")) ms = amount * 60 * 60 * 1000;
+                else if (unit.startsWith("minute")) ms = amount * 60 * 1000;
+                else if (unit.startsWith("week")) ms = amount * 7 * 24 * 60 * 60 * 1000;
+
+                const start = new Date(Date.now() - ms);
+                dateFilter = { createdAt: { gte: start } };
+            }
+
+            // 2. Month range like "june 6-8" or "jun 6 to 8" (with or without term)
+            if (!dateFilter) {
+                let monthRangeMatch = cleanedQuery.match(/(.+?)\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d+)\s*[-–—to\s]+\s*(\d+)$/i);
+                if (!monthRangeMatch) {
+                    monthRangeMatch = cleanedQuery.match(/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d+)\s*[-–—to\s]+\s*(\d+)$/i);
+                }
+                if (monthRangeMatch) {
+                    const isStandalone = monthRangeMatch.length === 4;
+                    term = isStandalone ? "" : monthRangeMatch[1].trim();
+                    const monthStr = (isStandalone ? monthRangeMatch[1] : monthRangeMatch[2]).toLowerCase().substring(0, 3);
+                    const dayStart = parseInt(isStandalone ? monthRangeMatch[2] : monthRangeMatch[3], 10);
+                    const dayEnd = parseInt(isStandalone ? monthRangeMatch[3] : monthRangeMatch[4], 10);
+                    
+                    const months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+                    const monthIdx = months.indexOf(monthStr);
+                    if (monthIdx !== -1) {
+                        const currentYear = new Date().getFullYear();
+                        const start = new Date(currentYear, monthIdx, dayStart, 0, 0, 0, 0);
+                        const end = new Date(currentYear, monthIdx, dayEnd, 23, 59, 59, 999);
+                        dateFilter = { createdAt: { gte: start, lte: end } };
+                    }
+                }
+            }
+
+            // 3. Date range like "june 6 to june 8" (with or without term)
+            if (!dateFilter) {
+                let fullMonthRangeMatch = cleanedQuery.match(/(.+?)\s+([a-z]{3,})\s+(\d+)\s*[-–—to\s]+\s*([a-z]{3,})\s+(\d+)$/i);
+                if (!fullMonthRangeMatch) {
+                    fullMonthRangeMatch = cleanedQuery.match(/^([a-z]{3,})\s+(\d+)\s*[-–—to\s]+\s*([a-z]{3,})\s+(\d+)$/i);
+                }
+                if (fullMonthRangeMatch) {
+                    const isStandalone = fullMonthRangeMatch.length === 5;
+                    term = isStandalone ? "" : fullMonthRangeMatch[1].trim();
+                    const m1Str = (isStandalone ? fullMonthRangeMatch[1] : fullMonthRangeMatch[2]).toLowerCase().substring(0, 3);
+                    const d1 = parseInt(isStandalone ? fullMonthRangeMatch[2] : fullMonthRangeMatch[3], 10);
+                    const m2Str = (isStandalone ? fullMonthRangeMatch[3] : fullMonthRangeMatch[4]).toLowerCase().substring(0, 3);
+                    const d2 = parseInt(isStandalone ? fullMonthRangeMatch[4] : fullMonthRangeMatch[5], 10);
+
+                    const months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+                    const m1Idx = months.indexOf(m1Str);
+                    const m2Idx = months.indexOf(m2Str);
+
+                    if (m1Idx !== -1 && m2Idx !== -1) {
+                        const currentYear = new Date().getFullYear();
+                        const start = new Date(currentYear, m1Idx, d1, 0, 0, 0, 0);
+                        const end = new Date(currentYear, m2Idx, d2, 23, 59, 59, 999);
+                        dateFilter = { createdAt: { gte: start, lte: end } };
+                    }
+                }
+            }
+
+            // 4. ISO Date range like "2026-06-06 to 2026-06-08" (with or without term)
+            if (!dateFilter) {
+                let ymdRangeMatch = cleanedQuery.match(/(.+?)\s+(\d{4}-\d{2}-\d{2})\s*[-–—to\s]+\s*(\d{4}-\d{2}-\d{2})$/i);
+                if (!ymdRangeMatch) {
+                    ymdRangeMatch = cleanedQuery.match(/^(\d{4}-\d{2}-\d{2})\s*[-–—to\s]+\s*(\d{4}-\d{2}-\d{2})$/i);
+                }
+                if (ymdRangeMatch) {
+                    const isStandalone = ymdRangeMatch.length === 3;
+                    term = isStandalone ? "" : ymdRangeMatch[1].trim();
+                    const start = new Date(isStandalone ? ymdRangeMatch[1] : ymdRangeMatch[2]);
+                    const end = new Date(isStandalone ? ymdRangeMatch[2] : ymdRangeMatch[3]);
+                    end.setHours(23, 59, 59, 999);
+                    if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                        dateFilter = { createdAt: { gte: start, lte: end } };
+                    }
+                }
+            }
+
+            // 5. Fallback standalone single date like "2026-06-06" or "june 6"
+            if (!dateFilter) {
+                const singleDate = new Date(cleanedQuery);
+                if (!isNaN(singleDate.getTime()) && !/^[a-zA-Z]+$/.test(cleanedQuery) && cleanedQuery.length >= 5) {
+                    const start = new Date(singleDate.getFullYear(), singleDate.getMonth(), singleDate.getDate());
+                    const end = new Date(singleDate.getFullYear(), singleDate.getMonth(), singleDate.getDate(), 23, 59, 59, 999);
+                    term = "";
                     dateFilter = { createdAt: { gte: start, lte: end } };
                 }
             }
 
-            results = await prisma.vpnEvent.findMany({
-                where: dateFilter ? dateFilter : {
+            const searchConditions: any[] = [];
+            if (term) {
+                searchConditions.push({
                     OR: [
-                        { username: { contains: cleanedQuery } },
-                        { sourceIp: { contains: cleanedQuery } },
-                        { assignedIp: { contains: cleanedQuery } }
+                        { username: { contains: term } },
+                        { sourceIp: { contains: term } },
+                        { assignedIp: { contains: term } }
                     ]
-                },
+                });
+            }
+            if (dateFilter) {
+                searchConditions.push(dateFilter);
+            }
+
+            const whereClause = searchConditions.length > 0 
+                ? (searchConditions.length === 1 ? searchConditions[0] : { AND: searchConditions })
+                : {};
+
+            results = await prisma.vpnEvent.findMany({
+                where: whereClause,
                 orderBy: { createdAt: "desc" },
                 take: 200
             });
@@ -623,7 +728,7 @@ export async function GET(req: NextRequest) {
             });
         } catch (e) {}
 
-        // Gather unique usernames for AD Info enrichment (filtering to only lookup name-name formats)
+        // Gather unique usernames for AD Info enrichment (excluding obvious non-usernames and spaces)
         const uniqueUsernames = Array.from(new Set([
             ...successfulIps.map(e => e.username),
             ...failedIps.map(e => e.username),
@@ -633,7 +738,11 @@ export async function GET(req: NextRequest) {
             ...topFailedUsernames.map(e => e.username),
             ...topFailedValidUsernames.map(e => e.username),
             ...results.map(e => e.username)
-        ].filter(uname => uname && nameNameRegex.test(uname))));
+        ].filter(uname => {
+            if (!uname) return false;
+            const lower = uname.toLowerCase();
+            return lower !== "unknown" && lower !== "not found" && !uname.includes(" ") && uname.trim().length > 0;
+        })));
 
         const adUsers: Record<string, any> = {};
         await Promise.all(uniqueUsernames.map(async (uname) => {

@@ -108,18 +108,30 @@ export async function getUserDetails(username: string) {
         const { searchEntries } = await client.search(baseDN, {
             filter: `(|(sAMAccountName=${cleanUsername})(userPrincipalName=${cleanUsername}@cooperhealth.edu)(userPrincipalName=${username}))`,
             scope: "sub",
-            attributes: ["displayName", "department", "title", "telephoneNumber", "mail"],
+            attributes: ["displayName", "department", "title", "telephoneNumber", "mail", "lockoutTime"],
         });
 
-        if (searchEntries.length === 0) return null;
+        if (searchEntries.length === 0) {
+            return {
+                exists: false,
+                displayName: "Account Not Found",
+                department: "",
+                title: "",
+                phone: "",
+                email: "",
+                isLockedOut: false,
+            };
+        }
 
         const entry = searchEntries[0];
         return {
+            exists: true,
             displayName: String(entry.displayName || ""),
             department: String(entry.department || ""),
             title: String(entry.title || ""),
             phone: String(entry.telephoneNumber || ""),
             email: String(entry.mail || ""),
+            isLockedOut: entry.lockoutTime && String(entry.lockoutTime) !== "0" && parseInt(String(entry.lockoutTime), 10) > 0 ? true : false,
         };
     } catch (err: any) {
         console.error("LDAP Enrichment Error:", err.message);
