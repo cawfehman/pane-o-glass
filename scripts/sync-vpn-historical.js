@@ -195,29 +195,43 @@ async function runHistoricalSync() {
 
             try {
                 const searchUrl = `${url}/api/search/universal/absolute`;
-                const params = new URLSearchParams();
-                params.append("query", signatures);
-                params.append("from", fromIso);
-                params.append("to", toIso);
-                params.append("limit", "5000"); // Fetch all events in this 8h chunk
-                params.append("decorate", "false");
-                for (const streamId of streamIds) {
-                    params.append("filter", `streams:${streamId}`);
+                let messages = [];
+
+                const streamsToQuery = streamIds.length > 0 ? streamIds : [null];
+                for (const streamId of streamsToQuery) {
+                    const params = new URLSearchParams();
+                    params.append("query", signatures);
+                    params.append("from", fromIso);
+                    params.append("to", toIso);
+                    params.append("limit", "5000"); // Fetch all events in this 8h chunk
+                    params.append("decorate", "false");
+                    if (streamId) {
+                        params.append("filter", `streams:${streamId}`);
+                    }
+
+                    const response = await axios.get(searchUrl, {
+                        params,
+                        headers: {
+                            "Authorization": authHeader,
+                            "Accept": "application/json",
+                            "X-Requested-By": "cli"
+                        },
+                        httpsAgent: agent,
+                        timeout: 30000
+                    });
+
+                    const streamMsgs = response.data?.messages || [];
+                    messages = messages.concat(streamMsgs);
                 }
 
-                const response = await axios.get(searchUrl, {
-                    params,
-                    headers: {
-                        "Authorization": authHeader,
-                        "Accept": "application/json",
-                        "X-Requested-By": "cli"
-                    },
-                    httpsAgent: agent,
-                    timeout: 30000
+                // Sort merged messages chronologically (newest first)
+                messages.sort((a, b) => {
+                    const tA = new Date(a.message?.timestamp || 0).getTime();
+                    const tB = new Date(b.message?.timestamp || 0).getTime();
+                    return tB - tA;
                 });
 
-                const messages = response.data?.messages || [];
-                console.log(`Fetched ${messages.length} messages for window ${chunkIdx + 1}/3.`);
+                console.log(`Fetched ${messages.length} messages across all streams for window ${chunkIdx + 1}/3.`);
 
                 // Pre-resolve all unique public IPs in parallel to warm the cache
                 const uniqueIps = [...new Set(messages.map(msgObj => {

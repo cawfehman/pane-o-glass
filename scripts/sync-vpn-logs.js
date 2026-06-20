@@ -137,30 +137,42 @@ async function runSync() {
         
         const agent = new https.Agent({ rejectUnauthorized: false });
 
-        const params = new URLSearchParams();
-        params.append("query", signatures);
-        params.append("range", "2100");
-        params.append("limit", "200");
-        params.append("decorate", "false");
-        for (const streamId of streamIds) {
-            params.append("filter", `streams:${streamId}`);
+        let messages = [];
+        const streamsToQuery = streamIds.length > 0 ? streamIds : [null];
+
+        for (const streamId of streamsToQuery) {
+            const params = new URLSearchParams();
+            params.append("query", signatures);
+            params.append("range", "2100");
+            params.append("limit", "200");
+            params.append("decorate", "false");
+            if (streamId) {
+                params.append("filter", `streams:${streamId}`);
+            }
+
+            const response = await axios.get(searchUrl, {
+                params,
+                headers: {
+                    "Authorization": authHeader,
+                    "Accept": "application/json",
+                    "X-Requested-By": "cli"
+                },
+                httpsAgent: agent,
+                timeout: 15000
+            });
+
+            const streamMsgs = response.data?.messages || [];
+            messages = messages.concat(streamMsgs);
         }
 
-        const response = await axios.get(searchUrl, {
-            params,
-            headers: {
-                "Authorization": authHeader,
-                "Accept": "application/json",
-                "X-Requested-By": "cli"
-            },
-            httpsAgent: agent,
-            timeout: 15000
+        // Sort merged messages chronologically (newest first)
+        messages.sort((a, b) => {
+            const tA = new Date(a.message?.timestamp || 0).getTime();
+            const tB = new Date(b.message?.timestamp || 0).getTime();
+            return tB - tA;
         });
 
-        const data = response.data;
-        const messages = data.messages || [];
-
-        log(`Fetched ${messages.length} total messages from Graylog matching VPN criteria.`);
+        log(`Fetched ${messages.length} total messages from Graylog matching VPN criteria across all streams.`);
 
         // Regexes for FTD/ASA parsing (making the FTD/ASA header prefix optional in case Graylog stripped it)
         const connRegex = /(?:Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>|Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+))/i;
