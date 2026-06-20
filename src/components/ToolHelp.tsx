@@ -45,12 +45,12 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     vpn: {
         title: "VPN Troubleshooting Dashboard",
-        version: "1.1.0",
+        version: "1.2.0",
         capabilities: [
-            "Search real-time AnyConnect / Secure Client VPN connection logs.",
+            "Search real-time VPN connection logs using advanced date-range queries (e.g. 'username last 7 days', 'username june 6-8', or standalone ranges like 'last 24 hours').",
             "Troubleshoot logins, inspect session durations, and track total upload (Tx) / download (Rx) bandwidth.",
             "Review 'Security Insights' cards highlighting failed usernames and international Non-US connections.",
-            "Click on corporate usernames (name-name format) to trigger hoverable Active Directory LDAP directory lookup cards.",
+            "Hover over usernames to trigger real-time Active Directory LDAP lookup cards (supports all username formats).",
             "Differentiate connection protocols (SSL in blue, IKEv2 in purple) and stream sources (R/Reconnect for Kel-3140 in rose, C/Connect for WDC-FTD in green)."
         ],
         colors: [
@@ -59,7 +59,9 @@ export const helpData: Record<string, TooltipDetails> = {
             { name: "Soft Amber (Highlight)", meaning: "International connection warning. Left-border warning shows when source IP country code is outside the United States.", rgb: "#f59e0b" },
             { name: "Blue (Badge)", meaning: "Disconnect connection teardown message containing byte stats.", rgb: "#3b82f6" },
             { name: "Sky Blue / Purple (Protocol)", meaning: "SSL vs IKEv2 (IPSec) VPN connection types.", rgb: "#a855f7" },
-            { name: "Rose / Green (Stream)", meaning: "R (Keleman Kel-3140 Reconnect stream) vs C (Wilmington WDC-FTD Connect stream) source badges.", rgb: "#ec4899" }
+            { name: "Rose / Green (Stream)", meaning: "R (Keleman Kel-3140 Reconnect stream) vs C (Wilmington WDC-FTD Connect stream) source badges.", rgb: "#ec4899" },
+            { name: "Orange Lock Badge (🔒)", meaning: "AD account is Locked Out.", rgb: "#ffa500" },
+            { name: "Red Warning Badge (⚠️)", meaning: "Username not found in Active Directory.", rgb: "#ff4d4d" }
         ],
         backgroundJobs: ["Graylog VPN Sync: Syncs VPN authentication logs from Graylog to the SQLite database relative or absolute ranges."]
     },
