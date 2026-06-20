@@ -113,13 +113,13 @@ function extractIpFromMessage(rawLog) {
     } else if (rawLog.includes("113005")) {
         const match = rawLog.match(failRegex113005);
         if (match) return match[3].trim();
-    } else if (rawLog.includes("750002")) {
-        const match = rawLog.match(ikev2ConnRegex);
-        if (match) return match[2];
+    } else if (rawLog.includes("750002") || rawLog.includes("751025") || rawLog.includes("750006")) {
+        const match = rawLog.match(ikev2LeaseRegex) || rawLog.match(ikev2ConnRegex);
+        if (match) return match[1] || match[2];
     } else if (rawLog.includes("750003")) {
         const match = rawLog.match(ikev2LeaseRegex);
         if (match) return match[1];
-    } else if (rawLog.includes("113019")) {
+    } else if (rawLog.includes("113019") || rawLog.includes("751026") || rawLog.includes("750007")) {
         const match = rawLog.match(discRegex);
         if (match) return match[3] || match[6];
     }
