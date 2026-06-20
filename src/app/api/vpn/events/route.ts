@@ -728,7 +728,7 @@ export async function GET(req: NextRequest) {
             });
         } catch (e) {}
 
-        // Gather unique usernames for AD Info enrichment (excluding obvious non-usernames and spaces)
+        // Gather unique usernames for AD Info enrichment (filtering to only lookup name-name/name-name-name formats)
         const uniqueUsernames = Array.from(new Set([
             ...successfulIps.map(e => e.username),
             ...failedIps.map(e => e.username),
@@ -740,8 +740,8 @@ export async function GET(req: NextRequest) {
             ...results.map(e => e.username)
         ].filter(uname => {
             if (!uname) return false;
-            const lower = uname.toLowerCase();
-            return lower !== "unknown" && lower !== "not found" && !uname.includes(" ") && uname.trim().length > 0;
+            const clean = uname.toLowerCase().endsWith("@cooperhealth.edu") ? uname.slice(0, -17) : uname;
+            return nameNameRegex.test(clean);
         })));
 
         const adUsers: Record<string, any> = {};
