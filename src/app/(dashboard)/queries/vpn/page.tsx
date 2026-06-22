@@ -48,6 +48,7 @@ export default function VpnTroubleshootingPage() {
     const [topFailedUsernames, setTopFailedUsernames] = useState<any[]>([]);
     const [topFailedValidUsernames, setTopFailedValidUsernames] = useState<any[]>([]);
     const [topFailedIps, setTopFailedIps] = useState<any[]>([]);
+    const [topFailedAsns, setTopFailedAsns] = useState<any[]>([]);
 
     const [selectedFailUser, setSelectedFailUser] = useState<string | null>(null);
     const [failUserDetails, setFailUserDetails] = useState<any[]>([]);
@@ -103,6 +104,7 @@ export default function VpnTroubleshootingPage() {
             setTopFailedUsernames(data.topFailedUsernames || []);
             setTopFailedValidUsernames(data.topFailedValidUsernames || []);
             setTopFailedIps(data.topFailedIps || []);
+            setTopFailedAsns(data.topFailedAsns || []);
             setActiveSessionsCount(data.activeSessionsCount || 0);
             setPeakUniqueUsers24h(data.peakUniqueUsers24h || 0);
             setRecentEvents(data.recentEvents || []);
@@ -1476,6 +1478,56 @@ export default function VpnTroubleshootingPage() {
                                             </div>
                                         );
                                     })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Top 25 ASNs with Failures */}
+                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '520px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                                <div style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', padding: '8px', borderRadius: '8px' }}>
+                                    <Database size={20} />
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Top 25 ASNs with Failures</h3>
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Failure counts grouped by network provider</p>
+                                </div>
+                            </div>
+                            {loading ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Loading failed ASNs...</p>
+                            ) : topFailedAsns.length === 0 ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No ASN failure events recorded.</p>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
+                                    {topFailedAsns.map((asnData, index) => (
+                                        <div key={index} style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'space-between', 
+                                            padding: '12px 14px',
+                                            borderRadius: '8px', 
+                                            background: 'rgba(255,255,255,0.01)',
+                                            border: '1px solid var(--border-color)',
+                                            gap: '12px'
+                                        }}>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 }}>
+                                                <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1.05rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    {asnData.ipAsn}
+                                                </span>
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={asnData.ipAsDomain || undefined}>
+                                                    <Globe size={11} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        {asnData.ipAsName} {asnData.ipAsDomain ? `(${asnData.ipAsDomain})` : ""}
+                                                    </span>
+                                                </span>
+                                            </div>
+                                            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', flexShrink: 0 }}>
+                                                <span style={{ fontSize: '0.9rem', color: '#f87171', fontWeight: 700 }}>
+                                                    {asnData.count} failure{asnData.count === 1 ? "" : "s"}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                         </div>

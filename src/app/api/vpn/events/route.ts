@@ -763,6 +763,32 @@ export async function GET(req: NextRequest) {
             })
         );
 
+        // Top 25 Failed ASNs
+        const rawAsnFailures = await prisma.vpnEvent.groupBy({
+            by: ['ipAsn', 'ipAsName', 'ipAsDomain'],
+            _count: {
+                ipAsn: true
+            },
+            where: {
+                status: "FAILURE",
+                ipAsn: { not: null },
+                createdAt: securityDateFilter
+            },
+            orderBy: {
+                _count: {
+                    ipAsn: 'desc'
+                }
+            },
+            take: 25
+        });
+
+        const topFailedAsns = rawAsnFailures.map(f => ({
+            ipAsn: f.ipAsn,
+            ipAsName: f.ipAsName,
+            ipAsDomain: f.ipAsDomain,
+            count: f._count.ipAsn
+        }));
+
         // 1. Current Active Sessions Count
         // Query events from the last 7 days to evaluate active tunnels
         const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -860,6 +886,7 @@ export async function GET(req: NextRequest) {
             topFailedUsernames,
             topFailedValidUsernames,
             topFailedIps,
+            topFailedAsns,
             activeSessionsCount,
             peakUniqueUsers24h,
             recentEvents,
