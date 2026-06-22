@@ -720,6 +720,97 @@ export async function GET(req: NextRequest) {
                 count: f._count.username
             }));
 
+        // Top 25 Failed IPs
+        const rawIpFailures = await prisma.vpnEvent.groupBy({
+            by: ['sourceIp'],
+            _count: {
+                sourceIp: true
+            },
+            where: {
+                status: "FAILURE",
+                createdAt: securityDateFilter
+            },
+            orderBy: {
+                _count: {
+                    sourceIp: 'desc'
+                }
+            },
+            take: 25
+        });
+
+        const topFailedIps = await Promise.all(
+            rawIpFailures.map(async (f) => {
+                const latestEvent = await prisma.vpnEvent.findFirst({
+                    where: { sourceIp: f.sourceIp },
+                    orderBy: { createdAt: "desc" },
+                    select: {
+                        ipAsn: true,
+                        ipAsName: true,
+                        ipAsDomain: true,
+                        ipCountry: true,
+                        ipCountryCode: true,
+                    }
+                });
+                return {
+                    sourceIp: f.sourceIp,
+                    count: f._count.sourceIp,
+                    ipAsn: latestEvent?.ipAsn || null,
+                    ipAsName: latestEvent?.ipAsName || null,
+                    ipAsDomain: latestEvent?.ipAsDomain || null,
+                    ipCountry: latestEvent?.ipCountry || null,
+                    ipCountryCode: latestEvent?.ipCountryCode || null,
+                };
+            })
+        );
+
+        // 1. Current Active Sessions Count
+        // Query events from the last 7 days to evaluate active tunnels
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const recentActiveEvents = await prisma.vpnEvent.findMany({
+            where: {
+                status: { in: ["SUCCESS", "DISCONNECT"] },
+                createdAt: { gte: sevenDaysAgo }
+            },
+            orderBy: { createdAt: "desc" },
+            select: { username: true, sourceIp: true, status: true }
+        });
+
+        const activeSessionsMap = new Map<string, any>();
+        const seenPairs = new Set<string>();
+        for (const evt of recentActiveEvents) {
+            const key = `${evt.username}-${evt.sourceIp}`;
+            if (!seenPairs.has(key)) {
+                seenPairs.add(key);
+                if (evt.status === "SUCCESS") {
+                    activeSessionsMap.set(key, true);
+                }
+            }
+        }
+        const activeSessionsCount = activeSessionsMap.size;
+
+        // 2. Peak All-Time Unique Users in a 24-hour Calendar Day (Option B)
+        // Fetch all success events to group by calendar day
+        const allSuccessEvents = await prisma.vpnEvent.findMany({
+            where: { status: "SUCCESS" },
+            select: { username: true, createdAt: true }
+        });
+
+        const dailyUniqueUsers = new Map<string, Set<string>>();
+        for (const evt of allSuccessEvents) {
+            const dateStr = evt.createdAt.toISOString().split("T")[0]; // YYYY-MM-DD
+            if (!dailyUniqueUsers.has(dateStr)) {
+                dailyUniqueUsers.set(dateStr, new Set());
+            }
+            dailyUniqueUsers.get(dateStr)!.add(evt.username);
+        }
+
+        let peakUniqueUsers24h = 0;
+        for (const [dateStr, usersSet] of dailyUniqueUsers.entries()) {
+            if (usersSet.size > peakUniqueUsers24h) {
+                peakUniqueUsers24h = usersSet.size;
+            }
+        }
+
         // Get status of the last background job sync
         let lastSyncStatus = null;
         try {
@@ -768,6 +859,9 @@ export async function GET(req: NextRequest) {
             failedIps,
             topFailedUsernames,
             topFailedValidUsernames,
+            topFailedIps,
+            activeSessionsCount,
+            peakUniqueUsers24h,
             recentEvents,
             topUploadEvents,
             topDownloadEvents,

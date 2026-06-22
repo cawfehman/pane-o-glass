@@ -6,8 +6,13 @@ import {
     ArrowUpRight, ArrowDownLeft, Clock, Database, Globe, User 
 } from "lucide-react";
 import { ToolHelp } from "@/components/ToolHelp";
+import { useSession } from "next-auth/react";
 
 export default function VpnTroubleshootingPage() {
+    const { data: session } = useSession();
+    const role = (session?.user as any)?.role || "USER";
+    const isDesktop = String(role).toLowerCase() === "desktop";
+
     const [searchQuery, setSearchQuery] = useState("");
     const [searching, setSearching] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -42,6 +47,7 @@ export default function VpnTroubleshootingPage() {
 
     const [topFailedUsernames, setTopFailedUsernames] = useState<any[]>([]);
     const [topFailedValidUsernames, setTopFailedValidUsernames] = useState<any[]>([]);
+    const [topFailedIps, setTopFailedIps] = useState<any[]>([]);
 
     const [selectedFailUser, setSelectedFailUser] = useState<string | null>(null);
     const [failUserDetails, setFailUserDetails] = useState<any[]>([]);
@@ -70,11 +76,19 @@ export default function VpnTroubleshootingPage() {
     const [topDownloadEvents, setTopDownloadEvents] = useState<any[]>([]);
     const [recentEvents, setRecentEvents] = useState<any[]>([]);
     const [searchResults, setSearchResults] = useState<any[] | null>(null);
+    const [activeSessionsCount, setActiveSessionsCount] = useState<number>(0);
+    const [peakUniqueUsers24h, setPeakUniqueUsers24h] = useState<number>(0);
     
     // Active Directory user enrichment maps
     const [adUsers, setAdUsers] = useState<Record<string, any>>({});
     const [hoveredUser, setHoveredUser] = useState<string | null>(null);
     const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
+
+    useEffect(() => {
+        if (isDesktop && (activeTab === "security" || activeTab === "bandwidth")) {
+            setActiveTab("feed");
+        }
+    }, [isDesktop, activeTab]);
 
     const fetchDashboardData = async () => {
         try {
@@ -88,6 +102,9 @@ export default function VpnTroubleshootingPage() {
             setTopDownloadEvents(data.topDownloadEvents || []);
             setTopFailedUsernames(data.topFailedUsernames || []);
             setTopFailedValidUsernames(data.topFailedValidUsernames || []);
+            setTopFailedIps(data.topFailedIps || []);
+            setActiveSessionsCount(data.activeSessionsCount || 0);
+            setPeakUniqueUsers24h(data.peakUniqueUsers24h || 0);
             setRecentEvents(data.recentEvents || []);
             setLastSync(data.lastSync || null);
             if (data.adUsers) {
@@ -486,6 +503,37 @@ export default function VpnTroubleshootingPage() {
                 </div>
             </header>
 
+            {/* Real-time VPN Session Metrics */}
+            <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', 
+                gap: '16px', 
+                marginBottom: '24px' 
+            }}>
+                <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px' }}>
+                    <div style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '10px', borderRadius: '10px' }}>
+                        <Wifi size={24} />
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Active VPN Sessions</div>
+                        <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                            {loading ? "..." : activeSessionsCount}
+                        </div>
+                    </div>
+                </div>
+                <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px' }}>
+                    <div style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', padding: '10px', borderRadius: '10px' }}>
+                        <Database size={24} />
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Peak 24h Unique Clients</div>
+                        <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                            {loading ? "..." : peakUniqueUsers24h}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {syncNotification && (
                 <div className="glass-card" style={{ 
                     border: '1px solid rgba(34, 197, 94, 0.2)', 
@@ -544,38 +592,42 @@ export default function VpnTroubleshootingPage() {
                 >
                     Activity Feed
                 </button>
-                <button 
-                    onClick={() => setActiveTab("security")}
-                    style={{
-                        padding: '10px 20px',
-                        borderRadius: '8px',
-                        fontSize: '0.9rem',
-                        fontWeight: 600,
-                        background: activeTab === "security" ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                        color: activeTab === "security" ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                        border: activeTab === "security" ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid transparent',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                    }}
-                >
-                    Security Insights
-                </button>
-                <button 
-                    onClick={() => setActiveTab("bandwidth")}
-                    style={{
-                        padding: '10px 20px',
-                        borderRadius: '8px',
-                        fontSize: '0.9rem',
-                        fontWeight: 600,
-                        background: activeTab === "bandwidth" ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                        color: activeTab === "bandwidth" ? 'var(--accent-primary)' : 'var(--text-secondary)',
-                        border: activeTab === "bandwidth" ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid transparent',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                    }}
-                >
-                    Bandwidth Analytics
-                </button>
+                {!isDesktop && (
+                    <>
+                        <button 
+                            onClick={() => setActiveTab("security")}
+                            style={{
+                                padding: '10px 20px',
+                                borderRadius: '8px',
+                                fontSize: '0.9rem',
+                                fontWeight: 600,
+                                background: activeTab === "security" ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                                color: activeTab === "security" ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                                border: activeTab === "security" ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid transparent',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            Security Insights
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab("bandwidth")}
+                            style={{
+                                padding: '10px 20px',
+                                borderRadius: '8px',
+                                fontSize: '0.9rem',
+                                fontWeight: 600,
+                                background: activeTab === "bandwidth" ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                                color: activeTab === "bandwidth" ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                                border: activeTab === "bandwidth" ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid transparent',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            Bandwidth Analytics
+                        </button>
+                    </>
+                )}
             </div>
 
             {/* TAB CONTENT: feed */}
@@ -1053,7 +1105,7 @@ export default function VpnTroubleshootingPage() {
             )}
 
             {/* TAB CONTENT: security */}
-            {activeTab === "security" && (
+            {activeTab === "security" && !isDesktop && (
                 <>
                     {/* Time Window Selector for Security Insights */}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '16px', gap: '8px' }}>
@@ -1355,12 +1407,84 @@ export default function VpnTroubleshootingPage() {
                                 </div>
                             )}
                         </div>
+
+                        {/* Top 25 Source IPs with Failures */}
+                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '520px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+                                <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '8px', borderRadius: '8px' }}>
+                                    <ShieldAlert size={20} />
+                                </div>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>Top 25 Source IPs with Failures</h3>
+                                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Failure counts and location enrichment</p>
+                                </div>
+                            </div>
+                            {loading ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>Loading failed IPs...</p>
+                            ) : topFailedIps.length === 0 ? (
+                                <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No IP failure connections recorded.</p>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
+                                    {topFailedIps.map((ipData, index) => {
+                                        const nonUs = ipData.ipCountryCode && ipData.ipCountryCode !== "US";
+                                        return (
+                                            <div key={index} style={{ 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                justifyContent: 'space-between', 
+                                                padding: '12px 14px',
+                                                borderRadius: '8px', 
+                                                background: nonUs ? 'rgba(245, 158, 11, 0.04)' : 'rgba(255,255,255,0.01)',
+                                                border: '1px solid var(--border-color)',
+                                                borderLeft: nonUs ? '4px solid #f59e0b' : '1px solid var(--border-color)',
+                                                gap: '12px'
+                                            }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                    <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '1.05rem', color: '#f87171', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        {ipData.sourceIp}
+                                                        {nonUs && (
+                                                            <span style={{ 
+                                                                fontSize: '0.65rem', 
+                                                                background: 'rgba(245, 158, 11, 0.15)', 
+                                                                color: '#fbbf24', 
+                                                                padding: '1px 5px', 
+                                                                borderRadius: '4px',
+                                                                fontWeight: 700
+                                                            }}>
+                                                                ⚠️ Non-US ({ipData.ipCountryCode})
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    {ipData.ipAsName ? (
+                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }} title={`${ipData.ipAsn} • ${ipData.ipCountryCode || ipData.ipCountry || "Unknown"}`}>
+                                                            <Globe size={11} style={{ color: 'var(--accent-primary)', flexShrink: 0 }} />
+                                                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '240px' }}>
+                                                                {ipData.ipAsName}
+                                                            </span>
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                            <Globe size={11} style={{ flexShrink: 0 }} /> Private / Local IP
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                                    <span style={{ fontSize: '0.9rem', color: '#f87171', fontWeight: 700 }}>
+                                                        {ipData.count} failure{ipData.count === 1 ? "" : "s"}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </>
             )}
 
             {/* TAB CONTENT: bandwidth */}
-            {activeTab === "bandwidth" && (
+            {activeTab === "bandwidth" && !isDesktop && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' }}>
                     {/* Time Scope selector */}
                     <div style={{ 
