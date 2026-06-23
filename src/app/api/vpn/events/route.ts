@@ -790,12 +790,12 @@ export async function GET(req: NextRequest) {
         }));
 
         // 1. Current Active Sessions Count
-        // Query events from the last 7 days to evaluate active tunnels
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        // Query events from the last 24 hours to evaluate active tunnels (session limits prevent longer connections)
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const recentActiveEvents = await prisma.vpnEvent.findMany({
             where: {
                 status: { in: ["SUCCESS", "DISCONNECT"] },
-                createdAt: { gte: sevenDaysAgo }
+                createdAt: { gte: twentyFourHoursAgo }
             },
             orderBy: { createdAt: "desc" },
             select: { username: true, sourceIp: true, status: true }
@@ -804,7 +804,9 @@ export async function GET(req: NextRequest) {
         const activeSessionsMap = new Map<string, any>();
         const seenPairs = new Set<string>();
         for (const evt of recentActiveEvents) {
-            const key = `${evt.username}-${evt.sourceIp}`;
+            const username = evt.username?.trim();
+            if (!username || username.toLowerCase() === "unknown") continue;
+            const key = `${username}-${evt.sourceIp}`;
             if (!seenPairs.has(key)) {
                 seenPairs.add(key);
                 if (evt.status === "SUCCESS") {
@@ -823,11 +825,13 @@ export async function GET(req: NextRequest) {
 
         const dailyUniqueUsers = new Map<string, Set<string>>();
         for (const evt of allSuccessEvents) {
+            const username = evt.username?.trim();
+            if (!username || username.toLowerCase() === "unknown") continue;
             const dateStr = evt.createdAt.toISOString().split("T")[0]; // YYYY-MM-DD
             if (!dailyUniqueUsers.has(dateStr)) {
                 dailyUniqueUsers.set(dateStr, new Set());
             }
-            dailyUniqueUsers.get(dateStr)!.add(evt.username);
+            dailyUniqueUsers.get(dateStr)!.add(username);
         }
 
         let peakUniqueUsers24h = 0;
