@@ -836,12 +836,33 @@ export async function GET(req: NextRequest) {
 
         let peakUniqueUsers24h = 0;
         let peakUniqueUsers24hDate = "";
+        let weekdaySum = 0;
+        let weekdayCount = 0;
+        let weekendSum = 0;
+        let weekendCount = 0;
+
         for (const [dateStr, usersSet] of dailyUniqueUsers.entries()) {
             if (usersSet.size > peakUniqueUsers24h) {
                 peakUniqueUsers24h = usersSet.size;
                 peakUniqueUsers24hDate = dateStr;
             }
+
+            const [year, month, day] = dateStr.split("-");
+            const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+            const dayOfWeek = date.getUTCDay(); // 0 is Sunday, 6 is Saturday
+            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+            if (isWeekend) {
+                weekendSum += usersSet.size;
+                weekendCount++;
+            } else {
+                weekdaySum += usersSet.size;
+                weekdayCount++;
+            }
         }
+
+        const averageWeekdayUsers = weekdayCount > 0 ? Math.round(weekdaySum / weekdayCount) : 0;
+        const averageWeekendUsers = weekendCount > 0 ? Math.round(weekendSum / weekendCount) : 0;
 
         // Get status of the last background job sync
         let lastSyncStatus = null;
@@ -896,6 +917,8 @@ export async function GET(req: NextRequest) {
             activeSessionsCount,
             peakUniqueUsers24h,
             peakUniqueUsers24hDate,
+            averageWeekdayUsers,
+            averageWeekendUsers,
             recentEvents,
             topUploadEvents,
             topDownloadEvents,

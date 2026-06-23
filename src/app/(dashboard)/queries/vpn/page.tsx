@@ -80,6 +80,8 @@ export default function VpnTroubleshootingPage() {
     const [activeSessionsCount, setActiveSessionsCount] = useState<number>(0);
     const [peakUniqueUsers24h, setPeakUniqueUsers24h] = useState<number>(0);
     const [peakUniqueUsers24hDate, setPeakUniqueUsers24hDate] = useState<string>("");
+    const [averageWeekdayUsers, setAverageWeekdayUsers] = useState<number>(0);
+    const [averageWeekendUsers, setAverageWeekendUsers] = useState<number>(0);
     
     // Active Directory user enrichment maps
     const [adUsers, setAdUsers] = useState<Record<string, any>>({});
@@ -109,6 +111,8 @@ export default function VpnTroubleshootingPage() {
             setActiveSessionsCount(data.activeSessionsCount || 0);
             setPeakUniqueUsers24h(data.peakUniqueUsers24h || 0);
             setPeakUniqueUsers24hDate(data.peakUniqueUsers24hDate || "");
+            setAverageWeekdayUsers(data.averageWeekdayUsers || 0);
+            setAverageWeekendUsers(data.averageWeekendUsers || 0);
             setRecentEvents(data.recentEvents || []);
             setLastSync(data.lastSync || null);
             if (data.adUsers) {
@@ -544,6 +548,28 @@ export default function VpnTroubleshootingPage() {
                                     })()}
                                 </span>
                             )}
+                        </div>
+                    </div>
+                </div>
+                <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px' }}>
+                    <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '10px', borderRadius: '10px' }}>
+                        <Globe size={24} />
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Avg Weekday Clients</div>
+                        <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                            {loading ? "..." : averageWeekdayUsers}
+                        </div>
+                    </div>
+                </div>
+                <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px' }}>
+                    <div style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', padding: '10px', borderRadius: '10px' }}>
+                        <Clock size={24} />
+                    </div>
+                    <div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Avg Weekend Clients</div>
+                        <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                            {loading ? "..." : averageWeekendUsers}
                         </div>
                     </div>
                 </div>
