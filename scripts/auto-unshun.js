@@ -142,16 +142,33 @@ async function runAutoUnshun() {
                     stream.on('close', () => resolve(true));
                     stream.on('error', (err) => reject(err));
 
+                    const waitForPrompt = (timeoutMs = 15000) => {
+                        return new Promise((resolve) => {
+                            const start = Date.now();
+                            const check = () => {
+                                const trimmed = buffer.trim();
+                                if (trimmed.endsWith('>') || trimmed.endsWith('#')) {
+                                    resolve(true);
+                                } else if (Date.now() - start > timeoutMs) {
+                                    resolve(false);
+                                } else {
+                                    setTimeout(check, 100);
+                                }
+                            };
+                            check();
+                        });
+                    };
+
                     const processQueue = async () => {
-                        // Wait 3 seconds for login banner and prompt to settle
-                        await new Promise(r => setTimeout(r, 3000));
+                        // Wait for login banner and prompt to settle
+                        await waitForPrompt(15000);
 
                         for (const ip of watchList) {
                             buffer = ""; // Clear buffer for this check
                             stream.write(`show shun ${ip}\n`);
                             
-                            // Wait for output to settle
-                            await new Promise(r => setTimeout(r, 1500));
+                            // Wait for output and next prompt to return
+                            await waitForPrompt(5000);
                             
                             console.log(`[GUARDIAN] Raw response for ${ip} on ${fw.name}: "${buffer.replace(/\r/g, '\\r').replace(/\n/g, '\\n')}"`);
 
@@ -168,7 +185,9 @@ async function runAutoUnshun() {
                                 
                                 buffer = ""; // Clear buffer before unshun
                                 stream.write(`no shun ${ip}\n`);
-                                await new Promise(r => setTimeout(r, 1500));
+                                
+                                // Wait for unshun and next prompt
+                                await waitForPrompt(5000);
                                 
                                 const removeLines = buffer.split('\n').map(l => l.trim().toLowerCase());
                                 const isError = removeLines.some(line => line.includes('error') || line.includes('invalid') || line.includes('incomplete'));
@@ -219,6 +238,8 @@ async function runAutoUnshun() {
                             }
                         }
                         stream.write("exit\n");
+                        await new Promise(r => setTimeout(r, 500));
+                        resolve(true);
                     };
 
                     processQueue();
