@@ -393,10 +393,21 @@ export async function POST(req: NextRequest) {
 // GET endpoint retrieves dashboard query data or search results
 export async function GET(req: NextRequest) {
     try {
+        const session = await auth();
+        if (!session) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const role = (session?.user as any)?.role || "USER";
+        const isDesktop = String(role).toLowerCase() === "desktop";
+
         const { searchParams } = new URL(req.url);
         const detailUsername = searchParams.get("detailUsername");
 
         if (detailUsername) {
+            if (isDesktop) {
+                return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+            }
             const securityScope = searchParams.get("securityScope") || "last24hours";
             let securityDateFilter: any = {};
             const now = new Date();
@@ -640,229 +651,213 @@ export async function GET(req: NextRequest) {
             bandwidthDateFilter = { gte: start };
         }
 
-        // Fetch top 10 sessions by upload (bytesSent) and download (bytesReceived) within date filter
-        const topUploadEvents = await prisma.vpnEvent.findMany({
-            where: {
-                bytesSent: { not: null, gt: 0 },
-                createdAt: bandwidthDateFilter
-            },
-            orderBy: { bytesSent: "desc" },
-            take: 10
-        });
+        let topUploadEvents: any[] = [];
+        let topDownloadEvents: any[] = [];
+        let topFailedUsernames: any[] = [];
+        let topFailedValidUsernames: any[] = [];
+        let topFailedIps: any[] = [];
+        let topFailedAsns: any[] = [];
+        let activeSessionsCount = 0;
+        let peakUniqueUsers24h = 0;
+        let peakUniqueUsers24hDate = "";
+        let averageWeekdayUsers = 0;
+        let averageWeekendUsers = 0;
 
-        const topDownloadEvents = await prisma.vpnEvent.findMany({
-            where: {
-                bytesReceived: { not: null, gt: 0 },
-                createdAt: bandwidthDateFilter
-            },
-            orderBy: { bytesReceived: "desc" },
-            take: 10
-        });
+        if (!isDesktop) {
+            // Fetch top 10 sessions by upload (bytesSent) and download (bytesReceived) within date filter
+            topUploadEvents = await prisma.vpnEvent.findMany({
+                where: {
+                    bytesSent: { not: null, gt: 0 },
+                    createdAt: bandwidthDateFilter
+                },
+                orderBy: { bytesSent: "desc" },
+                take: 10
+            });
 
-        // Parse securityScope filter
-        const securityScope = searchParams.get("securityScope") || "last24hours";
-        let securityDateFilter: any = {};
-        
-        if (securityScope === "today") {
-            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            securityDateFilter = { gte: start };
-        } else if (securityScope === "yesterday") {
-            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-            const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
-            securityDateFilter = { gte: start, lte: end };
-        } else if (securityScope === "last7days") {
-            const start = new Date();
-            start.setDate(now.getDate() - 7);
-            securityDateFilter = { gte: start };
-        } else if (securityScope === "last14days") {
-            const start = new Date();
-            start.setDate(now.getDate() - 14);
-            securityDateFilter = { gte: start };
-        } else if (securityScope === "last30days") {
-            const start = new Date();
-            start.setDate(now.getDate() - 30);
-            securityDateFilter = { gte: start };
-        } else { // default last24hours
-            const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-            securityDateFilter = { gte: start };
-        }
+            topDownloadEvents = await prisma.vpnEvent.findMany({
+                where: {
+                    bytesReceived: { not: null, gt: 0 },
+                    createdAt: bandwidthDateFilter
+                },
+                orderBy: { bytesReceived: "desc" },
+                take: 10
+            });
 
-        // Query grouped failure attempts
-        const rawFailures = await prisma.vpnEvent.groupBy({
-            by: ['username'],
-            _count: {
-                username: true
-            },
-            where: {
-                status: "FAILURE",
-                createdAt: securityDateFilter
-            },
-            orderBy: {
+            // Query grouped failure attempts
+            const rawFailures = await prisma.vpnEvent.groupBy({
+                by: ['username'],
                 _count: {
-                    username: 'desc'
+                    username: true
+                },
+                where: {
+                    status: "FAILURE",
+                    createdAt: securityDateFilter
+                },
+                orderBy: {
+                    _count: {
+                        username: 'desc'
+                    }
                 }
-            }
-        });
+            });
 
-        // Top 25 Failed Usernames (All)
-        const topFailedUsernames = rawFailures.slice(0, 25).map(f => ({
-            username: f.username,
-            count: f._count.username
-        }));
-
-        // Top 25 Failed Valid Usernames (name-name or name-name-name)
-        const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
-        const topFailedValidUsernames = rawFailures
-            .filter(f => nameNameRegex.test(f.username))
-            .slice(0, 25)
-            .map(f => ({
+            // Top 25 Failed Usernames (All)
+            topFailedUsernames = rawFailures.slice(0, 25).map(f => ({
                 username: f.username,
                 count: f._count.username
             }));
 
-        // Top 25 Failed IPs
-        const rawIpFailures = await prisma.vpnEvent.groupBy({
-            by: ['sourceIp'],
-            _count: {
-                sourceIp: true
-            },
-            where: {
-                status: "FAILURE",
-                createdAt: securityDateFilter
-            },
-            orderBy: {
-                _count: {
-                    sourceIp: 'desc'
-                }
-            },
-            take: 25
-        });
+            // Top 25 Failed Valid Usernames (name-name or name-name-name)
+            const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
+            topFailedValidUsernames = rawFailures
+                .filter(f => nameNameRegex.test(f.username))
+                .slice(0, 25)
+                .map(f => ({
+                    username: f.username,
+                    count: f._count.username
+                }));
 
-        const topFailedIps = await Promise.all(
-            rawIpFailures.map(async (f) => {
-                const latestEvent = await prisma.vpnEvent.findFirst({
-                    where: { sourceIp: f.sourceIp },
-                    orderBy: { createdAt: "desc" },
-                    select: {
-                        ipAsn: true,
-                        ipAsName: true,
-                        ipAsDomain: true,
-                        ipCountry: true,
-                        ipCountryCode: true,
+            // Top 25 Failed IPs
+            const rawIpFailures = await prisma.vpnEvent.groupBy({
+                by: ['sourceIp'],
+                _count: {
+                    sourceIp: true
+                },
+                where: {
+                    status: "FAILURE",
+                    createdAt: securityDateFilter
+                },
+                orderBy: {
+                    _count: {
+                        sourceIp: 'desc'
                     }
-                });
-                return {
-                    sourceIp: f.sourceIp,
-                    count: f._count.sourceIp,
-                    ipAsn: latestEvent?.ipAsn || null,
-                    ipAsName: latestEvent?.ipAsName || null,
-                    ipAsDomain: latestEvent?.ipAsDomain || null,
-                    ipCountry: latestEvent?.ipCountry || null,
-                    ipCountryCode: latestEvent?.ipCountryCode || null,
-                };
-            })
-        );
+                },
+                take: 25
+            });
 
-        // Top 25 Failed ASNs
-        const rawAsnFailures = await prisma.vpnEvent.groupBy({
-            by: ['ipAsn', 'ipAsName', 'ipAsDomain'],
-            _count: {
-                ipAsn: true
-            },
-            where: {
-                status: "FAILURE",
-                ipAsn: { not: null },
-                createdAt: securityDateFilter
-            },
-            orderBy: {
+            topFailedIps = await Promise.all(
+                rawIpFailures.map(async (f) => {
+                    const latestEvent = await prisma.vpnEvent.findFirst({
+                        where: { sourceIp: f.sourceIp },
+                        orderBy: { createdAt: "desc" },
+                        select: {
+                            ipAsn: true,
+                            ipAsName: true,
+                            ipAsDomain: true,
+                            ipCountry: true,
+                            ipCountryCode: true,
+                        }
+                    });
+                    return {
+                        sourceIp: f.sourceIp,
+                        count: f._count.sourceIp,
+                        ipAsn: latestEvent?.ipAsn || null,
+                        ipAsName: latestEvent?.ipAsName || null,
+                        ipAsDomain: latestEvent?.ipAsDomain || null,
+                        ipCountry: latestEvent?.ipCountry || null,
+                        ipCountryCode: latestEvent?.ipCountryCode || null,
+                    };
+                })
+            );
+
+            // Top 25 Failed ASNs
+            const rawAsnFailures = await prisma.vpnEvent.groupBy({
+                by: ['ipAsn', 'ipAsName', 'ipAsDomain'],
                 _count: {
-                    ipAsn: 'desc'
+                    ipAsn: true
+                },
+                where: {
+                    status: "FAILURE",
+                    ipAsn: { not: null },
+                    createdAt: securityDateFilter
+                },
+                orderBy: {
+                    _count: {
+                        ipAsn: 'desc'
+                    }
+                },
+                take: 25
+            });
+
+            topFailedAsns = rawAsnFailures.map(f => ({
+                ipAsn: f.ipAsn,
+                ipAsName: f.ipAsName,
+                ipAsDomain: f.ipAsDomain,
+                count: f._count.ipAsn
+            }));
+
+            // 1. Current Active Sessions Count
+            // Query events from the last 24 hours to evaluate active tunnels (session limits prevent longer connections)
+            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const recentActiveEvents = await prisma.vpnEvent.findMany({
+                where: {
+                    status: { in: ["SUCCESS", "DISCONNECT"] },
+                    createdAt: { gte: twentyFourHoursAgo }
+                },
+                orderBy: { createdAt: "desc" },
+                select: { username: true, sourceIp: true, status: true }
+            });
+
+            const activeSessionsMap = new Map<string, any>();
+            const seenPairs = new Set<string>();
+            for (const evt of recentActiveEvents) {
+                const username = evt.username?.trim();
+                if (!username || username.toLowerCase() === "unknown") continue;
+                const key = `${username}-${evt.sourceIp}`;
+                if (!seenPairs.has(key)) {
+                    seenPairs.add(key);
+                    if (evt.status === "SUCCESS") {
+                        activeSessionsMap.set(key, true);
+                    }
                 }
-            },
-            take: 25
-        });
+            }
+            activeSessionsCount = activeSessionsMap.size;
 
-        const topFailedAsns = rawAsnFailures.map(f => ({
-            ipAsn: f.ipAsn,
-            ipAsName: f.ipAsName,
-            ipAsDomain: f.ipAsDomain,
-            count: f._count.ipAsn
-        }));
+            // 2. Peak All-Time Unique Users in a 24-hour Calendar Day (Option B)
+            // Fetch all success events to group by calendar day
+            const allSuccessEvents = await prisma.vpnEvent.findMany({
+                where: { status: "SUCCESS" },
+                select: { username: true, createdAt: true }
+            });
 
-        // 1. Current Active Sessions Count
-        // Query events from the last 24 hours to evaluate active tunnels (session limits prevent longer connections)
-        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        const recentActiveEvents = await prisma.vpnEvent.findMany({
-            where: {
-                status: { in: ["SUCCESS", "DISCONNECT"] },
-                createdAt: { gte: twentyFourHoursAgo }
-            },
-            orderBy: { createdAt: "desc" },
-            select: { username: true, sourceIp: true, status: true }
-        });
+            const dailyUniqueUsers = new Map<string, Set<string>>();
+            for (const evt of allSuccessEvents) {
+                const username = evt.username?.trim();
+                if (!username || username.toLowerCase() === "unknown") continue;
+                const dateStr = evt.createdAt.toISOString().split("T")[0]; // YYYY-MM-DD
+                if (!dailyUniqueUsers.has(dateStr)) {
+                    dailyUniqueUsers.set(dateStr, new Set());
+                }
+                dailyUniqueUsers.get(dateStr)!.add(username);
+            }
 
-        const activeSessionsMap = new Map<string, any>();
-        const seenPairs = new Set<string>();
-        for (const evt of recentActiveEvents) {
-            const username = evt.username?.trim();
-            if (!username || username.toLowerCase() === "unknown") continue;
-            const key = `${username}-${evt.sourceIp}`;
-            if (!seenPairs.has(key)) {
-                seenPairs.add(key);
-                if (evt.status === "SUCCESS") {
-                    activeSessionsMap.set(key, true);
+            let weekdaySum = 0;
+            let weekdayCount = 0;
+            let weekendSum = 0;
+            let weekendCount = 0;
+
+            for (const [dateStr, usersSet] of dailyUniqueUsers.entries()) {
+                if (usersSet.size > peakUniqueUsers24h) {
+                    peakUniqueUsers24h = usersSet.size;
+                    peakUniqueUsers24hDate = dateStr;
+                }
+
+                const [year, month, day] = dateStr.split("-");
+                const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+                const dayOfWeek = date.getUTCDay(); // 0 is Sunday, 6 is Saturday
+                const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+                if (isWeekend) {
+                    weekendSum += usersSet.size;
+                    weekendCount++;
+                } else {
+                    weekdaySum += usersSet.size;
+                    weekdayCount++;
                 }
             }
+
+            averageWeekdayUsers = weekdayCount > 0 ? Math.round(weekdaySum / weekdayCount) : 0;
+            averageWeekendUsers = weekendCount > 0 ? Math.round(weekendSum / weekendCount) : 0;
         }
-        const activeSessionsCount = activeSessionsMap.size;
-
-        // 2. Peak All-Time Unique Users in a 24-hour Calendar Day (Option B)
-        // Fetch all success events to group by calendar day
-        const allSuccessEvents = await prisma.vpnEvent.findMany({
-            where: { status: "SUCCESS" },
-            select: { username: true, createdAt: true }
-        });
-
-        const dailyUniqueUsers = new Map<string, Set<string>>();
-        for (const evt of allSuccessEvents) {
-            const username = evt.username?.trim();
-            if (!username || username.toLowerCase() === "unknown") continue;
-            const dateStr = evt.createdAt.toISOString().split("T")[0]; // YYYY-MM-DD
-            if (!dailyUniqueUsers.has(dateStr)) {
-                dailyUniqueUsers.set(dateStr, new Set());
-            }
-            dailyUniqueUsers.get(dateStr)!.add(username);
-        }
-
-        let peakUniqueUsers24h = 0;
-        let peakUniqueUsers24hDate = "";
-        let weekdaySum = 0;
-        let weekdayCount = 0;
-        let weekendSum = 0;
-        let weekendCount = 0;
-
-        for (const [dateStr, usersSet] of dailyUniqueUsers.entries()) {
-            if (usersSet.size > peakUniqueUsers24h) {
-                peakUniqueUsers24h = usersSet.size;
-                peakUniqueUsers24hDate = dateStr;
-            }
-
-            const [year, month, day] = dateStr.split("-");
-            const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
-            const dayOfWeek = date.getUTCDay(); // 0 is Sunday, 6 is Saturday
-            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-
-            if (isWeekend) {
-                weekendSum += usersSet.size;
-                weekendCount++;
-            } else {
-                weekdaySum += usersSet.size;
-                weekdayCount++;
-            }
-        }
-
-        const averageWeekdayUsers = weekdayCount > 0 ? Math.round(weekdaySum / weekdayCount) : 0;
-        const averageWeekendUsers = weekendCount > 0 ? Math.round(weekendSum / weekendCount) : 0;
 
         // Get status of the last background job sync
         let lastSyncStatus = null;
