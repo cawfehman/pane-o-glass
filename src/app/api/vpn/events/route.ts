@@ -406,38 +406,41 @@ export async function GET(req: NextRequest) {
         const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
 
         const { searchParams } = new URL(req.url);
+
+        // Parse securityScope filter
+        const securityScope = searchParams.get("securityScope") || "last24hours";
+        let securityDateFilter: any = {};
+        const now = new Date();
+
+        if (securityScope === "today") {
+            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            securityDateFilter = { gte: start };
+        } else if (securityScope === "yesterday") {
+            const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+            const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+            securityDateFilter = { gte: start, lte: end };
+        } else if (securityScope === "last7days") {
+            const start = new Date();
+            start.setDate(now.getDate() - 7);
+            securityDateFilter = { gte: start };
+        } else if (securityScope === "last14days") {
+            const start = new Date();
+            start.setDate(now.getDate() - 14);
+            securityDateFilter = { gte: start };
+        } else if (securityScope === "last30days") {
+            const start = new Date();
+            start.setDate(now.getDate() - 30);
+            securityDateFilter = { gte: start };
+        } else { // default last24hours
+            const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            securityDateFilter = { gte: start };
+        }
+
         const detailUsername = searchParams.get("detailUsername");
 
         if (detailUsername) {
             if (isDesktop) {
                 return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-            }
-            const securityScope = searchParams.get("securityScope") || "last24hours";
-            let securityDateFilter: any = {};
-            const now = new Date();
-
-            if (securityScope === "today") {
-                const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                securityDateFilter = { gte: start };
-            } else if (securityScope === "yesterday") {
-                const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-                const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
-                securityDateFilter = { gte: start, lte: end };
-            } else if (securityScope === "last7days") {
-                const start = new Date();
-                start.setDate(now.getDate() - 7);
-                securityDateFilter = { gte: start };
-            } else if (securityScope === "last14days") {
-                const start = new Date();
-                start.setDate(now.getDate() - 14);
-                securityDateFilter = { gte: start };
-            } else if (securityScope === "last30days") {
-                const start = new Date();
-                start.setDate(now.getDate() - 30);
-                securityDateFilter = { gte: start };
-            } else { // default last24hours
-                const start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-                securityDateFilter = { gte: start };
             }
 
             const events = await prisma.vpnEvent.findMany({
@@ -632,7 +635,6 @@ export async function GET(req: NextRequest) {
         // Parse bandwidthScope filter
         const bandwidthScope = searchParams.get("bandwidthScope") || "last30days";
         let bandwidthDateFilter: any = {};
-        const now = new Date();
         
         if (bandwidthScope === "today") {
             const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
