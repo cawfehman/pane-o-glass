@@ -125,11 +125,40 @@ export async function POST(req: Request) {
                         }));
                     });
 
-                    // Send the command followed by a newline and exit
-                    stream.write(`${command}\n`);
-                    setTimeout(() => {
+                    const waitForPrompt = (timeoutMs = 15000) => {
+                        return new Promise((resolve) => {
+                            const start = Date.now();
+                            const check = () => {
+                                const trimmed = output.trim();
+                                if (trimmed.endsWith('>') || trimmed.endsWith('#')) {
+                                    resolve(true);
+                                } else if (Date.now() - start > timeoutMs) {
+                                    resolve(false);
+                                } else {
+                                    setTimeout(check, 100);
+                                }
+                            };
+                            check();
+                        });
+                    };
+
+                    const runCommand = async () => {
+                        // Wait for login banner and prompt to settle
+                        await waitForPrompt(15000);
+                        
+                        // Clear output before writing the command to avoid returning the banner
+                        output = "";
+                        stream.write(`${command}\n`);
+                        
+                        // Wait for command output and prompt to return
+                        await waitForPrompt(5000);
+                        
+                        // Exit the session cleanly
                         stream.write("exit\n");
-                    }, 1000); // Give the firewall a second to process
+                        await new Promise(r => setTimeout(r, 500));
+                    };
+
+                    runCommand();
 
                 }).catch((shellError) => {
                     ssh.dispose();
