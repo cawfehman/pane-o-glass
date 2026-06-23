@@ -143,19 +143,22 @@ async function runAutoUnshun() {
                     stream.on('error', (err) => reject(err));
 
                     const processQueue = async () => {
+                        // Wait 3 seconds for login banner and prompt to settle
+                        await new Promise(r => setTimeout(r, 3000));
+
                         for (const ip of watchList) {
                             buffer = ""; // Clear buffer for this check
-                            stream.write(`show shun ${ip}\n`);
+                            stream.write(`show shun\n`);
                             
                             // Wait for output to settle
                             await new Promise(r => setTimeout(r, 1500));
                             
+                            console.log(`[GUARDIAN] Raw response for show shun on ${fw.name}: "${buffer.replace(/\r/g, '\\r').replace(/\n/g, '\\n')}"`);
+
                             const lines = buffer.split('\n').map(l => l.trim().toLowerCase());
                             const match = lines.find(line => 
-                                line.includes('shun') && 
                                 line.includes(ip.toLowerCase()) && 
-                                !line.includes('show') && 
-                                !line.includes('not found')
+                                !line.includes('show')
                             );
 
                             if (match) {
