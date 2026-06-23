@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { 
     Search, Wifi, ShieldAlert, AlertCircle, CheckCircle, 
-    ArrowUpRight, ArrowDownLeft, Clock, Database, Globe, User 
+    ArrowUpRight, ArrowDownLeft, Clock, Database, Globe, User,
+    Activity, TrendingUp, Calendar, Users
 } from "lucide-react";
 import { ToolHelp } from "@/components/ToolHelp";
 import { useSession } from "next-auth/react";
@@ -520,7 +521,7 @@ export default function VpnTroubleshootingPage() {
             }}>
                 <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px' }}>
                     <div style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '10px', borderRadius: '10px' }}>
-                        <Wifi size={24} />
+                        <Activity size={24} />
                     </div>
                     <div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Active VPN Sessions</div>
@@ -530,8 +531,8 @@ export default function VpnTroubleshootingPage() {
                     </div>
                 </div>
                 <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px' }}>
-                    <div style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', padding: '10px', borderRadius: '10px' }}>
-                        <Database size={24} />
+                    <div style={{ background: 'rgba(168, 85, 247, 0.1)', color: '#a855f7', padding: '10px', borderRadius: '10px' }}>
+                        <TrendingUp size={24} />
                     </div>
                     <div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Peak 24h Unique Clients</div>
@@ -553,7 +554,7 @@ export default function VpnTroubleshootingPage() {
                 </div>
                 <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px' }}>
                     <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '10px', borderRadius: '10px' }}>
-                        <Globe size={24} />
+                        <Users size={24} />
                     </div>
                     <div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Avg Weekday Clients</div>
@@ -564,7 +565,7 @@ export default function VpnTroubleshootingPage() {
                 </div>
                 <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px' }}>
                     <div style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', padding: '10px', borderRadius: '10px' }}>
-                        <Clock size={24} />
+                        <Calendar size={24} />
                     </div>
                     <div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Avg Weekend Clients</div>
