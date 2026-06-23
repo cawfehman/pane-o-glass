@@ -79,6 +79,7 @@ export default function VpnTroubleshootingPage() {
     const [searchResults, setSearchResults] = useState<any[] | null>(null);
     const [activeSessionsCount, setActiveSessionsCount] = useState<number>(0);
     const [peakUniqueUsers24h, setPeakUniqueUsers24h] = useState<number>(0);
+    const [peakUniqueUsers24hDate, setPeakUniqueUsers24hDate] = useState<string>("");
     
     // Active Directory user enrichment maps
     const [adUsers, setAdUsers] = useState<Record<string, any>>({});
@@ -107,6 +108,7 @@ export default function VpnTroubleshootingPage() {
             setTopFailedAsns(data.topFailedAsns || []);
             setActiveSessionsCount(data.activeSessionsCount || 0);
             setPeakUniqueUsers24h(data.peakUniqueUsers24h || 0);
+            setPeakUniqueUsers24hDate(data.peakUniqueUsers24hDate || "");
             setRecentEvents(data.recentEvents || []);
             setLastSync(data.lastSync || null);
             if (data.adUsers) {
@@ -529,8 +531,19 @@ export default function VpnTroubleshootingPage() {
                     </div>
                     <div>
                         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Peak 24h Unique Clients</div>
-                        <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
-                            {loading ? "..." : peakUniqueUsers24h}
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                {loading ? "..." : peakUniqueUsers24h}
+                            </div>
+                            {peakUniqueUsers24hDate && !loading && (
+                                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    on {(() => {
+                                        const [year, month, day] = peakUniqueUsers24hDate.split("-");
+                                        const date = new Date(Number(year), Number(month) - 1, Number(day));
+                                        return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+                                    })()}
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>

@@ -835,9 +835,11 @@ export async function GET(req: NextRequest) {
         }
 
         let peakUniqueUsers24h = 0;
+        let peakUniqueUsers24hDate = "";
         for (const [dateStr, usersSet] of dailyUniqueUsers.entries()) {
             if (usersSet.size > peakUniqueUsers24h) {
                 peakUniqueUsers24h = usersSet.size;
+                peakUniqueUsers24hDate = dateStr;
             }
         }
 
@@ -893,6 +895,7 @@ export async function GET(req: NextRequest) {
             topFailedAsns,
             activeSessionsCount,
             peakUniqueUsers24h,
+            peakUniqueUsers24hDate,
             recentEvents,
             topUploadEvents,
             topDownloadEvents,
