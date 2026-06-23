@@ -81,6 +81,15 @@ async function runAutoUnshun() {
     
     if (watchList.length === 0) {
         console.log("[GUARDIAN] No WATCH_IP_LIST defined in .env. Skipping scan.");
+        try {
+            await prisma.backgroundJob.upsert({
+                where: { name: "Firewall Guardian" },
+                update: { lastRun: new Date(), status: "INACTIVE" },
+                create: { name: "Firewall Guardian", status: "INACTIVE" }
+            });
+        } catch (e) {
+            console.error("[GUARDIAN] Failed to update heartbeat:", e.message);
+        }
         return;
     }
 

@@ -135,9 +135,11 @@ export default function CiscoFirewallPage() {
                             title={
                                 !guardianStatus.isLive 
                                     ? `STALLED: Guardian heartbeat not detected in the last 5 minutes.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
-                                    : guardianStatus.status === 'WARNING'
-                                        ? `WARNING: Guardian is running but encountered an error on its last scan.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
-                                        : `ACTIVE: Guardian is running successfully.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
+                                    : guardianStatus.status === 'INACTIVE'
+                                        ? `INACTIVE: No IPs configured for monitoring.`
+                                        : guardianStatus.status === 'WARNING'
+                                            ? `WARNING: Guardian is running but encountered an error on its last scan.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
+                                            : `ACTIVE: Guardian is running successfully.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
                             }
                             style={{ 
                                 display: 'flex', 
@@ -154,11 +156,11 @@ export default function CiscoFirewallPage() {
                                 width: '8px', 
                                 height: '8px', 
                                 borderRadius: '50%', 
-                                backgroundColor: !guardianStatus.isLive ? '#ef4444' : (guardianStatus.status === 'WARNING' ? '#f59e0b' : '#10b981'),
-                                boxShadow: !guardianStatus.isLive ? 'none' : (guardianStatus.status === 'WARNING' ? '0 0 8px #f59e0b' : '0 0 8px #10b981')
+                                backgroundColor: !guardianStatus.isLive ? '#ef4444' : (guardianStatus.status === 'INACTIVE' ? '#9ca3af' : (guardianStatus.status === 'WARNING' ? '#f59e0b' : '#10b981')),
+                                boxShadow: !guardianStatus.isLive ? 'none' : (guardianStatus.status === 'INACTIVE' ? '0 0 8px #9ca3af' : (guardianStatus.status === 'WARNING' ? '0 0 8px #f59e0b' : '0 0 8px #10b981'))
                             }}></div>
-                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: !guardianStatus.isLive ? '#ef4444' : (guardianStatus.status === 'WARNING' ? '#f59e0b' : '#10b981') }}>
-                                GUARDIAN: {!guardianStatus.isLive ? "STALLED" : (guardianStatus.status === 'WARNING' ? "WARNING" : "ACTIVE")}
+                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: !guardianStatus.isLive ? '#ef4444' : (guardianStatus.status === 'INACTIVE' ? '#9ca3af' : (guardianStatus.status === 'WARNING' ? '#f59e0b' : '#10b981')) }}>
+                                GUARDIAN: {!guardianStatus.isLive ? "STALLED" : (guardianStatus.status === 'INACTIVE' ? "INACTIVE" : (guardianStatus.status === 'WARNING' ? "WARNING" : "ACTIVE"))}
                             </span>
                         </div>
                     )}
