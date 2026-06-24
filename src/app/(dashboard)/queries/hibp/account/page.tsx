@@ -49,6 +49,44 @@ export default function AccountSecurityPage() {
         }
     };
 
+    const downloadCSV = () => {
+        if (!emailResults || !emailResults.breaches.length) return;
+        
+        const headers = ["Title", "Name", "Domain", "Breach Date", "Pwn Count", "Compromised Data", "Description"];
+        const rows = emailResults.breaches.map((breach: any) => {
+            // Strip HTML tags from Description if any
+            const tempDiv = document.createElement("div");
+            tempDiv.innerHTML = breach.Description || "";
+            const plainDescription = tempDiv.textContent || tempDiv.innerText || "";
+            
+            return [
+                breach.Title || "N/A",
+                breach.Name || "N/A",
+                breach.Domain || "N/A",
+                breach.BreachDate || "N/A",
+                breach.PwnCount ? breach.PwnCount.toLocaleString() : "0",
+                (breach.DataClasses || []).join("; "),
+                plainDescription
+            ];
+        });
+
+        const csvContent = [headers, ...rows]
+            .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+            .join("\n");
+        
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        const cleanedAccount = account.replace(/[@.]/g, "_");
+        const filename = `hibp_account_breaches_${cleanedAccount}_${new Date().toISOString().split('T')[0]}.csv`;
+        link.setAttribute("download", filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div>
             <div style={{ marginBottom: '32px' }}>
@@ -103,8 +141,26 @@ export default function AccountSecurityPage() {
                                 </div>
                             ) : (
                                 <div>
-                                    <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1rem' }}>
-                                        <strong>Oh no...</strong> Pwned in {emailResults.breaches.length} data breaches.
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '1rem' }}>
+                                        <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', flex: 1 }}>
+                                            <strong>Oh no...</strong> Pwned in {emailResults.breaches.length} data breaches.
+                                        </div>
+                                        <button 
+                                            onClick={downloadCSV} 
+                                            className="btn-secondary" 
+                                            style={{ 
+                                                padding: '0.85rem 1rem', 
+                                                display: 'flex', 
+                                                alignItems: 'center', 
+                                                gap: '8px',
+                                                border: '1px solid var(--border-color)',
+                                                borderRadius: 'var(--radius-md)',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                            Export CSV
+                                        </button>
                                     </div>
                                     <div style={{ display: 'grid', gap: '1rem', maxHeight: '400px', overflowY: 'auto', paddingRight: '0.5rem' }}>
                                         {emailResults.breaches.map((breach: any) => (
