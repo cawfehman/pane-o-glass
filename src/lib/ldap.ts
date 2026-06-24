@@ -3,7 +3,7 @@ import { Client } from "ldapts";
 /**
  * Validates a username and password against an Active Directory / LDAP server.
  */
-export async function authenticateWithAD(username: string, password: string): Promise<boolean> {
+export async function authenticateWithAD(username: string, password: string): Promise<{ isValid: boolean; groups: string[] }> {
     // Sanitize username by stripping the @cooperhealth.edu suffix case-insensitively
     const cleanUsername = username.toLowerCase().endsWith("@cooperhealth.edu")
         ? username.slice(0, -17)
@@ -17,7 +17,7 @@ export async function authenticateWithAD(username: string, password: string): Pr
 
     if (!url || !bindDN || !bindPassword || !baseDN) {
         console.error("LDAP configuration missing in environment variables.");
-        return false;
+        return { isValid: false, groups: [] };
     }
 
     const client = new Client({
@@ -32,21 +32,30 @@ export async function authenticateWithAD(username: string, password: string): Pr
         console.log("LDAP: Service account bind successful.");
 
         console.log(`LDAP: Searching for user "${cleanUsername}" (original: "${username}") in baseDN "${baseDN}"`);
-        // Step 2: Search for the user to get their full DN
+        // Step 2: Search for the user to get their full DN and groups
         // We search both sAMAccountName and userPrincipalName to be robust
         const { searchEntries } = await client.search(baseDN, {
             filter: `(|(sAMAccountName=${cleanUsername})(userPrincipalName=${cleanUsername}@cooperhealth.edu)(userPrincipalName=${username}))`,
             scope: "sub",
-            attributes: ["dn"],
+            attributes: ["dn", "memberOf"],
         });
         console.log(`LDAP: Search returned ${searchEntries.length} results.`);
 
         if (searchEntries.length === 0) {
             console.warn(`LDAP User not found: ${username}`);
-            return false;
+            return { isValid: false, groups: [] };
         }
 
         const userDN = searchEntries[0].dn;
+        const memberOfRaw = searchEntries[0].memberOf;
+        const groups: string[] = [];
+        if (memberOfRaw) {
+            if (Array.isArray(memberOfRaw)) {
+                groups.push(...memberOfRaw.map(g => String(g)));
+            } else {
+                groups.push(String(memberOfRaw));
+            }
+        }
 
         // Step 3: Bind with user's DN and their password
         // We reuse the same client or create a new one to verify credentials
@@ -59,16 +68,16 @@ export async function authenticateWithAD(username: string, password: string): Pr
         try {
             await authClient.bind(userDN, password);
             console.log(`LDAP: User ${username} authentication SUCCESSFUL.`);
-            return true;
+            return { isValid: true, groups };
         } catch (err: any) {
             console.warn(`LDAP Authentication failed for ${username}:`, err.message);
-            return false;
+            return { isValid: false, groups: [] };
         } finally {
             await authClient.unbind();
         }
     } catch (err: any) {
         console.error("LDAP Error:", err.message);
-        return false;
+        return { isValid: false, groups: [] };
     } finally {
         try {
             await client.unbind();

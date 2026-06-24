@@ -62,7 +62,8 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
             firstName: user.firstName || "",
             lastName: user.lastName || "",
             role: user.role || "USER",
-            isExternal: !!user.isExternal
+            isExternal: !!user.isExternal,
+            isRoleOverridden: !!user.isRoleOverridden
         });
     };
 
@@ -77,9 +78,8 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
             formData.append("firstName", editingUserData.firstName);
             formData.append("lastName", editingUserData.lastName);
             formData.append("role", editingUserData.role);
-            if (editingUserData.isExternal) {
-                formData.append("isExternal", "on");
-            }
+            formData.append("isExternal", editingUserData.isExternal ? "on" : "off");
+            formData.append("isRoleOverridden", editingUserData.isRoleOverridden ? "on" : "off");
 
             await updateUser(id, formData);
             
@@ -92,7 +92,8 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                         firstName: editingUserData.firstName || null,
                         lastName: editingUserData.lastName || null,
                         role: editingUserData.role,
-                        isExternal: editingUserData.isExternal
+                        isExternal: editingUserData.isExternal,
+                        isRoleOverridden: editingUserData.isRoleOverridden
                     };
                 }
                 return u;
@@ -197,14 +198,24 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                     </select>
                                 </td>
                                 <td colSpan={2} style={{ padding: '12px 8px' }}>
-                                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                                        <input 
-                                            type="checkbox" 
-                                            checked={editingUserData.isExternal} 
-                                            onChange={e => setEditingUserData({...editingUserData, isExternal: e.target.checked})}
-                                        />
-                                        Active Directory / External Auth
-                                    </label>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={editingUserData.isExternal} 
+                                                onChange={e => setEditingUserData({...editingUserData, isExternal: e.target.checked})}
+                                            />
+                                            Active Directory / External Auth
+                                        </label>
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                            <input 
+                                                type="checkbox" 
+                                                checked={editingUserData.isRoleOverridden} 
+                                                onChange={e => setEditingUserData({...editingUserData, isRoleOverridden: e.target.checked})}
+                                            />
+                                            Override AD Group Role
+                                        </label>
+                                    </div>
                                 </td>
                                 <td style={{ padding: '12px 8px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
@@ -263,6 +274,18 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                             border: '1px solid rgba(34, 197, 94, 0.2)'
                                         }} title="Authenticates via Active Directory">
                                             AD / EXT
+                                        </span>
+                                    )}
+                                    {user.isRoleOverridden && (
+                                        <span style={{
+                                            padding: '4px 8px',
+                                            borderRadius: '12px',
+                                            fontSize: '0.75rem',
+                                            background: 'transparent',
+                                            color: 'rgb(244, 63, 94)',
+                                            border: '1px solid rgba(244, 63, 94, 0.2)'
+                                        }} title="Local Role Override (will not sync from AD Groups)">
+                                            OVERRIDE
                                         </span>
                                     )}
                                 </div>

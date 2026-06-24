@@ -34,29 +34,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 }
 
                 const inputUsername = credentials.username as string;
+                const cleanUsername = inputUsername.toLowerCase().endsWith("@cooperhealth.edu")
+                    ? inputUsername.slice(0, -17)
+                    : inputUsername;
+
                 let user = await prisma.user.findUnique({
-                    where: { username: inputUsername }
-                })
+                    where: { username: cleanUsername }
+                });
 
-                if (!user && inputUsername.toLowerCase().endsWith("@cooperhealth.edu")) {
-                    const cleanUsername = inputUsername.slice(0, -17);
-                    user = await prisma.user.findUnique({
-                        where: { username: cleanUsername }
-                    })
-                }
+                const isLocalUser = user ? !user.isExternal : false;
+                let adGroups: string[] = [];
 
-                if (!user) {
-                    await logAudit("LOGIN_FAILURE", `Login attempt for non-existent user: ${credentials.username}`, undefined, clientIp);
-                    return null
-                }
-
-                if ((user as any).isExternal) {
-                    const isValid = await authenticateWithAD(credentials.username as string, credentials.password as string);
-                    if (!isValid) {
-                        await logAudit("LOGIN_FAILURE", `AD authentication failed for user: ${user.username}`, user.id, clientIp);
-                        return null;
-                    }
-                } else {
+                if (isLocalUser && user) {
                     if (!user.password) {
                         await logAudit("LOGIN_FAILURE", `Local login attempt for user without password: ${user.username}`, user.id, clientIp);
                         return null;
@@ -65,11 +54,70 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     const passwordsMatch = await bcrypt.compare(
                         credentials.password as string,
                         user.password
-                    )
+                    );
 
                     if (!passwordsMatch) {
                         await logAudit("LOGIN_FAILURE", `Incorrect local password for user: ${user.username}`, user.id, clientIp);
                         return null;
+                    }
+                } else {
+                    const adAuthResult = await authenticateWithAD(credentials.username as string, credentials.password as string);
+                    if (!adAuthResult.isValid) {
+                        await logAudit("LOGIN_FAILURE", `AD authentication failed for user: ${cleanUsername}`, user?.id, clientIp);
+                        return null;
+                    }
+
+                    adGroups = adAuthResult.groups;
+
+                    // Match CN from Distinguished Name (DN)
+                    const hasGroup = (cnName: string) => {
+                        const searchStr = `cn=${cnName.toLowerCase()}`;
+                        return adGroups.some(g => {
+                            const lower = g.toLowerCase();
+                            return lower === cnName.toLowerCase() || 
+                                   lower.startsWith(searchStr + ",") || 
+                                   lower.includes("," + searchStr + ",") || 
+                                   lower.endsWith("," + searchStr);
+                        });
+                    };
+
+                    let adRole: string | null = null;
+                    if (hasGroup("InfoSecTools_ADMIN")) adRole = "ADMIN";
+                    else if (hasGroup("InfoSecTools_ANALYST")) adRole = "ANALYST";
+                    else if (hasGroup("InfoSecTools_USER")) adRole = "USER";
+                    else if (hasGroup("InfoSecTools_DESKTOP")) adRole = "DESKTOP";
+
+                    if (user) {
+                        if (user.isRoleOverridden) {
+                            console.log(`[AUTH] User ${user.username} role is overridden locally. Keeping role: ${user.role}`);
+                        } else {
+                            if (!adRole) {
+                                await logAudit("LOGIN_FAILURE", `AD user ${cleanUsername} is not in any InfoSecTools groups. Denying login.`, user.id, clientIp);
+                                return null;
+                            }
+                            if (user.role !== adRole) {
+                                console.log(`[AUTH] Updating AD user ${user.username} role from ${user.role} to ${adRole}`);
+                                user = await prisma.user.update({
+                                    where: { id: user.id },
+                                    data: { role: adRole }
+                                });
+                            }
+                        }
+                    } else {
+                        if (!adRole) {
+                            await logAudit("LOGIN_FAILURE", `Unlisted AD user ${cleanUsername} is not in any InfoSecTools groups. Denying login.`, undefined, clientIp);
+                            return null;
+                        }
+
+                        console.log(`[AUTH] JIT provisioning AD user ${cleanUsername} with role ${adRole}`);
+                        user = await prisma.user.create({
+                            data: {
+                                username: cleanUsername,
+                                role: adRole,
+                                isExternal: true,
+                                isRoleOverridden: false
+                            }
+                        });
                     }
                 }
 

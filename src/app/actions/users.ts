@@ -72,6 +72,7 @@ export async function updateUser(id: string, formData: FormData) {
     const lastName = formData.get("lastName") as string;
     const role = formData.get("role") as string;
     const isExternal = formData.get("isExternal");
+    const isRoleOverridden = formData.get("isRoleOverridden");
 
     const userToUpdate = await prisma.user.findUnique({ where: { id } });
 
@@ -88,12 +89,9 @@ export async function updateUser(id: string, formData: FormData) {
     if (lastName !== undefined) updateData.lastName = lastName || null;
     if (role) updateData.role = role;
     if (isExternal !== null) updateData.isExternal = isExternal === "on";
+    if (isRoleOverridden !== null) updateData.isRoleOverridden = isRoleOverridden === "on";
     if (password) {
         updateData.password = await bcrypt.hash(password, 10);
-    } else if (updateData.isExternal === true) {
-        // If switching to external, we could null out the password or keep it. 
-        // For security, if it's external, we shouldn't rely on the local password.
-        // updateData.password = null;
     }
 
     await prisma.user.update({
@@ -110,6 +108,10 @@ export async function updateUser(id: string, formData: FormData) {
     if (isExternal !== null) {
         const newExt = isExternal === "on";
         if (newExt !== userToUpdate?.isExternal) changes.push(`external status to ${newExt}`);
+    }
+    if (isRoleOverridden !== null) {
+        const newOverride = isRoleOverridden === "on";
+        if (newOverride !== userToUpdate?.isRoleOverridden) changes.push(`role override to ${newOverride}`);
     }
     
     if (changes.length > 0) {

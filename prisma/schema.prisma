@@ -18,6 +18,7 @@ model User {
   lastName   String?
   role       String     @default("USER")
   isExternal Boolean    @default(false)
+  isRoleOverridden Boolean @default(false)
   lastLogin  DateTime?
   sessionTimeout Int        @default(10)
   createdAt      DateTime   @default(now())
