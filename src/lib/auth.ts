@@ -94,10 +94,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                             console.log(`[AUTH] User ${user.username} role is overridden locally. Keeping role: ${user.role}`);
                         } else {
                             if (!adRole) {
-                                await logAudit("LOGIN_FAILURE", `AD user ${cleanUsername} is not in any InfoSecTools groups. Denying login.`, user.id, clientIp);
-                                return null;
-                            }
-                            if (user.role !== adRole) {
+                                console.log(`[AUTH] AD user ${cleanUsername} is not in any InfoSecTools groups. Falling back to database role: ${user.role}`);
+                            } else if (user.role !== adRole) {
                                 console.log(`[AUTH] Updating AD user ${user.username} role from ${user.role} to ${adRole}`);
                                 user = await prisma.user.update({
                                     where: { id: user.id },
