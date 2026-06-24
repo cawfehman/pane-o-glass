@@ -193,6 +193,8 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                     >
                                         <option value="USER">USER</option>
                                         <option value="ANALYST">ANALYST</option>
+                                        <option value="NETWORK">NETWORK</option>
+                                        <option value="DESKTOP">DESKTOP</option>
                                         <option value="SYSTEMS">SYSTEMS</option>
                                         <option value="ADMIN">ADMIN</option>
                                     </select>
@@ -258,8 +260,10 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                         border: '1px solid rgba(255,255,255,0.1)',
                                         color: 
                                             user.role === 'ADMIN' ? 'var(--accent-primary)' : 
-                                            user.role === 'ANALYST' ? 'rgb(192, 132, 252)' : 
                                             user.role === 'SYSTEMS' ? 'rgb(45, 212, 191)' :
+                                            user.role === 'ANALYST' ? 'rgb(192, 132, 252)' : 
+                                            user.role === 'NETWORK' ? 'rgb(96, 165, 250)' :
+                                            user.role === 'DESKTOP' ? 'rgb(251, 146, 60)' :
                                             'var(--text-secondary)'
                                     }}>
                                         {user.role}

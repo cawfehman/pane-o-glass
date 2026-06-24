@@ -83,9 +83,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
                     let adRole: string | null = null;
                     if (hasGroup("InfoSecTools_ADMIN")) adRole = "ADMIN";
+                    else if (hasGroup("InfoSecTools_SYSTEMS")) adRole = "SYSTEMS";
                     else if (hasGroup("InfoSecTools_ANALYST")) adRole = "ANALYST";
-                    else if (hasGroup("InfoSecTools_USER")) adRole = "USER";
+                    else if (hasGroup("InfoSecTools_NETWORK")) adRole = "NETWORK";
                     else if (hasGroup("InfoSecTools_DESKTOP")) adRole = "DESKTOP";
+                    else if (hasGroup("InfoSecTools_USER")) adRole = "USER";
 
                     if (user) {
                         if (user.isRoleOverridden) {
