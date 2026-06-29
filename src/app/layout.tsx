@@ -3,7 +3,7 @@ import "./globals.css";
 import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
-  title: "Linux Dashboard",
+  title: "InfoSec Tools",
   description: "Self-hosted linux server dashboard",
 };
 
