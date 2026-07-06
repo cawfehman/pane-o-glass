@@ -349,6 +349,24 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
     };
 
+    const calculateArcPath = (startX: number, startY: number, endX: number, endY: number) => {
+        const dx = endX - startX;
+        const dy = endY - startY;
+        const dr = Math.sqrt(dx * dx + dy * dy);
+        
+        const midX = (startX + endX) / 2;
+        const midY = (startY + endY) / 2;
+        
+        const angle = Math.atan2(dy, dx);
+        const perpAngle = angle - Math.PI / 2;
+        const offset = Math.min(dr * 0.25, 120);
+        
+        const ctrlX = midX + Math.cos(perpAngle) * offset;
+        const ctrlY = midY + Math.sin(perpAngle) * offset;
+
+        return `M ${startX} ${startY} Q ${ctrlX} ${ctrlY} ${endX} ${endY}`;
+    };
+
     const getArcColor = (c: any) => {
         if (mapFilter === "failed" || mapFilter === "failed-valid") return "rgba(239, 68, 68, 0.35)";
         if (mapFilter === "completed") return "rgba(156, 163, 175, 0.4)";
