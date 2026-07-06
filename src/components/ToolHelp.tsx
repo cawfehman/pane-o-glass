@@ -100,6 +100,23 @@ export const helpData: Record<string, TooltipDetails> = {
         colors: [
             { name: "Amber (Summary)", meaning: "Identified credentials leaked within domain data breaches.", rgb: "#fbbf24" }
         ]
+    },
+    'threat-intel': {
+        title: "Threat Intelligence Reputation Analyzer",
+        version: "1.0.0",
+        capabilities: [
+            "Perform real-time reputation analysis on public/private IPs, Domain Names, and File Signatures.",
+            "Resolve live DNS zone records (A, MX, NS, TXT) directly from the target DNS servers.",
+            "Check domain safety, risk classifications, and categories against Cisco Umbrella Investigate database.",
+            "Scan file hashes (MD5, SHA-1, SHA-256) to identify malware families and threat signatures.",
+            "Automatically log lookups into the central system database for audit compliance."
+        ],
+        colors: [
+            { name: "Green (Benign / Clean)", meaning: "Indicator is determined to be clean with a risk index close to 0.", rgb: "#22c55e" },
+            { name: "Amber (Suspicious)", meaning: "Threat assessment identified potential indicators of compromise (risk index 30-70).", rgb: "#eab308" },
+            { name: "Red (Malicious)", meaning: "High-severity threat indicators, active ransomware, or flagged C2/malware categories (risk index 70-100).", rgb: "#ef4444" },
+            { name: "Blue (Internal)", meaning: "Private RFC 1918 IP address. Bypasses external reputation checks.", rgb: "#3b82f6" }
+        ]
     }
 };
 
