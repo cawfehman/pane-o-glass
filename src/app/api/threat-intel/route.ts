@@ -130,7 +130,9 @@ export async function GET(req: NextRequest) {
                     status: umbrellaRep.status === -1 ? "malicious" : umbrellaRep.status === 1 ? "clean" : "suspicious",
                     score: umbrellaRep.status === -1 ? 90 : umbrellaRep.status === 1 ? 0 : 45,
                     categories: umbrellaRep.categories,
-                    securityCategories: umbrellaRep.securityCategories
+                    securityCategories: umbrellaRep.securityCategories,
+                    source: umbrellaRep.source,
+                    error: umbrellaRep.error
                 }
             };
         } else if (type === "hash") {

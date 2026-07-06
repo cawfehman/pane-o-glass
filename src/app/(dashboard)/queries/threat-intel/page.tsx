@@ -200,6 +200,17 @@ export default function ThreatIntelPage() {
                                         </h3>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                                                <span style={{ color: 'var(--text-muted)' }}>Source Feed:</span>
+                                                <span style={{ fontWeight: 600, color: result.details.reputation.source === 'live' ? '#22c55e' : '#eab308' }}>
+                                                    {result.details.reputation.source === 'live' ? 'Umbrella API (Live)' : 'Heuristic Engine (Offline)'}
+                                                </span>
+                                            </div>
+                                            {result.details.reputation.error && (
+                                                <div style={{ fontSize: '0.75rem', color: '#ef4444', padding: '6px 10px', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '4px', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
+                                                    ⚠️ {result.details.reputation.error}
+                                                </div>
+                                            )}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
                                                 <span style={{ color: 'var(--text-muted)' }}>Security Status:</span>
                                                 <span style={{ fontWeight: 600, color: result.details.reputation.status === 'malicious' ? '#ef4444' : '#22c55e' }}>
                                                     {result.details.reputation.status === 'malicious' ? 'Flagged Malicious' : 'Clean Classification'}
