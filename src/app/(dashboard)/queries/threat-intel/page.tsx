@@ -164,21 +164,75 @@ export default function ThreatIntelPage() {
                                         </h3>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                                <span style={{ color: 'var(--text-muted)' }}>ASN Provider:</span>
+                                                <span style={{ color: 'var(--text-muted)' }}>ISP/Carrier (Base):</span>
                                                 <span style={{ fontWeight: 600 }}>{result.details.geo.asn ? `ASN${result.details.geo.asn} (${result.details.geo.as_name || 'Unknown'})` : 'N/A'}</span>
                                             </div>
+                                            {result.details.iplocate?.org && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>Enriched Org:</span>
+                                                    <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>{result.details.iplocate.org}</span>
+                                                </div>
+                                            )}
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                                <span style={{ color: 'var(--text-muted)' }}>Country Origin:</span>
-                                                <span style={{ fontWeight: 600 }}>{result.details.geo.country || 'N/A'} ({result.details.geo.country_code || 'N/A'})</span>
+                                                <span style={{ color: 'var(--text-muted)' }}>Location Origin:</span>
+                                                <span style={{ fontWeight: 600 }}>
+                                                    {result.details.iplocate?.city && result.details.iplocate?.subdivision 
+                                                        ? `${result.details.iplocate.city}, ${result.details.iplocate.subdivision}, ${result.details.iplocate.country_code}`
+                                                        : `${result.details.geo.country || 'N/A'} (${result.details.geo.country_code || 'N/A'})`
+                                                    }
+                                                </span>
                                             </div>
+                                            {result.details.iplocate?.time_zone && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>Local Timezone:</span>
+                                                    <span style={{ fontWeight: 600 }}>{result.details.iplocate.time_zone}</span>
+                                                </div>
+                                            )}
+                                            {result.details.iplocate?.latitude != null && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>Exact Coordinates:</span>
+                                                    <span style={{ fontWeight: 600 }}>
+                                                        <a 
+                                                            href={`https://www.google.com/maps?q=${result.details.iplocate.latitude},${result.details.iplocate.longitude}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            style={{ color: 'var(--accent-primary)', textDecoration: 'none', borderBottom: '1px dotted var(--accent-primary)' }}
+                                                        >
+                                                            {result.details.iplocate.latitude.toFixed(4)}, {result.details.iplocate.longitude.toFixed(4)}
+                                                        </a>
+                                                    </span>
+                                                </div>
+                                            )}
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
                                                 <span style={{ color: 'var(--text-muted)' }}>Domain Space:</span>
                                                 <span style={{ fontWeight: 600 }}>{result.details.geo.as_domain || 'N/A'}</span>
                                             </div>
                                         </div>
+
+                                        {result.details.iplocate && (
+                                            <details style={{ marginTop: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                                                <summary style={{ cursor: 'pointer', fontSize: '0.8rem', color: 'var(--accent-primary)', fontWeight: 600, outline: 'none' }}>
+                                                    Inspect Raw Geo JSON Payload
+                                                </summary>
+                                                <pre style={{
+                                                    background: 'rgba(0, 0, 0, 0.35)',
+                                                    padding: '10px',
+                                                    borderRadius: '6px',
+                                                    fontSize: '0.72rem',
+                                                    overflowX: 'auto',
+                                                    marginTop: '8px',
+                                                    fontFamily: 'monospace',
+                                                    color: 'var(--text-secondary)',
+                                                    border: '1px solid var(--border-color)',
+                                                    textAlign: 'left'
+                                                }}>
+                                                    {JSON.stringify(result.details.iplocate, null, 2)}
+                                                </pre>
+                                            </details>
+                                        )}
                                     </div>
                                     {!result.details.isPrivate && (
-                                        <div style={{ marginTop: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '12px', textAlign: 'right' }}>
+                                        <div style={{ marginTop: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '12px', display: 'flex', justifyContent: 'flex-end' }}>
                                             <a 
                                                 href={`https://investigate.umbrella.com/ip-view/${encodeURIComponent(result.query)}`}
                                                 target="_blank" 

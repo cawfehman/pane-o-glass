@@ -30,6 +30,7 @@ interface VpnWorldMapProps {
     recentEvents: VpnEvent[];
     securityScope: string;
     setSecurityScope: (val: string) => void;
+    ipCache?: Record<string, any>;
 }
 
 interface GeoJsonFeature {
@@ -97,7 +98,7 @@ const countryCoordinates: Record<string, { lat: number; lng: number; name: strin
 
 const HQ_COORDS = { lat: 39.9526, lng: -75.1652, name: "Corporate Gateways" };
 
-export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents = [], securityScope, setSecurityScope }: VpnWorldMapProps) {
+export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents = [], securityScope, setSecurityScope, ipCache = {} }: VpnWorldMapProps) {
     const [zoom, setZoom] = useState<number>(1);
     const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -195,46 +196,78 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                 }
             }
 
-            // Group active connections by country coordinates
-            const grouped: Record<string, { countryCode: string; name: string; coords: { x: number; y: number }; count: number; events: VpnEvent[] }> = {};
+            // Group active connections by location (IP/City-level)
+            const grouped: Record<string, { key: string; countryCode: string; name: string; coords: { x: number; y: number }; count: number; events: VpnEvent[]; cityName?: string | null; stateName?: string | null; org?: string }> = {};
             activeTunnels.forEach(evt => {
-                const code = evt.ipCountryCode?.toUpperCase();
-                if (!code || !countryCoordinates[code]) return;
+                const code = evt.ipCountryCode?.toUpperCase() || "US";
+                const ip = evt.sourceIp;
+                const cacheEntry = ipCache && ipCache[ip];
+                
+                // Group key is the IP if cached (to show city beacon), or country code if not cached
+                const groupKey = cacheEntry ? ip : code;
 
-                if (!grouped[code]) {
-                    grouped[code] = {
+                if (!grouped[groupKey]) {
+                    const coords = cacheEntry && cacheEntry.latitude != null
+                        ? project(cacheEntry.latitude, cacheEntry.longitude)
+                        : (countryCoordinates[code] ? project(countryCoordinates[code].lat, countryCoordinates[code].lng) : project(37.0902, -95.7129));
+                    
+                    const cityName = cacheEntry?.city || null;
+                    const stateName = cacheEntry?.subdivision || null;
+                    const org = cacheEntry?.details?.org || evt.ipAsName || "N/A";
+
+                    grouped[groupKey] = {
+                        key: groupKey,
                         countryCode: code,
-                        name: evt.ipCountry || countryCoordinates[code].name,
-                        coords: project(countryCoordinates[code].lat, countryCoordinates[code].lng),
+                        name: cityName && stateName ? `${cityName}, ${stateName}` : (evt.ipCountry || countryCoordinates[code]?.name || "Unknown Location"),
+                        coords,
                         count: 0,
-                        events: []
+                        events: [],
+                        cityName,
+                        stateName,
+                        org
                     };
                 }
-                grouped[code].count++;
-                if (grouped[code].events.length < 5) grouped[code].events.push(evt);
+                grouped[groupKey].count++;
+                if (grouped[groupKey].events.length < 5) grouped[groupKey].events.push(evt);
             });
             return Object.values(grouped);
 
         } else if (mapFilter === "completed") {
             // Completed connections = DISCONNECT events in current window
             const completedEvents = sortedEvents.filter(e => e.status === "DISCONNECT");
-            const grouped: Record<string, { countryCode: string; name: string; coords: { x: number; y: number }; count: number; events: VpnEvent[] }> = {};
+            const grouped: Record<string, { key: string; countryCode: string; name: string; coords: { x: number; y: number }; count: number; events: VpnEvent[]; cityName?: string | null; stateName?: string | null; org?: string }> = {};
             
             for (const evt of completedEvents) {
-                const code = evt.ipCountryCode?.toUpperCase();
-                if (!code || !countryCoordinates[code]) continue;
+                const code = evt.ipCountryCode?.toUpperCase() || "US";
+                const ip = evt.sourceIp;
+                const cacheEntry = ipCache && ipCache[ip];
+                
+                // Group key is the IP if cached (to show city beacon), or country code if not cached
+                const groupKey = cacheEntry ? ip : code;
 
-                if (!grouped[code]) {
-                    grouped[code] = {
+                if (!grouped[groupKey]) {
+                    const coords = cacheEntry && cacheEntry.latitude != null
+                        ? project(cacheEntry.latitude, cacheEntry.longitude)
+                        : (countryCoordinates[code] ? project(countryCoordinates[code].lat, countryCoordinates[code].lng) : project(37.0902, -95.7129));
+                    
+                    const cityName = cacheEntry?.city || null;
+                    const stateName = cacheEntry?.subdivision || null;
+                    const org = cacheEntry?.details?.org || evt.ipAsName || "N/A";
+
+                    grouped[groupKey] = {
+                        key: groupKey,
                         countryCode: code,
-                        name: evt.ipCountry || countryCoordinates[code].name,
-                        coords: project(countryCoordinates[code].lat, countryCoordinates[code].lng),
+                        name: cityName && stateName ? `${cityName}, ${stateName}` : (evt.ipCountry || countryCoordinates[code]?.name || "Unknown Location"),
+                        coords,
                         count: 0,
-                        events: []
+                        events: [],
+                        cityName,
+                        stateName,
+                        org
                     };
                 }
-                grouped[code].count++;
-                if (grouped[code].events.length < 5) grouped[code].events.push(evt);
+                grouped[groupKey].count++;
+                if (grouped[groupKey].events.length < 5) grouped[groupKey].events.push(evt);
             }
             return Object.values(grouped);
 
@@ -260,26 +293,41 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                 usernames: Set<string>;
                 asnName: string;
                 lastEvent: VpnEvent;
+                cityName?: string | null;
+                stateName?: string | null;
+                org?: string;
+                timezone?: string | null;
             }> = {};
 
             for (const evt of failures) {
                 const ip = evt.sourceIp;
-                const code = evt.ipCountryCode?.toUpperCase() || "US"; // default focus
-                const coords = countryCoordinates[code] 
-                    ? project(countryCoordinates[code].lat, countryCoordinates[code].lng)
-                    : project(37.0902, -95.7129); // US default center coordinate
+                const code = evt.ipCountryCode?.toUpperCase() || "US";
+                const cacheEntry = ipCache && ipCache[ip];
+
+                const coords = cacheEntry && cacheEntry.latitude != null
+                    ? project(cacheEntry.latitude, cacheEntry.longitude)
+                    : (countryCoordinates[code] ? project(countryCoordinates[code].lat, countryCoordinates[code].lng) : project(37.0902, -95.7129));
 
                 if (!ipGrouped[ip]) {
+                    const cityName = cacheEntry?.city || null;
+                    const stateName = cacheEntry?.subdivision || null;
+                    const org = cacheEntry?.details?.org || evt.ipAsName || "N/A";
+                    const timezone = cacheEntry?.details?.time_zone || null;
+
                     ipGrouped[ip] = {
                         ip,
                         countryCode: code,
-                        countryName: evt.ipCountry || countryCoordinates[code]?.name || "Unknown Location",
+                        countryName: cityName && stateName ? `${cityName}, ${stateName}` : (evt.ipCountry || countryCoordinates[code]?.name || "Unknown Location"),
                         coords,
                         count: 0,
                         reasons: new Set(),
                         usernames: new Set(),
-                        asnName: evt.ipAsName || "N/A",
-                        lastEvent: evt
+                        asnName: org,
+                        lastEvent: evt,
+                        cityName,
+                        stateName,
+                        org,
+                        timezone
                     };
                 }
                 ipGrouped[ip].count++;
@@ -657,16 +705,23 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                         </span>
                                     </div>
                                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px', display: 'block' }}>
-                                        📍 {hoveredPoint.countryName} ({hoveredPoint.countryCode})
+                                        📍 {hoveredPoint.cityName && hoveredPoint.stateName ? `${hoveredPoint.cityName}, ${hoveredPoint.stateName}, ${hoveredPoint.countryCode}` : `${hoveredPoint.countryName} (${hoveredPoint.countryCode})`}
                                     </span>
                                 </div>
                             ) : (
                                 /* Country-based Header (Active / Completed) */
-                                <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>{hoveredPoint.name}</span>
-                                    <span style={{ fontSize: '0.75rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', border: '1px solid rgba(99,102,241,0.2)' }}>
-                                        {hoveredPoint.count} Node{hoveredPoint.count === 1 ? "" : "s"}
-                                    </span>
+                                <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>{hoveredPoint.name}</span>
+                                        <span style={{ fontSize: '0.75rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                            {hoveredPoint.count} Node{hoveredPoint.count === 1 ? "" : "s"}
+                                        </span>
+                                    </div>
+                                    {hoveredPoint.org && (
+                                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2.5px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={hoveredPoint.org}>
+                                            🏢 {hoveredPoint.org}
+                                        </span>
+                                    )}
                                 </div>
                             )}
 
@@ -674,11 +729,19 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                             {hoveredPoint.ip && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ color: 'var(--text-muted)' }}>ISP/ASN:</span>
-                                        <span style={{ color: 'var(--text-secondary)', fontWeight: 600, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        <span style={{ color: 'var(--text-muted)' }}>ISP/Org:</span>
+                                        <span style={{ color: 'var(--text-secondary)', fontWeight: 600, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={hoveredPoint.asnName}>
                                             {hoveredPoint.asnName}
                                         </span>
                                     </div>
+                                    {hoveredPoint.timezone && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span style={{ color: 'var(--text-muted)' }}>Timezone:</span>
+                                            <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                                {hoveredPoint.timezone}
+                                            </span>
+                                        </div>
+                                    )}
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
                                         <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Targeted Accounts:</span>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>

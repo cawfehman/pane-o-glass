@@ -88,6 +88,7 @@ export default function VpnTroubleshootingPage() {
     // Active Directory user enrichment maps
     const [adUsers, setAdUsers] = useState<Record<string, any>>({});
     const [hoveredUser, setHoveredUser] = useState<string | null>(null);
+    const [ipCache, setIpCache] = useState<Record<string, any>>({});
     const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
 
     useEffect(() => {
@@ -117,6 +118,9 @@ export default function VpnTroubleshootingPage() {
             setAverageWeekendUsers(data.averageWeekendUsers || 0);
             setRecentEvents(data.recentEvents || []);
             setLastSync(data.lastSync || null);
+            if (data.ipCache) {
+                setIpCache(data.ipCache);
+            }
             if (data.adUsers) {
                 setAdUsers(prev => ({ ...prev, ...data.adUsers }));
             }
@@ -1787,6 +1791,7 @@ export default function VpnTroubleshootingPage() {
                     recentEvents={recentEvents}
                     securityScope={securityScope}
                     setSecurityScope={setSecurityScope}
+                    ipCache={ipCache}
                 />
             )}
 

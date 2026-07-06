@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getIpInfoLite } from "@/lib/ipinfo";
 import { getUserDetails } from "@/lib/ldap";
+import { enrichIp, isStandardUsIsp } from "@/lib/iplocate";
 import axios from "axios";
 import https from "https";
 import { auth } from "@/lib/auth";
@@ -319,6 +320,27 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
                             `Security Alert: Failed VPN login attempt from high-risk IP ${sourceIp} (${ipInfo.country || 'Unknown'}). Threat score: ${score}/100.`,
                             "SYSTEM"
                         );
+                    }
+                }
+
+                // Selective iplocate.io enrichment for US targets
+                if (ipInfo && ipInfo.country_code === "US") {
+                    const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
+                    const cleanUname = username?.toLowerCase().endsWith("@cooperhealth.edu") ? username.slice(0, -17) : username;
+                    const isValidUser = nameNameRegex.test(cleanUname);
+                    const isNonStandardIsp = !isStandardUsIsp(ipInfo.as_name);
+
+                    const shouldEnrich = 
+                        status === "SUCCESS" || 
+                        (status === "FAILURE" && isValidUser) || 
+                        isNonStandardIsp;
+
+                    if (shouldEnrich) {
+                        try {
+                            await enrichIp(sourceIp, false); // false = automated sync
+                        } catch (e) {
+                            console.error("[Sync] iplocate enrichment error:", e);
+                        }
                     }
                 }
             } catch (enrichError) {
@@ -929,10 +951,27 @@ export async function GET(req: NextRequest) {
             }
         }));
 
+        // Retrieve and format the complete IP Geolocation cache
+        const caches = await prisma.ipLookupCache.findMany();
+        const ipCache: Record<string, any> = {};
+        for (const entry of caches) {
+            try {
+                ipCache[entry.ip] = {
+                    latitude: entry.latitude,
+                    longitude: entry.longitude,
+                    city: entry.city,
+                    subdivision: entry.subdivision,
+                    countryCode: entry.countryCode,
+                    details: JSON.parse(entry.rawJson)
+                };
+            } catch (e) {}
+        }
+
         if (isSearchMode) {
             return NextResponse.json({
                 results,
-                adUsers
+                adUsers,
+                ipCache
             });
         }
 
@@ -952,7 +991,8 @@ export async function GET(req: NextRequest) {
             topUploadEvents,
             topDownloadEvents,
             lastSync: lastSyncStatus,
-            adUsers
+            adUsers,
+            ipCache
         });
 
     } catch (error: any) {

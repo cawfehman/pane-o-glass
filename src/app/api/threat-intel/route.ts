@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { getIpInfoLite } from "@/lib/ipinfo";
+import { enrichIp } from "@/lib/iplocate";
 import { lookupDomainUmbrella } from "@/lib/umbrella";
 import dns from "dns";
 
@@ -95,9 +96,19 @@ export async function GET(req: NextRequest) {
                 factors.push("No history of abuse found in commercial feeds");
             }
 
+            let iplocateGeo = null;
+            if (!isPrivate) {
+                try {
+                    iplocateGeo = await enrichIp(query, true); // true = ad-hoc search
+                } catch (e) {
+                    console.error("Ad-hoc iplocate lookup failed:", e);
+                }
+            }
+
             result.details = {
                 geo: geoData || { ip: query, error: "Unable to retrieve geolocation" },
                 isPrivate,
+                iplocate: iplocateGeo,
                 reputation: {
                     status,
                     score,
