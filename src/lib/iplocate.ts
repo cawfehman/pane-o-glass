@@ -154,7 +154,7 @@ export async function enrichIp(ip: string, isAdHoc: boolean = false): Promise<an
             console.log(`[iplocate] Serving simulated coordinates for test IP: ${ip}`);
         } else {
             // Production API Call
-            const url = `https://api.iplocate.io/${ip}${apiKey ? `?apikey=${apiKey}` : ""}`;
+            const url = `https://iplocate.io/api/lookup/${ip}${apiKey ? `?apikey=${apiKey}` : ""}`;
             
             // Sequential delay to prevent rate limit (100 req/s) if called rapidly
             await new Promise(resolve => setTimeout(resolve, 20));
