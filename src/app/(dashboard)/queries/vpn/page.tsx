@@ -7,6 +7,7 @@ import {
     Activity, TrendingUp, Calendar, Users
 } from "lucide-react";
 import { ToolHelp } from "@/components/ToolHelp";
+import { VpnWorldMap } from "@/components/VpnWorldMap";
 import { useSession } from "next-auth/react";
 
 export default function VpnTroubleshootingPage() {
@@ -24,7 +25,7 @@ export default function VpnTroubleshootingPage() {
     const [syncRange, setSyncRange] = useState<number>(2100);
     const [syncStatus, setSyncStatus] = useState("Syncing...");
 
-    const [activeTab, setActiveTab] = useState<"feed" | "security" | "bandwidth">("feed");
+    const [activeTab, setActiveTab] = useState<"feed" | "security" | "bandwidth" | "map">("feed");
     const [sortKey, setSortKey] = useState<string>("createdAt");
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
     const [bandwidthScope, setBandwidthScope] = useState<string>("last30days");
@@ -90,7 +91,7 @@ export default function VpnTroubleshootingPage() {
     const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
 
     useEffect(() => {
-        if (isDesktop && (activeTab === "security" || activeTab === "bandwidth")) {
+        if (isDesktop && (activeTab === "security" || activeTab === "bandwidth" || activeTab === "map")) {
             setActiveTab("feed");
         }
     }, [isDesktop, activeTab]);
@@ -667,6 +668,22 @@ export default function VpnTroubleshootingPage() {
                             }}
                         >
                             Bandwidth Analytics
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab("map")}
+                            style={{
+                                padding: '10px 20px',
+                                borderRadius: '8px',
+                                fontSize: '0.9rem',
+                                fontWeight: 600,
+                                background: activeTab === "map" ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                                color: activeTab === "map" ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                                border: activeTab === "map" ? '1px solid rgba(99, 102, 241, 0.3)' : '1px solid transparent',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            Connection Map
                         </button>
                     </>
                 )}
@@ -1761,6 +1778,14 @@ export default function VpnTroubleshootingPage() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {activeTab === "map" && !isDesktop && (
+                <VpnWorldMap 
+                    successfulIps={successfulIps}
+                    failedIps={failedIps}
+                    recentEvents={recentEvents}
+                />
             )}
 
             {/* Global viewport-fixed tooltip to avoid container clipping or screen edge overflow */}
