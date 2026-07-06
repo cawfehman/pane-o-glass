@@ -84,7 +84,7 @@ const countryCoordinates: Record<string, { lat: number; lng: number; name: strin
 // Corporate HQ Location (Wilmington / Philadelphia corporate gateway area)
 const HQ_COORDS = { lat: 39.9526, lng: -75.1652, name: "Corporate Gateways" };
 
-export function VpnWorldMap({ successfulIps, failedIps, recentEvents }: VpnWorldMapProps) {
+export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents = [] }: VpnWorldMapProps) {
     const [zoom, setZoom] = useState<number>(1);
     const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -114,7 +114,11 @@ export function VpnWorldMap({ successfulIps, failedIps, recentEvents }: VpnWorld
         }> = {};
 
         // Merge and process events from props
-        const allEvents = [...recentEvents, ...successfulIps, ...failedIps];
+        const allEvents = [
+            ...(recentEvents || []),
+            ...(successfulIps || []),
+            ...(failedIps || [])
+        ];
 
         for (const evt of allEvents) {
             const countryCode = evt.ipCountryCode?.toUpperCase();
@@ -442,7 +446,7 @@ export function VpnWorldMap({ successfulIps, failedIps, recentEvents }: VpnWorld
             </div>
 
             {/* Pulsing Arc Animations Stylesheet inject */}
-            <style jsx global>{`
+            <style dangerouslySetInnerHTML={{ __html: `
                 @keyframes pulseFlow {
                     0% {
                         stroke-dashoffset: 200;
@@ -451,7 +455,7 @@ export function VpnWorldMap({ successfulIps, failedIps, recentEvents }: VpnWorld
                         stroke-dashoffset: -200;
                     }
                 }
-            `}</style>
+            ` }} />
         </div>
     );
 }
