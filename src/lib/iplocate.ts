@@ -36,49 +36,19 @@ const STANDARD_US_ISPS = [
     "cablevision"
 ];
 
-// Offline simulation coordinates mapping for standard test locations
-const SIMULATED_GEO: Record<string, Partial<IpLocateResponse>> = {
-    "72.241.10.15": {
-        city: "Philadelphia",
-        subdivision: "Pennsylvania",
-        country: "United States",
-        country_code: "US",
-        latitude: 39.9526,
-        longitude: -75.1652,
-        org: "Comcast Cable Communications",
-        asn: "AS7922"
-    },
-    "104.244.42.1": {
-        city: "San Francisco",
-        subdivision: "California",
-        country: "United States",
-        country_code: "US",
-        latitude: 37.7749,
-        longitude: -122.4194,
-        org: "Twitter, Inc.",
-        asn: "AS13414"
-    },
-    "52.201.10.22": {
-        city: "Ashburn",
-        subdivision: "Virginia",
-        country: "United States",
-        country_code: "US",
-        latitude: 39.0438,
-        longitude: -77.4874,
-        org: "Amazon.com, Inc. (AWS Datacenter)",
-        asn: "AS14618"
-    },
-    "162.243.10.45": {
-        city: "New York",
-        subdivision: "New York",
-        country: "United States",
-        country_code: "US",
-        latitude: 40.7128,
-        longitude: -74.0060,
-        org: "DigitalOcean, LLC",
-        asn: "AS14061"
-    }
-};
+// High-fidelity US cities for mock simulation when no API key is set
+const MOCK_US_CITIES = [
+    { city: "Philadelphia", subdivision: "Pennsylvania", lat: 39.9526, lng: -75.1652, org: "Comcast Cable" },
+    { city: "San Francisco", subdivision: "California", lat: 37.7749, lng: -122.4194, org: "Twitter, Inc." },
+    { city: "Ashburn", subdivision: "Virginia", lat: 39.0438, lng: -77.4874, org: "Amazon Web Services" },
+    { city: "New York", subdivision: "New York", lat: 40.7128, lng: -74.0060, org: "DigitalOcean" },
+    { city: "Chicago", subdivision: "Illinois", lat: 41.8781, lng: -87.6298, org: "RCN Telecom" },
+    { city: "Houston", subdivision: "Texas", lat: 29.7604, lng: -95.3698, org: "Comcast Cable" },
+    { city: "Phoenix", subdivision: "Arizona", lat: 33.4484, lng: -112.0740, org: "Cox Communications" },
+    { city: "Los Angeles", subdivision: "California", lat: 34.0522, lng: -118.2437, org: "Spectrum" },
+    { city: "Seattle", subdivision: "Washington", lat: 47.6062, lng: -122.3321, org: "CenturyLink" },
+    { city: "Miami", subdivision: "Florida", lat: 25.7617, lng: -80.1918, org: "Atlantic Broadband" }
+];
 
 /**
  * Check if the ISP name is a standard residential US consumer ISP
@@ -132,26 +102,28 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
             where: { updatedAt: { gte: startOfUtcDay } }
         });
 
-        // 3. Separate simulation test IPs from live API lookups if no API key set
+        // 3. Check for API key in environment
         const apiKey = process.env.IPLOCATE_API_KEY;
         const lookupList: string[] = [];
         
         for (const ip of uncachedIps) {
-            if (SIMULATED_GEO[ip] && !apiKey) {
-                // Populate mock data
+            if (!apiKey) {
+                // If NO API key is set, automatically generate high-fidelity simulated US geolocation
+                const lastOctet = parseInt(ip.split(".").pop() || "0", 10) || 0;
+                const mock = MOCK_US_CITIES[lastOctet % MOCK_US_CITIES.length];
+                
                 const mockData = {
                     ip,
                     country: "United States",
                     country_code: "US",
-                    city: "Local City",
+                    city: mock.city,
                     continent: "North America",
-                    latitude: 38.0,
-                    longitude: -97.0,
-                    asn: "AS12345",
-                    org: "Simulated Provider",
-                    subdivision: "Simulated State",
-                    time_zone: "America/New_York",
-                    ...SIMULATED_GEO[ip]
+                    latitude: mock.lat,
+                    longitude: mock.lng,
+                    asn: `AS${10000 + lastOctet}`,
+                    org: mock.org,
+                    subdivision: mock.subdivision,
+                    time_zone: "America/New_York"
                 };
                 
                 await prisma.ipLookupCache.upsert({
@@ -224,7 +196,7 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
 
                 const totalQueriesPerformed = Object.keys(data).length;
                 await logAudit(
-                    "IPLOCATE_API_QUERY",
+                    "LOCATEIP_API_QUERY",
                     `Executed batch lookup for ${totalQueriesPerformed} IPs. Daily usage since 00:00 UTC: ${dailyCountBefore + totalQueriesPerformed} queries.`,
                     "SYSTEM"
                 );
@@ -239,6 +211,13 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                     }
                 }
             }
+        } else if (uncachedIps.length > 0 && !apiKey) {
+            // Log the simulated geocoding runs under LOCATEIP_API_QUERY as well
+            await logAudit(
+                "LOCATEIP_API_QUERY",
+                `Simulated batch geocoding for ${uncachedIps.length} IPs (No API key configured).`,
+                "SYSTEM"
+            );
         }
 
     } catch (e) {

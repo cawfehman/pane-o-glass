@@ -20,9 +20,9 @@ export default async function AuditLogsPage(props: {
 
     const whereClause: any = {};
     if (activeTab === 'quota') {
-        whereClause.action = { in: ['IPLOCATE_API_QUERY', 'IPLOCATE_LIMIT_FALLBACK'] };
+        whereClause.action = { in: ['LOCATEIP_API_QUERY', 'LOCATEIP_LIMIT_FALLBACK'] };
     } else {
-        whereClause.action = { notIn: ['IPLOCATE_API_QUERY', 'IPLOCATE_LIMIT_FALLBACK'] };
+        whereClause.action = { notIn: ['LOCATEIP_API_QUERY', 'LOCATEIP_LIMIT_FALLBACK'] };
     }
 
     if (actionFilter) {
@@ -84,7 +84,7 @@ export default async function AuditLogsPage(props: {
                         borderColor: activeTab === 'quota' ? 'var(--border-color)' : 'transparent'
                     }}
                 >
-                    IPLocate Quota Debug Logs
+                    LocateIP Quota Debug Logs
                 </Link>
             </div>
 

@@ -614,7 +614,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                             onWheel={handleWheel}
                             style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
                         >
-                            <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`} style={{ transformOrigin: '450px 250px', transition: isDragging ? 'none' : 'transform 0.15s ease-out' }}>
+                            <g transform={`translate(${450 + pan.x}, ${250 + pan.y}) scale(${zoom}) translate(-450, -250)`} style={{ transition: isDragging ? 'none' : 'transform 0.15s ease-out' }}>
                                 
                                 <rect width="900" height="500" fill="#090a0f" />
 
