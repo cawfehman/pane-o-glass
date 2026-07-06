@@ -30,6 +30,18 @@ interface VpnWorldMapProps {
     recentEvents: VpnEvent[];
 }
 
+interface GeoJsonFeature {
+    type: "Feature";
+    properties: {
+        name: string;
+        [key: string]: any;
+    };
+    geometry: {
+        type: "Polygon" | "MultiPolygon";
+        coordinates: any[];
+    };
+}
+
 // Center points mapping for common country codes (Equirectangular Projection)
 const countryCoordinates: Record<string, { lat: number; lng: number; name: string }> = {
     US: { lat: 37.0902, lng: -95.7129, name: "United States" },
@@ -91,9 +103,34 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
     const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
     const [hoveredPoint, setHoveredPoint] = useState<any | null>(null);
     const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+    const [geoJson, setGeoJson] = useState<any>(null);
+    const [loadingMap, setLoadingMap] = useState<boolean>(true);
     const svgRef = useRef<SVGSVGElement | null>(null);
 
-    // Mercator/Equirectangular linear projection to canvas (width: 900, height: 500)
+    // Fetch high-quality simplified world GeoJSON on mount
+    useEffect(() => {
+        let active = true;
+        fetch("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson")
+            .then(res => {
+                if (res.ok) return res.json();
+                throw new Error("Failed to load global map geometry.");
+            })
+            .then(data => {
+                if (active) {
+                    setGeoJson(data);
+                    setLoadingMap(false);
+                }
+            })
+            .catch(err => {
+                console.error("GeoJSON load error:", err);
+                if (active) setLoadingMap(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    // Equirectangular projection coordinates calculation
     const project = (lat: number, lng: number) => {
         const x = 450 + (lng * 400) / 180;
         const y = 250 - (lat * 200) / 90;
@@ -101,6 +138,28 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
     };
 
     const hqPos = project(HQ_COORDS.lat, HQ_COORDS.lng);
+
+    // Calculate features SVG path
+    const getFeaturePath = (feature: GeoJsonFeature) => {
+        const { type, coordinates } = feature.geometry;
+        const formatCoord = (coord: [number, number]) => {
+            const pt = project(coord[1], coord[0]);
+            return `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
+        };
+
+        if (type === "Polygon") {
+            return coordinates
+                .map(ring => "M " + ring.map(formatCoord).join(" L ") + " Z")
+                .join(" ");
+        } else if (type === "MultiPolygon") {
+            return coordinates
+                .map(poly =>
+                    poly.map((ring: any[]) => "M " + ring.map(formatCoord).join(" L ") + " Z").join(" ")
+                )
+                .join(" ");
+        }
+        return "";
+    };
 
     // Process connection events and match them to map locations
     const plotConnections = () => {
@@ -113,7 +172,6 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
             recentEvents: VpnEvent[];
         }> = {};
 
-        // Merge and process events from props
         const allEvents = [
             ...(recentEvents || []),
             ...(successfulIps || []),
@@ -144,7 +202,6 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                 uniqueConnections[countryCode].failCount++;
             }
 
-            // Keep up to 3 recent events for tooltip
             if (uniqueConnections[countryCode].recentEvents.length < 3) {
                 uniqueConnections[countryCode].recentEvents.push(evt);
             }
@@ -186,20 +243,17 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
         setPan({ x: 0, y: 0 });
     };
 
-    // Calculate dynamic bezier arc paths between HQ and destination
     const calculateArcPath = (startX: number, startY: number, endX: number, endY: number) => {
         const dx = endX - startX;
         const dy = endY - startY;
         const dr = Math.sqrt(dx * dx + dy * dy);
         
-        // Midpoint and control offset for beautiful curvature
         const midX = (startX + endX) / 2;
         const midY = (startY + endY) / 2;
         
-        // Offset perpendicular to the chord
         const angle = Math.atan2(dy, dx);
         const perpAngle = angle - Math.PI / 2;
-        const offset = Math.min(dr * 0.25, 120); // curve height factor
+        const offset = Math.min(dr * 0.25, 120);
         
         const ctrlX = midX + Math.cos(perpAngle) * offset;
         const ctrlY = midY + Math.sin(perpAngle) * offset;
@@ -218,11 +272,10 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                             <Globe size={18} color="var(--accent-primary)" /> VPN Connection Map (Global Distribution)
                         </h3>
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                            Interactive live tracking of VPN sessions resolved from Graylog. Drag to pan, scroll or click controls to zoom.
+                            Live GIS telemetry map visualizing active connections. Drag to pan, use scroll wheel or controls to zoom.
                         </p>
                     </div>
 
-                    {/* Quick map statistics */}
                     <div style={{ display: 'flex', gap: '20px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
@@ -249,138 +302,131 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                 </div>
 
                 {/* Map Canvas Wrapper */}
-                <div style={{ flex: 1, width: '100%', position: 'relative', overflow: 'hidden', background: 'rgba(0,0,0,0.15)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                    <svg
-                        ref={svgRef}
-                        width="100%"
-                        height="100%"
-                        viewBox="0 0 900 500"
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
-                        onMouseLeave={handleMouseUp}
-                        style={{
-                            cursor: isDragging ? 'grabbing' : 'grab',
-                            background: '#090a0f',
-                            userSelect: 'none'
-                        }}
-                    >
-                        {/* Interactive Pannable/Zoomable Group */}
-                        <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`} style={{ transformOrigin: '450px 250px', transition: isDragging ? 'none' : 'transform 0.15s ease-out' }}>
-                            
-                            {/* Grid Dots Pattern overlay (Tactical Threat map look) */}
-                            <defs>
-                                <pattern id="mapGrid" width="15" height="15" patternUnits="userSpaceOnUse">
-                                    <circle cx="2.5" cy="2.5" r="0.8" fill="rgba(255,255,255,0.03)" />
-                                </pattern>
-                            </defs>
-                            <rect width="900" height="500" fill="url(#mapGrid)" />
-
-                            {/* Stylized Abstract Continent Outline Paths */}
-                            <g fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-                                {/* North America */}
-                                <path d="M 80,60 L 150,55 L 260,110 L 220,180 L 180,240 L 160,260 L 150,220 L 135,170 L 115,165 L 112,145 L 80,130 L 75,100 Z" />
-                                {/* Greenland */}
-                                <path d="M 250,30 L 300,40 L 280,85 L 240,65 Z" fill="rgba(255,255,255,0.02)" />
-                                {/* South America */}
-                                <path d="M 180,250 L 220,270 L 270,300 L 280,340 L 260,420 L 240,480 L 228,490 L 222,460 L 210,400 L 195,310 L 175,270 Z" />
-                                {/* Eurasia (Europe & Asia) */}
-                                <path d="M 330,80 L 460,50 L 580,50 L 720,60 L 800,100 L 850,140 L 800,200 L 750,250 L 720,270 L 680,250 L 640,280 L 590,290 L 570,250 L 520,230 L 490,270 L 440,270 L 420,290 L 390,260 L 340,240 L 320,160 Z" />
-                                {/* Africa */}
-                                <path d="M 425,275 L 485,255 L 535,295 L 545,340 L 515,440 L 475,490 L 465,470 L 465,410 L 450,360 L 415,310 Z" />
-                                {/* Australia */}
-                                <path d="M 740,380 L 790,370 L 830,400 L 820,440 L 760,445 L 735,410 Z" />
-                                {/* Madagascar */}
-                                <path d="M 550,420 L 565,430 L 555,465 L 540,450 Z" />
-                                {/* Japan */}
-                                <path d="M 810,170 L 820,195 L 810,215 L 805,185 Z" />
-                                {/* UK & Ireland */}
-                                <path d="M 360,110 L 370,120 L 365,130 L 355,120 Z" />
-                            </g>
-
-                            {/* Dynamic Connection Bezier Curves (Arcs) */}
-                            {connections.map((c, idx) => {
-                                const hasSuccess = c.successCount > 0;
-                                const isFlagged = c.failCount > 0;
-                                const arcColor = isFlagged && !hasSuccess ? 'rgba(239, 68, 68, 0.35)' : 'rgba(99, 102, 241, 0.4)';
-                                const glowColor = isFlagged && !hasSuccess ? '#ef4444' : 'var(--accent-primary)';
+                <div style={{ flex: 1, width: '100%', position: 'relative', overflow: 'hidden', background: 'rgba(0,0,0,0.15)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {loadingMap ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', color: 'var(--text-muted)' }}>
+                            <div style={{ width: '24px', height: '24px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--accent-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                            <span style={{ fontSize: '0.9rem', letterSpacing: '0.05em' }}>LOADING GLOBAL MAP GEOMETRY...</span>
+                        </div>
+                    ) : (
+                        <svg
+                            ref={svgRef}
+                            width="100%"
+                            height="100%"
+                            viewBox="0 0 900 500"
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={handleMouseUp}
+                            onMouseLeave={handleMouseUp}
+                            style={{
+                                cursor: isDragging ? 'grabbing' : 'grab',
+                                background: '#090a0f',
+                                userSelect: 'none'
+                            }}
+                        >
+                            <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`} style={{ transformOrigin: '450px 250px', transition: isDragging ? 'none' : 'transform 0.15s ease-out' }}>
                                 
-                                return (
-                                    <g key={`arc-${idx}`}>
-                                        {/* Underlying curved path */}
-                                        <path
-                                            d={calculateArcPath(hqPos.x, hqPos.y, c.coords.x, c.coords.y)}
-                                            fill="none"
-                                            stroke={arcColor}
-                                            strokeWidth="1.5"
-                                            strokeDasharray="4 4"
-                                        />
-                                        {/* Animated Neon Pulse flow */}
-                                        <path
-                                            d={calculateArcPath(hqPos.x, hqPos.y, c.coords.x, c.coords.y)}
-                                            fill="none"
-                                            stroke={glowColor}
-                                            strokeWidth="2"
-                                            strokeDasharray="20 180"
-                                            strokeDashoffset="0"
-                                            style={{
-                                                animation: 'pulseFlow 5s linear infinite',
-                                                animationDelay: `${idx * 0.4}s`
+                                <defs>
+                                    <pattern id="mapGrid" width="15" height="15" patternUnits="userSpaceOnUse">
+                                        <circle cx="2.5" cy="2.5" r="0.8" fill="rgba(255,255,255,0.03)" />
+                                    </pattern>
+                                </defs>
+                                <rect width="900" height="500" fill="url(#mapGrid)" />
+
+                                {/* Render high-quality GIS vector shapes */}
+                                <g fill="rgba(255, 255, 255, 0.03)" stroke="rgba(255, 255, 255, 0.08)" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round">
+                                    {geoJson?.features?.map((feat: GeoJsonFeature, i: number) => (
+                                        <path 
+                                            key={`country-${i}`} 
+                                            d={getFeaturePath(feat)} 
+                                            style={{ transition: 'fill 0.2s' }}
+                                            onMouseEnter={(e) => {
+                                                (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.07)");
+                                                (e.target as SVGPathElement).setAttribute("stroke", "rgba(99, 102, 241, 0.25)");
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                (e.target as SVGPathElement).setAttribute("fill", "rgba(255, 255, 255, 0.03)");
+                                                (e.target as SVGPathElement).setAttribute("stroke", "rgba(255, 255, 255, 0.08)");
                                             }}
                                         />
-                                    </g>
-                                );
-                            })}
+                                    ))}
+                                </g>
 
-                            {/* Corporate HQ Hub Pin */}
-                            <g transform={`translate(${hqPos.x}, ${hqPos.y})`} style={{ cursor: 'pointer' }}>
-                                {/* Pulse circles */}
-                                <circle r="12" fill="rgba(99, 102, 241, 0.15)" stroke="var(--accent-primary)" strokeWidth="0.5">
-                                    <animate attributeName="r" values="5;20;5" dur="4s" repeatCount="indefinite" />
-                                    <animate attributeName="opacity" values="0.8;0;0.8" dur="4s" repeatCount="indefinite" />
-                                </circle>
-                                <circle r="4" fill="var(--accent-primary)" stroke="#fff" strokeWidth="1" />
-                            </g>
+                                {/* Dynamic Connection Bezier Curves (Arcs) */}
+                                {connections.map((c, idx) => {
+                                    const hasSuccess = c.successCount > 0;
+                                    const isFlagged = c.failCount > 0;
+                                    const arcColor = isFlagged && !hasSuccess ? 'rgba(239, 68, 68, 0.35)' : 'rgba(99, 102, 241, 0.4)';
+                                    const glowColor = isFlagged && !hasSuccess ? '#ef4444' : 'var(--accent-primary)';
+                                    
+                                    return (
+                                        <g key={`arc-${idx}`}>
+                                            <path
+                                                d={calculateArcPath(hqPos.x, hqPos.y, c.coords.x, c.coords.y)}
+                                                fill="none"
+                                                stroke={arcColor}
+                                                strokeWidth="1.5"
+                                                strokeDasharray="4 4"
+                                            />
+                                            <path
+                                                d={calculateArcPath(hqPos.x, hqPos.y, c.coords.x, c.coords.y)}
+                                                fill="none"
+                                                stroke={glowColor}
+                                                strokeWidth="2"
+                                                strokeDasharray="20 180"
+                                                strokeDashoffset="0"
+                                                style={{
+                                                    animation: 'pulseFlow 5s linear infinite',
+                                                    animationDelay: `${idx * 0.4}s`
+                                                }}
+                                            />
+                                        </g>
+                                    );
+                                })}
 
-                            {/* Connection Nodes (Circles & Interactive pulsing beacons) */}
-                            {connections.map((c, idx) => {
-                                const isMalicious = c.failCount > 0 && c.successCount === 0;
-                                const isSuspicious = c.failCount > 0 && c.successCount > 0;
-                                const color = isMalicious ? '#ef4444' : isSuspicious ? '#eab308' : '#22c55e';
-                                const glowFilter = isMalicious ? 'drop-shadow(0 0 6px #ef4444)' : isSuspicious ? 'drop-shadow(0 0 6px #eab308)' : 'drop-shadow(0 0 6px #22c55e)';
+                                {/* Corporate HQ Hub Pin */}
+                                <g transform={`translate(${hqPos.x}, ${hqPos.y})`} style={{ cursor: 'pointer' }}>
+                                    <circle r="12" fill="rgba(99, 102, 241, 0.15)" stroke="var(--accent-primary)" strokeWidth="0.5">
+                                        <animate attributeName="r" values="5;20;5" dur="4s" repeatCount="indefinite" />
+                                        <animate attributeName="opacity" values="0.8;0;0.8" dur="4s" repeatCount="indefinite" />
+                                    </circle>
+                                    <circle r="4" fill="var(--accent-primary)" stroke="#fff" strokeWidth="1" />
+                                </g>
 
-                                return (
-                                    <g
-                                        key={`point-${idx}`}
-                                        transform={`translate(${c.coords.x}, ${c.coords.y})`}
-                                        style={{ cursor: 'pointer' }}
-                                        onMouseEnter={(e) => {
-                                            const svgBox = svgRef.current?.getBoundingClientRect();
-                                            if (svgBox) {
-                                                // Position tooltip relatively to target SVG canvas element
+                                {/* Connection Nodes (Pulsing beacons) */}
+                                {connections.map((c, idx) => {
+                                    const isMalicious = c.failCount > 0 && c.successCount === 0;
+                                    const isSuspicious = c.failCount > 0 && c.successCount > 0;
+                                    const color = isMalicious ? '#ef4444' : isSuspicious ? '#eab308' : '#22c55e';
+                                    const glowFilter = isMalicious ? 'drop-shadow(0 0 6px #ef4444)' : isSuspicious ? 'drop-shadow(0 0 6px #eab308)' : 'drop-shadow(0 0 6px #22c55e)';
+
+                                    return (
+                                        <g
+                                            key={`point-${idx}`}
+                                            transform={`translate(${c.coords.x}, ${c.coords.y})`}
+                                            style={{ cursor: 'pointer' }}
+                                            onMouseEnter={(e) => {
                                                 setHoveredPoint(c);
                                                 setTooltipPos({
                                                     x: c.coords.x * zoom + pan.x + 10,
                                                     y: c.coords.y * zoom + pan.y - 120
                                                 });
-                                            }
-                                        }}
-                                        onMouseLeave={() => setHoveredPoint(null)}
-                                    >
-                                        {/* Outer pulse beacon */}
-                                        <circle r="10" fill="none" stroke={color} strokeWidth="1" style={{ filter: glowFilter }}>
-                                            <animate attributeName="r" values="3;12;3" dur="2.5s" repeatCount="indefinite" />
-                                            <animate attributeName="opacity" values="0.7;0;0.7" dur="2.5s" repeatCount="indefinite" />
-                                        </circle>
-                                        {/* Core center dot */}
-                                        <circle r="3.5" fill={color} stroke="#000" strokeWidth="0.5" />
-                                    </g>
-                                );
-                            })}
-                        </g>
-                    </svg>
+                                            }}
+                                            onMouseLeave={() => setHoveredPoint(null)}
+                                        >
+                                            <circle r="10" fill="none" stroke={color} strokeWidth="1" style={{ filter: glowFilter }}>
+                                                <animate attributeName="r" values="3;12;3" dur="2.5s" repeatCount="indefinite" />
+                                                <animate attributeName="opacity" values="0.7;0;0.7" dur="2.5s" repeatCount="indefinite" />
+                                            </circle>
+                                            <circle r="3.5" fill={color} stroke="#000" strokeWidth="0.5" />
+                                        </g>
+                                    );
+                                })}
+                            </g>
+                        </svg>
+                    )}
 
-                    {/* Interactive Tooltip Card overlay (renders above map canvas absolute position) */}
+                    {/* Interactive Tooltip Card overlay */}
                     {hoveredPoint && (
                         <div
                             style={{
@@ -445,7 +491,6 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                 </div>
             </div>
 
-            {/* Pulsing Arc Animations Stylesheet inject */}
             <style dangerouslySetInnerHTML={{ __html: `
                 @keyframes pulseFlow {
                     0% {
@@ -454,6 +499,10 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                     100% {
                         stroke-dashoffset: -200;
                     }
+                }
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
                 }
             ` }} />
         </div>
