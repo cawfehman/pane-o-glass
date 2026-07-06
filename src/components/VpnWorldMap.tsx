@@ -143,21 +143,27 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
             if (uncached.length > 0) {
                 setIsEnriching(true);
-                console.log(`[Enrichment] Zoomed to US. Resolving ${uncached.length} uncached IPs...`);
+                console.log(`[Enrichment] Zoomed to US. Resolving ${uncached.length} uncached IPs in bulk...`);
                 
-                for (const ip of uncached) {
-                    try {
-                        await fetch(`/api/threat-intel?q=${encodeURIComponent(ip)}`);
-                        await new Promise(r => setTimeout(r, 50)); // throttle rate limit delay
-                    } catch (e) {
-                        console.error(`Failed to lazy-geocode ${ip}:`, e);
+                try {
+                    const response = await fetch("/api/vpn/enrich-batch", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ ips: uncached })
+                    });
+                    
+                    if (response.ok) {
+                        console.log("[Enrichment] Batch enrichment complete. Reloading map coordinates.");
+                        if (onRefreshData) {
+                            await onRefreshData();
+                        }
+                    } else {
+                        console.error("[Enrichment] Batch query returned error:", response.status);
                     }
+                } catch (e) {
+                    console.error("[Enrichment] Network error during batch geocoding:", e);
                 }
                 
-                console.log("[Enrichment] Finished geocoding. Reloading map coordinates.");
-                if (onRefreshData) {
-                    await onRefreshData();
-                }
                 setIsEnriching(false);
             }
         };

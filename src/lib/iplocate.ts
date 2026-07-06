@@ -17,8 +17,6 @@ interface IpLocateResponse {
 }
 
 const CACHE_TTL_DAYS = 30;
-const MAX_AUTO_LIMIT = 950;
-const MAX_TOTAL_LIMIT = 1000;
 
 // Standard major consumer ISPs in the US to skip background auto-enrichment on
 const STANDARD_US_ISPS = [
@@ -92,124 +90,168 @@ export function isStandardUsIsp(asnName: string | null): boolean {
 }
 
 /**
+ * Bulk geocode multiple IP addresses at once using iplocate.io POST /api/batch
+ */
+export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): Promise<Record<string, any>> {
+    const results: Record<string, any> = {};
+    if (!ips || ips.length === 0) return results;
+
+    const uniqueIps = Array.from(new Set(ips.map(ip => ip.trim()))).filter(Boolean);
+    const uncachedIps: string[] = [];
+
+    try {
+        // 1. Check cache for all requested IPs
+        const cachedRecords = await prisma.ipLookupCache.findMany({
+            where: { ip: { in: uniqueIps } }
+        });
+
+        const now = Date.now();
+        const cachedMap = new Map(cachedRecords.map(r => [r.ip, r]));
+
+        for (const ip of uniqueIps) {
+            const cached = cachedMap.get(ip);
+            if (cached) {
+                const ageInMs = now - new Date(cached.updatedAt).getTime();
+                const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
+                if (ageInDays < CACHE_TTL_DAYS) {
+                    results[ip] = JSON.parse(cached.rawJson);
+                    continue;
+                }
+            }
+            uncachedIps.push(ip);
+        }
+
+        if (uncachedIps.length === 0) {
+            return results; // All resolved from fresh cache!
+        }
+
+        // 2. Count current daily usage since 00:00 UTC (for analytics/tracking)
+        const startOfUtcDay = new Date();
+        startOfUtcDay.setUTCHours(0, 0, 0, 0);
+        const dailyCountBefore = await prisma.ipLookupCache.count({
+            where: { updatedAt: { gte: startOfUtcDay } }
+        });
+
+        // 3. Separate simulation test IPs from live API lookups if no API key set
+        const apiKey = process.env.IPLOCATE_API_KEY;
+        const lookupList: string[] = [];
+        
+        for (const ip of uncachedIps) {
+            if (SIMULATED_GEO[ip] && !apiKey) {
+                // Populate mock data
+                const mockData = {
+                    ip,
+                    country: "United States",
+                    country_code: "US",
+                    city: "Local City",
+                    continent: "North America",
+                    latitude: 38.0,
+                    longitude: -97.0,
+                    asn: "AS12345",
+                    org: "Simulated Provider",
+                    subdivision: "Simulated State",
+                    time_zone: "America/New_York",
+                    ...SIMULATED_GEO[ip]
+                };
+                
+                await prisma.ipLookupCache.upsert({
+                    where: { ip },
+                    create: {
+                        ip,
+                        latitude: mockData.latitude,
+                        longitude: mockData.longitude,
+                        countryCode: mockData.country_code,
+                        city: mockData.city,
+                        subdivision: mockData.subdivision,
+                        rawJson: JSON.stringify(mockData)
+                    },
+                    update: {
+                        latitude: mockData.latitude,
+                        longitude: mockData.longitude,
+                        countryCode: mockData.country_code,
+                        city: mockData.city,
+                        subdivision: mockData.subdivision,
+                        rawJson: JSON.stringify(mockData)
+                    }
+                });
+                
+                results[ip] = mockData;
+            } else {
+                lookupList.push(ip);
+            }
+        }
+
+        if (lookupList.length > 0) {
+            // iplocate POST batch query structure: POST https://iplocate.io/api/batch?apikey=...
+            const url = `https://iplocate.io/api/batch${apiKey ? `?apikey=${apiKey}` : ""}`;
+            
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(lookupList)
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                
+                // Save resolved results in parallel to cache
+                await Promise.all(Object.keys(data).map(async (ip) => {
+                    const info = data[ip];
+                    if (info && info.country_code) {
+                        await prisma.ipLookupCache.upsert({
+                            where: { ip },
+                            create: {
+                                ip,
+                                latitude: info.latitude,
+                                longitude: info.longitude,
+                                countryCode: info.country_code,
+                                city: info.city,
+                                subdivision: info.subdivision,
+                                rawJson: JSON.stringify(info)
+                            },
+                            update: {
+                                latitude: info.latitude,
+                                longitude: info.longitude,
+                                countryCode: info.country_code,
+                                city: info.city,
+                                subdivision: info.subdivision,
+                                rawJson: JSON.stringify(info)
+                            }
+                        });
+                        results[ip] = info;
+                    }
+                }));
+
+                const totalQueriesPerformed = Object.keys(data).length;
+                await logAudit(
+                    "IPLOCATE_API_QUERY",
+                    `Executed batch lookup for ${totalQueriesPerformed} IPs. Daily usage since 00:00 UTC: ${dailyCountBefore + totalQueriesPerformed} queries.`,
+                    "SYSTEM"
+                );
+            } else {
+                console.error(`[iplocate] Batch API Error: ${response.status} ${response.statusText}`);
+                
+                // On API error, return expired cache entries for stale lookup IPs if we have them
+                for (const ip of lookupList) {
+                    const staleCached = cachedMap.get(ip);
+                    if (staleCached) {
+                        results[ip] = JSON.parse(staleCached.rawJson);
+                    }
+                }
+            }
+        }
+
+    } catch (e) {
+        console.error("[iplocate] Error in batch query execution:", e);
+    }
+
+    return results;
+}
+
+/**
  * Fetch IP details from iplocate.io with automated quota rules and 30-day TTL caching.
  */
 export async function enrichIp(ip: string, isAdHoc: boolean = false): Promise<any | null> {
-    try {
-        // 1. Check database cache first
-        const cached = await prisma.ipLookupCache.findUnique({
-            where: { ip }
-        });
-
-        if (cached) {
-            const ageInMs = Date.now() - new Date(cached.updatedAt).getTime();
-            const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
-
-            if (ageInDays < CACHE_TTL_DAYS) {
-                // Cache hit - data is fresh
-                return JSON.parse(cached.rawJson);
-            }
-            console.log(`[iplocate] Cache entry for ${ip} is stale (${ageInDays.toFixed(1)} days old). Attempting refresh.`);
-        }
-
-        // 2. Quota Check based on 00:00 UTC daily resets
-        const startOfUtcDay = new Date();
-        startOfUtcDay.setUTCHours(0, 0, 0, 0);
-
-        const dailyCount = await prisma.ipLookupCache.count({
-            where: {
-                updatedAt: { gte: startOfUtcDay }
-            }
-        });
-
-        const limit = isAdHoc ? MAX_TOTAL_LIMIT : MAX_AUTO_LIMIT;
-        if (dailyCount >= limit) {
-            console.warn(`[iplocate] Daily limit exceeded. Used today: ${dailyCount}/${limit}. Fallback active.`);
-            await logAudit(
-                "IPLOCATE_LIMIT_FALLBACK",
-                `IP lookup for ${ip} skipped. Daily quota limit (${limit}) reached. Active today: ${dailyCount}/${limit}.`,
-                "SYSTEM"
-            );
-            if (cached) {
-                // Fallback to expired cache rather than failing
-                return JSON.parse(cached.rawJson);
-            }
-            return null;
-        }
-
-        // 3. Resolve IP Geo (Simulator vs Real API lookup)
-        let data: IpLocateResponse | null = null;
-        const apiKey = process.env.IPLOCATE_API_KEY;
-
-        if (SIMULATED_GEO[ip] && !apiKey) {
-            // Simulator Mode (useful for local development testing)
-            data = {
-                ip,
-                country: "United States",
-                country_code: "US",
-                city: "Local City",
-                continent: "North America",
-                latitude: 38.0,
-                longitude: -97.0,
-                asn: "AS12345",
-                org: "Simulated Provider",
-                subdivision: "Simulated State",
-                time_zone: "America/New_York",
-                ...SIMULATED_GEO[ip]
-            } as IpLocateResponse;
-            console.log(`[iplocate] Serving simulated coordinates for test IP: ${ip}`);
-        } else {
-            // Production API Call
-            const url = `https://iplocate.io/api/lookup/${ip}${apiKey ? `?apikey=${apiKey}` : ""}`;
-            
-            // Sequential delay to prevent rate limit (100 req/s) if called rapidly
-            await new Promise(resolve => setTimeout(resolve, 20));
-
-            const response = await fetch(url);
-            if (response.ok) {
-                data = await response.json();
-            } else {
-                console.error(`[iplocate] API Error: ${response.status} ${response.statusText}`);
-            }
-        }
-
-        if (!data || !data.country_code) {
-            // API failed, return cached stale record if we have it
-            return cached ? JSON.parse(cached.rawJson) : null;
-        }
-
-        // 4. Update or Create Cache entry
-        await prisma.ipLookupCache.upsert({
-            where: { ip },
-            create: {
-                ip,
-                latitude: data.latitude,
-                longitude: data.longitude,
-                countryCode: data.country_code,
-                city: data.city,
-                subdivision: data.subdivision,
-                rawJson: JSON.stringify(data)
-            },
-            update: {
-                latitude: data.latitude,
-                longitude: data.longitude,
-                countryCode: data.country_code,
-                city: data.city,
-                subdivision: data.subdivision,
-                rawJson: JSON.stringify(data)
-            }
-        });
-
-        await logAudit(
-            "IPLOCATE_API_QUERY",
-            `Enriched IP ${ip} (Resolved: ${data.city || 'Unknown'}, ${data.subdivision || 'Unknown'}, ${data.country_code || 'Unknown'}). Daily usage: ${dailyCount + 1}/${limit}`,
-            "SYSTEM"
-        );
-
-        return data;
-
-    } catch (e) {
-        console.error(`[iplocate] Error resolving IP ${ip}:`, e);
-        return null;
-    }
+    const res = await enrichIpsBatch([ip], isAdHoc);
+    return res[ip] || null;
 }
