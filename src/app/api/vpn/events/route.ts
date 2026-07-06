@@ -849,8 +849,7 @@ export async function GET(req: NextRequest) {
                     status: { in: ["SUCCESS", "DISCONNECT"] },
                     createdAt: { gte: twentyFourHoursAgo }
                 },
-                orderBy: { createdAt: "desc" },
-                select: { username: true, sourceIp: true, status: true }
+                orderBy: { createdAt: "desc" }
             });
 
             const activeSessionsMap = new Map<string, any>();
@@ -862,11 +861,17 @@ export async function GET(req: NextRequest) {
                 if (!seenPairs.has(key)) {
                     seenPairs.add(key);
                     if (evt.status === "SUCCESS") {
-                        activeSessionsMap.set(key, true);
+                        activeSessionsMap.set(key, evt);
                     }
                 }
             }
             activeSessionsCount = activeSessionsMap.size;
+
+            // Collect the full active session event objects for the map
+            successfulIps.length = 0; // Clear the limited list
+            activeSessionsMap.forEach((evt) => {
+                successfulIps.push(evt);
+            });
 
             // 2. Peak All-Time Unique Users in a 24-hour Calendar Day (Option B)
             // Fetch all success events to group by calendar day
