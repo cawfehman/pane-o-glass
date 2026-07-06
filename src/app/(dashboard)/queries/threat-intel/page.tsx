@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Globe, Search, ShieldAlert, ShieldCheck, Activity, Terminal, AlertTriangle, Info, Database, Compass, CheckCircle } from "lucide-react";
+import { Globe, Search, ShieldAlert, ShieldCheck, Activity, Terminal, AlertTriangle, Info, Database, Compass, CheckCircle, ExternalLink } from "lucide-react";
 import { ToolHelp } from "@/components/ToolHelp";
 
 export default function ThreatIntelPage() {
@@ -157,65 +157,91 @@ export default function ThreatIntelPage() {
 
                             {/* Additional Info depending on type */}
                             {result.type === "ip" && (
-                                <div className="glass-card" style={{ padding: '24px' }}>
-                                    <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
-                                        <Compass size={18} /> Network & Geolocation Metadata
-                                    </h3>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>ASN Provider:</span>
-                                            <span style={{ fontWeight: 600 }}>{result.details.geo.asn ? `ASN${result.details.geo.asn} (${result.details.geo.as_name || 'Unknown'})` : 'N/A'}</span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Country Origin:</span>
-                                            <span style={{ fontWeight: 600 }}>{result.details.geo.country || 'N/A'} ({result.details.geo.country_code || 'N/A'})</span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Domain Space:</span>
-                                            <span style={{ fontWeight: 600 }}>{result.details.geo.as_domain || 'N/A'}</span>
+                                <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                    <div>
+                                        <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
+                                            <Compass size={18} /> Network & Geolocation Metadata
+                                        </h3>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                                                <span style={{ color: 'var(--text-muted)' }}>ASN Provider:</span>
+                                                <span style={{ fontWeight: 600 }}>{result.details.geo.asn ? `ASN${result.details.geo.asn} (${result.details.geo.as_name || 'Unknown'})` : 'N/A'}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                                                <span style={{ color: 'var(--text-muted)' }}>Country Origin:</span>
+                                                <span style={{ fontWeight: 600 }}>{result.details.geo.country || 'N/A'} ({result.details.geo.country_code || 'N/A'})</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                                                <span style={{ color: 'var(--text-muted)' }}>Domain Space:</span>
+                                                <span style={{ fontWeight: 600 }}>{result.details.geo.as_domain || 'N/A'}</span>
+                                            </div>
                                         </div>
                                     </div>
+                                    {!result.details.isPrivate && (
+                                        <div style={{ marginTop: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '12px', textAlign: 'right' }}>
+                                            <a 
+                                                href={`https://investigate.umbrella.com/ip-view/${encodeURIComponent(result.query)}`}
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--accent-primary)', textDecoration: 'none' }}
+                                            >
+                                                Investigate IP in Umbrella <ExternalLink size={14} />
+                                            </a>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
                             {result.type === "domain" && (
-                                <div className="glass-card" style={{ padding: '24px' }}>
-                                    <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
-                                        <Activity size={18} /> Cisco Umbrella Threat Intelligence
-                                    </h3>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Security Status:</span>
-                                            <span style={{ fontWeight: 600, color: result.details.reputation.status === 'malicious' ? '#ef4444' : '#22c55e' }}>
-                                                {result.details.reputation.status === 'malicious' ? 'Flagged Malicious' : 'Clean Classification'}
-                                            </span>
-                                        </div>
-                                        <div>
-                                            <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Umbrella Categories:</span>
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
-                                                {result.details.reputation.categories && result.details.reputation.categories.length > 0 ? (
-                                                    result.details.reputation.categories.map((cat: string, index: number) => (
-                                                        <span key={index} style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', fontSize: '0.75rem', border: '1px solid var(--border-color)' }}>
-                                                            {cat}
-                                                        </span>
-                                                    ))
-                                                ) : (
-                                                    <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Uncategorized</span>
-                                                )}
+                                <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                    <div>
+                                        <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
+                                            <Activity size={18} /> Cisco Umbrella Threat Intelligence
+                                        </h3>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                                                <span style={{ color: 'var(--text-muted)' }}>Security Status:</span>
+                                                <span style={{ fontWeight: 600, color: result.details.reputation.status === 'malicious' ? '#ef4444' : '#22c55e' }}>
+                                                    {result.details.reputation.status === 'malicious' ? 'Flagged Malicious' : 'Clean Classification'}
+                                                </span>
                                             </div>
-                                        </div>
-                                        {result.details.reputation.securityCategories && result.details.reputation.securityCategories.length > 0 && (
                                             <div>
-                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Security Threat Tags:</span>
+                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Umbrella Categories:</span>
                                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
-                                                    {result.details.reputation.securityCategories.map((cat: string, index: number) => (
-                                                        <span key={index} style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', fontSize: '0.75rem', border: '1px solid rgba(239, 68, 68, 0.2)', fontWeight: 600 }}>
-                                                            {cat}
-                                                        </span>
-                                                    ))}
+                                                    {result.details.reputation.categories && result.details.reputation.categories.length > 0 ? (
+                                                        result.details.reputation.categories.map((cat: string, index: number) => (
+                                                            <span key={index} style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', fontSize: '0.75rem', border: '1px solid var(--border-color)' }}>
+                                                                {cat}
+                                                            </span>
+                                                        ))
+                                                    ) : (
+                                                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Uncategorized</span>
+                                                    )}
                                                 </div>
                                             </div>
-                                        )}
+                                            {result.details.reputation.securityCategories && result.details.reputation.securityCategories.length > 0 && (
+                                                <div>
+                                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Security Threat Tags:</span>
+                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                                                        {result.details.reputation.securityCategories.map((cat: string, index: number) => (
+                                                            <span key={index} style={{ padding: '2px 8px', borderRadius: '4px', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', fontSize: '0.75rem', border: '1px solid rgba(239, 68, 68, 0.2)', fontWeight: 600 }}>
+                                                                {cat}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div style={{ marginTop: '16px', borderTop: '1px solid var(--border-color)', paddingTop: '12px', textAlign: 'right' }}>
+                                        <a 
+                                            href={`https://investigate.umbrella.com/domain-view/${encodeURIComponent(result.query)}`}
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--accent-primary)', textDecoration: 'none' }}
+                                        >
+                                            Investigate Domain in Umbrella <ExternalLink size={14} />
+                                        </a>
                                     </div>
                                 </div>
                             )}
