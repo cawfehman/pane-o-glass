@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, MouseEvent, useEffect } from "react";
-import { ZoomIn, ZoomOut, RotateCcw, AlertTriangle, CheckCircle, Info } from "lucide-react";
+import { ZoomIn, ZoomOut, RotateCcw, AlertTriangle, CheckCircle, Info, Globe } from "lucide-react";
 
 interface VpnEvent {
     id: string;
