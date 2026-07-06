@@ -118,20 +118,22 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
     const [mapFilter, setMapFilter] = useState<"active" | "failed" | "failed-valid" | "completed">("active");
     const [isEnriching, setIsEnriching] = useState<boolean>(false);
 
+    const isUsView = showUsStates;
+
     useEffect(() => {
         const checkAndEnrich = async () => {
-            if (!(showUsStates || zoom >= 2.2) || isEnriching) return;
+            if (!showUsStates || isEnriching) return;
 
-            // Collect all active US IPs
+            // Collect all active US IPs (including null country codes — those are likely domestic)
             const activeTunnels = successfulIps.filter(evt => {
-                return evt.status === "SUCCESS" && evt.ipCountryCode === "US";
+                return evt.status === "SUCCESS" && (evt.ipCountryCode === "US" || !evt.ipCountryCode);
             });
             
             // Collect failed valid US IPs
             const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
             const failedValidTunnels = failedIps.filter(evt => {
                 const clean = evt.username?.toLowerCase().endsWith("@cooperhealth.edu") ? evt.username.slice(0, -17) : evt.username;
-                return evt.status === "FAILURE" && evt.ipCountryCode === "US" && nameNameRegex.test(clean);
+                return evt.status === "FAILURE" && (evt.ipCountryCode === "US" || !evt.ipCountryCode) && nameNameRegex.test(clean);
             });
 
             const allUsIps = Array.from(new Set([
@@ -143,7 +145,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
             if (uncached.length > 0) {
                 setIsEnriching(true);
-                console.log(`[Enrichment] Zoomed to US. Resolving ${uncached.length} uncached IPs in bulk...`);
+                console.log(`[Enrichment] US view active. Resolving ${uncached.length} uncached IPs in bulk...`);
                 
                 try {
                     const response = await fetch("/api/vpn/enrich-batch", {
@@ -169,15 +171,33 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
         };
 
         checkAndEnrich();
-    }, [showUsStates, zoom, ipCache, successfulIps, failedIps, onRefreshData]);
+    }, [showUsStates, ipCache, successfulIps, failedIps, onRefreshData]);
 
     const svgRef = useRef<SVGSVGElement | null>(null);
 
-    // Equirectangular projection coordinates calculation
-    const project = (lat: number, lng: number) => {
+    // World Equirectangular projection (900x500 viewport)
+    const projectWorld = (lat: number, lng: number) => {
         const x = 450 + (lng * 400) / 180;
         const y = 250 - (lat * 200) / 90;
         return { x, y };
+    };
+
+    // US-dedicated projection: maps continental US bounding box to fill 900x500 viewport
+    // Continental US bounds: lat 24.5..49.5, lng -125..-66.5
+    const projectUS = (lat: number, lng: number) => {
+        const minLat = 24.0, maxLat = 50.0;
+        const minLng = -126.0, maxLng = -65.0;
+        const padX = 40, padY = 30;
+        const w = 900 - padX * 2;
+        const h = 500 - padY * 2;
+        const x = padX + ((lng - minLng) / (maxLng - minLng)) * w;
+        const y = padY + ((maxLat - lat) / (maxLat - minLat)) * h;
+        return { x, y };
+    };
+
+    // Active projection: switches based on current view
+    const project = (lat: number, lng: number) => {
+        return isUsView ? projectUS(lat, lng) : projectWorld(lat, lng);
     };
 
     const hqPos = project(HQ_COORDS.lat, HQ_COORDS.lng);
@@ -199,9 +219,9 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
         return () => { active = false; };
     }, []);
 
-    // Lazy load US state borders when US Zoom is focused or zoom scale threshold is crossed
+    // Lazy load US state borders when US view is activated
     useEffect(() => {
-        if ((showUsStates || zoom >= 2.2) && !usStatesGeoJson && !loadingStates) {
+        if (showUsStates && !usStatesGeoJson && !loadingStates) {
             setLoadingStates(true);
             fetch("/us-states.json")
                 .then(res => res.ok ? res.json() : Promise.reject())
@@ -213,13 +233,14 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                     setLoadingStates(false);
                 });
         }
-    }, [showUsStates, zoom, usStatesGeoJson, loadingStates]);
+    }, [showUsStates, usStatesGeoJson, loadingStates]);
 
     // Path generators
-    const getFeaturePath = (feature: GeoJsonFeature) => {
+    const getFeaturePath = (feature: GeoJsonFeature, useProjection?: (lat: number, lng: number) => { x: number; y: number }) => {
         const { type, coordinates } = feature.geometry;
+        const proj = useProjection || project;
         const formatCoord = (coord: [number, number]) => {
-            const pt = project(coord[1], coord[0]);
+            const pt = proj(coord[1], coord[0]);
             return `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
         };
 
@@ -418,21 +439,15 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
     const handleMouseUp = () => { setIsDragging(false); };
 
     const handleFocusUS = () => {
-        // Center coordinates target for United States
-        const usCenter = project(38.0, -97.0);
-        const scale = 2.8;
-        setZoom(scale);
-        setPan({
-            x: (450 - usCenter.x) * scale,
-            y: (250 - usCenter.y) * scale
-        });
         setShowUsStates(true);
+        setZoom(1);
+        setPan({ x: 0, y: 0 });
     };
 
     const handleReset = () => {
+        setShowUsStates(false);
         setZoom(1);
         setPan({ x: 0, y: 0 });
-        setShowUsStates(false);
     };
 
     // format session duration helper
@@ -614,23 +629,23 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                             onWheel={handleWheel}
                             style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
                         >
-                            <g transform={`translate(${450 + pan.x}, ${250 + pan.y}) scale(${zoom}) translate(-450, -250)`} style={{ transition: isDragging ? 'none' : 'transform 0.15s ease-out' }}>
+                            <g transform={isUsView ? `translate(${pan.x}, ${pan.y}) scale(${zoom})` : `translate(${450 + pan.x}, ${250 + pan.y}) scale(${zoom}) translate(-450, -250)`} style={{ transition: isDragging ? 'none' : 'transform 0.15s ease-out' }}>
                                 
                                 <rect width="900" height="500" fill="#090a0f" />
 
-                                {/* Render US states borders if zoomed into US, else render world countries */}
-                                {(showUsStates || zoom >= 2.2) ? (
+                                {/* Render US states borders if US view active, else render world countries */}
+                                {isUsView ? (
                                     usStatesGeoJson && (
-                                        <g fill="rgba(99, 102, 241, 0.02)" stroke="rgba(99, 102, 241, 0.2)" strokeWidth="0.5" className="animate-fadeIn">
+                                        <g fill="rgba(99, 102, 241, 0.03)" stroke="rgba(99, 102, 241, 0.25)" strokeWidth="0.6" className="animate-fadeIn">
                                             {usStatesGeoJson?.features?.map((feat: GeoJsonFeature, i: number) => (
                                                 <path 
                                                     key={`us-state-${i}`} 
-                                                    d={getFeaturePath(feat)}
+                                                    d={getFeaturePath(feat, projectUS)}
                                                     onMouseEnter={(e) => {
                                                         (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.08)");
                                                     }}
                                                     onMouseLeave={(e) => {
-                                                        (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.02)");
+                                                        (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.03)");
                                                     }}
                                                 />
                                             ))}
@@ -643,7 +658,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                             return (
                                                 <path 
                                                     key={`world-country-${i}`} 
-                                                    d={getFeaturePath(feat)} 
+                                                    d={getFeaturePath(feat, projectWorld)} 
                                                     style={{ 
                                                         transition: 'fill 0.2s',
                                                         cursor: isUS ? 'pointer' : 'default'
@@ -667,7 +682,6 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
                                 {/* Connection Bezier curves (clean static solid paths) */}
                                 {mapPoints.map((pt, idx) => {
-                                    const isUsView = showUsStates || zoom >= 2.2;
                                     if (isUsView && pt.countryCode !== "US") return null;
                                     return (
                                         <g key={`arc-${idx}`}>
@@ -693,7 +707,6 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
                                 {/* Aggregated Beacons */}
                                 {mapPoints.map((pt, idx) => {
-                                    const isUsView = showUsStates || zoom >= 2.2;
                                     if (isUsView && pt.countryCode !== "US") return null;
 
                                     const isFail = mapFilter === "failed" || mapFilter === "failed-valid";
