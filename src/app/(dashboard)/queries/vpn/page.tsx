@@ -1785,6 +1785,8 @@ export default function VpnTroubleshootingPage() {
                     successfulIps={successfulIps}
                     failedIps={failedIps}
                     recentEvents={recentEvents}
+                    securityScope={securityScope}
+                    setSecurityScope={setSecurityScope}
                 />
             )}
 

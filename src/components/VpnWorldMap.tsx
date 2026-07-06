@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, MouseEvent, useEffect } from "react";
-import { ZoomIn, ZoomOut, RotateCcw, AlertTriangle, CheckCircle, Info, Globe } from "lucide-react";
+import { useState, useRef, MouseEvent, WheelEvent, useEffect } from "react";
+import { ZoomIn, ZoomOut, RotateCcw, Globe, ShieldAlert, CheckCircle, Activity, Play } from "lucide-react";
 
 interface VpnEvent {
     id: string;
@@ -28,6 +28,8 @@ interface VpnWorldMapProps {
     successfulIps: VpnEvent[];
     failedIps: VpnEvent[];
     recentEvents: VpnEvent[];
+    securityScope: string;
+    setSecurityScope: (val: string) => void;
 }
 
 interface GeoJsonFeature {
@@ -93,42 +95,27 @@ const countryCoordinates: Record<string, { lat: number; lng: number; name: strin
     TW: { lat: 23.6978, lng: 120.9605, name: "Taiwan" }
 };
 
-// Corporate HQ Location (Wilmington / Philadelphia corporate gateway area)
 const HQ_COORDS = { lat: 39.9526, lng: -75.1652, name: "Corporate Gateways" };
 
-export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents = [] }: VpnWorldMapProps) {
+export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents = [], securityScope, setSecurityScope }: VpnWorldMapProps) {
     const [zoom, setZoom] = useState<number>(1);
     const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState<boolean>(false);
     const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
     const [hoveredPoint, setHoveredPoint] = useState<any | null>(null);
     const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+    
+    // Geometry States
     const [geoJson, setGeoJson] = useState<any>(null);
     const [loadingMap, setLoadingMap] = useState<boolean>(true);
-    const svgRef = useRef<SVGSVGElement | null>(null);
+    const [usStatesGeoJson, setUsStatesGeoJson] = useState<any>(null);
+    const [loadingStates, setLoadingStates] = useState<boolean>(false);
+    const [showUsStates, setShowUsStates] = useState<boolean>(false);
 
-    // Fetch high-quality simplified world GeoJSON on mount
-    useEffect(() => {
-        let active = true;
-        fetch("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson")
-            .then(res => {
-                if (res.ok) return res.json();
-                throw new Error("Failed to load global map geometry.");
-            })
-            .then(data => {
-                if (active) {
-                    setGeoJson(data);
-                    setLoadingMap(false);
-                }
-            })
-            .catch(err => {
-                console.error("GeoJSON load error:", err);
-                if (active) setLoadingMap(false);
-            });
-        return () => {
-            active = false;
-        };
-    }, []);
+    // Map filters state: active | failed | failed-valid | completed
+    const [mapFilter, setMapFilter] = useState<"active" | "failed" | "failed-valid" | "completed">("active");
+
+    const svgRef = useRef<SVGSVGElement | null>(null);
 
     // Equirectangular projection coordinates calculation
     const project = (lat: number, lng: number) => {
@@ -139,7 +126,40 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
     const hqPos = project(HQ_COORDS.lat, HQ_COORDS.lng);
 
-    // Calculate features SVG path
+    // Fetch simplified world geometry on mount
+    useEffect(() => {
+        let active = true;
+        fetch("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson")
+            .then(res => res.ok ? res.json() : Promise.reject())
+            .then(data => {
+                if (active) {
+                    setGeoJson(data);
+                    setLoadingMap(false);
+                }
+            })
+            .catch(() => {
+                if (active) setLoadingMap(false);
+            });
+        return () => { active = false; };
+    }, []);
+
+    // Lazy load US state borders when US Zoom is focused or zoom scale threshold is crossed
+    useEffect(() => {
+        if ((showUsStates || zoom >= 2.2) && !usStatesGeoJson && !loadingStates) {
+            setLoadingStates(true);
+            fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json")
+                .then(res => res.ok ? res.json() : Promise.reject())
+                .then(data => {
+                    setUsStatesGeoJson(data);
+                    setLoadingStates(false);
+                })
+                .catch(() => {
+                    setLoadingStates(false);
+                });
+        }
+    }, [showUsStates, zoom, usStatesGeoJson, loadingStates]);
+
+    // Path generators
     const getFeaturePath = (feature: GeoJsonFeature) => {
         const { type, coordinates } = feature.geometry;
         const formatCoord = (coord: [number, number]) => {
@@ -148,71 +168,140 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
         };
 
         if (type === "Polygon") {
-            return coordinates
-                .map(ring => "M " + ring.map(formatCoord).join(" L ") + " Z")
-                .join(" ");
+            return coordinates.map(ring => "M " + ring.map(formatCoord).join(" L ") + " Z").join(" ");
         } else if (type === "MultiPolygon") {
-            return coordinates
-                .map(poly =>
-                    poly.map((ring: any[]) => "M " + ring.map(formatCoord).join(" L ") + " Z").join(" ")
-                )
-                .join(" ");
+            return coordinates.map(poly => poly.map((ring: any[]) => "M " + ring.map(formatCoord).join(" L ") + " Z").join(" ")).join(" ");
         }
         return "";
     };
 
-    // Process connection events and match them to map locations
-    const plotConnections = () => {
-        const uniqueConnections: Record<string, {
-            countryCode: string;
-            countryName: string;
-            coords: { x: number; y: number };
-            successCount: number;
-            failCount: number;
-            recentEvents: VpnEvent[];
-        }> = {};
+    // Advanced Data Filtering & Aggregation Logics
+    const getAggregatedData = () => {
+        const list: any[] = [];
+        const allEvents = [...recentEvents, ...successfulIps, ...failedIps];
 
-        const allEvents = [
-            ...(recentEvents || []),
-            ...(successfulIps || []),
-            ...(failedIps || [])
-        ];
+        // Sort events chronologically to evaluate state transitions correctly
+        const sortedEvents = [...allEvents].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-        for (const evt of allEvents) {
-            const countryCode = evt.ipCountryCode?.toUpperCase();
-            if (!countryCode || countryCode === "N/A" || !countryCoordinates[countryCode]) {
-                continue;
+        if (mapFilter === "active") {
+            // Track active successful tunnels (SUCCESS without matching subsequent DISCONNECT)
+            const activeTunnels = new Map<string, VpnEvent>();
+            for (const evt of sortedEvents) {
+                const key = `${evt.username}-${evt.sourceIp}`;
+                if (evt.status === "SUCCESS") {
+                    activeTunnels.set(key, evt);
+                } else if (evt.status === "DISCONNECT") {
+                    activeTunnels.delete(key);
+                }
             }
 
-            if (!uniqueConnections[countryCode]) {
-                const coords = project(countryCoordinates[countryCode].lat, countryCoordinates[countryCode].lng);
-                uniqueConnections[countryCode] = {
-                    countryCode,
-                    countryName: evt.ipCountry || countryCoordinates[countryCode].name,
-                    coords,
-                    successCount: 0,
-                    failCount: 0,
-                    recentEvents: []
-                };
+            // Group active connections by country coordinates
+            const grouped: Record<string, { countryCode: string; name: string; coords: { x: number; y: number }; count: number; events: VpnEvent[] }> = {};
+            activeTunnels.forEach(evt => {
+                const code = evt.ipCountryCode?.toUpperCase();
+                if (!code || !countryCoordinates[code]) return;
+
+                if (!grouped[code]) {
+                    grouped[code] = {
+                        countryCode: code,
+                        name: evt.ipCountry || countryCoordinates[code].name,
+                        coords: project(countryCoordinates[code].lat, countryCoordinates[code].lng),
+                        count: 0,
+                        events: []
+                    };
+                }
+                grouped[code].count++;
+                if (grouped[code].events.length < 5) grouped[code].events.push(evt);
+            });
+            return Object.values(grouped);
+
+        } else if (mapFilter === "completed") {
+            // Completed connections = DISCONNECT events in current window
+            const completedEvents = sortedEvents.filter(e => e.status === "DISCONNECT");
+            const grouped: Record<string, { countryCode: string; name: string; coords: { x: number; y: number }; count: number; events: VpnEvent[] }> = {};
+            
+            for (const evt of completedEvents) {
+                const code = evt.ipCountryCode?.toUpperCase();
+                if (!code || !countryCoordinates[code]) continue;
+
+                if (!grouped[code]) {
+                    grouped[code] = {
+                        countryCode: code,
+                        name: evt.ipCountry || countryCoordinates[code].name,
+                        coords: project(countryCoordinates[code].lat, countryCoordinates[code].lng),
+                        count: 0,
+                        events: []
+                    };
+                }
+                grouped[code].count++;
+                if (grouped[code].events.length < 5) grouped[code].events.push(evt);
+            }
+            return Object.values(grouped);
+
+        } else {
+            // FAILED / FAILED-VALID: Aggregate by Source IP
+            const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
+            const failures = sortedEvents.filter(evt => {
+                if (evt.status !== "FAILURE") return false;
+                if (mapFilter === "failed-valid") {
+                    const clean = evt.username?.toLowerCase().endsWith("@cooperhealth.edu") ? evt.username.slice(0, -17) : evt.username;
+                    return nameNameRegex.test(clean);
+                }
+                return true;
+            });
+
+            const ipGrouped: Record<string, {
+                ip: string;
+                countryCode: string;
+                countryName: string;
+                coords: { x: number; y: number };
+                count: number;
+                reasons: Set<string>;
+                usernames: Set<string>;
+                asnName: string;
+                lastEvent: VpnEvent;
+            }> = {};
+
+            for (const evt of failures) {
+                const ip = evt.sourceIp;
+                const code = evt.ipCountryCode?.toUpperCase() || "US"; // default focus
+                const coords = countryCoordinates[code] 
+                    ? project(countryCoordinates[code].lat, countryCoordinates[code].lng)
+                    : project(37.0902, -95.7129); // US default center coordinate
+
+                if (!ipGrouped[ip]) {
+                    ipGrouped[ip] = {
+                        ip,
+                        countryCode: code,
+                        countryName: evt.ipCountry || countryCoordinates[code]?.name || "Unknown Location",
+                        coords,
+                        count: 0,
+                        reasons: new Set(),
+                        usernames: new Set(),
+                        asnName: evt.ipAsName || "N/A",
+                        lastEvent: evt
+                    };
+                }
+                ipGrouped[ip].count++;
+                if (evt.failureReason) ipGrouped[ip].reasons.add(evt.failureReason);
+                if (evt.username) ipGrouped[ip].usernames.add(evt.username);
             }
 
-            if (evt.status === "SUCCESS") {
-                uniqueConnections[countryCode].successCount++;
-            } else if (evt.status === "FAILURE") {
-                uniqueConnections[countryCode].failCount++;
-            }
-
-            if (uniqueConnections[countryCode].recentEvents.length < 3) {
-                uniqueConnections[countryCode].recentEvents.push(evt);
-            }
+            return Object.values(ipGrouped);
         }
-
-        return Object.values(uniqueConnections);
     };
 
-    const connections = plotConnections();
+    const mapPoints = getAggregatedData();
 
-    // Map dragging controls
+    // Mouse scroll wheel zooming
+    const handleWheel = (e: WheelEvent<SVGSVGElement>) => {
+        e.preventDefault();
+        const zoomFactor = 0.1;
+        const newZoom = e.deltaY < 0 ? Math.min(zoom + zoomFactor, 6) : Math.max(zoom - zoomFactor, 0.8);
+        setZoom(newZoom);
+    };
+
+    // Dragging viewport handlers
     const handleMouseDown = (e: MouseEvent<SVGSVGElement>) => {
         setIsDragging(true);
         setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
@@ -220,93 +309,175 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
     const handleMouseMove = (e: MouseEvent<SVGSVGElement>) => {
         if (!isDragging) return;
+        setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
+    };
+
+    const handleMouseUp = () => { setIsDragging(false); };
+
+    const handleFocusUS = () => {
+        // Center coordinates target for United States
+        const usCenter = project(38.0, -97.0);
+        setZoom(2.8);
         setPan({
-            x: e.clientX - dragStart.x,
-            y: e.clientY - dragStart.y
+            x: 450 - usCenter.x * 2.8,
+            y: 250 - usCenter.y * 2.8
         });
-    };
-
-    const handleMouseUp = () => {
-        setIsDragging(false);
-    };
-
-    const handleZoomIn = () => {
-        setZoom(prev => Math.min(prev + 0.3, 5));
-    };
-
-    const handleZoomOut = () => {
-        setZoom(prev => Math.max(prev - 0.3, 0.8));
+        setShowUsStates(true);
     };
 
     const handleReset = () => {
         setZoom(1);
         setPan({ x: 0, y: 0 });
+        setShowUsStates(false);
     };
 
-    const calculateArcPath = (startX: number, startY: number, endX: number, endY: number) => {
-        const dx = endX - startX;
-        const dy = endY - startY;
-        const dr = Math.sqrt(dx * dx + dy * dy);
-        
-        const midX = (startX + endX) / 2;
-        const midY = (startY + endY) / 2;
-        
-        const angle = Math.atan2(dy, dx);
-        const perpAngle = angle - Math.PI / 2;
-        const offset = Math.min(dr * 0.25, 120);
-        
-        const ctrlX = midX + Math.cos(perpAngle) * offset;
-        const ctrlY = midY + Math.sin(perpAngle) * offset;
+    // format session duration helper
+    const formatDuration = (sec: number | null | undefined) => {
+        if (!sec) return "N/A";
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        return h > 0 ? `${h}h ${m}m` : `${m} min`;
+    };
 
-        return `M ${startX} ${startY} Q ${ctrlX} ${ctrlY} ${endX} ${endY}`;
+    // format bytes helper
+    const formatBytes = (bytes: number | null | undefined) => {
+        if (bytes == null) return "0 B";
+        if (bytes === 0) return "0 B";
+        const k = 1024;
+        const sizes = ["B", "KB", "MB", "GB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+    };
+
+    const getArcColor = (c: any) => {
+        if (mapFilter === "failed" || mapFilter === "failed-valid") return "rgba(239, 68, 68, 0.35)";
+        if (mapFilter === "completed") return "rgba(156, 163, 175, 0.4)";
+        return "rgba(34, 197, 94, 0.4)"; // active
+    };
+
+    const getGlowColor = (c: any) => {
+        if (mapFilter === "failed" || mapFilter === "failed-valid") return "#ef4444";
+        if (mapFilter === "completed") return "#9ca3af";
+        return "#22c55e"; // active
     };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, minHeight: 0 }} className="animate-fadeIn">
+            
+            {/* Tab Filter & Period Header Configuration Bar */}
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'var(--bg-surface)',
+                padding: '12px 18px',
+                borderRadius: '12px',
+                border: '1px solid var(--border-color)',
+                flexWrap: 'wrap',
+                gap: '16px'
+            }}>
+                {/* Visualizer Filters */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                        onClick={() => setMapFilter("active")}
+                        className={mapFilter === "active" ? "btn-primary" : "btn-secondary"}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 12px', borderRadius: '6px' }}
+                    >
+                        <Activity size={14} /> Active Connections
+                    </button>
+                    <button
+                        onClick={() => setMapFilter("failed")}
+                        className={mapFilter === "failed" ? "btn-primary" : "btn-secondary"}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 12px', borderRadius: '6px' }}
+                    >
+                        <ShieldAlert size={14} color="#ef4444" /> All Failed Attempts
+                    </button>
+                    <button
+                        onClick={() => setMapFilter("failed-valid")}
+                        className={mapFilter === "failed-valid" ? "btn-primary" : "btn-secondary"}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 12px', borderRadius: '6px' }}
+                    >
+                        <ShieldAlert size={14} color="#f59e0b" /> Failed Valid Users
+                    </button>
+                    <button
+                        onClick={() => setMapFilter("completed")}
+                        className={mapFilter === "completed" ? "btn-primary" : "btn-secondary"}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 12px', borderRadius: '6px' }}
+                    >
+                        <CheckCircle size={14} /> Completed Sessions
+                    </button>
+                </div>
+
+                {/* Time scope dropdown selector matching page layout */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Time Filter:</span>
+                    <select
+                        value={securityScope}
+                        onChange={(e) => setSecurityScope(e.target.value)}
+                        style={{
+                            background: 'rgba(0,0,0,0.2)',
+                            border: '1px solid var(--border-color)',
+                            color: 'var(--text-primary)',
+                            padding: '6px 12px',
+                            borderRadius: '6px',
+                            fontSize: '0.8rem',
+                            outline: 'none',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        <option value="last24hours">Last 24 Hours</option>
+                        <option value="today">Today</option>
+                        <option value="yesterday">Yesterday</option>
+                        <option value="last7days">Last 7 Days</option>
+                        <option value="last14days">Last 14 Days</option>
+                        <option value="last30days">Last 30 Days</option>
+                    </select>
+                </div>
+            </div>
+
             <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', flex: 1, position: 'relative', minHeight: '520px', overflow: 'hidden' }}>
                 
-                {/* Header Information Panel */}
+                {/* Subtitle details */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', zIndex: 10 }}>
                     <div>
                         <h3 style={{ fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Globe size={18} color="var(--accent-primary)" /> VPN Connection Map (Global Distribution)
+                            <Globe size={18} color="var(--accent-primary)" /> Geographic Connection Forensics
                         </h3>
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                            Live GIS telemetry map visualizing active connections. Drag to pan, use scroll wheel or controls to zoom.
+                            {mapFilter === "active" && "Showing live tunnels that are currently established."}
+                            {mapFilter === "failed" && "Aggregated failure maps displaying connection attempt frequencies by IP."}
+                            {mapFilter === "failed-valid" && "Targeted failure vectors matching valid active directory account patterns."}
+                            {mapFilter === "completed" && "Recently terminated tunnels displaying duration and data sizes."}
                         </p>
                     </div>
 
                     <div style={{ display: 'flex', gap: '20px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e' }}></span>
-                            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Active Nodes: {connections.filter(c => c.successCount > 0).length}</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 8px #ef4444' }}></span>
-                            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Failed Vectors: {connections.filter(c => c.failCount > 0).length}</span>
-                        </div>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Total Vectors: {mapPoints.length}</span>
                     </div>
                 </div>
 
-                {/* Viewport Control Panel */}
+                {/* Viewport Controls with Focus US Option */}
                 <div style={{ position: 'absolute', right: '24px', top: '80px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 20 }}>
-                    <button onClick={handleZoomIn} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Zoom In">
+                    <button onClick={() => setZoom(prev => Math.min(prev + 0.3, 6))} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <ZoomIn size={16} />
                     </button>
-                    <button onClick={handleZoomOut} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Zoom Out">
+                    <button onClick={() => setZoom(prev => Math.max(prev - 0.3, 0.8))} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <ZoomOut size={16} />
                     </button>
-                    <button onClick={handleReset} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Reset Viewport">
+                    <button onClick={handleFocusUS} className="btn-primary" style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}>
+                        Focus US
+                    </button>
+                    <button onClick={handleReset} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <RotateCcw size={16} />
                     </button>
                 </div>
 
-                {/* Map Canvas Wrapper */}
-                <div style={{ flex: 1, width: '100%', position: 'relative', overflow: 'hidden', background: 'rgba(0,0,0,0.15)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {/* Loading states feedback */}
+                <div style={{ flex: 1, width: '100%', position: 'relative', overflow: 'hidden', background: '#090a0f', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                     {loadingMap ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', color: 'var(--text-muted)' }}>
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', color: 'var(--text-muted)' }}>
                             <div style={{ width: '24px', height: '24px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--accent-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                            <span style={{ fontSize: '0.9rem', letterSpacing: '0.05em' }}>LOADING GLOBAL MAP GEOMETRY...</span>
+                            <span style={{ fontSize: '0.85rem' }}>LOADING CARTOGRAPHY...</span>
                         </div>
                     ) : (
                         <svg
@@ -318,107 +489,112 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                             onMouseMove={handleMouseMove}
                             onMouseUp={handleMouseUp}
                             onMouseLeave={handleMouseUp}
-                            style={{
-                                cursor: isDragging ? 'grabbing' : 'grab',
-                                background: '#090a0f',
-                                userSelect: 'none'
-                            }}
+                            onWheel={handleWheel}
+                            style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
                         >
                             <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`} style={{ transformOrigin: '450px 250px', transition: isDragging ? 'none' : 'transform 0.15s ease-out' }}>
                                 
-                                <defs>
-                                    <pattern id="mapGrid" width="15" height="15" patternUnits="userSpaceOnUse">
-                                        <circle cx="2.5" cy="2.5" r="0.8" fill="rgba(255,255,255,0.03)" />
-                                    </pattern>
-                                </defs>
-                                <rect width="900" height="500" fill="url(#mapGrid)" />
+                                <rect width="900" height="500" fill="#090a0f" />
 
-                                {/* Render high-quality GIS vector shapes */}
-                                <g fill="rgba(255, 255, 255, 0.03)" stroke="rgba(255, 255, 255, 0.08)" strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round">
+                                {/* Render world map country borders */}
+                                <g fill="rgba(255, 255, 255, 0.02)" stroke="rgba(255, 255, 255, 0.07)" strokeWidth="0.8">
                                     {geoJson?.features?.map((feat: GeoJsonFeature, i: number) => (
                                         <path 
-                                            key={`country-${i}`} 
+                                            key={`world-country-${i}`} 
                                             d={getFeaturePath(feat)} 
                                             style={{ transition: 'fill 0.2s' }}
                                             onMouseEnter={(e) => {
-                                                (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.07)");
-                                                (e.target as SVGPathElement).setAttribute("stroke", "rgba(99, 102, 241, 0.25)");
+                                                (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.06)");
                                             }}
                                             onMouseLeave={(e) => {
-                                                (e.target as SVGPathElement).setAttribute("fill", "rgba(255, 255, 255, 0.03)");
-                                                (e.target as SVGPathElement).setAttribute("stroke", "rgba(255, 255, 255, 0.08)");
+                                                (e.target as SVGPathElement).setAttribute("fill", "rgba(255, 255, 255, 0.02)");
                                             }}
                                         />
                                     ))}
                                 </g>
 
-                                {/* Dynamic Connection Bezier Curves (Arcs) */}
-                                {connections.map((c, idx) => {
-                                    const hasSuccess = c.successCount > 0;
-                                    const isFlagged = c.failCount > 0;
-                                    const arcColor = isFlagged && !hasSuccess ? 'rgba(239, 68, 68, 0.35)' : 'rgba(99, 102, 241, 0.4)';
-                                    const glowColor = isFlagged && !hasSuccess ? '#ef4444' : 'var(--accent-primary)';
-                                    
-                                    return (
-                                        <g key={`arc-${idx}`}>
-                                            <path
-                                                d={calculateArcPath(hqPos.x, hqPos.y, c.coords.x, c.coords.y)}
-                                                fill="none"
-                                                stroke={arcColor}
-                                                strokeWidth="1.5"
-                                                strokeDasharray="4 4"
-                                            />
-                                            <path
-                                                d={calculateArcPath(hqPos.x, hqPos.y, c.coords.x, c.coords.y)}
-                                                fill="none"
-                                                stroke={glowColor}
-                                                strokeWidth="2"
-                                                strokeDasharray="20 180"
-                                                strokeDashoffset="0"
-                                                style={{
-                                                    animation: 'pulseFlow 5s linear infinite',
-                                                    animationDelay: `${idx * 0.4}s`
+                                {/* Render US states borders if zoomed into US */}
+                                {(showUsStates || zoom >= 2.2) && usStatesGeoJson && (
+                                    <g fill="rgba(99, 102, 241, 0.01)" stroke="rgba(99, 102, 241, 0.12)" strokeWidth="0.4" className="animate-fadeIn">
+                                        {usStatesGeoJson?.features?.map((feat: GeoJsonFeature, i: number) => (
+                                            <path 
+                                                key={`us-state-${i}`} 
+                                                d={getFeaturePath(feat)}
+                                                onMouseEnter={(e) => {
+                                                    (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.05)");
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.01)");
                                                 }}
                                             />
-                                        </g>
-                                    );
-                                })}
+                                        ))}
+                                    </g>
+                                )}
 
-                                {/* Corporate HQ Hub Pin */}
-                                <g transform={`translate(${hqPos.x}, ${hqPos.y})`} style={{ cursor: 'pointer' }}>
+                                {/* Connection Bezier curves */}
+                                {mapPoints.map((pt, idx) => (
+                                    <g key={`arc-${idx}`}>
+                                        <path
+                                            d={calculateArcPath(hqPos.x, hqPos.y, pt.coords.x, pt.coords.y)}
+                                            fill="none"
+                                            stroke={getArcColor(pt)}
+                                            strokeWidth="1.2"
+                                            strokeDasharray="4 4"
+                                        />
+                                        <path
+                                            d={calculateArcPath(hqPos.x, hqPos.y, pt.coords.x, pt.coords.y)}
+                                            fill="none"
+                                            stroke={getGlowColor(pt)}
+                                            strokeWidth="1.8"
+                                            strokeDasharray="20 180"
+                                            strokeDashoffset="0"
+                                            style={{
+                                                animation: 'pulseFlow 5s linear infinite',
+                                                animationDelay: `${idx * 0.4}s`
+                                            }}
+                                        />
+                                    </g>
+                                ))}
+
+                                {/* Corporate HQ Beacon */}
+                                <g transform={`translate(${hqPos.x}, ${hqPos.y})`}>
                                     <circle r="12" fill="rgba(99, 102, 241, 0.15)" stroke="var(--accent-primary)" strokeWidth="0.5">
                                         <animate attributeName="r" values="5;20;5" dur="4s" repeatCount="indefinite" />
                                         <animate attributeName="opacity" values="0.8;0;0.8" dur="4s" repeatCount="indefinite" />
                                     </circle>
-                                    <circle r="4" fill="var(--accent-primary)" stroke="#fff" strokeWidth="1" />
+                                    <circle r="4.5" fill="var(--accent-primary)" stroke="#fff" strokeWidth="1" />
                                 </g>
 
-                                {/* Connection Nodes (Pulsing beacons) */}
-                                {connections.map((c, idx) => {
-                                    const isMalicious = c.failCount > 0 && c.successCount === 0;
-                                    const isSuspicious = c.failCount > 0 && c.successCount > 0;
-                                    const color = isMalicious ? '#ef4444' : isSuspicious ? '#eab308' : '#22c55e';
-                                    const glowFilter = isMalicious ? 'drop-shadow(0 0 6px #ef4444)' : isSuspicious ? 'drop-shadow(0 0 6px #eab308)' : 'drop-shadow(0 0 6px #22c55e)';
+                                {/* Aggregated Beacons */}
+                                {mapPoints.map((pt, idx) => {
+                                    const isFail = mapFilter === "failed" || mapFilter === "failed-valid";
+                                    const color = isFail ? '#ef4444' : '#22c55e';
+                                    const beaconRadius = isFail ? Math.min(6 + pt.count * 1.5, 20) : 10;
 
                                     return (
                                         <g
-                                            key={`point-${idx}`}
-                                            transform={`translate(${c.coords.x}, ${c.coords.y})`}
+                                            key={`pt-${idx}`}
+                                            transform={`translate(${pt.coords.x}, ${pt.coords.y})`}
                                             style={{ cursor: 'pointer' }}
-                                            onMouseEnter={(e) => {
-                                                setHoveredPoint(c);
+                                            onMouseEnter={() => {
+                                                setHoveredPoint(pt);
                                                 setTooltipPos({
-                                                    x: c.coords.x * zoom + pan.x + 10,
-                                                    y: c.coords.y * zoom + pan.y - 120
+                                                    x: pt.coords.x * zoom + pan.x + 10,
+                                                    y: pt.coords.y * zoom + pan.y - 120
                                                 });
                                             }}
                                             onMouseLeave={() => setHoveredPoint(null)}
                                         >
-                                            <circle r="10" fill="none" stroke={color} strokeWidth="1" style={{ filter: glowFilter }}>
-                                                <animate attributeName="r" values="3;12;3" dur="2.5s" repeatCount="indefinite" />
-                                                <animate attributeName="opacity" values="0.7;0;0.7" dur="2.5s" repeatCount="indefinite" />
+                                            <circle r={beaconRadius} fill="none" stroke={color} strokeWidth="1">
+                                                <animate attributeName="r" values={`${beaconRadius - 2};${beaconRadius + 6};${beaconRadius - 2}`} dur="3s" repeatCount="indefinite" />
+                                                <animate attributeName="opacity" values="0.6;0;0.6" dur="3s" repeatCount="indefinite" />
                                             </circle>
-                                            <circle r="3.5" fill={color} stroke="#000" strokeWidth="0.5" />
+                                            <circle r="4" fill={color} stroke="#000" strokeWidth="0.5" />
+                                            {isFail && pt.count > 1 && (
+                                                <text y="-8" textAnchor="middle" fill="#ef4444" fontSize="7" fontWeight="bold">
+                                                    {pt.count}
+                                                </text>
+                                            )}
                                         </g>
                                     );
                                 })}
@@ -426,21 +602,21 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                         </svg>
                     )}
 
-                    {/* Interactive Tooltip Card overlay */}
+                    {/* Popover Hover details */}
                     {hoveredPoint && (
                         <div
                             style={{
                                 position: 'absolute',
                                 left: `${tooltipPos.x}px`,
                                 top: `${tooltipPos.y}px`,
-                                width: '280px',
-                                background: 'rgba(10, 11, 20, 0.95)',
-                                backdropFilter: 'blur(8px)',
-                                border: `1px solid ${hoveredPoint.failCount > 0 && hoveredPoint.successCount === 0 ? 'rgba(239, 68, 68, 0.4)' : 'rgba(99, 102, 241, 0.4)'}`,
+                                width: '310px',
+                                background: 'rgba(10, 11, 20, 0.96)',
+                                backdropFilter: 'blur(10px)',
+                                border: `1px solid ${mapFilter.startsWith('failed') ? 'rgba(239, 68, 68, 0.45)' : 'rgba(99, 102, 241, 0.45)'}`,
                                 borderRadius: '8px',
-                                padding: '12px',
+                                padding: '14px',
                                 color: 'var(--text-primary)',
-                                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+                                boxShadow: '0 12px 36px rgba(0, 0, 0, 0.65)',
                                 pointerEvents: 'none',
                                 zIndex: 100,
                                 display: 'flex',
@@ -449,41 +625,86 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                             }}
                             className="animate-fadeIn"
                         >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
-                                <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{hoveredPoint.countryName}</span>
-                                <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', fontWeight: 'bold' }}>
-                                    {hoveredPoint.countryCode}
-                                </span>
-                            </div>
-
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--text-muted)' }}>Successful Tunnels:</span>
-                                    <span style={{ color: '#22c55e', fontWeight: 600 }}>{hoveredPoint.successCount}</span>
+                            {/* Failed Aggregations: IP-based Header */}
+                            {hoveredPoint.ip ? (
+                                <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ fontWeight: 800, fontSize: '0.9rem', fontFamily: 'monospace' }}>{hoveredPoint.ip}</span>
+                                        <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontWeight: 'bold', border: '1px solid rgba(239,68,68,0.3)' }}>
+                                            {hoveredPoint.count} Failures
+                                        </span>
+                                    </div>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px', display: 'block' }}>
+                                        📍 {hoveredPoint.countryName} ({hoveredPoint.countryCode})
+                                    </span>
                                 </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--text-muted)' }}>Failed Attempts:</span>
-                                    <span style={{ color: '#ef4444', fontWeight: 600 }}>{hoveredPoint.failCount}</span>
+                            ) : (
+                                /* Country-based Header (Active / Completed) */
+                                <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>{hoveredPoint.name}</span>
+                                    <span style={{ fontSize: '0.75rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                        {hoveredPoint.count} Node{hoveredPoint.count === 1 ? "" : "s"}
+                                    </span>
                                 </div>
-                            </div>
+                            )}
 
-                            {/* Recent Events logs overview */}
-                            {hoveredPoint.recentEvents.length > 0 && (
-                                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '6px', marginTop: '2px' }}>
-                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 'bold', display: 'block', marginBottom: '4px' }}>Recent Attempts</span>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                        {hoveredPoint.recentEvents.map((evt: VpnEvent, index: number) => (
-                                            <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: '2px', background: 'rgba(255,255,255,0.02)', padding: '4px 6px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.03)' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem' }}>
-                                                    <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{evt.username}</span>
-                                                    <span style={{ color: evt.status === 'SUCCESS' ? '#22c55e' : '#ef4444', fontWeight: 'bold' }}>
-                                                        {evt.status}
-                                                    </span>
-                                                </div>
-                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{evt.sourceIp}</span>
-                                            </div>
+                            {/* Metrics for Failed IPs */}
+                            {hoveredPoint.ip && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <span style={{ color: 'var(--text-muted)' }}>ISP/ASN:</span>
+                                        <span style={{ color: 'var(--text-secondary)', fontWeight: 600, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {hoveredPoint.asnName}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Targeted Accounts:</span>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                            {Array.from(hoveredPoint.usernames).slice(0, 3).map((uname: any, i) => (
+                                                <span key={i} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-color)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem' }}>
+                                                    {uname}
+                                                </span>
+                                            ))}
+                                            {hoveredPoint.usernames.size > 3 && (
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>+{hoveredPoint.usernames.size - 3} more</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
+                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Reasons:</span>
+                                        {Array.from(hoveredPoint.reasons).slice(0, 2).map((reason: any, i) => (
+                                            <span key={i} style={{ color: '#f87171', fontSize: '0.75rem' }}>• {reason}</span>
                                         ))}
                                     </div>
+                                </div>
+                            )}
+
+                            {/* Metrics for Active / Completed connections */}
+                            {!hoveredPoint.ip && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {hoveredPoint.events.map((evt: VpnEvent, index: number) => (
+                                        <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: '3px', background: 'rgba(255,255,255,0.02)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                                <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{evt.username}</span>
+                                                <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.75rem' }}>{evt.sourceIp}</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                                {mapFilter === "active" ? (
+                                                    <>
+                                                        <span>Time: {new Date(evt.createdAt).toLocaleTimeString()}</span>
+                                                        <span style={{ color: '#22c55e', fontWeight: 'bold' }}>Connected</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span>Duration: {formatDuration(evt.duration)}</span>
+                                                        <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>
+                                                            {formatBytes((evt.bytesSent || 0) + (evt.bytesReceived || 0))}
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                         </div>
@@ -493,12 +714,8 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
             <style dangerouslySetInnerHTML={{ __html: `
                 @keyframes pulseFlow {
-                    0% {
-                        stroke-dashoffset: 200;
-                    }
-                    100% {
-                        stroke-dashoffset: -200;
-                    }
+                    0% { stroke-dashoffset: 200; }
+                    100% { stroke-dashoffset: -200; }
                 }
                 @keyframes spin {
                     0% { transform: rotate(0deg); }
