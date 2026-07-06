@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getPermissionsForRole } from "@/app/actions/permissions";
-import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi } from "lucide-react";
+import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe } from "lucide-react";
 import QueriesPageClient from "./QueriesPageClient";
 
 export default async function QueriesPage() {
@@ -55,6 +55,13 @@ export default async function QueriesPage() {
             href: "/queries/hibp/domain",
             description: "Monitor domain-wide breach data to identify leaked credentials across all corporate employees.",
             icon: <ShieldCheck size={24} />
+        },
+        {
+            id: 'threat-intel',
+            title: "Threat Intelligence reputation",
+            href: "/queries/threat-intel",
+            description: "Query IP reputation, DNS zones, and file signatures correlated with Cisco Umbrella categorization.",
+            icon: <Globe size={24} />
         }
     ];
 

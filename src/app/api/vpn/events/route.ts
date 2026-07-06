@@ -290,8 +290,37 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
 
             // Perform IP info enrichment
             let ipInfo = null;
+            let finalFailureReason = failureReason;
             try {
                 ipInfo = await getIpInfoLite(sourceIp);
+                
+                // If it is a failed VPN connection attempt, evaluate threat risk
+                if (status === "FAILURE" && ipInfo) {
+                    let score = 0;
+                    const badAsns = ["12345", "99999", "66666"];
+                    const highRiskCountries = ["KP", "IR", "SY"];
+                    
+                    if (badAsns.includes(ipInfo.asn || "")) {
+                        score += 50;
+                    }
+                    if (highRiskCountries.includes(ipInfo.country_code || "")) {
+                        score += 40;
+                    }
+                    
+                    if (score > 30) {
+                        const threatPrefix = `[⚠️ THREAT: ${score}/100]`;
+                        finalFailureReason = finalFailureReason 
+                            ? `${threatPrefix} ${finalFailureReason}`
+                            : `${threatPrefix} High-risk network source`;
+                            
+                        // Log a high-priority system audit event
+                        await logAudit(
+                            "SUSPICIOUS_VPN_ATTEMPT",
+                            `Security Alert: Failed VPN login attempt from high-risk IP ${sourceIp} (${ipInfo.country || 'Unknown'}). Threat score: ${score}/100.`,
+                            "SYSTEM"
+                        );
+                    }
+                }
             } catch (enrichError) {
                 console.error(`Failed to enrich IP ${sourceIp}:`, enrichError);
             }
@@ -307,7 +336,7 @@ async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; er
                     bytesSent,
                     bytesReceived,
                     bytesTotal,
-                    failureReason,
+                    failureReason: finalFailureReason,
                     vpnType: finalVpnType,
                     vpnStream: finalVpnStream,
                     ipAsn: ipInfo?.asn || null,

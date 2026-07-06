@@ -193,6 +193,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'hibp-account', role: 'ADMIN', isEnabled: true },
             { toolId: 'hibp-domain', role: 'ADMIN', isEnabled: true },
             { toolId: 'vpn', role: 'ADMIN', isEnabled: true },
+            { toolId: 'threat-intel', role: 'ADMIN', isEnabled: true },
 
             { toolId: 'firewall', role: 'ANALYST', isEnabled: true },
             { toolId: 'ise', role: 'ANALYST', isEnabled: true },
@@ -200,6 +201,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'hibp-account', role: 'ANALYST', isEnabled: true },
             { toolId: 'hibp-domain', role: 'ANALYST', isEnabled: false },
             { toolId: 'vpn', role: 'ANALYST', isEnabled: true },
+            { toolId: 'threat-intel', role: 'ANALYST', isEnabled: true },
 
             { toolId: 'firewall', role: 'USER', isEnabled: false },
             { toolId: 'ise', role: 'USER', isEnabled: false },
@@ -207,6 +209,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'hibp-account', role: 'USER', isEnabled: true },
             { toolId: 'hibp-domain', role: 'USER', isEnabled: false },
             { toolId: 'vpn', role: 'USER', isEnabled: false },
+            { toolId: 'threat-intel', role: 'USER', isEnabled: false },
 
             { toolId: 'firewall', role: 'NETWORK', isEnabled: true },
             { toolId: 'ise', role: 'NETWORK', isEnabled: true },
@@ -214,6 +217,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'hibp-account', role: 'NETWORK', isEnabled: true },
             { toolId: 'hibp-domain', role: 'NETWORK', isEnabled: false },
             { toolId: 'vpn', role: 'NETWORK', isEnabled: true },
+            { toolId: 'threat-intel', role: 'NETWORK', isEnabled: true },
 
             { toolId: 'firewall', role: 'DESKTOP', isEnabled: true },
             { toolId: 'ise', role: 'DESKTOP', isEnabled: false },
@@ -221,6 +225,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'hibp-account', role: 'DESKTOP', isEnabled: true },
             { toolId: 'hibp-domain', role: 'DESKTOP', isEnabled: false },
             { toolId: 'vpn', role: 'DESKTOP', isEnabled: false },
+            { toolId: 'threat-intel', role: 'DESKTOP', isEnabled: false },
 
             { toolId: 'firewall', role: 'SYSTEMS', isEnabled: false },
             { toolId: 'ise', role: 'SYSTEMS', isEnabled: false },
@@ -228,6 +233,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'hibp-account', role: 'SYSTEMS', isEnabled: true },
             { toolId: 'hibp-domain', role: 'SYSTEMS', isEnabled: true },
             { toolId: 'vpn', role: 'SYSTEMS', isEnabled: false },
+            { toolId: 'threat-intel', role: 'SYSTEMS', isEnabled: false },
 
             { toolId: 'site-management', role: 'ADMIN', isEnabled: true },
             { toolId: 'site-management', role: 'ANALYST', isEnabled: false },
