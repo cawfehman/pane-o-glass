@@ -179,7 +179,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
     // Fetch simplified world geometry on mount
     useEffect(() => {
         let active = true;
-        fetch("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson")
+        fetch("/world.geojson")
             .then(res => res.ok ? res.json() : Promise.reject())
             .then(data => {
                 if (active) {
@@ -197,7 +197,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
     useEffect(() => {
         if ((showUsStates || zoom >= 2.2) && !usStatesGeoJson && !loadingStates) {
             setLoadingStates(true);
-            fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json")
+            fetch("/us-states.json")
                 .then(res => res.ok ? res.json() : Promise.reject())
                 .then(data => {
                     setUsStatesGeoJson(data);
@@ -660,17 +660,21 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                 )}
 
                                 {/* Connection Bezier curves (clean static solid paths) */}
-                                {mapPoints.map((pt, idx) => (
-                                    <g key={`arc-${idx}`}>
-                                        <path
-                                            d={calculateArcPath(hqPos.x, hqPos.y, pt.coords.x, pt.coords.y)}
-                                            fill="none"
-                                            stroke={getArcColor(pt)}
-                                            strokeWidth="1.2"
-                                            opacity="0.35"
-                                        />
-                                    </g>
-                                ))}
+                                {mapPoints.map((pt, idx) => {
+                                    const isUsView = showUsStates || zoom >= 2.2;
+                                    if (isUsView && pt.countryCode !== "US") return null;
+                                    return (
+                                        <g key={`arc-${idx}`}>
+                                            <path
+                                                d={calculateArcPath(hqPos.x, hqPos.y, pt.coords.x, pt.coords.y)}
+                                                fill="none"
+                                                stroke={getArcColor(pt)}
+                                                strokeWidth="1.2"
+                                                opacity="0.35"
+                                            />
+                                        </g>
+                                    );
+                                })}
 
                                 {/* Corporate HQ Beacon */}
                                 <g transform={`translate(${hqPos.x}, ${hqPos.y})`}>
@@ -683,6 +687,9 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
                                 {/* Aggregated Beacons */}
                                 {mapPoints.map((pt, idx) => {
+                                    const isUsView = showUsStates || zoom >= 2.2;
+                                    if (isUsView && pt.countryCode !== "US") return null;
+
                                     const isFail = mapFilter === "failed" || mapFilter === "failed-valid";
                                     const color = isFail ? '#ef4444' : '#22c55e';
                                     const beaconRadius = isFail ? Math.min(6 + pt.count * 1.5, 20) : 10;
