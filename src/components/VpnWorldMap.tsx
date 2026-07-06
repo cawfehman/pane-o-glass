@@ -317,10 +317,11 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
     const handleFocusUS = () => {
         // Center coordinates target for United States
         const usCenter = project(38.0, -97.0);
-        setZoom(2.8);
+        const scale = 2.8;
+        setZoom(scale);
         setPan({
-            x: 450 - usCenter.x * 2.8,
-            y: 250 - usCenter.y * 2.8
+            x: (450 - usCenter.x) * scale,
+            y: (250 - usCenter.y) * scale
         });
         setShowUsStates(true);
     };
@@ -516,19 +517,30 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
                                 {/* Render world map country borders */}
                                 <g fill="rgba(255, 255, 255, 0.02)" stroke="rgba(255, 255, 255, 0.07)" strokeWidth="0.8">
-                                    {geoJson?.features?.map((feat: GeoJsonFeature, i: number) => (
-                                        <path 
-                                            key={`world-country-${i}`} 
-                                            d={getFeaturePath(feat)} 
-                                            style={{ transition: 'fill 0.2s' }}
-                                            onMouseEnter={(e) => {
-                                                (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.06)");
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                (e.target as SVGPathElement).setAttribute("fill", "rgba(255, 255, 255, 0.02)");
-                                            }}
-                                        />
-                                    ))}
+                                    {geoJson?.features?.map((feat: GeoJsonFeature, i: number) => {
+                                        const isUS = feat.properties.name === "United States of America" || feat.properties.name === "United States" || feat.properties.name === "USA";
+                                        return (
+                                            <path 
+                                                key={`world-country-${i}`} 
+                                                d={getFeaturePath(feat)} 
+                                                style={{ 
+                                                    transition: 'fill 0.2s',
+                                                    cursor: isUS ? 'pointer' : 'default'
+                                                }}
+                                                onClick={() => {
+                                                    if (isUS) {
+                                                        handleFocusUS();
+                                                    }
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    (e.target as SVGPathElement).setAttribute("fill", isUS ? "rgba(99, 102, 241, 0.12)" : "rgba(99, 102, 241, 0.06)");
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    (e.target as SVGPathElement).setAttribute("fill", "rgba(255, 255, 255, 0.02)");
+                                                }}
+                                            />
+                                        );
+                                    })}
                                 </g>
 
                                 {/* Render US states borders if zoomed into US */}
@@ -549,7 +561,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                     </g>
                                 )}
 
-                                {/* Connection Bezier curves */}
+                                {/* Connection Bezier curves (clean static solid paths) */}
                                 {mapPoints.map((pt, idx) => (
                                     <g key={`arc-${idx}`}>
                                         <path
@@ -557,19 +569,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                             fill="none"
                                             stroke={getArcColor(pt)}
                                             strokeWidth="1.2"
-                                            strokeDasharray="4 4"
-                                        />
-                                        <path
-                                            d={calculateArcPath(hqPos.x, hqPos.y, pt.coords.x, pt.coords.y)}
-                                            fill="none"
-                                            stroke={getGlowColor(pt)}
-                                            strokeWidth="1.8"
-                                            strokeDasharray="20 180"
-                                            strokeDashoffset="0"
-                                            style={{
-                                                animation: 'pulseFlow 5s linear infinite',
-                                                animationDelay: `${idx * 0.4}s`
-                                            }}
+                                            opacity="0.35"
                                         />
                                     </g>
                                 ))}
@@ -596,10 +596,14 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                             style={{ cursor: 'pointer' }}
                                             onMouseEnter={() => {
                                                 setHoveredPoint(pt);
-                                                setTooltipPos({
-                                                    x: pt.coords.x * zoom + pan.x + 10,
-                                                    y: pt.coords.y * zoom + pan.y - 120
-                                                });
+                                                let tx = pt.coords.x * zoom + pan.x + 10;
+                                                let ty = pt.coords.y * zoom + pan.y - 120;
+                                                // Constrain position boundaries
+                                                if (tx > 650) tx = tx - 300;
+                                                if (tx < 10) tx = 10;
+                                                if (ty < 10) ty = ty + 140;
+                                                if (ty > 380) ty = 380;
+                                                setTooltipPos({ x: tx, y: ty });
                                             }}
                                             onMouseLeave={() => setHoveredPoint(null)}
                                         >
