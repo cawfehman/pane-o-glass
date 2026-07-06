@@ -31,6 +31,7 @@ interface VpnWorldMapProps {
     securityScope: string;
     setSecurityScope: (val: string) => void;
     ipCache?: Record<string, any>;
+    onRefreshData?: () => Promise<void> | void;
 }
 
 interface GeoJsonFeature {
@@ -98,7 +99,7 @@ const countryCoordinates: Record<string, { lat: number; lng: number; name: strin
 
 const HQ_COORDS = { lat: 39.9526, lng: -75.1652, name: "Corporate Gateways" };
 
-export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents = [], securityScope, setSecurityScope, ipCache = {} }: VpnWorldMapProps) {
+export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents = [], securityScope, setSecurityScope, ipCache = {}, onRefreshData }: VpnWorldMapProps) {
     const [zoom, setZoom] = useState<number>(1);
     const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -115,6 +116,54 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
     // Map filters state: active | failed | failed-valid | completed
     const [mapFilter, setMapFilter] = useState<"active" | "failed" | "failed-valid" | "completed">("active");
+    const [isEnriching, setIsEnriching] = useState<boolean>(false);
+
+    useEffect(() => {
+        const checkAndEnrich = async () => {
+            if (!(showUsStates || zoom >= 2.2) || isEnriching) return;
+
+            // Collect all active US IPs
+            const activeTunnels = successfulIps.filter(evt => {
+                return evt.status === "SUCCESS" && evt.ipCountryCode === "US";
+            });
+            
+            // Collect failed valid US IPs
+            const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
+            const failedValidTunnels = failedIps.filter(evt => {
+                const clean = evt.username?.toLowerCase().endsWith("@cooperhealth.edu") ? evt.username.slice(0, -17) : evt.username;
+                return evt.status === "FAILURE" && evt.ipCountryCode === "US" && nameNameRegex.test(clean);
+            });
+
+            const allUsIps = Array.from(new Set([
+                ...activeTunnels.map(e => e.sourceIp),
+                ...failedValidTunnels.map(e => e.sourceIp)
+            ])).filter(Boolean);
+
+            const uncached = allUsIps.filter(ip => !ipCache[ip]);
+
+            if (uncached.length > 0) {
+                setIsEnriching(true);
+                console.log(`[Enrichment] Zoomed to US. Resolving ${uncached.length} uncached IPs...`);
+                
+                for (const ip of uncached) {
+                    try {
+                        await fetch(`/api/threat-intel?q=${encodeURIComponent(ip)}`);
+                        await new Promise(r => setTimeout(r, 50)); // throttle rate limit delay
+                    } catch (e) {
+                        console.error(`Failed to lazy-geocode ${ip}:`, e);
+                    }
+                }
+                
+                console.log("[Enrichment] Finished geocoding. Reloading map coordinates.");
+                if (onRefreshData) {
+                    await onRefreshData();
+                }
+                setIsEnriching(false);
+            }
+        };
+
+        checkAndEnrich();
+    }, [showUsStates, zoom, ipCache, successfulIps, failedIps, onRefreshData]);
 
     const svgRef = useRef<SVGSVGElement | null>(null);
 
@@ -563,49 +612,50 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                 
                                 <rect width="900" height="500" fill="#090a0f" />
 
-                                {/* Render world map country borders */}
-                                <g fill="rgba(255, 255, 255, 0.02)" stroke="rgba(255, 255, 255, 0.07)" strokeWidth="0.8">
-                                    {geoJson?.features?.map((feat: GeoJsonFeature, i: number) => {
-                                        const isUS = feat.properties.name === "United States of America" || feat.properties.name === "United States" || feat.properties.name === "USA";
-                                        return (
-                                            <path 
-                                                key={`world-country-${i}`} 
-                                                d={getFeaturePath(feat)} 
-                                                style={{ 
-                                                    transition: 'fill 0.2s',
-                                                    cursor: isUS ? 'pointer' : 'default'
-                                                }}
-                                                onClick={() => {
-                                                    if (isUS) {
-                                                        handleFocusUS();
-                                                    }
-                                                }}
-                                                onMouseEnter={(e) => {
-                                                    (e.target as SVGPathElement).setAttribute("fill", isUS ? "rgba(99, 102, 241, 0.12)" : "rgba(99, 102, 241, 0.06)");
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                    (e.target as SVGPathElement).setAttribute("fill", "rgba(255, 255, 255, 0.02)");
-                                                }}
-                                            />
-                                        );
-                                    })}
-                                </g>
-
-                                {/* Render US states borders if zoomed into US */}
-                                {(showUsStates || zoom >= 2.2) && usStatesGeoJson && (
-                                    <g fill="rgba(99, 102, 241, 0.01)" stroke="rgba(99, 102, 241, 0.12)" strokeWidth="0.4" className="animate-fadeIn">
-                                        {usStatesGeoJson?.features?.map((feat: GeoJsonFeature, i: number) => (
-                                            <path 
-                                                key={`us-state-${i}`} 
-                                                d={getFeaturePath(feat)}
-                                                onMouseEnter={(e) => {
-                                                    (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.05)");
-                                                }}
-                                                onMouseLeave={(e) => {
-                                                    (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.01)");
-                                                }}
-                                            />
-                                        ))}
+                                {/* Render US states borders if zoomed into US, else render world countries */}
+                                {(showUsStates || zoom >= 2.2) ? (
+                                    usStatesGeoJson && (
+                                        <g fill="rgba(99, 102, 241, 0.02)" stroke="rgba(99, 102, 241, 0.2)" strokeWidth="0.5" className="animate-fadeIn">
+                                            {usStatesGeoJson?.features?.map((feat: GeoJsonFeature, i: number) => (
+                                                <path 
+                                                    key={`us-state-${i}`} 
+                                                    d={getFeaturePath(feat)}
+                                                    onMouseEnter={(e) => {
+                                                        (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.08)");
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.02)");
+                                                    }}
+                                                />
+                                            ))}
+                                        </g>
+                                    )
+                                ) : (
+                                    <g fill="rgba(255, 255, 255, 0.02)" stroke="rgba(255, 255, 255, 0.07)" strokeWidth="0.8">
+                                        {geoJson?.features?.map((feat: GeoJsonFeature, i: number) => {
+                                            const isUS = feat.properties.name === "United States of America" || feat.properties.name === "United States" || feat.properties.name === "USA";
+                                            return (
+                                                <path 
+                                                    key={`world-country-${i}`} 
+                                                    d={getFeaturePath(feat)} 
+                                                    style={{ 
+                                                        transition: 'fill 0.2s',
+                                                        cursor: isUS ? 'pointer' : 'default'
+                                                    }}
+                                                    onClick={() => {
+                                                        if (isUS) {
+                                                            handleFocusUS();
+                                                        }
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        (e.target as SVGPathElement).setAttribute("fill", isUS ? "rgba(99, 102, 241, 0.12)" : "rgba(99, 102, 241, 0.06)");
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        (e.target as SVGPathElement).setAttribute("fill", "rgba(255, 255, 255, 0.02)");
+                                                    }}
+                                                />
+                                            );
+                                        })}
                                     </g>
                                 )}
 

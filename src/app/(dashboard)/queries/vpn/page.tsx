@@ -1792,6 +1792,7 @@ export default function VpnTroubleshootingPage() {
                     securityScope={securityScope}
                     setSecurityScope={setSecurityScope}
                     ipCache={ipCache}
+                    onRefreshData={fetchDashboardData}
                 />
             )}
 
