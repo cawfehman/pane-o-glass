@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { logAudit } from "./audit";
 
 interface IpLocateResponse {
     ip: string;
@@ -124,6 +125,11 @@ export async function enrichIp(ip: string, isAdHoc: boolean = false): Promise<an
         const limit = isAdHoc ? MAX_TOTAL_LIMIT : MAX_AUTO_LIMIT;
         if (dailyCount >= limit) {
             console.warn(`[iplocate] Daily limit exceeded. Used today: ${dailyCount}/${limit}. Fallback active.`);
+            await logAudit(
+                "IPLOCATE_LIMIT_FALLBACK",
+                `IP lookup for ${ip} skipped. Daily quota limit (${limit}) reached. Active today: ${dailyCount}/${limit}.`,
+                "SYSTEM"
+            );
             if (cached) {
                 // Fallback to expired cache rather than failing
                 return JSON.parse(cached.rawJson);
@@ -193,6 +199,12 @@ export async function enrichIp(ip: string, isAdHoc: boolean = false): Promise<an
                 rawJson: JSON.stringify(data)
             }
         });
+
+        await logAudit(
+            "IPLOCATE_API_QUERY",
+            `Enriched IP ${ip} (Resolved: ${data.city || 'Unknown'}, ${data.subdivision || 'Unknown'}, ${data.country_code || 'Unknown'}). Daily usage: ${dailyCount + 1}/${limit}`,
+            "SYSTEM"
+        );
 
         return data;
 

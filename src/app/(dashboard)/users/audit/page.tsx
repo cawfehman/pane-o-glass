@@ -16,9 +16,17 @@ export default async function AuditLogsPage(props: {
 
     const userFilter = typeof searchParams.user === 'string' ? searchParams.user : undefined;
     const actionFilter = typeof searchParams.action === 'string' ? searchParams.action : undefined;
+    const activeTab = searchParams.tab === 'quota' ? 'quota' : 'audit';
 
     const whereClause: any = {};
+    if (activeTab === 'quota') {
+        whereClause.action = { in: ['IPLOCATE_API_QUERY', 'IPLOCATE_LIMIT_FALLBACK'] };
+    } else {
+        whereClause.action = { notIn: ['IPLOCATE_API_QUERY', 'IPLOCATE_LIMIT_FALLBACK'] };
+    }
+
     if (actionFilter) {
+        // Overlay explicit filter (case insensitive standard check)
         whereClause.action = { contains: actionFilter };
     }
     if (userFilter) {
@@ -45,6 +53,41 @@ export default async function AuditLogsPage(props: {
 
     return (
         <div className="internal-scroll-layout">
+            <div style={{ flexShrink: 0, display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', marginBottom: '24px', paddingBottom: '8px' }}>
+                <Link 
+                    href="/users/audit"
+                    style={{
+                        padding: '8px 16px',
+                        borderRadius: '4px',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                        color: activeTab === 'audit' ? 'var(--text-primary)' : 'var(--text-muted)',
+                        background: activeTab === 'audit' ? 'rgba(255,255,255,0.06)' : 'transparent',
+                        border: '1px solid',
+                        borderColor: activeTab === 'audit' ? 'var(--border-color)' : 'transparent'
+                    }}
+                >
+                    Standard Audit Logs
+                </Link>
+                <Link 
+                    href="/users/audit?tab=quota"
+                    style={{
+                        padding: '8px 16px',
+                        borderRadius: '4px',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                        color: activeTab === 'quota' ? 'var(--text-primary)' : 'var(--text-muted)',
+                        background: activeTab === 'quota' ? 'rgba(255,255,255,0.06)' : 'transparent',
+                        border: '1px solid',
+                        borderColor: activeTab === 'quota' ? 'var(--border-color)' : 'transparent'
+                    }}
+                >
+                    IPLocate Quota Debug Logs
+                </Link>
+            </div>
+
             <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
                 <div>
                     <h1>Audit Logs</h1>
@@ -58,6 +101,7 @@ export default async function AuditLogsPage(props: {
             </div>
 
             <form method="GET" style={{ flexShrink: 0, display: 'flex', gap: '16px', marginBottom: '24px' }}>
+                {activeTab === 'quota' && <input type="hidden" name="tab" value="quota" />}
                 <input 
                     type="text" 
                     name="user" 
@@ -73,7 +117,7 @@ export default async function AuditLogsPage(props: {
                     style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-surface)', color: 'var(--text-primary)', width: '200px' }}
                 />
                 <button type="submit" className="btn-primary">Filter</button>
-                <Link href="/users/audit" className="btn-primary" style={{ textDecoration: 'none', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}>
+                <Link href={activeTab === 'quota' ? "/users/audit?tab=quota" : "/users/audit"} className="btn-primary" style={{ textDecoration: 'none', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}>
                     Clear
                 </Link>
             </form>
