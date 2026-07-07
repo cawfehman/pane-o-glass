@@ -117,8 +117,52 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
     // Map filters state: active | failed | failed-valid | completed
     const [mapFilter, setMapFilter] = useState<"active" | "failed" | "failed-valid" | "completed">("active");
     const [isEnriching, setIsEnriching] = useState<boolean>(false);
+    const [selectedState, setSelectedState] = useState<string | null>(null);
 
     const isUsView = showUsStates;
+
+    // Zoom to specific state bounds
+    const zoomToStateBounds = (stateName: string) => {
+        if (!usStatesGeoJson) return;
+        const feature = usStatesGeoJson.features.find((f: any) => f.properties.name === stateName);
+        if (!feature) return;
+
+        let minLat = 90, maxLat = -90;
+        let minLng = 180, maxLng = -180;
+
+        const processCoord = (c: [number, number]) => {
+            const lng = c[0];
+            const lat = c[1];
+            if (lat < minLat) minLat = lat;
+            if (lat > maxLat) maxLat = lat;
+            if (lng < minLng) minLng = lng;
+            if (lng > maxLng) maxLng = lng;
+        };
+
+        const geom = feature.geometry;
+        if (geom.type === "Polygon") {
+            geom.coordinates.forEach((ring: any) => ring.forEach(processCoord));
+        } else if (geom.type === "MultiPolygon") {
+            geom.coordinates.forEach((poly: any) => poly.forEach((ring: any) => ring.forEach(processCoord)));
+        }
+
+        const centerLat = (minLat + maxLat) / 2;
+        const centerLng = (minLng + maxLng) / 2;
+        const latSpan = maxLat - minLat;
+        const lngSpan = maxLng - minLng;
+        const maxSpan = Math.max(latSpan, lngSpan) || 1;
+
+        // Auto zoom dynamically based on state boundary dimensions
+        const targetZoom = Math.max(1.8, Math.min(6, 12 / maxSpan));
+        const stateCenter = projectUS(centerLat, centerLng);
+
+        setSelectedState(stateName);
+        setZoom(targetZoom);
+        setPan({
+            x: 450 - stateCenter.x * targetZoom,
+            y: 250 - stateCenter.y * targetZoom
+        });
+    };
 
     useEffect(() => {
         const checkAndEnrich = async () => {
@@ -411,8 +455,40 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                 if (evt.username) ipGrouped[ip].usernames.add(evt.username);
             }
 
-            return Object.values(ipGrouped);
+            const points = Object.values(ipGrouped);
+            return applyRadialSpidering(points);
         }
+    };
+
+    // Apply radial spidering offset to collision nodes (same city/coord) when zoomed in
+    const applyRadialSpidering = (points: any[]) => {
+        if (!selectedState) return points;
+
+        const coordGroups: Record<string, any[]> = {};
+        points.forEach(pt => {
+            if (pt.countryCode !== "US") return;
+            const key = `${pt.coords.x.toFixed(1)},${pt.coords.y.toFixed(1)}`;
+            if (!coordGroups[key]) coordGroups[key] = [];
+            coordGroups[key].push(pt);
+        });
+
+        Object.keys(coordGroups).forEach(key => {
+            const group = coordGroups[key];
+            if (group.length > 1) {
+                const cx = group[0].coords.x;
+                const cy = group[0].coords.y;
+                const radius = 22; // spread offset distance in SVG pixels
+                group.forEach((pt, i) => {
+                    const angle = (i / group.length) * 2 * Math.PI;
+                    pt.coords = {
+                        x: cx + Math.cos(angle) * radius,
+                        y: cy + Math.sin(angle) * radius
+                    };
+                    pt.parentCoords = { x: cx, y: cy }; // save city center reference
+                });
+            }
+        });
+        return points;
     };
 
     const mapPoints = getAggregatedData();
@@ -440,12 +516,14 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
     const handleFocusUS = () => {
         setShowUsStates(true);
+        setSelectedState(null);
         setZoom(1);
         setPan({ x: 0, y: 0 });
     };
 
     const handleReset = () => {
         setShowUsStates(false);
+        setSelectedState(null);
         setZoom(1);
         setPan({ x: 0, y: 0 });
     };
@@ -609,265 +687,362 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                     </button>
                 </div>
 
-                {/* Loading states feedback */}
-                <div style={{ flex: 1, width: '100%', position: 'relative', overflow: 'hidden', background: '#090a0f', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                    {loadingMap ? (
-                        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', color: 'var(--text-muted)' }}>
-                            <div style={{ width: '24px', height: '24px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--accent-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                            <span style={{ fontSize: '0.85rem' }}>LOADING CARTOGRAPHY...</span>
-                        </div>
-                    ) : (
-                        <svg
-                            ref={svgRef}
-                            width="100%"
-                            height="100%"
-                            viewBox="0 0 900 500"
-                            onMouseDown={handleMouseDown}
-                            onMouseMove={handleMouseMove}
-                            onMouseUp={handleMouseUp}
-                            onMouseLeave={handleMouseUp}
-                            onWheel={handleWheel}
-                            style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
-                        >
-                            <g transform={isUsView ? `translate(${pan.x}, ${pan.y}) scale(${zoom})` : `translate(${450 + pan.x}, ${250 + pan.y}) scale(${zoom}) translate(-450, -250)`} style={{ transition: isDragging ? 'none' : 'transform 0.15s ease-out' }}>
-                                
-                                <rect width="900" height="500" fill="#090a0f" />
+                {/* Map Panel Wrap */}
+                <div style={{ display: 'flex', gap: '20px', flex: 1, minHeight: '520px' }}>
+                    
+                    <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#090a0f', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
+                        {loadingMap ? (
+                            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', color: 'var(--text-muted)' }}>
+                                <div style={{ width: '24px', height: '24px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--accent-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                                <span style={{ fontSize: '0.85rem' }}>LOADING CARTOGRAPHY...</span>
+                            </div>
+                        ) : (
+                            <svg
+                                ref={svgRef}
+                                width="100%"
+                                height="100%"
+                                viewBox="0 0 900 500"
+                                onMouseDown={handleMouseDown}
+                                onMouseMove={handleMouseMove}
+                                onMouseUp={handleMouseUp}
+                                onMouseLeave={handleMouseUp}
+                                onWheel={handleWheel}
+                                style={{ cursor: isDragging ? 'grabbing' : 'grab', flex: 1 }}
+                            >
+                                <g transform={isUsView ? `translate(${pan.x}, ${pan.y}) scale(${zoom})` : `translate(${450 + pan.x}, ${250 + pan.y}) scale(${zoom}) translate(-450, -250)`} style={{ transition: isDragging ? 'none' : 'transform 0.15s ease-out' }}>
+                                    
+                                    <rect width="900" height="500" fill="#090a0f" />
 
-                                {/* Render US states borders if US view active, else render world countries */}
-                                {isUsView ? (
-                                    usStatesGeoJson && (
-                                        <g fill="rgba(99, 102, 241, 0.03)" stroke="rgba(99, 102, 241, 0.25)" strokeWidth="0.6" className="animate-fadeIn">
-                                            {usStatesGeoJson?.features?.map((feat: GeoJsonFeature, i: number) => (
-                                                <path 
-                                                    key={`us-state-${i}`} 
-                                                    d={getFeaturePath(feat, projectUS)}
-                                                    onMouseEnter={(e) => {
-                                                        (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.08)");
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.03)");
-                                                    }}
-                                                />
-                                            ))}
+                                    {/* Render US states borders if US view active, else render world countries */}
+                                    {isUsView ? (
+                                        usStatesGeoJson && (
+                                            <g fill="rgba(99, 102, 241, 0.03)" stroke="rgba(99, 102, 241, 0.25)" strokeWidth="0.6" className="animate-fadeIn">
+                                                {usStatesGeoJson?.features?.map((feat: GeoJsonFeature, i: number) => {
+                                                    const stateName = feat.properties.name;
+                                                    const isSelected = selectedState === stateName;
+                                                    return (
+                                                        <path 
+                                                            key={`us-state-${i}`} 
+                                                            d={getFeaturePath(feat, projectUS)}
+                                                            fill={isSelected ? "rgba(99, 102, 241, 0.12)" : "rgba(99, 102, 241, 0.03)"}
+                                                            stroke={isSelected ? "var(--accent-primary)" : "rgba(99, 102, 241, 0.25)"}
+                                                            strokeWidth={isSelected ? "1.2" : "0.6"}
+                                                            style={{ transition: 'all 0.25s', cursor: 'pointer' }}
+                                                            onClick={() => zoomToStateBounds(stateName)}
+                                                            onMouseEnter={(e) => {
+                                                                if (!isSelected) {
+                                                                    (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.08)");
+                                                                }
+                                                            }}
+                                                            onMouseLeave={(e) => {
+                                                                if (!isSelected) {
+                                                                    (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.03)");
+                                                                }
+                                                            }}
+                                                        />
+                                                    );
+                                                })}
+                                            </g>
+                                        )
+                                    ) : (
+                                        <g fill="rgba(255, 255, 255, 0.02)" stroke="rgba(255, 255, 255, 0.07)" strokeWidth="0.8">
+                                            {geoJson?.features?.map((feat: GeoJsonFeature, i: number) => {
+                                                const isUS = feat.properties.name === "United States of America" || feat.properties.name === "United States" || feat.properties.name === "USA";
+                                                return (
+                                                    <path 
+                                                        key={`world-country-${i}`} 
+                                                        d={getFeaturePath(feat, projectWorld)} 
+                                                        style={{ 
+                                                            transition: 'fill 0.2s',
+                                                            cursor: isUS ? 'pointer' : 'default'
+                                                        }}
+                                                        onClick={() => {
+                                                            if (isUS) {
+                                                                handleFocusUS();
+                                                            }
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            (e.target as SVGPathElement).setAttribute("fill", isUS ? "rgba(99, 102, 241, 0.12)" : "rgba(99, 102, 241, 0.06)");
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            (e.target as SVGPathElement).setAttribute("fill", "rgba(255, 255, 255, 0.02)");
+                                                        }}
+                                                    />
+                                                );
+                                            })}
                                         </g>
-                                    )
-                                ) : (
-                                    <g fill="rgba(255, 255, 255, 0.02)" stroke="rgba(255, 255, 255, 0.07)" strokeWidth="0.8">
-                                        {geoJson?.features?.map((feat: GeoJsonFeature, i: number) => {
-                                            const isUS = feat.properties.name === "United States of America" || feat.properties.name === "United States" || feat.properties.name === "USA";
+                                    )}
+
+                                    {/* Render spider offset lines linking offset beacons to city centers */}
+                                    {isUsView && selectedState && mapPoints.map((pt, idx) => {
+                                        if (pt.parentCoords && (!selectedState || pt.stateName === selectedState)) {
                                             return (
-                                                <path 
-                                                    key={`world-country-${i}`} 
-                                                    d={getFeaturePath(feat, projectWorld)} 
-                                                    style={{ 
-                                                        transition: 'fill 0.2s',
-                                                        cursor: isUS ? 'pointer' : 'default'
-                                                    }}
-                                                    onClick={() => {
-                                                        if (isUS) {
-                                                            handleFocusUS();
-                                                        }
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                        (e.target as SVGPathElement).setAttribute("fill", isUS ? "rgba(99, 102, 241, 0.12)" : "rgba(99, 102, 241, 0.06)");
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                        (e.target as SVGPathElement).setAttribute("fill", "rgba(255, 255, 255, 0.02)");
-                                                    }}
+                                                <line
+                                                    key={`spider-leg-${idx}`}
+                                                    x1={pt.parentCoords.x}
+                                                    y1={pt.parentCoords.y}
+                                                    x2={pt.coords.x}
+                                                    y2={pt.coords.y}
+                                                    stroke="rgba(99, 102, 241, 0.4)"
+                                                    strokeWidth="0.8"
+                                                    strokeDasharray="2,2"
                                                 />
                                             );
-                                        })}
+                                        }
+                                        return null;
+                                    })}
+
+                                    {/* Connection Bezier curves (clean static solid paths) */}
+                                    {mapPoints.map((pt, idx) => {
+                                        if (isUsView && pt.countryCode !== "US") return null;
+                                        if (isUsView && selectedState && pt.stateName !== selectedState) return null;
+                                        return (
+                                            <g key={`arc-${idx}`}>
+                                                <path
+                                                    d={calculateArcPath(hqPos.x, hqPos.y, pt.coords.x, pt.coords.y)}
+                                                    fill="none"
+                                                    stroke={getArcColor(pt)}
+                                                    strokeWidth={Math.min(1.5 + (pt.count * 0.4), 4)}
+                                                    opacity="0.85"
+                                                    strokeDasharray="4,4"
+                                                    style={{ animation: 'pulseFlow 4s linear infinite' }}
+                                                />
+                                            </g>
+                                        );
+                                    })}
+
+                                    {/* Aggregated Beacons */}
+                                    {mapPoints.map((pt, idx) => {
+                                        if (isUsView && pt.countryCode !== "US") return null;
+                                        if (isUsView && selectedState && pt.stateName !== selectedState) return null;
+
+                                        const isFail = mapFilter === "failed" || mapFilter === "failed-valid";
+                                        const pointColor = getGlowColor(pt);
+                                        
+                                        return (
+                                            <g
+                                                key={`point-${idx}`}
+                                                transform={`translate(${pt.coords.x}, ${pt.coords.y})`}
+                                                onMouseEnter={(e) => {
+                                                    const bounds = svgRef.current?.getBoundingClientRect();
+                                                    if (bounds) {
+                                                        const projectedX = pt.coords.x * zoom + pan.x;
+                                                        const projectedY = pt.coords.y * zoom + pan.y;
+                                                        setHoveredPoint(pt);
+                                                        setTooltipPos({
+                                                            x: bounds.left + projectedX,
+                                                            y: bounds.top + projectedY
+                                                        });
+                                                    }
+                                                }}
+                                                onMouseLeave={() => setHoveredPoint(null)}
+                                                style={{ cursor: 'pointer' }}
+                                            >
+                                                {/* Outer ripple rings for visual density feedback */}
+                                                <circle r={isFail ? 11 : 9} fill={pointColor} opacity="0.08" />
+                                                <circle r={isFail ? 7 : 5} fill={pointColor} opacity="0.25" />
+                                                
+                                                {/* Core active locator node */}
+                                                <circle r={isFail ? 4 : 3} fill={pointColor} />
+                                            </g>
+                                        );
+                                    })}
+                                    {/* Core Corporate Gateways Landmark Beacon */}
+                                    <g transform={`translate(${hqPos.x}, ${hqPos.y})`}>
+                                        <circle r="12" fill="var(--accent-primary)" opacity="0.1" />
+                                        <circle r="8" fill="var(--accent-primary)" opacity="0.3" />
+                                        <circle r="4.5" fill="var(--accent-primary)" />
                                     </g>
-                                )}
-
-                                {/* Connection Bezier curves (clean static solid paths) */}
-                                {mapPoints.map((pt, idx) => {
-                                    if (isUsView && pt.countryCode !== "US") return null;
-                                    return (
-                                        <g key={`arc-${idx}`}>
-                                            <path
-                                                d={calculateArcPath(hqPos.x, hqPos.y, pt.coords.x, pt.coords.y)}
-                                                fill="none"
-                                                stroke={getArcColor(pt)}
-                                                strokeWidth="1.2"
-                                                opacity="0.35"
-                                            />
-                                        </g>
-                                    );
-                                })}
-
-                                {/* Corporate HQ Beacon */}
-                                <g transform={`translate(${hqPos.x}, ${hqPos.y})`}>
-                                    <circle r="12" fill="rgba(99, 102, 241, 0.15)" stroke="var(--accent-primary)" strokeWidth="0.5">
-                                        <animate attributeName="r" values="5;20;5" dur="4s" repeatCount="indefinite" />
-                                        <animate attributeName="opacity" values="0.8;0;0.8" dur="4s" repeatCount="indefinite" />
-                                    </circle>
-                                    <circle r="4.5" fill="var(--accent-primary)" stroke="#fff" strokeWidth="1" />
                                 </g>
+                            </svg>
+                        )}
 
-                                {/* Aggregated Beacons */}
-                                {mapPoints.map((pt, idx) => {
-                                    if (isUsView && pt.countryCode !== "US") return null;
-
-                                    const isFail = mapFilter === "failed" || mapFilter === "failed-valid";
-                                    const color = isFail ? '#ef4444' : '#22c55e';
-                                    const beaconRadius = isFail ? Math.min(6 + pt.count * 1.5, 20) : 10;
-
-                                    return (
-                                        <g
-                                            key={`pt-${idx}`}
-                                            transform={`translate(${pt.coords.x}, ${pt.coords.y})`}
-                                            style={{ cursor: 'pointer' }}
-                                            onMouseEnter={() => {
-                                                setHoveredPoint(pt);
-                                                let tx = pt.coords.x * zoom + pan.x + 10;
-                                                let ty = pt.coords.y * zoom + pan.y - 120;
-                                                // Constrain position boundaries
-                                                if (tx > 650) tx = tx - 300;
-                                                if (tx < 10) tx = 10;
-                                                if (ty < 10) ty = ty + 140;
-                                                if (ty > 380) ty = 380;
-                                                setTooltipPos({ x: tx, y: ty });
-                                            }}
-                                            onMouseLeave={() => setHoveredPoint(null)}
-                                        >
-                                            <circle r={beaconRadius} fill="none" stroke={color} strokeWidth="1">
-                                                <animate attributeName="r" values={`${beaconRadius - 2};${beaconRadius + 6};${beaconRadius - 2}`} dur="3s" repeatCount="indefinite" />
-                                                <animate attributeName="opacity" values="0.6;0;0.6" dur="3s" repeatCount="indefinite" />
-                                            </circle>
-                                            <circle r="4" fill={color} stroke="#000" strokeWidth="0.5" />
-                                            {isFail && pt.count > 1 && (
-                                                <text y="-8" textAnchor="middle" fill="#ef4444" fontSize="7" fontWeight="bold">
-                                                    {pt.count}
-                                                </text>
-                                            )}
-                                        </g>
-                                    );
-                                })}
-                            </g>
-                        </svg>
-                    )}
-
-                    {/* Popover Hover details */}
-                    {hoveredPoint && (
-                        <div
-                            style={{
-                                position: 'absolute',
-                                left: `${tooltipPos.x}px`,
-                                top: `${tooltipPos.y}px`,
-                                width: '310px',
-                                background: 'rgba(10, 11, 20, 0.96)',
-                                backdropFilter: 'blur(10px)',
-                                border: `1px solid ${mapFilter.startsWith('failed') ? 'rgba(239, 68, 68, 0.45)' : 'rgba(99, 102, 241, 0.45)'}`,
-                                borderRadius: '8px',
-                                padding: '14px',
-                                color: 'var(--text-primary)',
-                                boxShadow: '0 12px 36px rgba(0, 0, 0, 0.65)',
-                                pointerEvents: 'none',
-                                zIndex: 100,
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '8px'
-                            }}
-                            className="animate-fadeIn"
-                        >
-                            {/* Failed Aggregations: IP-based Header */}
-                            {hoveredPoint.ip ? (
-                                <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontWeight: 800, fontSize: '0.9rem', fontFamily: 'monospace' }}>{hoveredPoint.ip}</span>
-                                        <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontWeight: 'bold', border: '1px solid rgba(239,68,68,0.3)' }}>
-                                            {hoveredPoint.count} Failures
-                                        </span>
-                                    </div>
-                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px', display: 'block' }}>
-                                        📍 {hoveredPoint.cityName && hoveredPoint.stateName ? `${hoveredPoint.cityName}, ${hoveredPoint.stateName}, ${hoveredPoint.countryCode}` : `${hoveredPoint.countryName} (${hoveredPoint.countryCode})`}
-                                    </span>
-                                </div>
-                            ) : (
-                                /* Country-based Header (Active / Completed) */
-                                <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>{hoveredPoint.name}</span>
-                                        <span style={{ fontSize: '0.75rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', border: '1px solid rgba(99,102,241,0.2)' }}>
-                                            {hoveredPoint.count} Node{hoveredPoint.count === 1 ? "" : "s"}
-                                        </span>
-                                    </div>
-                                    {hoveredPoint.org && (
-                                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2.5px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={hoveredPoint.org}>
-                                            🏢 {hoveredPoint.org}
-                                        </span>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Metrics for Failed IPs */}
-                            {hoveredPoint.ip && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ color: 'var(--text-muted)' }}>ISP/Org:</span>
-                                        <span style={{ color: 'var(--text-secondary)', fontWeight: 600, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={hoveredPoint.asnName}>
-                                            {hoveredPoint.asnName}
-                                        </span>
-                                    </div>
-                                    {hoveredPoint.timezone && (
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Timezone:</span>
-                                            <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
-                                                {hoveredPoint.timezone}
+                        {/* Popover Hover details */}
+                        {hoveredPoint && (
+                            <div
+                                style={{
+                                    position: 'absolute',
+                                    left: `${tooltipPos.x}px`,
+                                    top: `${tooltipPos.y}px`,
+                                    width: '310px',
+                                    background: 'rgba(10, 11, 20, 0.96)',
+                                    backdropFilter: 'blur(10px)',
+                                    border: `1px solid ${mapFilter.startsWith('failed') ? 'rgba(239, 68, 68, 0.45)' : 'rgba(99, 102, 241, 0.45)'}`,
+                                    borderRadius: '8px',
+                                    padding: '14px',
+                                    color: 'var(--text-primary)',
+                                    boxShadow: '0 12px 36px rgba(0, 0, 0, 0.65)',
+                                    pointerEvents: 'none',
+                                    zIndex: 100,
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '8px'
+                                }}
+                                className="animate-fadeIn"
+                            >
+                                {/* Failed Aggregations: IP-based Header */}
+                                {hoveredPoint.ip ? (
+                                    <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontWeight: 800, fontSize: '0.9rem', fontFamily: 'monospace' }}>{hoveredPoint.ip}</span>
+                                            <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontWeight: 'bold', border: '1px solid rgba(239,68,68,0.3)' }}>
+                                                {hoveredPoint.count} Failures
                                             </span>
                                         </div>
-                                    )}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
-                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Targeted Accounts:</span>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                            {Array.from(hoveredPoint.usernames).slice(0, 3).map((uname: any, i) => (
-                                                <span key={i} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-color)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem' }}>
-                                                    {uname}
-                                                </span>
-                                            ))}
-                                            {hoveredPoint.usernames.size > 3 && (
-                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>+{hoveredPoint.usernames.size - 3} more</span>
-                                            )}
+                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px', display: 'block' }}>
+                                            📍 {hoveredPoint.cityName && hoveredPoint.stateName ? `${hoveredPoint.cityName}, ${hoveredPoint.stateName}, ${hoveredPoint.countryCode}` : `${hoveredPoint.countryName} (${hoveredPoint.countryCode})`}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    /* Country-based Header (Active / Completed) */
+                                    <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>{hoveredPoint.name}</span>
+                                            <span style={{ fontSize: '0.75rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', border: '1px solid rgba(99,102,241,0.2)' }}>
+                                                {hoveredPoint.count} Node{hoveredPoint.count === 1 ? "" : "s"}
+                                            </span>
                                         </div>
+                                        {hoveredPoint.org && (
+                                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2.5px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={hoveredPoint.org}>
+                                                🏢 {hoveredPoint.org}
+                                            </span>
+                                        )}
                                     </div>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
-                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Reasons:</span>
-                                        {Array.from(hoveredPoint.reasons).slice(0, 2).map((reason: any, i) => (
-                                            <span key={i} style={{ color: '#f87171', fontSize: '0.75rem' }}>• {reason}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
+                                )}
 
-                            {/* Metrics for Active / Completed connections */}
-                            {!hoveredPoint.ip && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {hoveredPoint.events.map((evt: VpnEvent, index: number) => (
-                                        <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: '3px', background: 'rgba(255,255,255,0.02)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.04)' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                                                <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{evt.username}</span>
-                                                <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.75rem' }}>{evt.sourceIp}</span>
+                                {/* Metrics for Failed IPs */}
+                                {hoveredPoint.ip && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span style={{ color: 'var(--text-muted)' }}>ISP/Org:</span>
+                                            <span style={{ color: 'var(--text-secondary)', fontWeight: 600, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={hoveredPoint.asnName}>
+                                                {hoveredPoint.asnName}
+                                            </span>
+                                        </div>
+                                        {hoveredPoint.timezone && (
+                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                <span style={{ color: 'var(--text-muted)' }}>Timezone:</span>
+                                                <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                                    {hoveredPoint.timezone}
+                                                </span>
                                             </div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                                {mapFilter === "active" ? (
-                                                    <>
-                                                        <span>Time: {new Date(evt.createdAt).toLocaleTimeString()}</span>
-                                                        <span style={{ color: '#22c55e', fontWeight: 'bold' }}>Connected</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <span>Duration: {formatDuration(evt.duration)}</span>
-                                                        <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>
-                                                            {formatBytes((evt.bytesSent || 0) + (evt.bytesReceived || 0))}
-                                                        </span>
-                                                    </>
+                                        )}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
+                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Targeted Accounts:</span>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                                {Array.from(hoveredPoint.usernames).slice(0, 3).map((uname: any, i) => (
+                                                    <span key={i} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-color)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem' }}>
+                                                        {uname}
+                                                    </span>
+                                                ))}
+                                                {hoveredPoint.usernames.size > 3 && (
+                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>+{hoveredPoint.usernames.size - 3} more</span>
                                                 )}
                                             </div>
                                         </div>
-                                    ))}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
+                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Reasons:</span>
+                                            {Array.from(hoveredPoint.reasons).slice(0, 2).map((reason: any, i) => (
+                                                <span key={i} style={{ color: '#f87171', fontSize: '0.75rem' }}>• {reason}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Metrics for Active / Completed connections */}
+                                {!hoveredPoint.ip && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {hoveredPoint.events.map((evt: VpnEvent, index: number) => (
+                                            <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: '3px', background: 'rgba(255,255,255,0.02)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                                    <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{evt.username}</span>
+                                                    <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.75rem' }}>{evt.sourceIp}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                                    {mapFilter === "active" ? (
+                                                        <>
+                                                            <span>Time: {new Date(evt.createdAt).toLocaleTimeString()}</span>
+                                                            <span style={{ color: '#22c55e', fontWeight: 'bold' }}>Connected</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <span>Duration: {formatDuration(evt.duration)}</span>
+                                                            <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>
+                                                                {formatBytes((evt.bytesSent || 0) + (evt.bytesReceived || 0))}
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* State Detail Telemetry Panel */}
+                    {isUsView && selectedState && (
+                        <div className="glass-card animate-fadeIn" style={{ width: '320px', display: 'flex', flexDirection: 'column', padding: '20px', border: '1px solid var(--border-color)', background: 'rgba(9, 10, 15, 0.65)', overflowY: 'auto' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '12px' }}>
+                                <div>
+                                    <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)' }}>{selectedState} Activity</h4>
+                                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Zoomed state logs</span>
                                 </div>
-                            )}
+                                <button
+                                    onClick={() => {
+                                        setSelectedState(null);
+                                        setZoom(1);
+                                        setPan({ x: 0, y: 0 });
+                                    }}
+                                    className="btn-secondary"
+                                    style={{ padding: '4px 10px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600 }}
+                                >
+                                    Zoom Out
+                                </button>
+                            </div>
+
+                            {/* Aggregated session logs inside selected state */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
+                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                                    CHANNELS FOUND: {mapPoints.filter(pt => pt.stateName === selectedState).length}
+                                </span>
+                                
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', maxHeight: '380px', paddingRight: '4px' }}>
+                                    {mapPoints
+                                        .filter(pt => pt.stateName === selectedState)
+                                        .map((pt, i) => (
+                                            <div key={i} style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                                        {pt.cityName || "Unknown City"}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.7rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.12)', color: 'var(--accent-primary)' }}>
+                                                        {pt.count} log{pt.count > 1 ? 's' : ''}
+                                                    </span>
+                                                </div>
+                                                
+                                                <span style={{ fontSize: '0.72rem', fontFamily: 'monospace', color: 'var(--text-muted)' }}>
+                                                    {pt.ip || "Aggregated State IPs"}
+                                                </span>
+                                                
+                                                {pt.events && pt.events.length > 0 && (
+                                                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.03)', marginTop: '4px', paddingTop: '4px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                                        {pt.events.map((evt: VpnEvent, idx: number) => (
+                                                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
+                                                                <span>• {evt.username}</span>
+                                                                <span style={{ color: evt.status === "SUCCESS" ? "#22c55e" : "#ef4444" }}>
+                                                                    {evt.status}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))
+                                    }
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
