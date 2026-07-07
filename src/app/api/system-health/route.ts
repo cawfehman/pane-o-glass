@@ -4,6 +4,8 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { prisma } from "@/lib/prisma";
 import os from "os";
+import axios from "axios";
+import * as https from "https";
 
 const execAsync = promisify(exec);
 
@@ -14,6 +16,44 @@ export async function GET() {
 
         if (!isAdmin) {
             return new NextResponse("Unauthorized", { status: 401 });
+        }
+
+        // Check Graylog Node Health
+        const graylogHealth: any = { status: "NOT_CONFIGURED", url: process.env.GRAYLOG_URL || "N/A" };
+        if (process.env.GRAYLOG_URL && process.env.GRAYLOG_API_TOKEN) {
+            const rawUrl = process.env.GRAYLOG_URL;
+            const url = rawUrl.replace(/^"|"$/g, '').endsWith('/') ? rawUrl.replace(/^"|"$/g, '').slice(0, -1) : rawUrl.replace(/^"|"$/g, '');
+            const token = process.env.GRAYLOG_API_TOKEN.replace(/^"|"$/g, '');
+            const authHeader = token.includes(":") 
+                ? `Basic ${Buffer.from(token).toString("base64")}`
+                : `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
+            const agent = new https.Agent({ rejectUnauthorized: false });
+
+            const start = Date.now();
+            try {
+                const res = await axios.get(`${url}/api/system`, {
+                    headers: {
+                        "Authorization": authHeader,
+                        "Accept": "application/json",
+                        "X-Requested-By": "cli"
+                    },
+                    httpsAgent: agent,
+                    timeout: 5000
+                });
+
+                if (res.status === 200) {
+                    graylogHealth.status = "ONLINE";
+                    graylogHealth.latency = `${Date.now() - start}ms`;
+                    graylogHealth.version = res.data?.version || "Unknown";
+                    graylogHealth.nodeId = res.data?.node_id || "Unknown";
+                } else {
+                    graylogHealth.status = "DEGRADED";
+                    graylogHealth.error = `Response code: ${res.status}`;
+                }
+            } catch (err: any) {
+                graylogHealth.status = "OFFLINE";
+                graylogHealth.error = err.message || "Network timeout";
+            }
         }
 
         // Metrics Object

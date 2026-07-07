@@ -79,6 +79,48 @@ export default function SystemHealthPage() {
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '24px' }}>
 
+                    {/* Graylog Connection Monitor */}
+                    {metrics.graylogHealth && (
+                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '300px' }}>
+                            <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Graylog Connection Monitor</h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.875rem', padding: '8px 0' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span style={{ color: 'var(--text-secondary)' }}>Node Link Status</span>
+                                    <span style={{ 
+                                        padding: '4px 10px', 
+                                        borderRadius: '6px', 
+                                        fontSize: '0.75rem', 
+                                        fontWeight: 'bold',
+                                        background: metrics.graylogHealth.status === "ONLINE" ? "rgba(34, 197, 94, 0.12)" : "rgba(239, 68, 68, 0.12)",
+                                        color: metrics.graylogHealth.status === "ONLINE" ? "#22c55e" : "#ef4444",
+                                        border: metrics.graylogHealth.status === "ONLINE" ? "1px solid rgba(34, 197, 94, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)"
+                                    }}>
+                                        {metrics.graylogHealth.status}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-secondary)' }}>API Request Latency</span>
+                                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{metrics.graylogHealth.latency || "N/A"}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--text-secondary)' }}>Graylog Version</span>
+                                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{metrics.graylogHealth.version || "N/A"}</span>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
+                                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>SIEM Host Destination</span>
+                                    <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', wordBreak: 'break-all', color: 'var(--text-muted)' }}>
+                                        {metrics.graylogHealth.url}
+                                    </span>
+                                </div>
+                                {metrics.graylogHealth.error && (
+                                    <div style={{ padding: '10px 12px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', fontSize: '0.75rem', color: '#f87171', wordBreak: 'break-all', marginTop: '4px' }}>
+                                        <strong>Connection Error:</strong> {metrics.graylogHealth.error}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Top Probes */}
                     <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px' }}>
                         <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Top API Probe Sources</h3>
