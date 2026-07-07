@@ -20,13 +20,13 @@ export default async function AuditLogsPage(props: {
 
     const whereClause: any = {};
     if (activeTab === 'quota') {
-        whereClause.action = { in: ['LOCATEIP_API_QUERY', 'LOCATEIP_LIMIT_FALLBACK'] };
+        whereClause.action = { in: ['IPLOCATE_API_QUERY', 'IPLOCATE_LIMIT_FALLBACK', 'LOCATEIP_API_QUERY', 'LOCATEIP_LIMIT_FALLBACK'] };
     } else {
-        whereClause.action = { notIn: ['LOCATEIP_API_QUERY', 'LOCATEIP_LIMIT_FALLBACK'] };
+        whereClause.action = { notIn: ['IPLOCATE_API_QUERY', 'IPLOCATE_LIMIT_FALLBACK', 'LOCATEIP_API_QUERY', 'LOCATEIP_LIMIT_FALLBACK'] };
     }
 
     if (actionFilter) {
-        // Overlay explicit filter (case insensitive standard check)
+        // Overlay explicit filter (case insensitive check)
         whereClause.action = { contains: actionFilter };
     }
     if (userFilter) {
@@ -50,6 +50,43 @@ export default async function AuditLogsPage(props: {
             }
         }
     });
+
+    // Fetch IPLocate Quota Counters
+    let quotaCounters = { daily: 0, weekly: 0, monthly: 0, allTime: 0 };
+    if (activeTab === 'quota') {
+        const now = new Date();
+        const startOfToday = new Date(now.toISOString().slice(0, 10)); // UTC 00:00
+        const startOfSevenDays = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const startOfThirtyDays = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+        const [daily, weekly, monthly, allTime] = await Promise.all([
+            prisma.auditLog.count({
+                where: {
+                    action: { in: ['IPLOCATE_API_QUERY', 'IPLOCATE_LIMIT_FALLBACK', 'LOCATEIP_API_QUERY', 'LOCATEIP_LIMIT_FALLBACK'] },
+                    createdAt: { gte: startOfToday }
+                }
+            }),
+            prisma.auditLog.count({
+                where: {
+                    action: { in: ['IPLOCATE_API_QUERY', 'IPLOCATE_LIMIT_FALLBACK', 'LOCATEIP_API_QUERY', 'LOCATEIP_LIMIT_FALLBACK'] },
+                    createdAt: { gte: startOfSevenDays }
+                }
+            }),
+            prisma.auditLog.count({
+                where: {
+                    action: { in: ['IPLOCATE_API_QUERY', 'IPLOCATE_LIMIT_FALLBACK', 'LOCATEIP_API_QUERY', 'LOCATEIP_LIMIT_FALLBACK'] },
+                    createdAt: { gte: startOfThirtyDays }
+                }
+            }),
+            prisma.auditLog.count({
+                where: {
+                    action: { in: ['IPLOCATE_API_QUERY', 'IPLOCATE_LIMIT_FALLBACK', 'LOCATEIP_API_QUERY', 'LOCATEIP_LIMIT_FALLBACK'] }
+                }
+            })
+        ]);
+
+        quotaCounters = { daily, weekly, monthly, allTime };
+    }
 
     return (
         <div className="internal-scroll-layout">
@@ -84,9 +121,34 @@ export default async function AuditLogsPage(props: {
                         borderColor: activeTab === 'quota' ? 'var(--border-color)' : 'transparent'
                     }}
                 >
-                    LocateIP Quota Debug Logs
+                    IPLocate Quota Debug Logs
                 </Link>
             </div>
+
+            {activeTab === 'quota' && (
+                <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                    <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Daily Queries</span>
+                        <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{quotaCounters.daily}</span>
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Since 00:00 UTC</span>
+                    </div>
+                    <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Weekly Queries</span>
+                        <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{quotaCounters.weekly}</span>
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Last 7 days</span>
+                    </div>
+                    <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Monthly Queries</span>
+                        <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{quotaCounters.monthly}</span>
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Last 30 days</span>
+                    </div>
+                    <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>All Time Queries</span>
+                        <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{quotaCounters.allTime}</span>
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Total queries logged</span>
+                    </div>
+                </div>
+            )}
 
             <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
                 <div>

@@ -671,26 +671,25 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                     </div>
                 </div>
 
-                {/* Viewport Controls with Focus US Option */}
-                <div style={{ position: 'absolute', right: '24px', top: '80px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 20 }}>
-                    <button onClick={() => setZoom(prev => Math.min(prev + 0.3, 6))} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <ZoomIn size={16} />
-                    </button>
-                    <button onClick={() => setZoom(prev => Math.max(prev - 0.3, 0.8))} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <ZoomOut size={16} />
-                    </button>
-                    <button onClick={handleFocusUS} className="btn-primary" style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}>
-                        Focus US
-                    </button>
-                    <button onClick={handleReset} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <RotateCcw size={16} />
-                    </button>
-                </div>
-
                 {/* Map Panel Wrap */}
                 <div style={{ display: 'flex', gap: '20px', flex: 1, minHeight: '520px' }}>
                     
                     <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#090a0f', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
+                        {/* Viewport Controls with Focus US Option inside the map canvas area */}
+                        <div style={{ position: 'absolute', right: '16px', top: '16px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 20 }}>
+                            <button onClick={() => setZoom(prev => Math.min(prev + 0.3, 6))} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <ZoomIn size={16} />
+                            </button>
+                            <button onClick={() => setZoom(prev => Math.max(prev - 0.3, 0.8))} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <ZoomOut size={16} />
+                            </button>
+                            <button onClick={handleFocusUS} className="btn-primary" style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}>
+                                Focus US
+                            </button>
+                            <button onClick={handleReset} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <RotateCcw size={16} />
+                            </button>
+                        </div>
                         {loadingMap ? (
                             <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', color: 'var(--text-muted)' }}>
                                 <div style={{ width: '24px', height: '24px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--accent-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
@@ -805,7 +804,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                                     strokeWidth={Math.min(1.5 + (pt.count * 0.4), 4)}
                                                     opacity="0.85"
                                                     strokeDasharray="4,4"
-                                                    style={{ animation: 'pulseFlow 4s linear infinite' }}
+                                                    style={{ animation: 'pulseFlow 4s linear infinite', pointerEvents: 'none' }}
                                                 />
                                             </g>
                                         );
@@ -836,11 +835,16 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                                     }
                                                 }}
                                                 onMouseLeave={() => setHoveredPoint(null)}
+                                                onClick={() => {
+                                                    if (!selectedState && pt.stateName) {
+                                                        zoomToStateBounds(pt.stateName);
+                                                    }
+                                                }}
                                                 style={{ cursor: 'pointer' }}
                                             >
                                                 {/* Outer ripple rings for visual density feedback */}
-                                                <circle r={isFail ? 11 : 9} fill={pointColor} opacity="0.08" />
-                                                <circle r={isFail ? 7 : 5} fill={pointColor} opacity="0.25" />
+                                                <circle r={isFail ? 11 : 9} fill={pointColor} opacity="0.08" style={{ pointerEvents: 'none' }} />
+                                                <circle r={isFail ? 7 : 5} fill={pointColor} opacity="0.25" style={{ pointerEvents: 'none' }} />
                                                 
                                                 {/* Core active locator node */}
                                                 <circle r={isFail ? 4 : 3} fill={pointColor} />

@@ -196,7 +196,7 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
 
                 const totalQueriesPerformed = Object.keys(data).length;
                 await logAudit(
-                    "LOCATEIP_API_QUERY",
+                    "IPLOCATE_API_QUERY",
                     `Executed batch lookup for ${totalQueriesPerformed} IPs. Daily usage since 00:00 UTC: ${dailyCountBefore + totalQueriesPerformed} queries.`
                 );
             } else {
@@ -248,14 +248,14 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                 
                 const totalQueriesPerformed = Object.keys(results).filter(ip => lookupList.includes(ip)).length;
                 await logAudit(
-                    "LOCATEIP_API_QUERY",
+                    "IPLOCATE_API_QUERY",
                     `Executed sequential lookups for ${totalQueriesPerformed} IPs (Batch API fallback). Daily usage since 00:00 UTC: ${dailyCountBefore + totalQueriesPerformed} queries.`
                 );
             }
         } else if (uncachedIps.length > 0 && !apiKey) {
-            // Log the simulated geocoding runs under LOCATEIP_API_QUERY as well
+            // Log the simulated geocoding runs under IPLOCATE_API_QUERY as well
             await logAudit(
-                "LOCATEIP_API_QUERY",
+                "IPLOCATE_API_QUERY",
                 `Simulated batch geocoding for ${uncachedIps.length} IPs (No API key configured).`
             );
         }
