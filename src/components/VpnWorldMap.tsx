@@ -460,10 +460,8 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
         }
     };
 
-    // Apply radial spidering offset to collision nodes (same city/coord) when zoomed in
+    // Apply radial spidering offset to collision nodes (same city/coord) to prevent overlapping circles
     const applyRadialSpidering = (points: any[]) => {
-        if (!selectedState) return points;
-
         const coordGroups: Record<string, any[]> = {};
         points.forEach(pt => {
             if (pt.countryCode !== "US") return;
@@ -477,7 +475,10 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
             if (group.length > 1) {
                 const cx = group[0].coords.x;
                 const cy = group[0].coords.y;
-                const radius = 22; // spread offset distance in SVG pixels
+                
+                // Dynamically scale spacing radius if there is a massive cluster (e.g. Kansas default)
+                const radius = group.length > 8 ? Math.min(80, 22 + group.length * 1.8) : 22;
+
                 group.forEach((pt, i) => {
                     const angle = (i / group.length) * 2 * Math.PI;
                     pt.coords = {
@@ -773,7 +774,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                     )}
 
                                     {/* Render spider offset lines linking offset beacons to city centers */}
-                                    {isUsView && selectedState && mapPoints.map((pt, idx) => {
+                                    {isUsView && mapPoints.map((pt, idx) => {
                                         if (pt.parentCoords && (!selectedState || pt.stateName === selectedState)) {
                                             return (
                                                 <line
@@ -823,16 +824,27 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                                 key={`point-${idx}`}
                                                 transform={`translate(${pt.coords.x}, ${pt.coords.y})`}
                                                 onMouseEnter={(e) => {
-                                                    const bounds = svgRef.current?.getBoundingClientRect();
-                                                    if (bounds) {
-                                                        const projectedX = pt.coords.x * zoom + pan.x;
-                                                        const projectedY = pt.coords.y * zoom + pan.y;
-                                                        setHoveredPoint(pt);
-                                                        setTooltipPos({
-                                                            x: bounds.left + projectedX,
-                                                            y: bounds.top + projectedY
-                                                        });
+                                                    const projectedX = pt.coords.x * zoom + pan.x;
+                                                    const projectedY = pt.coords.y * zoom + pan.y;
+                                                    
+                                                    // Tooltip width is 310px. Offset position cleanly based on screen location
+                                                    let tx = projectedX + 15;
+                                                    if (projectedX > 550) {
+                                                        tx = projectedX - 325; // render to the left
                                                     }
+                                                    
+                                                    let ty = projectedY - 80;
+                                                    if (projectedY > 350) {
+                                                        ty = projectedY - 220; // render higher up to avoid bottom overflow
+                                                    } else if (projectedY < 100) {
+                                                        ty = projectedY + 15; // render lower down
+                                                    }
+
+                                                    setHoveredPoint(pt);
+                                                    setTooltipPos({
+                                                        x: tx,
+                                                        y: ty
+                                                    });
                                                 }}
                                                 onMouseLeave={() => setHoveredPoint(null)}
                                                 onClick={() => {
