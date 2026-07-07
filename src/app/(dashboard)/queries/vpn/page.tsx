@@ -491,6 +491,7 @@ export default function VpnTroubleshootingPage() {
                             }}
                         >
                             <option value={2100}>Last 35 Mins</option>
+                            <option value={7200}>Last 2 Hours</option>
                             <option value={14400}>Last 4 Hours</option>
                             <option value={86400}>Last 24 Hours</option>
                             <option value={604800}>Last 7 Days</option>
