@@ -403,7 +403,7 @@ export async function POST(req: NextRequest) {
                     session.user.id
                 ).catch(() => {});
                 
-                return NextResponse.json({ error: "Password verification required for Last 7 Days / Last 30 Days." }, { status: 400 });
+                return NextResponse.json({ error: "Password verification required." }, { status: 400 });
             }
 
             if (!verifyRotatingPassword(password)) {
@@ -413,7 +413,7 @@ export async function POST(req: NextRequest) {
                     session.user.id
                 ).catch(() => {});
 
-                return NextResponse.json({ error: "Invalid rotating password. Please check the System Health dashboard." }, { status: 400 });
+                return NextResponse.json({ error: "Invalid authorization password." }, { status: 400 });
             }
 
             await logAudit(

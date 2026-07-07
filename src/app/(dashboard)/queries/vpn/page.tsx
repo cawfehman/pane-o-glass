@@ -137,7 +137,7 @@ export default function VpnTroubleshootingPage() {
         if (syncRange >= 604800) {
             const rangeDays = syncRange >= 2592000 ? "30 Days" : "7 Days";
             const promptVal = prompt(
-                `🔒 Security Verification Required\n\nSyncing log events from Graylog for the last ${rangeDays} requires the time-based rotating password displayed at the top of the System Health dashboard.\n\nEnter rotating password to authorize:`
+                `🔒 Security Verification Required\n\nSyncing log events for the last ${rangeDays} requires authorization.\n\nEnter authorization password:`
             );
 
             if (promptVal === null) {
