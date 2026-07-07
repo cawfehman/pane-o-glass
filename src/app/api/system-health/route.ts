@@ -96,7 +96,8 @@ export async function GET() {
             processesCpu: [],
             processesMem: [],
             totalProbes: 0,
-            topProbes: []
+            topProbes: [],
+            graylogHealth
         };
 
         // If we are on Linux, we can run advanced parsing commands
