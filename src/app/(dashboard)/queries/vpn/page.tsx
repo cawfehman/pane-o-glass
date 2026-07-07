@@ -132,6 +132,27 @@ export default function VpnTroubleshootingPage() {
     };
 
     const handleSync = async () => {
+        let passwordInput = "";
+
+        if (syncRange >= 604800) {
+            const rangeDays = syncRange >= 2592000 ? "30 Days" : "7 Days";
+            const promptVal = prompt(
+                `🔒 Security Verification Required\n\nSyncing log events from Graylog for the last ${rangeDays} requires the time-based rotating password displayed at the top of the System Health dashboard.\n\nEnter rotating password to authorize:`
+            );
+
+            if (promptVal === null) {
+                // User cancelled the prompt
+                return;
+            }
+
+            if (!promptVal.trim()) {
+                setError("Authorization failed: Password cannot be blank.");
+                return;
+            }
+
+            passwordInput = promptVal.trim();
+        }
+
         setSyncing(true);
         setError("");
         setSyncNotification(null);
@@ -157,7 +178,7 @@ export default function VpnTroubleshootingPage() {
             const res = await fetch("/api/vpn/events", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ range: syncRange })
+                body: JSON.stringify({ range: syncRange, password: passwordInput })
             });
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
@@ -494,8 +515,8 @@ export default function VpnTroubleshootingPage() {
                             <option value={7200}>Last 2 Hours</option>
                             <option value={14400}>Last 4 Hours</option>
                             <option value={86400}>Last 24 Hours</option>
-                            <option value={604800}>Last 7 Days</option>
-                            <option value={2592000}>Last 30 Days</option>
+                            <option value={604800}>🔒 Last 7 Days</option>
+                            <option value={2592000}>🔒 Last 30 Days</option>
                         </select>
                         <button 
                             onClick={handleSync} 

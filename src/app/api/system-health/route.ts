@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import os from "os";
 import axios from "axios";
 import * as https from "https";
+import { getRotatingPassword } from "@/lib/rotatingPassword";
 
 const execAsync = promisify(exec);
 
@@ -111,7 +112,8 @@ export async function GET() {
             processesMem: [],
             totalProbes: 0,
             topProbes: [],
-            graylogHealth
+            graylogHealth,
+            rotatingPassword: getRotatingPassword(0)
         };
 
         // If we are on Linux, we can run advanced parsing commands

@@ -56,10 +56,21 @@ export default function SystemHealthPage() {
 
     return (
         <div className="internal-scroll-layout">
-            <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <div>
-                    <h1>System Health</h1>
-                    <p style={{ color: 'var(--text-muted)' }}>{metrics.osType} {metrics.osRelease} | Uptime: {hours}h {minutes}m</p>
+             <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+                    <div>
+                        <h1>System Health</h1>
+                        <p style={{ color: 'var(--text-muted)' }}>{metrics.osType} {metrics.osRelease} | Uptime: {hours}h {minutes}m</p>
+                    </div>
+                    {metrics.rotatingPassword && (
+                        <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 18px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '12px' }}>
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🔐 ROTATING OTP</span>
+                            <span style={{ fontFamily: 'monospace', fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent-primary)', letterSpacing: '0.1em' }}>
+                                {metrics.rotatingPassword}
+                            </span>
+                            <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>(Rotates every 2m)</span>
+                        </div>
+                    )}
                 </div>
                 <div className="glass-card" style={{ display: 'flex', gap: '24px', padding: '12px 24px' }}>
                     <div style={{ textAlign: 'center' }}>

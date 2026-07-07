@@ -7,6 +7,7 @@ import axios from "axios";
 import https from "https";
 import { auth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import { verifyRotatingPassword } from "@/lib/rotatingPassword";
 
 // Helper to parse duration string (e.g. 0h:05m:30s or 1d 0h:05m:30s) to seconds
 function parseDuration(durationStr: string): number | null {
@@ -384,10 +385,45 @@ export async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: num
 // POST endpoint triggers Graylog sync
 export async function POST(req: NextRequest) {
     try {
+        const session = await auth();
+        if (!session || !session.user) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
         const body = await req.json().catch(() => ({}));
         const range = body.range || 2100; // default 35 minutes
+        const rangeSeconds = parseInt(range, 10);
+        const password = body.password;
 
-        const result = await syncFromGraylog(range);
+        if (rangeSeconds >= 604800) {
+            if (!password) {
+                await logAudit(
+                    "VPN_SYNC_LOCKED_ATTEMPT_FAILED",
+                    `Sync attempted for range ${rangeSeconds}s but no password was provided.`,
+                    session.user.id
+                ).catch(() => {});
+                
+                return NextResponse.json({ error: "Password verification required for Last 7 Days / Last 30 Days." }, { status: 400 });
+            }
+
+            if (!verifyRotatingPassword(password)) {
+                await logAudit(
+                    "VPN_SYNC_LOCKED_ATTEMPT_FAILED",
+                    `Sync attempted for range ${rangeSeconds}s with invalid password: "${password}".`,
+                    session.user.id
+                ).catch(() => {});
+
+                return NextResponse.json({ error: "Invalid rotating password. Please check the System Health dashboard." }, { status: 400 });
+            }
+
+            await logAudit(
+                "VPN_SYNC_LOCKED_ATTEMPT_SUCCESS",
+                `Sync successfully authorized for range ${rangeSeconds}s using rotating password.`,
+                session.user.id
+            ).catch(() => {});
+        }
+
+        const result = await syncFromGraylog(rangeSeconds);
 
         if (result.error) {
             return NextResponse.json({
