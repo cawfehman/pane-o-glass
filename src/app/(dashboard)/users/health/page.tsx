@@ -80,83 +80,87 @@ export default function SystemHealthPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '24px' }}>
 
                     {/* Graylog Connection Monitor */}
-                    {metrics.graylogHealth && (
+                    {metrics.graylogHealth && Array.isArray(metrics.graylogHealth) && metrics.graylogHealth.length > 0 && (
                         <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '300px' }}>
-                            <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Graylog Connection Monitor</h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '0.875rem', padding: '8px 0' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ color: 'var(--text-secondary)' }}>Node Link Status</span>
-                                    <span style={{ 
-                                        padding: '4px 10px', 
-                                        borderRadius: '6px', 
-                                        fontSize: '0.75rem', 
-                                        fontWeight: 'bold',
-                                        background: metrics.graylogHealth.status === "ONLINE" ? "rgba(34, 197, 94, 0.12)" : "rgba(239, 68, 68, 0.12)",
-                                        color: metrics.graylogHealth.status === "ONLINE" ? "#22c55e" : "#ef4444",
-                                        border: metrics.graylogHealth.status === "ONLINE" ? "1px solid rgba(34, 197, 94, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)"
-                                    }}>
-                                        {metrics.graylogHealth.status}
-                                    </span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--text-secondary)' }}>API Request Latency</span>
-                                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{metrics.graylogHealth.latency || "N/A"}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--text-secondary)' }}>Graylog Version</span>
-                                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{metrics.graylogHealth.version || "N/A"}</span>
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
-                                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>SIEM Host Destination</span>
-                                    <span style={{ fontFamily: 'monospace', fontSize: '0.72rem', wordBreak: 'break-all', color: 'var(--text-muted)' }}>
-                                        {metrics.graylogHealth.url}
-                                    </span>
-                                </div>
+                            <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Graylog Cluster Monitor</h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                {metrics.graylogHealth.map((node: any, idx: number) => {
+                                    const nodeName = node.url.includes("graylog-01") ? "graylog-01" 
+                                        : node.url.includes("graylog-02") ? "graylog-02" 
+                                        : node.url.includes("graylog-03") ? "graylog-03" 
+                                        : "graylog-node";
+                                    
+                                    return (
+                                        <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(0, 0, 0, 0.15)', padding: '12px 14px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.03)' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    🟢 {nodeName.toUpperCase()}
+                                                </span>
+                                                <span style={{ 
+                                                    padding: '3px 8px', 
+                                                    borderRadius: '6px', 
+                                                    fontSize: '0.7rem', 
+                                                    fontWeight: 'bold',
+                                                    background: node.status === "ONLINE" ? "rgba(34, 197, 94, 0.12)" : "rgba(239, 68, 68, 0.12)",
+                                                    color: node.status === "ONLINE" ? "#22c55e" : "#ef4444",
+                                                    border: node.status === "ONLINE" ? "1px solid rgba(34, 197, 94, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)"
+                                                }}>
+                                                    {node.status}
+                                                </span>
+                                            </div>
 
-                                {metrics.graylogHealth.journal && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
-                                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Disk Journal Status</span>
-                                        
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ color: 'var(--text-secondary)' }}>Uncommitted Entries</span>
-                                            <span style={{ 
-                                                fontWeight: 'bold', 
-                                                color: metrics.graylogHealth.journal.uncommittedEntries > 1000 ? '#f87171' : 'var(--text-primary)',
-                                                fontSize: '0.85rem'
-                                            }}>
-                                                {metrics.graylogHealth.journal.uncommittedEntries.toLocaleString()}
-                                            </span>
+                                            {node.status === "ONLINE" ? (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem', marginTop: '4px' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                        <span style={{ color: 'var(--text-secondary)' }}>Latency / Version</span>
+                                                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{node.latency} | v{node.version}</span>
+                                                    </div>
+                                                    
+                                                    {node.journal && (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '8px', marginTop: '4px' }}>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Uncommitted Entries</span>
+                                                                <span style={{ 
+                                                                    fontWeight: 'bold', 
+                                                                    color: node.journal.uncommittedEntries > 1000 ? '#f87171' : 'var(--text-primary)'
+                                                                }}>
+                                                                    {node.journal.uncommittedEntries.toLocaleString()}
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Journal Size / Limit</span>
+                                                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                                                    {(node.journal.sizeBytes / (1024 * 1024)).toFixed(1)} MB / {(node.journal.sizeLimitBytes / (1024 * 1024 * 1024)).toFixed(0)} GB
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Write/Read Rates</span>
+                                                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                                                    {node.journal.appendPerSec}/s (in) | {node.journal.readPerSec}/s (out)
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px' }}>
+                                                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>Oldest Segment Age</span>
+                                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'monospace' }}>
+                                                                    {node.journal.oldestSegment ? new Date(node.journal.oldestSegment).toLocaleString() : "N/A"}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                                                    <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)', wordBreak: 'break-all', fontFamily: 'monospace', marginBottom: '4px' }}>{node.url}</span>
+                                                    {node.error && (
+                                                        <div style={{ padding: '6px 10px', background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '6px', fontSize: '0.72rem', color: '#f87171' }}>
+                                                            {node.error}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
-
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: 'var(--text-secondary)' }}>Journal Size</span>
-                                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                                                {(metrics.graylogHealth.journal.sizeBytes / (1024 * 1024)).toFixed(1)} MB / {(metrics.graylogHealth.journal.sizeLimitBytes / (1024 * 1024 * 1024)).toFixed(0)} GB limit
-                                            </span>
-                                        </div>
-
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: 'var(--text-secondary)' }}>Write/Read Rates</span>
-                                            <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.8rem' }}>
-                                                {metrics.graylogHealth.journal.appendPerSec}/s (in) | {metrics.graylogHealth.journal.readPerSec}/s (out)
-                                            </span>
-                                        </div>
-
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Oldest Journal Segment</span>
-                                            <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.8rem', fontFamily: 'monospace' }}>
-                                                {metrics.graylogHealth.journal.oldestSegment 
-                                                    ? new Date(metrics.graylogHealth.journal.oldestSegment).toLocaleString() 
-                                                    : "N/A"}
-                                            </span>
-                                        </div>
-                                    </div>
-                                )}
-                                {metrics.graylogHealth.error && (
-                                    <div style={{ padding: '10px 12px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', fontSize: '0.75rem', color: '#f87171', wordBreak: 'break-all', marginTop: '4px' }}>
-                                        <strong>Connection Error:</strong> {metrics.graylogHealth.error}
-                                    </div>
-                                )}
+                                    );
+                                })}
                             </div>
                         </div>
                     )}

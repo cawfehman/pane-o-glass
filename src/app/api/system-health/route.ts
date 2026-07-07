@@ -21,67 +21,81 @@ export async function GET() {
         }
 
         // Check Graylog Node Health
-        const graylogHealth: any = { status: "NOT_CONFIGURED", url: process.env.GRAYLOG_URL || "N/A" };
+        const graylogHealth: any[] = [];
         if (process.env.GRAYLOG_URL && process.env.GRAYLOG_API_TOKEN) {
             const rawUrl = process.env.GRAYLOG_URL;
-            const url = rawUrl.replace(/^"|"$/g, '').endsWith('/') ? rawUrl.replace(/^"|"$/g, '').slice(0, -1) : rawUrl.replace(/^"|"$/g, '');
+            const baseUrl = rawUrl.replace(/^"|"$/g, '').endsWith('/') ? rawUrl.replace(/^"|"$/g, '').slice(0, -1) : rawUrl.replace(/^"|"$/g, '');
             const token = process.env.GRAYLOG_API_TOKEN.replace(/^"|"$/g, '');
             const authHeader = token.includes(":") 
                 ? `Basic ${Buffer.from(token).toString("base64")}`
                 : `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
             const agent = new https.Agent({ rejectUnauthorized: false });
 
-            const start = Date.now();
-            try {
-                const [sysRes, journalRes] = await Promise.all([
-                    axios.get(`${url}/api/system`, {
-                        headers: {
-                            "Authorization": authHeader,
-                            "Accept": "application/json",
-                            "X-Requested-By": "cli"
-                        },
-                        httpsAgent: agent,
-                        timeout: 5000
-                    }),
-                    axios.get(`${url}/api/system/journal`, {
-                        headers: {
-                            "Authorization": authHeader,
-                            "Accept": "application/json",
-                            "X-Requested-By": "cli"
-                        },
-                        httpsAgent: agent,
-                        timeout: 5000
-                    }).catch(err => {
-                        console.error("Failed to query Graylog journal api:", err.message);
-                        return null; // fallback gracefully if journal endpoint fails
-                    })
-                ]);
-
-                if (sysRes.status === 200) {
-                    graylogHealth.status = "ONLINE";
-                    graylogHealth.latency = `${Date.now() - start}ms`;
-                    graylogHealth.version = sysRes.data?.version || "Unknown";
-                    graylogHealth.nodeId = sysRes.data?.node_id || "Unknown";
-                    
-                    if (journalRes && journalRes.status === 200) {
-                        graylogHealth.journal = {
-                            enabled: journalRes.data?.enabled ?? false,
-                            uncommittedEntries: journalRes.data?.uncommitted_journal_entries ?? 0,
-                            sizeBytes: journalRes.data?.journal_size ?? 0,
-                            sizeLimitBytes: journalRes.data?.journal_size_limit ?? 0,
-                            oldestSegment: journalRes.data?.oldest_segment || null,
-                            appendPerSec: journalRes.data?.append_events_per_second ?? 0,
-                            readPerSec: journalRes.data?.read_events_per_second ?? 0
-                        };
-                    }
-                } else {
-                    graylogHealth.status = "DEGRADED";
-                    graylogHealth.error = `Response code: ${sysRes.status}`;
-                }
-            } catch (err: any) {
-                graylogHealth.status = "OFFLINE";
-                graylogHealth.error = err.message || "Network timeout";
+            // Generate URLs for all 3 nodes if baseUrl contains graylog-01
+            const urlsToQuery: string[] = [];
+            if (baseUrl.includes("graylog-01")) {
+                urlsToQuery.push(baseUrl);
+                urlsToQuery.push(baseUrl.replace("graylog-01", "graylog-02"));
+                urlsToQuery.push(baseUrl.replace("graylog-01", "graylog-03"));
+            } else {
+                urlsToQuery.push(baseUrl);
             }
+
+            await Promise.all(urlsToQuery.map(async (url) => {
+                const nodeHealth: any = { status: "OFFLINE", url };
+                const start = Date.now();
+                try {
+                    const [sysRes, journalRes] = await Promise.all([
+                        axios.get(`${url}/api/system`, {
+                            headers: {
+                                "Authorization": authHeader,
+                                "Accept": "application/json",
+                                "X-Requested-By": "cli"
+                            },
+                            httpsAgent: agent,
+                            timeout: 5000
+                        }),
+                        axios.get(`${url}/api/system/journal`, {
+                            headers: {
+                                "Authorization": authHeader,
+                                "Accept": "application/json",
+                                "X-Requested-By": "cli"
+                            },
+                            httpsAgent: agent,
+                            timeout: 5000
+                        }).catch(() => null)
+                    ]);
+
+                    if (sysRes.status === 200) {
+                        nodeHealth.status = "ONLINE";
+                        nodeHealth.latency = `${Date.now() - start}ms`;
+                        nodeHealth.version = sysRes.data?.version || "Unknown";
+                        nodeHealth.nodeId = sysRes.data?.node_id || "Unknown";
+                        
+                        if (journalRes && journalRes.status === 200) {
+                            nodeHealth.journal = {
+                                enabled: journalRes.data?.enabled ?? false,
+                                uncommittedEntries: journalRes.data?.uncommitted_journal_entries ?? 0,
+                                sizeBytes: journalRes.data?.journal_size ?? 0,
+                                sizeLimitBytes: journalRes.data?.journal_size_limit ?? 0,
+                                oldestSegment: journalRes.data?.oldest_segment || null,
+                                appendPerSec: journalRes.data?.append_events_per_second ?? 0,
+                                readPerSec: journalRes.data?.read_events_per_second ?? 0
+                            };
+                        }
+                    } else {
+                        nodeHealth.status = "DEGRADED";
+                        nodeHealth.error = `Response code: ${sysRes.status}`;
+                    }
+                } catch (err: any) {
+                    nodeHealth.status = "OFFLINE";
+                    nodeHealth.error = err.message || "Network timeout";
+                }
+                graylogHealth.push(nodeHealth);
+            }));
+            
+            // Sort by URL / node name order so order is deterministic
+            graylogHealth.sort((a: any, b: any) => a.url.localeCompare(b.url));
         }
 
         // Metrics Object
