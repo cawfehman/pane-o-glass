@@ -31,24 +31,50 @@ export async function GET() {
 
             const start = Date.now();
             try {
-                const res = await axios.get(`${url}/api/system`, {
-                    headers: {
-                        "Authorization": authHeader,
-                        "Accept": "application/json",
-                        "X-Requested-By": "cli"
-                    },
-                    httpsAgent: agent,
-                    timeout: 5000
-                });
+                const [sysRes, journalRes] = await Promise.all([
+                    axios.get(`${url}/api/system`, {
+                        headers: {
+                            "Authorization": authHeader,
+                            "Accept": "application/json",
+                            "X-Requested-By": "cli"
+                        },
+                        httpsAgent: agent,
+                        timeout: 5000
+                    }),
+                    axios.get(`${url}/api/system/journal`, {
+                        headers: {
+                            "Authorization": authHeader,
+                            "Accept": "application/json",
+                            "X-Requested-By": "cli"
+                        },
+                        httpsAgent: agent,
+                        timeout: 5000
+                    }).catch(err => {
+                        console.error("Failed to query Graylog journal api:", err.message);
+                        return null; // fallback gracefully if journal endpoint fails
+                    })
+                ]);
 
-                if (res.status === 200) {
+                if (sysRes.status === 200) {
                     graylogHealth.status = "ONLINE";
                     graylogHealth.latency = `${Date.now() - start}ms`;
-                    graylogHealth.version = res.data?.version || "Unknown";
-                    graylogHealth.nodeId = res.data?.node_id || "Unknown";
+                    graylogHealth.version = sysRes.data?.version || "Unknown";
+                    graylogHealth.nodeId = sysRes.data?.node_id || "Unknown";
+                    
+                    if (journalRes && journalRes.status === 200) {
+                        graylogHealth.journal = {
+                            enabled: journalRes.data?.enabled ?? false,
+                            uncommittedEntries: journalRes.data?.uncommitted_journal_entries ?? 0,
+                            sizeBytes: journalRes.data?.journal_size ?? 0,
+                            sizeLimitBytes: journalRes.data?.journal_size_limit ?? 0,
+                            oldestSegment: journalRes.data?.oldest_segment || null,
+                            appendPerSec: journalRes.data?.append_events_per_second ?? 0,
+                            readPerSec: journalRes.data?.read_events_per_second ?? 0
+                        };
+                    }
                 } else {
                     graylogHealth.status = "DEGRADED";
-                    graylogHealth.error = `Response code: ${res.status}`;
+                    graylogHealth.error = `Response code: ${sysRes.status}`;
                 }
             } catch (err: any) {
                 graylogHealth.status = "OFFLINE";

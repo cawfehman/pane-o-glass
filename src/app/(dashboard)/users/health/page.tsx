@@ -112,6 +112,46 @@ export default function SystemHealthPage() {
                                         {metrics.graylogHealth.url}
                                     </span>
                                 </div>
+
+                                {metrics.graylogHealth.journal && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '12px' }}>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--accent-primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Disk Journal Status</span>
+                                        
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>Uncommitted Entries</span>
+                                            <span style={{ 
+                                                fontWeight: 'bold', 
+                                                color: metrics.graylogHealth.journal.uncommittedEntries > 1000 ? '#f87171' : 'var(--text-primary)',
+                                                fontSize: '0.85rem'
+                                            }}>
+                                                {metrics.graylogHealth.journal.uncommittedEntries.toLocaleString()}
+                                            </span>
+                                        </div>
+
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>Journal Size</span>
+                                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                                {(metrics.graylogHealth.journal.sizeBytes / (1024 * 1024)).toFixed(1)} MB / {(metrics.graylogHealth.journal.sizeLimitBytes / (1024 * 1024 * 1024)).toFixed(0)} GB limit
+                                            </span>
+                                        </div>
+
+                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>Write/Read Rates</span>
+                                            <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.8rem' }}>
+                                                {metrics.graylogHealth.journal.appendPerSec}/s (in) | {metrics.graylogHealth.journal.readPerSec}/s (out)
+                                            </span>
+                                        </div>
+
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Oldest Journal Segment</span>
+                                            <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                                                {metrics.graylogHealth.journal.oldestSegment 
+                                                    ? new Date(metrics.graylogHealth.journal.oldestSegment).toLocaleString() 
+                                                    : "N/A"}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
                                 {metrics.graylogHealth.error && (
                                     <div style={{ padding: '10px 12px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', fontSize: '0.75rem', color: '#f87171', wordBreak: 'break-all', marginTop: '4px' }}>
                                         <strong>Connection Error:</strong> {metrics.graylogHealth.error}
