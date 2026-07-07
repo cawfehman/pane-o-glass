@@ -395,7 +395,7 @@ export async function POST(req: NextRequest) {
         const rangeSeconds = parseInt(range, 10);
         const password = body.password;
 
-        if (rangeSeconds >= 604800) {
+        if (rangeSeconds >= 86400) {
             if (!password) {
                 await logAudit(
                     "VPN_SYNC_LOCKED_ATTEMPT_FAILED",

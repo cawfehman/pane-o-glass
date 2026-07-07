@@ -134,10 +134,10 @@ export default function VpnTroubleshootingPage() {
     const handleSync = async () => {
         let passwordInput = "";
 
-        if (syncRange >= 604800) {
-            const rangeDays = syncRange >= 2592000 ? "30 Days" : "7 Days";
+        if (syncRange >= 86400) {
+            const rangeStr = syncRange >= 2592000 ? "30 Days" : syncRange >= 604800 ? "7 Days" : "24 Hours";
             const promptVal = prompt(
-                `🔒 Security Verification Required\n\nSyncing log events for the last ${rangeDays} requires authorization.\n\nEnter authorization password:`
+                `🔒 Security Verification Required\n\nSyncing log events for the last ${rangeStr} requires authorization.\n\nEnter authorization password:`
             );
 
             if (promptVal === null) {
@@ -514,7 +514,7 @@ export default function VpnTroubleshootingPage() {
                             <option value={2100}>Last 35 Mins</option>
                             <option value={7200}>Last 2 Hours</option>
                             <option value={14400}>Last 4 Hours</option>
-                            <option value={86400}>Last 24 Hours</option>
+                            <option value={86400}>🔒 Last 24 Hours</option>
                             <option value={604800}>🔒 Last 7 Days</option>
                             <option value={2592000}>🔒 Last 30 Days</option>
                         </select>
