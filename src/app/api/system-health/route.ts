@@ -9,6 +9,8 @@ import * as https from "https";
 
 const execAsync = promisify(exec);
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
     try {
         const session = await auth();

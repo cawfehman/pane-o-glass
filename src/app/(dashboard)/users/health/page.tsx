@@ -8,7 +8,7 @@ export default function SystemHealthPage() {
     const [error, setError] = useState("");
 
     useEffect(() => {
-        fetch("/api/system-health")
+        fetch(`/api/system-health?t=${Date.now()}`)
             .then(res => {
                 if (!res.ok) throw new Error("Failed to load metrics");
                 return res.json();
