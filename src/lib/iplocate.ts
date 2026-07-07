@@ -53,7 +53,7 @@ const MOCK_US_CITIES = [
 /**
  * Check if the ISP name is a standard residential US consumer ISP
  */
-export function isStandardUsIsp(asnName: string | null): boolean {
+export function isStandardUsIsp(asnName: string | null | undefined): boolean {
     if (!asnName) return false;
     const clean = asnName.toLowerCase();
     return STANDARD_US_ISPS.some(isp => clean.includes(isp));
@@ -197,26 +197,66 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                 const totalQueriesPerformed = Object.keys(data).length;
                 await logAudit(
                     "LOCATEIP_API_QUERY",
-                    `Executed batch lookup for ${totalQueriesPerformed} IPs. Daily usage since 00:00 UTC: ${dailyCountBefore + totalQueriesPerformed} queries.`,
-                    "SYSTEM"
+                    `Executed batch lookup for ${totalQueriesPerformed} IPs. Daily usage since 00:00 UTC: ${dailyCountBefore + totalQueriesPerformed} queries.`
                 );
             } else {
-                console.error(`[iplocate] Batch API Error: ${response.status} ${response.statusText}`);
+                console.warn(`[iplocate] Batch API failed (Status: ${response.status}). Falling back to sequential single lookups...`);
                 
-                // On API error, return expired cache entries for stale lookup IPs if we have them
                 for (const ip of lookupList) {
-                    const staleCached = cachedMap.get(ip);
-                    if (staleCached) {
-                        results[ip] = JSON.parse(staleCached.rawJson);
+                    try {
+                        const singleUrl = `https://iplocate.io/api/lookup/${ip}${apiKey ? `?apikey=${apiKey}` : ""}`;
+                        // sequential throttle delay to stay within rate limits
+                        await new Promise(r => setTimeout(r, 20));
+                        
+                        const singleRes = await fetch(singleUrl);
+                        if (singleRes.ok) {
+                            const info = await singleRes.json();
+                            if (info && info.country_code) {
+                                await prisma.ipLookupCache.upsert({
+                                    where: { ip },
+                                    create: {
+                                        ip,
+                                        latitude: info.latitude,
+                                        longitude: info.longitude,
+                                        countryCode: info.country_code,
+                                        city: info.city,
+                                        subdivision: info.subdivision,
+                                        rawJson: JSON.stringify(info)
+                                    },
+                                    update: {
+                                        latitude: info.latitude,
+                                        longitude: info.longitude,
+                                        countryCode: info.country_code,
+                                        city: info.city,
+                                        subdivision: info.subdivision,
+                                        rawJson: JSON.stringify(info)
+                                    }
+                                });
+                                results[ip] = info;
+                            }
+                        } else {
+                            console.error(`[iplocate] Sequential fallback failed for ${ip}:`, singleRes.status);
+                            const staleCached = cachedMap.get(ip);
+                            if (staleCached) {
+                                results[ip] = JSON.parse(staleCached.rawJson);
+                            }
+                        }
+                    } catch (err) {
+                        console.error(`[iplocate] Error in sequential fallback for ${ip}:`, err);
                     }
                 }
+                
+                const totalQueriesPerformed = Object.keys(results).filter(ip => lookupList.includes(ip)).length;
+                await logAudit(
+                    "LOCATEIP_API_QUERY",
+                    `Executed sequential lookups for ${totalQueriesPerformed} IPs (Batch API fallback). Daily usage since 00:00 UTC: ${dailyCountBefore + totalQueriesPerformed} queries.`
+                );
             }
         } else if (uncachedIps.length > 0 && !apiKey) {
             // Log the simulated geocoding runs under LOCATEIP_API_QUERY as well
             await logAudit(
                 "LOCATEIP_API_QUERY",
-                `Simulated batch geocoding for ${uncachedIps.length} IPs (No API key configured).`,
-                "SYSTEM"
+                `Simulated batch geocoding for ${uncachedIps.length} IPs (No API key configured).`
             );
         }
 

@@ -100,7 +100,7 @@ export default function VpnTroubleshootingPage() {
     const fetchDashboardData = async () => {
         try {
             setError("");
-            const res = await fetch(`/api/vpn/events?bandwidthScope=${bandwidthScope}&securityScope=${securityScope}`);
+            const res = await fetch(`/api/vpn/events?bandwidthScope=${bandwidthScope}&securityScope=${securityScope}&t=${Date.now()}`);
             if (!res.ok) throw new Error("Failed to load VPN events");
             const data = await res.json();
             setSuccessfulIps(data.successfulIps || []);
