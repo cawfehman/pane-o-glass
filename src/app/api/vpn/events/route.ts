@@ -28,7 +28,7 @@ function parseDuration(durationStr: string): number | null {
 }
 
 // Main logic to fetch logs from Graylog and sync them
-async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; error?: string }> {
+export async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: number; error?: string }> {
     const rawUrl = process.env.GRAYLOG_URL;
     const rawToken = process.env.GRAYLOG_API_TOKEN;
     const rawStreams = process.env.GRAYLOG_STREAM_ID;

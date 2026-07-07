@@ -22,7 +22,7 @@ export default function VpnTroubleshootingPage() {
     const [syncing, setSyncing] = useState(false);
     const [lastSync, setLastSync] = useState<any>(null);
     const [syncNotification, setSyncNotification] = useState<string | null>(null);
-    const [syncRange, setSyncRange] = useState<number>(2100);
+    const [syncRange, setSyncRange] = useState<number>(86400);
     const [syncStatus, setSyncStatus] = useState("Syncing...");
 
     const [activeTab, setActiveTab] = useState<"feed" | "security" | "bandwidth" | "map">("feed");
@@ -185,7 +185,6 @@ export default function VpnTroubleshootingPage() {
         } finally {
             clearInterval(intervalId);
             setSyncing(false);
-            setSyncRange(2100); // Reset UI selector back to 35 minutes default
         }
     };
 
