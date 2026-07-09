@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { hasPermission } from "@/app/actions/permissions";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
     try {
         const session = await auth();
-        if (!session || !session.user) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        const role = (session?.user as any)?.role;
+
+        if (!session?.user || !(await hasPermission(role, 'firewall'))) {
+            return NextResponse.json({ error: "Forbidden: Access to this tool is restricted." }, { status: 403 });
         }
 
         const { searchParams } = new URL(req.url);
