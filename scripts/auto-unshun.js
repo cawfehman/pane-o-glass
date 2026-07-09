@@ -397,7 +397,7 @@ async function runAutoUnshun() {
                     const reason = hasVpnHistory ? "VPN_HISTORY" : "ISP_TYPE";
                     console.log(`[GUARDIAN] AUTO-UNSHUN MATCH: IP ${ip} matches due to ${reason}. Clearing shuns...`);
 
-                    for (const fw of firewalls) {
+                     for (const fw of firewalls) {
                         const ssh = new NodeSSH();
                         try {
                             await ssh.connect({
@@ -408,8 +408,9 @@ async function runAutoUnshun() {
                             });
 
                             const shellStream = await ssh.requestShell();
+                            let shellBuffer = "";
+                            
                             await new Promise((resolveShell, rejectShell) => {
-                                let shellBuffer = "";
                                 shellStream.on('data', d => { shellBuffer += d.toString(); });
                                 shellStream.on('close', () => resolveShell(true));
                                 shellStream.on('error', err => rejectShell(err));
@@ -417,10 +418,57 @@ async function runAutoUnshun() {
                                 const promptCheck = () => {
                                     const trimmed = shellBuffer.trim();
                                     if (trimmed.endsWith('>') || trimmed.endsWith('#')) {
-                                        shellStream.write(`no shun ${ip}\n`);
+                                        shellStream.write(`show shun ${ip}\n`);
+                                        
                                         setTimeout(() => {
-                                            shellStream.write("exit\n");
-                                        }, 1000);
+                                            const lines = shellBuffer.split('\n').map(l => l.trim().toLowerCase());
+                                            const match = lines.find(line => 
+                                                line.includes('shun') && 
+                                                line.includes(ip.toLowerCase()) && 
+                                                !line.includes('show') && 
+                                                !line.includes('not found')
+                                            );
+                                            
+                                            if (match) {
+                                                console.log(`[GUARDIAN] Found active shun for ${ip} on ${fw.name}. Clearing...`);
+                                                shellStream.write(`no shun ${ip}\n`);
+                                                
+                                                setTimeout(async () => {
+                                                    await prisma.guardianEvent.create({
+                                                        data: {
+                                                            ip,
+                                                            firewall: fw.name,
+                                                            action: "AUTO_UNSHUNNED",
+                                                            reason,
+                                                            companyName,
+                                                            companyType,
+                                                            cidr,
+                                                            asn,
+                                                            details: `Automatically cleared shun for IP: ${ip} on firewall ${fw.name} due to ${reason}. Company: ${companyName} (${companyType}), CIDR: ${cidr}.`
+                                                        }
+                                                    }).catch(() => {});
+
+                                                    await prisma.firewallQueryHistory.create({
+                                                        data: {
+                                                            userId: guardianUser.id,
+                                                            command: "Auto-Unshun (Guardian)",
+                                                            targetIp: ip,
+                                                            targetName: fw.name,
+                                                            ipAsn: asn,
+                                                            ipAsName: companyName,
+                                                            ipAsDomain: ipData.company?.domain || "iplocate.io",
+                                                            ipCountry: ipData.country || "US",
+                                                            ipCountryCode: ipData.country_code || "US"
+                                                        }
+                                                    });
+                                                    
+                                                    shellStream.write("exit\n");
+                                                }, 1500);
+                                            } else {
+                                                console.log(`[GUARDIAN] Shun not present for ${ip} on ${fw.name}. Skipping clear/log.`);
+                                                shellStream.write("exit\n");
+                                            }
+                                        }, 1500);
                                     } else {
                                         setTimeout(promptCheck, 200);
                                     }
@@ -428,35 +476,6 @@ async function runAutoUnshun() {
                                 promptCheck();
                             });
                             ssh.dispose();
-                            console.log(`[GUARDIAN] Cleared shun for ${ip} on firewall ${fw.name}.`);
-
-                            await prisma.guardianEvent.create({
-                                data: {
-                                    ip,
-                                    firewall: fw.name,
-                                    action: "AUTO_UNSHUNNED",
-                                    reason,
-                                    companyName,
-                                    companyType,
-                                    cidr,
-                                    asn,
-                                    details: `Automatically cleared shun for IP: ${ip} on firewall ${fw.name} due to ${reason}. Company: ${companyName} (${companyType}), CIDR: ${cidr}.`
-                                }
-                            });
-
-                            await prisma.firewallQueryHistory.create({
-                                data: {
-                                    userId: guardianUser.id,
-                                    command: "Auto-Unshun (Guardian)",
-                                    targetIp: ip,
-                                    targetName: fw.name,
-                                    ipAsn: asn,
-                                    ipAsName: companyName,
-                                    ipAsDomain: ipData.company?.domain || "iplocate.io",
-                                    ipCountry: ipData.country || "US",
-                                    ipCountryCode: ipData.country_code || "US"
-                                }
-                            });
                         } catch (err) {
                             console.error(`[GUARDIAN] Failed to clear shun for ${ip} on firewall ${fw.name}:`, err.message);
                             ssh.dispose();
