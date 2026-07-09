@@ -132,3 +132,20 @@ model IpLookupCache {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model GuardianEvent {
+  id              String   @id @default(uuid())
+  ip              String
+  firewall        String?
+  action          String   // "SHUN_DETECTED", "AUTO_UNSHUNNED", "SKIPPED"
+  reason          String?  // "VPN_HISTORY", "HOSTING_TYPE", "NONE"
+  companyName     String?
+  companyType     String?
+  cidr            String?  // asn:route
+  asn             String?
+  details         String?
+  createdAt       DateTime @default(now())
+
+  @@index([ip])
+  @@index([action])
+}

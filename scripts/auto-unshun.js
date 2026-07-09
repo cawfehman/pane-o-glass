@@ -3,6 +3,7 @@ const { PrismaClient } = require('@prisma/client');
 const path = require('path');
 const axios = require('axios');
 const fs = require('fs');
+const https = require('https');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const originalLog = console.log;
@@ -79,20 +80,6 @@ async function runAutoUnshun() {
     const watchListStr = process.env.WATCH_IP_LIST || "";
     const watchList = watchListStr.split(',').map(ip => ip.trim()).filter(ip => ip !== "");
     
-    if (watchList.length === 0) {
-        console.log("[GUARDIAN] No WATCH_IP_LIST defined in .env. Skipping scan.");
-        try {
-            await prisma.backgroundJob.upsert({
-                where: { name: "Firewall Guardian" },
-                update: { lastRun: new Date(), status: "INACTIVE" },
-                create: { name: "Firewall Guardian", status: "INACTIVE" }
-            });
-        } catch (e) {
-            console.error("[GUARDIAN] Failed to update heartbeat:", e.message);
-        }
-        return;
-    }
-
     const configStr = process.env.FIREWALL_CONFIG || "[]";
     let firewalls = [];
     
@@ -116,21 +103,21 @@ async function runAutoUnshun() {
     }
 
     console.log(`[GUARDIAN] Starting scan...`);
-    console.log(`[GUARDIAN] Monitoring: ${watchList.join(', ')}`);
-
     let guardianStatus = "SUCCESS";
 
-    for (const fw of firewalls) {
-        const ssh = new NodeSSH();
-        try {
-            await ssh.connect({
-                host: fw.ip,
-                username: fw.user,
-                password: fw.pass,
-                readyTimeout: 15000
-            });
+    if (watchList.length > 0) {
+        console.log(`[GUARDIAN] Monitoring Watch List: ${watchList.join(', ')}`);
+        for (const fw of firewalls) {
+            const ssh = new NodeSSH();
+            try {
+                await ssh.connect({
+                    host: fw.ip,
+                    username: fw.user,
+                    password: fw.pass,
+                    readyTimeout: 15000
+                });
 
-            console.log(`[GUARDIAN] Connected to ${fw.name}. Scanning...`);
+                console.log(`[GUARDIAN] Connected to ${fw.name}. Scanning watchlist...`);
 
             await new Promise((resolve, reject) => {
                 ssh.requestShell().then((stream) => {
@@ -253,7 +240,243 @@ async function runAutoUnshun() {
             ssh.dispose();
         }
     }
+    }
     
+    // Graylog-driven Shun Monitoring & Auto-Unshun Action
+    console.log("[GUARDIAN] Querying Graylog SIEM for %FTD-4-401002 (Shun added) logs...");
+    const rawUrl = process.env.GRAYLOG_URL;
+    const rawToken = process.env.GRAYLOG_API_TOKEN;
+    const rawStreams = process.env.GRAYLOG_STREAM_ID;
+
+    if (rawUrl && rawToken) {
+        const url = rawUrl.replace(/^"|"$/g, '').endsWith('/') ? rawUrl.replace(/^"|"$/g, '').slice(0, -1) : rawUrl.replace(/^"|"$/g, '');
+        const token = rawToken.replace(/^"|"$/g, '');
+        const streamIds = rawStreams 
+            ? rawStreams.replace(/^"|"$/g, '').split(",").map(id => id.trim()).filter(Boolean)
+            : [];
+
+        const searchUrl = `${url}/api/search/universal/relative`;
+        const authHeader = token.includes(":") 
+            ? `Basic ${Buffer.from(token).toString("base64")}`
+            : `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
+        
+        const agent = new https.Agent({ rejectUnauthorized: false });
+        const streamsToQuery = streamIds.length > 0 ? streamIds : [null];
+
+        let shunnedIps = new Set();
+        let ipFirewalls = {};
+
+        for (const streamId of streamsToQuery) {
+            const params = new URLSearchParams();
+            params.append("query", "401002");
+            params.append("range", "1800"); // last 30 minutes
+            params.append("limit", "100");
+            params.append("decorate", "false");
+            if (streamId) {
+                params.append("filter", `streams:${streamId}`);
+            }
+
+            try {
+                const response = await axios.get(searchUrl, {
+                    params,
+                    headers: {
+                        "Authorization": authHeader,
+                        "Accept": "application/json",
+                        "X-Requested-By": "cli"
+                    },
+                    httpsAgent: agent,
+                    timeout: 20000
+                });
+
+                const messages = response.data?.messages || [];
+                for (const msgObj of messages) {
+                    const rawLog = msgObj.message?.message || "";
+                    const match = rawLog.match(/Shun\s+added:\s+([^\s]+)/i);
+                    if (match) {
+                        const ip = match[1];
+                        shunnedIps.add(ip);
+                        let sourceFw = msgObj.message?.source || "unknown";
+                        if (!ipFirewalls[ip]) ipFirewalls[ip] = new Set();
+                        ipFirewalls[ip].add(sourceFw);
+                    }
+                }
+            } catch (e) {
+                console.error(`[GUARDIAN] Failed to retrieve shun logs from stream ${streamId}:`, e.message);
+                guardianStatus = "WARNING";
+            }
+        }
+
+        console.log(`[GUARDIAN] Found ${shunnedIps.size} unique shunned IPs in Graylog in the last 30 minutes.`);
+
+        for (const ip of shunnedIps) {
+            try {
+                const alreadyChecked = await prisma.guardianEvent.findFirst({
+                    where: {
+                        ip,
+                        createdAt: { gte: new Date(Date.now() - 1800 * 1000) } // 30 mins window to match cron
+                    }
+                });
+
+                if (alreadyChecked) {
+                    console.log(`[GUARDIAN] IP ${ip} was already evaluated in this check interval. Skipping.`);
+                    continue;
+                }
+
+                console.log(`[GUARDIAN] Evaluating shunned IP: ${ip}...`);
+
+                let cacheEntry = await prisma.ipLookupCache.findUnique({ where: { ip } });
+                let ipData;
+                if (cacheEntry) {
+                    ipData = JSON.parse(cacheEntry.rawJson);
+                } else {
+                    const apiKey = process.env.IPLOCATE_API_KEY;
+                    const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
+                        headers: apiKey ? { "X-API-KEY": apiKey } : {},
+                        timeout: 5000
+                    });
+                    ipData = res.data;
+                    
+                    await prisma.ipLookupCache.create({
+                        data: {
+                            ip,
+                            latitude: ipData.latitude || null,
+                            longitude: ipData.longitude || null,
+                            countryCode: ipData.country_code || null,
+                            city: ipData.city || null,
+                            subdivision: ipData.subdivision || null,
+                            rawJson: JSON.stringify(ipData)
+                        }
+                    });
+                }
+
+                const companyName = ipData.company?.name || ipData.org || "Unknown";
+                const companyType = ipData.company?.type || "unknown";
+                const cidr = ipData.network?.route || "unknown";
+                const asn = ipData.asn || "unknown";
+
+                const successfulVpnCount = await prisma.vpnEvent.count({
+                    where: { sourceIp: ip, status: "SUCCESS" }
+                });
+                const hasVpnHistory = successfulVpnCount > 0;
+                const isHosting = companyType.toLowerCase() === "hosting";
+
+                console.log(`[GUARDIAN] IP: ${ip} | Company: ${companyName} (${companyType}) | CIDR: ${cidr} | Has VPN Success: ${hasVpnHistory}`);
+
+                if (hasVpnHistory || isHosting) {
+                    const reason = hasVpnHistory ? "VPN_HISTORY" : "HOSTING_TYPE";
+                    console.log(`[GUARDIAN] AUTO-UNSHUN MATCH: IP ${ip} matches due to ${reason}. Clearing shuns...`);
+
+                    for (const fw of firewalls) {
+                        const ssh = new NodeSSH();
+                        try {
+                            await ssh.connect({
+                                host: fw.ip,
+                                username: fw.user,
+                                password: fw.pass,
+                                readyTimeout: 10000
+                            });
+
+                            const shellStream = await ssh.requestShell();
+                            await new Promise((resolveShell, rejectShell) => {
+                                let shellBuffer = "";
+                                shellStream.on('data', d => { shellBuffer += d.toString(); });
+                                shellStream.on('close', () => resolveShell(true));
+                                shellStream.on('error', err => rejectShell(err));
+
+                                const promptCheck = () => {
+                                    const trimmed = shellBuffer.trim();
+                                    if (trimmed.endsWith('>') || trimmed.endsWith('#')) {
+                                        shellStream.write(`no shun ${ip}\n`);
+                                        setTimeout(() => {
+                                            shellStream.write("exit\n");
+                                        }, 1000);
+                                    } else {
+                                        setTimeout(promptCheck, 200);
+                                    }
+                                };
+                                promptCheck();
+                            });
+                            ssh.dispose();
+                            console.log(`[GUARDIAN] Cleared shun for ${ip} on firewall ${fw.name}.`);
+
+                            await prisma.guardianEvent.create({
+                                data: {
+                                    ip,
+                                    firewall: fw.name,
+                                    action: "AUTO_UNSHUNNED",
+                                    reason,
+                                    companyName,
+                                    companyType,
+                                    cidr,
+                                    asn,
+                                    details: `Automatically cleared shun for IP: ${ip} on firewall ${fw.name} due to ${reason}. Company: ${companyName} (${companyType}), CIDR: ${cidr}.`
+                                }
+                            });
+
+                            await prisma.firewallQueryHistory.create({
+                                data: {
+                                    userId: guardianUser.id,
+                                    command: "Auto-Unshun (Guardian)",
+                                    targetIp: ip,
+                                    targetName: fw.name,
+                                    ipAsn: asn,
+                                    ipAsName: companyName,
+                                    ipAsDomain: ipData.company?.domain || "iplocate.io",
+                                    ipCountry: ipData.country || "US",
+                                    ipCountryCode: ipData.country_code || "US"
+                                }
+                            });
+                        } catch (err) {
+                            console.error(`[GUARDIAN] Failed to clear shun for ${ip} on firewall ${fw.name}:`, err.message);
+                            ssh.dispose();
+                            
+                            await prisma.guardianEvent.create({
+                                data: {
+                                    ip,
+                                    firewall: fw.name,
+                                    action: "FAILED",
+                                    reason,
+                                    companyName,
+                                    companyType,
+                                    cidr,
+                                    asn,
+                                    details: `Failed to clear shun on firewall ${fw.name}. Error: ${err.message}`
+                                }
+                            });
+                        }
+                    }
+
+                    await prisma.auditLog.create({
+                        data: {
+                            action: "GUARDIAN_AUTO_UNSHUN",
+                            details: `Guardian automated safety engine successfully cleared shun for IP: ${ip} due to ${reason}. Company: ${companyName}.`,
+                            userId: guardianUser.id,
+                            ipAddress: "internal-subagent"
+                        }
+                    });
+                } else {
+                    console.log(`[GUARDIAN] Retaining shun for IP: ${ip}.`);
+                    await prisma.guardianEvent.create({
+                        data: {
+                            ip,
+                            action: "SKIPPED",
+                            reason: "NONE",
+                            companyName,
+                            companyType,
+                            cidr,
+                            asn,
+                            details: `Retained shun for IP: ${ip}. No successful VPN history and not a hosting provider. Company: ${companyName} (${companyType}).`
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error(`[GUARDIAN] Error evaluating IP ${ip}:`, err.message);
+            }
+        }
+    } else {
+        console.log("[GUARDIAN] Graylog configuration not fully set. Skipping shun scan.");
+    }
+
     console.log("[GUARDIAN] Scan complete.");
     
     // 5. Update Heartbeat for Dashboard

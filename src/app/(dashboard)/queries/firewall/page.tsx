@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { ToolHelp } from "@/components/ToolHelp";
 
 export default function CiscoFirewallPage() {
+    const [activeTab, setActiveTab] = useState<"manual" | "guardian">("manual");
     const [ipAddress, setIpAddress] = useState("");
     const [availableHosts, setAvailableHosts] = useState<{ id: string, name: string }[]>([]);
     const [targetHost, setTargetHost] = useState("");
@@ -18,6 +19,11 @@ export default function CiscoFirewallPage() {
     const [loadingHistory, setLoadingHistory] = useState(true);
 
     const [guardianStatus, setGuardianStatus] = useState<{ isLive: boolean; lastRun: string | null; watchList: string[]; status?: string } | null>(null);
+
+    const [guardianEvents, setGuardianEvents] = useState<any[]>([]);
+    const [loadingGuardianEvents, setLoadingGuardianEvents] = useState(false);
+    const [guardianSearch, setGuardianSearch] = useState("");
+    const [guardianFilter, setGuardianFilter] = useState("");
 
     const fetchHistory = async () => {
         try {
@@ -42,6 +48,31 @@ export default function CiscoFirewallPage() {
             }
         } catch (e) {}
     };
+
+    const fetchGuardianEvents = async () => {
+        setLoadingGuardianEvents(true);
+        try {
+            const params = new URLSearchParams();
+            if (guardianSearch) params.append("search", guardianSearch);
+            if (guardianFilter) params.append("action", guardianFilter);
+            
+            const res = await fetch(`/api/firewall/guardian?${params.toString()}`);
+            if (res.ok) {
+                const data = await res.json();
+                setGuardianEvents(data);
+            }
+        } catch (e) {
+            console.error("Failed to load Guardian events");
+        } finally {
+            setLoadingGuardianEvents(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === "guardian") {
+            fetchGuardianEvents();
+        }
+    }, [activeTab, guardianSearch, guardianFilter]);
 
     // Fetch configured firewalls on load
     useEffect(() => {
@@ -166,7 +197,42 @@ export default function CiscoFirewallPage() {
                     )}
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 450px) 1fr', gap: '2rem', alignItems: 'stretch' }}>
+                <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '1px', marginBottom: '12px' }}>
+                    <button
+                        onClick={() => setActiveTab("manual")}
+                        style={{
+                            padding: '8px 16px',
+                            background: activeTab === "manual" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                            border: 'none',
+                            borderBottom: activeTab === "manual" ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                            color: activeTab === "manual" ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                        }}
+                    >
+                        Manual Shuns
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("guardian")}
+                        style={{
+                            padding: '8px 16px',
+                            background: activeTab === "guardian" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                            border: 'none',
+                            borderBottom: activeTab === "guardian" ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                            color: activeTab === "guardian" ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                        }}
+                    >
+                        Guardian Auto-Unshun Logs
+                    </button>
+                </div>
+
+            </div>
+
+            {activeTab === "manual" ? (
+                <>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 450px) 1fr', gap: '2rem', alignItems: 'stretch' }}>
 
                     {/* --- CONTROLS CARD --- */}
                     <div className="glass-card">
@@ -288,7 +354,6 @@ export default function CiscoFirewallPage() {
                         </div>
                     </div>
                 </div>
-            </div>
 
             {/* --- RECENT HISTORY CARD --- */}
             <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -379,6 +444,136 @@ export default function CiscoFirewallPage() {
                     </div>
                 )}
             </div>
-        </div>
+        </>
+    ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                {/* --- SEARCH & FILTER CONTROLS --- */}
+                <div className="glass-card" style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: '250px' }}>
+                        <input
+                            type="text"
+                            placeholder="Search by IP, Company Name, CIDR, ASN or details..."
+                            value={guardianSearch}
+                            onChange={(e) => setGuardianSearch(e.target.value)}
+                            style={{
+                                width: '100%',
+                                padding: '10px 14px',
+                                backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '8px',
+                                color: 'var(--text-primary)',
+                                outline: 'none'
+                            }}
+                        />
+                    </div>
+                    <div style={{ width: '180px' }}>
+                        <select
+                            value={guardianFilter}
+                            onChange={(e) => setGuardianFilter(e.target.value)}
+                            style={{
+                                width: '100%',
+                                padding: '10px 14px',
+                                backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '8px',
+                                color: 'var(--text-primary)',
+                                outline: 'none',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <option value="" style={{ background: 'var(--bg-dark)' }}>All Actions</option>
+                            <option value="AUTO_UNSHUNNED" style={{ background: 'var(--bg-dark)' }}>Auto-Unshunned</option>
+                            <option value="SKIPPED" style={{ background: 'var(--bg-dark)' }}>Skipped (Retained)</option>
+                            <option value="FAILED" style={{ background: 'var(--bg-dark)' }}>Failed</option>
+                        </select>
+                    </div>
+                </div>
+
+                {/* --- GUARDIAN EVENTS TABLE --- */}
+                <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
+                    <div style={{ marginBottom: '16px' }}>
+                        <h3>Guardian Shun Intel Log</h3>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                            Search, report, and display real-time Graylog shun logs that were auto-unshunned or retained.
+                        </p>
+                    </div>
+
+                    {loadingGuardianEvents ? (
+                        <p style={{ color: 'var(--text-muted)' }}>Loading Guardian events...</p>
+                    ) : guardianEvents.length === 0 ? (
+                        <p style={{ color: 'var(--text-muted)' }}>No matching logs found.</p>
+                    ) : (
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                <thead>
+                                    <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                        <th style={{ padding: '12px 8px' }}>Timestamp</th>
+                                        <th style={{ padding: '12px 8px' }}>IP / CIDR</th>
+                                        <th style={{ padding: '12px 8px' }}>Company / ASN</th>
+                                        <th style={{ padding: '12px 8px' }}>Action</th>
+                                        <th style={{ padding: '12px 8px' }}>Trigger / Reason</th>
+                                        <th style={{ padding: '12px 8px' }}>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {guardianEvents.map((event) => (
+                                        <tr key={event.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }}>
+                                            <td style={{ padding: '12px 8px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                                {new Date(event.createdAt).toLocaleString()}
+                                            </td>
+                                            <td style={{ padding: '12px 8px' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                    <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent-primary)' }}>{event.ip}</span>
+                                                    {event.cidr && <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'monospace' }}>{event.cidr}</span>}
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '12px 8px' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                    <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                                                        {event.companyName || "Unknown"}
+                                                        {event.companyType && (
+                                                            <span style={{ 
+                                                                marginLeft: '6px', 
+                                                                padding: '2px 6px', 
+                                                                borderRadius: '4px', 
+                                                                backgroundColor: event.companyType.toLowerCase() === 'hosting' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255,255,255,0.05)',
+                                                                fontSize: '0.7rem',
+                                                                color: event.companyType.toLowerCase() === 'hosting' ? '#60a5fa' : 'var(--text-muted)'
+                                                            }}>
+                                                                {event.companyType}
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    {event.asn && <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{event.asn}</span>}
+                                                </div>
+                                            </td>
+                                            <td style={{ padding: '12px 8px' }}>
+                                                <span style={{
+                                                    padding: '4px 8px',
+                                                    borderRadius: '12px',
+                                                    fontSize: '0.7rem',
+                                                    fontWeight: 'bold',
+                                                    backgroundColor: event.action === 'AUTO_UNSHUNNED' ? 'rgba(34, 197, 94, 0.15)' : event.action === 'FAILED' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                                                    color: event.action === 'AUTO_UNSHUNNED' ? '#22c55e' : event.action === 'FAILED' ? '#f87171' : 'var(--text-muted)'
+                                                }}>
+                                                    {event.action}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '12px 8px', fontWeight: 500, color: event.reason === 'VPN_HISTORY' ? '#10b981' : event.reason === 'HOSTING_TYPE' ? '#3b82f6' : 'var(--text-secondary)' }}>
+                                                {event.reason || "N/A"}
+                                            </td>
+                                            <td style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                                                {event.details}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </div>
+        )}
+    </div>
     );
 }
