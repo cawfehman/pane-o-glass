@@ -190,6 +190,15 @@ async function runAutoUnshun() {
                                             ipAddress: "internal-subagent"
                                         }
                                     });
+                                    await prisma.guardianEvent.create({
+                                        data: {
+                                            ip,
+                                            firewall: fw.name,
+                                            action: "FAILED",
+                                            reason: "WATCHLIST",
+                                            details: `Guardian FAILED to clear watchlist asset shun for IP: ${ip} on firewall ${fw.name}. Response: ${buffer.trim().replace(/\n/g, ' ')}`
+                                        }
+                                    }).catch(() => {});
                                     continue; // Skip logging success to DB
                                 }
                                 
@@ -220,6 +229,20 @@ async function runAutoUnshun() {
                                         ipAddress: "internal-subagent"
                                     }
                                 });
+
+                                await prisma.guardianEvent.create({
+                                    data: {
+                                        ip,
+                                        firewall: fw.name,
+                                        action: "AUTO_UNSHUNNED",
+                                        reason: "WATCHLIST",
+                                        companyName: ipInfo?.as_name || "Protected Asset",
+                                        companyType: "business",
+                                        cidr: ipInfo?.as_domain || "watchlist",
+                                        asn: ipInfo?.asn || "watchlist",
+                                        details: `Guardian automated safety engine successfully cleared watchlist asset shun for IP: ${ip} on firewall ${fw.name}`
+                                    }
+                                }).catch(() => {});
 
                                 console.log(`[GUARDIAN] Successfully unshunned and logged ${ip}.`);
                             }
