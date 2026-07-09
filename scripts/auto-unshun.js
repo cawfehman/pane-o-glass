@@ -349,10 +349,10 @@ async function runAutoUnshun() {
                     });
                 }
 
-                const companyName = ipData.company?.name || ipData.org || "Unknown";
-                const companyType = ipData.company?.type || "unknown";
-                const cidr = ipData.network?.route || "unknown";
-                const asn = ipData.asn || "unknown";
+                const companyName = ipData.company?.name || ipData.asn?.name || ipData.org || "Unknown";
+                const companyType = ipData.company?.type || ipData.asn?.type || "unknown";
+                const cidr = ipData.asn?.route || ipData.network?.route || "unknown";
+                const asn = typeof ipData.asn === 'object' ? (ipData.asn?.asn || "unknown") : (ipData.asn || "unknown");
 
                 const successfulVpnCount = await prisma.vpnEvent.count({
                     where: { sourceIp: ip, status: "SUCCESS" }
