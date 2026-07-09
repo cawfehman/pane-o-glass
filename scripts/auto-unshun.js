@@ -358,12 +358,20 @@ async function runAutoUnshun() {
                     where: { sourceIp: ip, status: "SUCCESS" }
                 });
                 const hasVpnHistory = successfulVpnCount > 0;
-                const isHosting = companyType.toLowerCase() === "hosting";
+                
+                const cleanComp = companyName.toLowerCase();
+                const isIsp = companyType.toLowerCase() === "isp" || 
+                              cleanComp.includes("telecom") || 
+                              cleanComp.includes("communication") ||
+                              cleanComp.includes("cable") ||
+                              cleanComp.includes("broadband") ||
+                              cleanComp.includes("isp") ||
+                              cleanComp.includes("internet service");
 
-                console.log(`[GUARDIAN] IP: ${ip} | Company: ${companyName} (${companyType}) | CIDR: ${cidr} | Has VPN Success: ${hasVpnHistory}`);
+                console.log(`[GUARDIAN] IP: ${ip} | Company: ${companyName} (${companyType}) | CIDR: ${cidr} | Has VPN Success: ${hasVpnHistory} | Is ISP: ${isIsp}`);
 
-                if (hasVpnHistory || isHosting) {
-                    const reason = hasVpnHistory ? "VPN_HISTORY" : "HOSTING_TYPE";
+                if (hasVpnHistory || isIsp) {
+                    const reason = hasVpnHistory ? "VPN_HISTORY" : "ISP_TYPE";
                     console.log(`[GUARDIAN] AUTO-UNSHUN MATCH: IP ${ip} matches due to ${reason}. Clearing shuns...`);
 
                     for (const fw of firewalls) {
@@ -465,7 +473,7 @@ async function runAutoUnshun() {
                             companyType,
                             cidr,
                             asn,
-                            details: `Retained shun for IP: ${ip}. No successful VPN history and not a hosting provider. Company: ${companyName} (${companyType}).`
+                            details: `Retained shun for IP: ${ip}. No successful VPN history and not a consumer ISP. Company: ${companyName} (${companyType}).`
                         }
                     });
                 }

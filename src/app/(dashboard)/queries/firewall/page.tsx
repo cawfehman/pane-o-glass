@@ -536,9 +536,9 @@ export default function CiscoFirewallPage() {
                                                                 marginLeft: '6px', 
                                                                 padding: '2px 6px', 
                                                                 borderRadius: '4px', 
-                                                                backgroundColor: event.companyType.toLowerCase() === 'hosting' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255,255,255,0.05)',
+                                                                backgroundColor: event.companyType.toLowerCase() === 'isp' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255,255,255,0.05)',
                                                                 fontSize: '0.7rem',
-                                                                color: event.companyType.toLowerCase() === 'hosting' ? '#60a5fa' : 'var(--text-muted)'
+                                                                color: event.companyType.toLowerCase() === 'isp' ? '#60a5fa' : 'var(--text-muted)'
                                                             }}>
                                                                 {event.companyType}
                                                             </span>
@@ -559,7 +559,7 @@ export default function CiscoFirewallPage() {
                                                     {event.action}
                                                 </span>
                                             </td>
-                                            <td style={{ padding: '12px 8px', fontWeight: 500, color: event.reason === 'VPN_HISTORY' ? '#10b981' : event.reason === 'HOSTING_TYPE' ? '#3b82f6' : 'var(--text-secondary)' }}>
+                                            <td style={{ padding: '12px 8px', fontWeight: 500, color: event.reason === 'VPN_HISTORY' ? '#10b981' : event.reason === 'ISP_TYPE' ? '#3b82f6' : 'var(--text-secondary)' }}>
                                                 {event.reason || "N/A"}
                                             </td>
                                             <td style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
