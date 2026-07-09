@@ -41,7 +41,24 @@ export async function GET(req: NextRequest) {
             take: 200 // Cap results to keep response quick
         });
 
-        return NextResponse.json(events);
+        const uniqueIps = Array.from(new Set(events.map(e => e.ip)));
+
+        const successfulVpnIps = await prisma.vpnEvent.findMany({
+            where: {
+                sourceIp: { in: uniqueIps },
+                status: "SUCCESS"
+            },
+            select: { sourceIp: true }
+        });
+
+        const vpnHistorySet = new Set(successfulVpnIps.map(v => v.sourceIp));
+
+        const enriched = events.map(event => ({
+            ...event,
+            hasVpnHistory: vpnHistorySet.has(event.ip)
+        }));
+
+        return NextResponse.json(enriched);
     } catch (err: any) {
         return NextResponse.json({ error: err.message || "Failed to load Guardian events" }, { status: 500 });
     }

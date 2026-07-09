@@ -511,6 +511,7 @@ export default function CiscoFirewallPage() {
                                         <th style={{ padding: '12px 8px' }}>IP / CIDR</th>
                                         <th style={{ padding: '12px 8px' }}>Company / ASN</th>
                                         <th style={{ padding: '12px 8px' }}>Action</th>
+                                        <th style={{ padding: '12px 8px' }}>VPN History</th>
                                         <th style={{ padding: '12px 8px' }}>Trigger / Reason</th>
                                         <th style={{ padding: '12px 8px' }}>Details</th>
                                     </tr>
@@ -558,6 +559,17 @@ export default function CiscoFirewallPage() {
                                                 }}>
                                                     {event.action}
                                                 </span>
+                                            </td>
+                                            <td style={{ padding: '12px 8px' }}>
+                                                {event.hasVpnHistory ? (
+                                                    <span style={{ color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600 }}>
+                                                        🟢 Yes
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                                        ⚪ No
+                                                    </span>
+                                                )}
                                             </td>
                                             <td style={{ padding: '12px 8px', fontWeight: 500, color: event.reason === 'VPN_HISTORY' ? '#10b981' : event.reason === 'ISP_TYPE' ? '#3b82f6' : 'var(--text-secondary)' }}>
                                                 {event.reason || "N/A"}
