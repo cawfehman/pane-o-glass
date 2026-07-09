@@ -269,7 +269,7 @@ async function runAutoUnshun() {
         for (const streamId of streamsToQuery) {
             const params = new URLSearchParams();
             params.append("query", "401002");
-            params.append("range", "1800"); // last 30 minutes
+            params.append("range", "240"); // last 4 minutes (supports 2-minute cron interval with overlap buffer)
             params.append("limit", "100");
             params.append("decorate", "false");
             if (streamId) {
@@ -306,14 +306,14 @@ async function runAutoUnshun() {
             }
         }
 
-        console.log(`[GUARDIAN] Found ${shunnedIps.size} unique shunned IPs in Graylog in the last 30 minutes.`);
+        console.log(`[GUARDIAN] Found ${shunnedIps.size} unique shunned IPs in Graylog in the last 4 minutes.`);
 
         for (const ip of shunnedIps) {
             try {
                 const alreadyChecked = await prisma.guardianEvent.findFirst({
                     where: {
                         ip,
-                        createdAt: { gte: new Date(Date.now() - 1800 * 1000) } // 30 mins window to match cron
+                        createdAt: { gte: new Date(Date.now() - 300 * 1000) } // 5 mins window to match 2-minute cron frequency
                     }
                 });
 
