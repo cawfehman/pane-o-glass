@@ -512,7 +512,7 @@ export default function CiscoFirewallPage() {
                                         <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Company / ASN</th>
                                         <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Action</th>
                                         <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>VPN History</th>
-                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Trigger</th>
+                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Type</th>
                                         <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Details</th>
                                     </tr>
                                 </thead>
