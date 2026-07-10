@@ -510,9 +510,10 @@ export default function CiscoFirewallPage() {
                                         <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Timestamp</th>
                                         <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>IP / CIDR</th>
                                         <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Company / ASN</th>
+                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Type</th>
                                         <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Action</th>
                                         <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>VPN History</th>
-                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Type</th>
+                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Trigger</th>
                                         <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Details</th>
                                     </tr>
                                 </thead>
@@ -532,21 +533,22 @@ export default function CiscoFirewallPage() {
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                     <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
                                                         {event.companyName || "Unknown"}
-                                                        {event.companyType && (
-                                                            <span style={{ 
-                                                                marginLeft: '6px', 
-                                                                padding: '2px 6px', 
-                                                                borderRadius: '4px', 
-                                                                backgroundColor: event.companyType.toLowerCase() === 'isp' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255,255,255,0.05)',
-                                                                fontSize: '0.7rem',
-                                                                color: event.companyType.toLowerCase() === 'isp' ? '#60a5fa' : 'var(--text-muted)'
-                                                            }}>
-                                                                {event.companyType}
-                                                            </span>
-                                                        )}
                                                     </span>
                                                     {event.asn && <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{event.asn}</span>}
                                                 </div>
+                                            </td>
+                                            <td style={{ padding: '12px 8px' }}>
+                                                <span style={{ 
+                                                    padding: '4px 8px', 
+                                                    borderRadius: '4px', 
+                                                    backgroundColor: event.companyType?.toLowerCase() === 'isp' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255,255,255,0.05)',
+                                                    fontSize: '0.7rem',
+                                                    fontWeight: 'bold',
+                                                    color: event.companyType?.toLowerCase() === 'isp' ? '#60a5fa' : 'var(--text-muted)',
+                                                    textTransform: 'uppercase'
+                                                }}>
+                                                    {event.companyType || "unknown"}
+                                                </span>
                                             </td>
                                             <td style={{ padding: '12px 8px' }}>
                                                 <span style={{
