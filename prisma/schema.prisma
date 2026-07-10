@@ -149,3 +149,9 @@ model GuardianEvent {
   @@index([ip])
   @@index([action])
 }
+
+model GuardianBlacklist {
+  ip        String   @id
+  reason    String
+  createdAt DateTime @default(now())
+}

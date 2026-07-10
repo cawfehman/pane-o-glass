@@ -4,7 +4,47 @@ const path = require('path');
 const axios = require('axios');
 const fs = require('fs');
 const https = require('https');
+const { Client } = require('ldapts');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+async function isAdUserValid(username) {
+    const url = process.env.AD_URL;
+    const bindDN = process.env.AD_BIND_DN;
+    const bindPassword = process.env.AD_BIND_PASSWORD;
+    const baseDN = process.env.AD_BASE_DN;
+    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
+
+    if (!url || !bindDN || !bindPassword || !baseDN) {
+        console.error("[GUARDIAN] AD configuration missing in environment variables.");
+        return false;
+    }
+
+    const cleanUsername = username.toLowerCase().endsWith("@cooperhealth.edu")
+        ? username.slice(0, -17)
+        : username;
+
+    const client = new Client({
+        url,
+        tlsOptions: url.startsWith("ldaps") ? { rejectUnauthorized } : undefined,
+    });
+
+    try {
+        await client.bind(bindDN, bindPassword);
+        const { searchEntries } = await client.search(baseDN, {
+            filter: `(|(sAMAccountName=${cleanUsername})(userPrincipalName=${cleanUsername}@cooperhealth.edu)(userPrincipalName=${username}))`,
+            scope: "sub",
+            attributes: ["dn"],
+        });
+        return searchEntries.length > 0;
+    } catch (err) {
+        console.error(`[GUARDIAN] AD check error for ${username}:`, err.message);
+        return false;
+    } finally {
+        try {
+            await client.unbind();
+        } catch (e) {}
+    }
+}
 
 const originalLog = console.log;
 const originalError = console.error;
@@ -361,6 +401,15 @@ async function runAutoUnshun() {
 
                 console.log(`[GUARDIAN] Evaluating shunned IP: ${ip}...`);
 
+                const blacklistEntry = await prisma.guardianBlacklist.findUnique({
+                    where: { ip }
+                });
+
+                if (blacklistEntry) {
+                    console.log(`[GUARDIAN] IP ${ip} is on the do-not-unshun blacklist (reason: ${blacklistEntry.reason}). Skipping auto-unshun.`);
+                    continue;
+                }
+
                 let cacheEntry = await prisma.ipLookupCache.findUnique({ where: { ip } });
                 let ipData;
                 if (cacheEntry) {
@@ -425,11 +474,103 @@ async function runAutoUnshun() {
 
                 console.log(`[GUARDIAN] IP: ${ip} | Company: ${companyName} (${companyType}) | CIDR: ${cidr} | Has VPN Success: ${hasVpnHistory} | Is ISP: ${isIsp}`);
 
-                if (hasVpnHistory || isIsp) {
-                    const matchReasons = [];
-                    if (hasVpnHistory) matchReasons.push("VPN_HISTORY");
-                    if (isIsp) matchReasons.push("ISP_TYPE");
-                    const reason = matchReasons.join(",");
+                let matchesUnshunCriteria = false;
+                let matchReason = "";
+                let shouldBlacklist = false;
+                let blacklistReason = "";
+
+                if (hasVpnHistory) {
+                    matchesUnshunCriteria = true;
+                    matchReason = "VPN_HISTORY";
+                } else if (isIsp) {
+                    const failedVpnEvents = await prisma.vpnEvent.findMany({
+                        where: {
+                            sourceIp: ip,
+                            status: "FAILURE"
+                        }
+                    });
+
+                    if (failedVpnEvents.length > 0) {
+                        const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
+                        const corporateFailures = failedVpnEvents.filter(evt => {
+                            const cleanUname = evt.username.toLowerCase().endsWith("@cooperhealth.edu")
+                                ? evt.username.slice(0, -17)
+                                : evt.username;
+                            return nameNameRegex.test(cleanUname);
+                        });
+
+                        if (corporateFailures.length === 0) {
+                            shouldBlacklist = true;
+                            blacklistReason = `Blocked: IP is an ISP with ${failedVpnEvents.length} failed login attempts, but none match the corporate username format (name-name or name-name-name).`;
+                        } else {
+                            console.log(`[GUARDIAN] Verifying ${corporateFailures.length} corporate-formatted usernames against Active Directory for ISP IP ${ip}...`);
+                            let hasRealUser = false;
+                            for (const failure of corporateFailures) {
+                                const isValid = await isAdUserValid(failure.username);
+                                if (isValid) {
+                                    hasRealUser = true;
+                                    console.log(`[GUARDIAN] AD check PASSED for username: ${failure.username}`);
+                                    break;
+                                } else {
+                                    console.log(`[GUARDIAN] AD check FAILED for username: ${failure.username}`);
+                                }
+                            }
+
+                            if (hasRealUser) {
+                                matchesUnshunCriteria = true;
+                                matchReason = "ISP_WITH_VALID_USER";
+                            } else {
+                                shouldBlacklist = true;
+                                blacklistReason = `Blocked: Corporate-formatted usernames were tried but none exist in Active Directory.`;
+                            }
+                        }
+                    }
+                }
+
+                // Check for repeated auto-unshuns in the last 2 hours
+                if (matchesUnshunCriteria) {
+                    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+                    const recentUnshuns = await prisma.guardianEvent.count({
+                        where: {
+                            ip,
+                            action: "AUTO_UNSHUNNED",
+                            createdAt: { gte: twoHoursAgo }
+                        }
+                    });
+
+                    if (recentUnshuns >= 2) {
+                        matchesUnshunCriteria = false;
+                        shouldBlacklist = true;
+                        blacklistReason = `Blocked: Repeated auto-unshuns detected (${recentUnshuns} times in the last 2 hours).`;
+                    }
+                }
+
+                if (shouldBlacklist) {
+                    console.log(`[GUARDIAN] ${blacklistReason} Adding IP to blacklist and retaining shun.`);
+                    try {
+                        await prisma.guardianBlacklist.upsert({
+                            where: { ip },
+                            update: { reason: blacklistReason },
+                            create: { ip, reason: blacklistReason }
+                        });
+                    } catch (dbErr) {
+                        console.error("[GUARDIAN] Failed to upsert blacklist entry:", dbErr.message);
+                    }
+
+                    await prisma.guardianEvent.create({
+                        data: {
+                            ip,
+                            action: "SKIPPED",
+                            reason: "DO_NOT_UNSHUN",
+                            companyName,
+                            companyType,
+                            cidr,
+                            asn,
+                            details: blacklistReason
+                        }
+                    }).catch(() => {});
+                } else if (matchesUnshunCriteria) {
+                    const reason = matchReason;
                     console.log(`[GUARDIAN] AUTO-UNSHUN MATCH: IP ${ip} matches due to ${reason}. Clearing shuns...`);
 
                      for (const fw of firewalls) {
@@ -565,7 +706,7 @@ async function runAutoUnshun() {
                         }
                     });
                 } else {
-                    console.log(`[GUARDIAN] Retaining shun for IP: ${ip}.`);
+                    console.log(`[GUARDIAN] Retaining shun for IP: ${ip}. Does not qualify for auto-unshun.`);
                     await prisma.guardianEvent.create({
                         data: {
                             ip,
@@ -575,7 +716,7 @@ async function runAutoUnshun() {
                             companyType,
                             cidr,
                             asn,
-                            details: `Retained shun for IP: ${ip}. No successful VPN history and not a consumer ISP. Company: ${companyName} (${companyType}).`
+                            details: `Retained shun for IP: ${ip}. No successful VPN history and no valid Active Directory username attempts from ISP.`
                         }
                     });
                 }

@@ -96,6 +96,17 @@ export async function POST(req: Request) {
                                 session.user?.id,
                                 clientIp
                             );
+
+                            if (action === "remove") {
+                                try {
+                                    await prisma.guardianBlacklist.deleteMany({
+                                        where: { ip: ipAddress }
+                                    });
+                                    console.log(`[FIREWALL-API] Cleared IP ${ipAddress} from GuardianBlacklist.`);
+                                } catch (e: any) {
+                                    console.error("Failed to delete IP from GuardianBlacklist:", e.message);
+                                }
+                            }
                         }
 
                         try {
