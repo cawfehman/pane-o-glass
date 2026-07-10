@@ -503,7 +503,7 @@ export default function CiscoFirewallPage() {
                     ) : guardianEvents.length === 0 ? (
                         <p style={{ color: 'var(--text-muted)' }}>No matching logs found.</p>
                     ) : (
-                        <div style={{ overflowX: 'auto' }}>
+                        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '500px' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead>
                                     <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>

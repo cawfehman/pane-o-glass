@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
         const events = await prisma.guardianEvent.findMany({
             where: whereClause,
             orderBy: { createdAt: "desc" },
-            take: 200 // Cap results to keep response quick
+            take: 100 // Return the last 100 entries
         });
 
         const uniqueIps = Array.from(new Set(events.map(e => e.ip)));

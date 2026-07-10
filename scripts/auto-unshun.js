@@ -103,6 +103,20 @@ async function runAutoUnshun() {
     }
 
     console.log(`[GUARDIAN] Starting scan...`);
+
+    // Prune entries older than 30 days to maintain rolling window
+    try {
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const pruned = await prisma.guardianEvent.deleteMany({
+            where: { createdAt: { lt: thirtyDaysAgo } }
+        });
+        if (pruned.count > 0) {
+            console.log(`[GUARDIAN] Pruned ${pruned.count} expired Guardian log entries older than 30 days.`);
+        }
+    } catch (pruneErr) {
+        console.error("[GUARDIAN] Log pruning error:", pruneErr.message);
+    }
+
     let guardianStatus = "SUCCESS";
 
     if (watchList.length > 0) {
@@ -370,6 +384,24 @@ async function runAutoUnshun() {
                             rawJson: JSON.stringify(ipData)
                         }
                     });
+
+                    // Log IPLocate lookup to AuditLog for dashboard usage tracking
+                    try {
+                        const startOfUtcDay = new Date();
+                        startOfUtcDay.setUTCHours(0, 0, 0, 0);
+                        const dailyCount = await prisma.ipLookupCache.count({
+                            where: { updatedAt: { gte: startOfUtcDay } }
+                        });
+                        await prisma.auditLog.create({
+                            data: {
+                                action: "IPLOCATE_API_QUERY",
+                                details: `Executed lookup for IP: ${ip} via Guardian. Daily usage since 00:00 UTC: ${dailyCount} queries.`,
+                                ipAddress: ip
+                            }
+                        });
+                    } catch (auditErr) {
+                        console.error("[GUARDIAN] Audit logging error:", auditErr.message);
+                    }
                 }
 
                 const companyName = ipData.company?.name || ipData.asn?.name || ipData.org || "Unknown";
