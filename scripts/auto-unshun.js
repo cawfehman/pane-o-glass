@@ -553,8 +553,17 @@ async function runAutoUnshun() {
                             update: { reason: blacklistReason },
                             create: { ip, reason: blacklistReason }
                         });
+
+                        await prisma.auditLog.create({
+                            data: {
+                                action: "GUARDIAN_BLACKLIST_ADD",
+                                details: `Guardian safety engine blacklisted IP: ${ip}. Reason: ${blacklistReason}`,
+                                userId: guardianUser.id,
+                                ipAddress: ip
+                            }
+                        });
                     } catch (dbErr) {
-                        console.error("[GUARDIAN] Failed to upsert blacklist entry:", dbErr.message);
+                        console.error("[GUARDIAN] Failed to upsert blacklist entry or log audit:", dbErr.message);
                     }
 
                     await prisma.guardianEvent.create({

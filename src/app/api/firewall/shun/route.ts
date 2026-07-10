@@ -99,9 +99,17 @@ export async function POST(req: Request) {
 
                             if (action === "remove") {
                                 try {
-                                    await prisma.guardianBlacklist.deleteMany({
+                                    const result = await prisma.guardianBlacklist.deleteMany({
                                         where: { ip: ipAddress }
                                     });
+                                    if (result.count > 0) {
+                                        await logAudit(
+                                            "GUARDIAN_BLACKLIST_CLEAR",
+                                            `IP ${ipAddress} was automatically removed from the Guardian blacklist as part of manual shun removal.`,
+                                            session.user?.id,
+                                            clientIp
+                                        );
+                                    }
                                     console.log(`[FIREWALL-API] Cleared IP ${ipAddress} from GuardianBlacklist.`);
                                 } catch (e: any) {
                                     console.error("Failed to delete IP from GuardianBlacklist:", e.message);
