@@ -19,7 +19,10 @@ export const helpData: Record<string, TooltipDetails> = {
             "Query current active IP shuns across configured Cisco perimeter firewalls.",
             "Manually remove shuns to unblock false-positive connections.",
             "Review historic manual shun and unshun auditing events.",
-            "Audit 'Guardian' logs—our background automation system that automatically shuns malicious IPs trying to brute-force network entry points."
+            "Audit 'Guardian' logs—our background automation system that automatically shuns malicious IPs trying to brute-force network entry points.",
+            "Manage the 'Guardian Blacklist'—a persistent list of IPs barred from auto-unshunning (e.g. repeated unshun triggers or failed faked domain usernames).",
+            "Perform automatic Active Directory lookup checks to verify whether failed corporate usernames exist before allowing auto-unshuns.",
+            "Utilize command-line range parameters (--range <minutes>) for manual outage recovery/catch-up scans."
         ],
         colors: [
             { name: "Green (heartbeat)", meaning: "Guardian service is active and scanning.", rgb: "#22c55e" },
