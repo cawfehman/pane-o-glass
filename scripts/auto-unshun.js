@@ -117,6 +117,17 @@ async function getIpInfo(ip) {
 }
 
 async function runAutoUnshun() {
+    const args = process.argv.slice(2);
+    let rangeSeconds = "240"; // 4 minutes default in seconds
+    const rangeIndex = args.indexOf("--range");
+    if (rangeIndex !== -1 && args[rangeIndex + 1]) {
+        const mins = parseInt(args[rangeIndex + 1], 10);
+        if (!isNaN(mins)) {
+            rangeSeconds = String(mins * 60);
+        }
+    }
+    const isRecoveryMode = rangeSeconds !== "240";
+
     const watchListStr = process.env.WATCH_IP_LIST || "";
     const watchList = watchListStr.split(',').map(ip => ip.trim()).filter(ip => ip !== "");
     
@@ -346,7 +357,7 @@ async function runAutoUnshun() {
         for (const streamId of streamsToQuery) {
             const params = new URLSearchParams();
             params.append("query", "401002");
-            params.append("range", "240"); // last 4 minutes (supports 2-minute cron interval with overlap buffer)
+            params.append("range", rangeSeconds); // query window in seconds
             params.append("limit", "100");
             params.append("decorate", "false");
             if (streamId) {
@@ -383,7 +394,7 @@ async function runAutoUnshun() {
             }
         }
 
-        console.log(`[GUARDIAN] Found ${shunnedIps.size} unique shunned IPs in Graylog in the last 4 minutes.`);
+        console.log(`[GUARDIAN] Found ${shunnedIps.size} unique shunned IPs in Graylog in the last ${Math.round(parseInt(rangeSeconds, 10) / 60)} minutes.`);
 
         for (const ip of shunnedIps) {
             try {
@@ -394,7 +405,7 @@ async function runAutoUnshun() {
                     }
                 });
 
-                if (alreadyChecked) {
+                if (!isRecoveryMode && alreadyChecked) {
                     console.log(`[GUARDIAN] IP ${ip} was already evaluated in this check interval. Skipping.`);
                     continue;
                 }
