@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { ToolHelp } from "@/components/ToolHelp";
 
 export default function CiscoFirewallPage() {
-    const [activeTab, setActiveTab] = useState<"manual" | "guardian">("manual");
+    const [activeTab, setActiveTab] = useState<"manual" | "guardian" | "blacklist">("manual");
     const [ipAddress, setIpAddress] = useState("");
     const [availableHosts, setAvailableHosts] = useState<{ id: string, name: string }[]>([]);
     const [targetHost, setTargetHost] = useState("");
@@ -24,6 +24,9 @@ export default function CiscoFirewallPage() {
     const [loadingGuardianEvents, setLoadingGuardianEvents] = useState(false);
     const [guardianSearch, setGuardianSearch] = useState("");
     const [guardianFilter, setGuardianFilter] = useState("");
+
+    const [blacklist, setBlacklist] = useState<any[]>([]);
+    const [loadingBlacklist, setLoadingBlacklist] = useState(false);
 
     const fetchHistory = async () => {
         try {
@@ -68,9 +71,48 @@ export default function CiscoFirewallPage() {
         }
     };
 
+    const fetchBlacklist = async () => {
+        setLoadingBlacklist(true);
+        try {
+            const res = await fetch("/api/firewall/guardian/blacklist");
+            if (res.ok) {
+                const data = await res.json();
+                setBlacklist(data);
+            }
+        } catch (e) {
+            console.error("Failed to load Guardian blacklist");
+        } finally {
+            setLoadingBlacklist(false);
+        }
+    };
+
+    const handleRemoveFromBlacklist = async (ip: string) => {
+        if (confirm(`Are you sure you want to remove ${ip} from the do-not-unshun blacklist? This will clear the block, but will NOT automatically remove the shun from the firewalls if the shun is currently active.`)) {
+            try {
+                const res = await fetch(`/api/firewall/guardian/blacklist?ip=${encodeURIComponent(ip)}`, {
+                    method: "DELETE"
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.success) {
+                        fetchBlacklist();
+                    } else {
+                        alert(data.error || "Failed to remove IP from blacklist");
+                    }
+                } else {
+                    alert("Failed to remove IP from blacklist");
+                }
+            } catch (e: any) {
+                alert(e.message || "Failed to remove IP from blacklist");
+            }
+        }
+    };
+
     useEffect(() => {
         if (activeTab === "guardian") {
             fetchGuardianEvents();
+        } else if (activeTab === "blacklist") {
+            fetchBlacklist();
         }
     }, [activeTab, guardianSearch, guardianFilter]);
 
@@ -225,6 +267,20 @@ export default function CiscoFirewallPage() {
                         }}
                     >
                         Guardian Auto-Unshun Logs
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("blacklist")}
+                        style={{
+                            padding: '8px 16px',
+                            background: activeTab === "blacklist" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                            border: 'none',
+                            borderBottom: activeTab === "blacklist" ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                            color: activeTab === "blacklist" ? 'var(--text-primary)' : 'var(--text-secondary)',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                        }}
+                    >
+                        Guardian Blacklist
                     </button>
                 </div>
 
@@ -445,8 +501,8 @@ export default function CiscoFirewallPage() {
                 )}
             </div>
         </>
-    ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    ) : activeTab === "guardian" ? (
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 {/* --- SEARCH & FILTER CONTROLS --- */}
                 <div className="glass-card" style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, minWidth: '250px' }}>
@@ -591,6 +647,65 @@ export default function CiscoFirewallPage() {
                                             </td>
                                             <td style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
                                                 {event.details}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </div>
+        ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
+                    <div style={{ marginBottom: '16px' }}>
+                        <h3>Guardian Do-Not-Unshun Blacklist</h3>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                            The following IP addresses have triggered automated safety limits (e.g. repeated unshuns or suspicious brute forcing) and are barred from auto-unshunning. They must be manually cleared to allow automated handling again.
+                        </p>
+                    </div>
+
+                    {loadingBlacklist ? (
+                        <p style={{ color: 'var(--text-muted)' }}>Loading blacklist...</p>
+                    ) : blacklist.length === 0 ? (
+                        <p style={{ color: 'var(--text-muted)' }}>No IPs currently blacklisted.</p>
+                    ) : (
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                <thead>
+                                    <tr style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Blacklisted Date</th>
+                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>IP Address</th>
+                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Reason for Blocking</th>
+                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)', textAlign: 'right' }}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {blacklist.map((item) => (
+                                        <tr key={item.ip} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }}>
+                                            <td style={{ padding: '12px 8px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                                {new Date(item.createdAt).toLocaleString()}
+                                            </td>
+                                            <td style={{ padding: '12px 8px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                                                {item.ip}
+                                            </td>
+                                            <td style={{ padding: '12px 8px', color: 'var(--text-primary)' }}>
+                                                {item.reason}
+                                            </td>
+                                            <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                                                <button
+                                                    onClick={() => handleRemoveFromBlacklist(item.ip)}
+                                                    className="mac-button"
+                                                    style={{
+                                                        fontSize: '0.8rem',
+                                                        padding: '4px 8px',
+                                                        borderColor: '#f87171',
+                                                        color: '#f87171'
+                                                    }}
+                                                >
+                                                    Clear Block
+                                                </button>
                                             </td>
                                         </tr>
                                     ))}
