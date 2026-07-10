@@ -579,10 +579,10 @@ export default function CiscoFirewallPage() {
                                                     borderRadius: '4px',
                                                     fontSize: '0.7rem',
                                                     fontWeight: 'bold',
-                                                    backgroundColor: event.reason === 'VPN_HISTORY' ? 'rgba(16, 185, 129, 0.15)' : event.reason === 'ISP_TYPE' ? 'rgba(59, 130, 246, 0.15)' : event.reason === 'WATCHLIST' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                                                    color: event.reason === 'VPN_HISTORY' ? '#10b981' : event.reason === 'ISP_TYPE' ? '#3b82f6' : event.reason === 'WATCHLIST' ? '#a855f7' : 'var(--text-muted)'
+                                                    backgroundColor: event.reason === 'VPN_HISTORY' ? 'rgba(16, 185, 129, 0.15)' : event.reason === 'ISP_TYPE' ? 'rgba(59, 130, 246, 0.15)' : event.reason === 'BOTH' ? 'rgba(245, 158, 11, 0.15)' : event.reason === 'WATCHLIST' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                                                    color: event.reason === 'VPN_HISTORY' ? '#10b981' : event.reason === 'ISP_TYPE' ? '#3b82f6' : event.reason === 'BOTH' ? '#f59e0b' : event.reason === 'WATCHLIST' ? '#a855f7' : 'var(--text-muted)'
                                                 }}>
-                                                    {event.reason === 'VPN_HISTORY' ? 'VPN History' : event.reason === 'ISP_TYPE' ? 'ISP Match' : event.reason === 'WATCHLIST' ? 'Watchlist' : 'None'}
+                                                    {event.reason === 'VPN_HISTORY' ? 'VPN History' : event.reason === 'ISP_TYPE' ? 'ISP Match' : event.reason === 'BOTH' ? 'Both' : event.reason === 'WATCHLIST' ? 'Watchlist' : 'None'}
                                                 </span>
                                             </td>
                                             <td style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>

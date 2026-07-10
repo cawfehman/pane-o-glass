@@ -426,7 +426,7 @@ async function runAutoUnshun() {
                 console.log(`[GUARDIAN] IP: ${ip} | Company: ${companyName} (${companyType}) | CIDR: ${cidr} | Has VPN Success: ${hasVpnHistory} | Is ISP: ${isIsp}`);
 
                 if (hasVpnHistory || isIsp) {
-                    const reason = hasVpnHistory ? "VPN_HISTORY" : "ISP_TYPE";
+                    const reason = (hasVpnHistory && isIsp) ? "BOTH" : (hasVpnHistory ? "VPN_HISTORY" : "ISP_TYPE");
                     console.log(`[GUARDIAN] AUTO-UNSHUN MATCH: IP ${ip} matches due to ${reason}. Clearing shuns...`);
 
                      for (const fw of firewalls) {
