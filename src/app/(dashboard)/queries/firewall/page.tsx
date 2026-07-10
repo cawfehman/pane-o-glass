@@ -506,14 +506,14 @@ export default function CiscoFirewallPage() {
                         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '500px' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead>
-                                    <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                                        <th style={{ padding: '12px 8px' }}>Timestamp</th>
-                                        <th style={{ padding: '12px 8px' }}>IP / CIDR</th>
-                                        <th style={{ padding: '12px 8px' }}>Company / ASN</th>
-                                        <th style={{ padding: '12px 8px' }}>Action</th>
-                                        <th style={{ padding: '12px 8px' }}>VPN History</th>
-                                        <th style={{ padding: '12px 8px' }}>Trigger</th>
-                                        <th style={{ padding: '12px 8px' }}>Details</th>
+                                    <tr style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Timestamp</th>
+                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>IP / CIDR</th>
+                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Company / ASN</th>
+                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Action</th>
+                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>VPN History</th>
+                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Trigger</th>
+                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Details</th>
                                     </tr>
                                 </thead>
                                 <tbody>
