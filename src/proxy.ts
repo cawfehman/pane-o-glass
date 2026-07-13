@@ -6,7 +6,8 @@ export default NextAuth(authConfig).auth((req) => {
     // ---------------------------------------------------------
     // Logging Visitor Connections
     // ---------------------------------------------------------
-    const ip = req.headers.get('x-forwarded-for') || (req as any).ip || req.headers.get('x-real-ip') || 'Unknown IP';
+    const xff = req.headers.get('x-forwarded-for');
+    const ip = xff ? xff.split(',')[0].trim() : (req as any).ip || req.headers.get('x-real-ip') || 'Unknown IP';
     const timestamp = new Date().toISOString();
     const method = req.method;
     const path = req.nextUrl.pathname;
@@ -21,7 +22,7 @@ export default NextAuth(authConfig).auth((req) => {
 
     // Apply strict rate limiting for login attempts
     if (req.method === 'POST' && (req.nextUrl.pathname.includes('login') || req.nextUrl.pathname.startsWith('/api/auth'))) {
-        if (!rateLimit(ip, 10, 60000)) { // 10 requests per minute
+        if (!rateLimit(ip, 50, 60000)) { // 50 requests per minute to prevent NAT/Proxy lockouts
             return new Response("Too Many Requests", { status: 429 });
         }
     }

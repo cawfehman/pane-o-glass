@@ -26,7 +26,7 @@ export async function authenticateWithAD(username: string, password: string): Pr
     const bindDN = process.env.AD_BIND_DN;
     const bindPassword = process.env.AD_BIND_PASSWORD;
     const baseDN = process.env.AD_BASE_DN;
-    const rejectUnauthorized = true;
+    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
 
     if (!url || !bindDN || !bindPassword || !baseDN) {
         console.error("LDAP configuration missing in environment variables.");
