@@ -30,7 +30,7 @@ export async function GET() {
             const authHeader = token.includes(":") 
                 ? `Basic ${Buffer.from(token).toString("base64")}`
                 : `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
-            const agent = new https.Agent({ rejectUnauthorized: false });
+            const agent = new https.Agent({ rejectUnauthorized: true });
 
             // Generate URLs for all 3 nodes if baseUrl contains graylog-01
             const urlsToQuery: string[] = [];

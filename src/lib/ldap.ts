@@ -1,5 +1,18 @@
 import { Client } from "ldapts";
 
+function escapeLDAPSearchFilter(input: string): string {
+    return String(input).replace(/[\*\(\)\\\0]/g, match => {
+        switch (match) {
+            case '*': return '\\2a';
+            case '(': return '\\28';
+            case ')': return '\\29';
+            case '\\': return '\\5c';
+            case '\0': return '\\00';
+            default: return match;
+        }
+    });
+}
+
 /**
  * Validates a username and password against an Active Directory / LDAP server.
  */
@@ -13,7 +26,7 @@ export async function authenticateWithAD(username: string, password: string): Pr
     const bindDN = process.env.AD_BIND_DN;
     const bindPassword = process.env.AD_BIND_PASSWORD;
     const baseDN = process.env.AD_BASE_DN;
-    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
+    const rejectUnauthorized = true;
 
     if (!url || !bindDN || !bindPassword || !baseDN) {
         console.error("LDAP configuration missing in environment variables.");
@@ -34,8 +47,10 @@ export async function authenticateWithAD(username: string, password: string): Pr
         console.log(`LDAP: Searching for user "${cleanUsername}" (original: "${username}") in baseDN "${baseDN}"`);
         // Step 2: Search for the user to get their full DN and groups
         // We search both sAMAccountName and userPrincipalName to be robust
+        const escapedUsername = escapeLDAPSearchFilter(cleanUsername);
+        const escapedOriginal = escapeLDAPSearchFilter(username);
         const { searchEntries } = await client.search(baseDN, {
-            filter: `(|(sAMAccountName=${cleanUsername})(userPrincipalName=${cleanUsername}@cooperhealth.edu)(userPrincipalName=${username}))`,
+            filter: `(|(sAMAccountName=${escapedUsername})(userPrincipalName=${escapedUsername}@cooperhealth.edu)(userPrincipalName=${escapedOriginal}))`,
             scope: "sub",
             attributes: ["dn", "memberOf"],
         });
@@ -95,7 +110,7 @@ export async function getUserDetails(username: string) {
     const bindDN = process.env.AD_BIND_DN;
     const bindPassword = process.env.AD_BIND_PASSWORD;
     const baseDN = process.env.AD_BASE_DN;
-    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
+    const rejectUnauthorized = true;
 
     if (!url || !bindDN || !bindPassword || !baseDN) {
         return null;
@@ -114,8 +129,11 @@ export async function getUserDetails(username: string) {
     try {
         await client.bind(bindDN, bindPassword);
         
+        const escapedUsername = escapeLDAPSearchFilter(cleanUsername);
+        const escapedOriginal = escapeLDAPSearchFilter(username);
+        
         const { searchEntries } = await client.search(baseDN, {
-            filter: `(|(sAMAccountName=${cleanUsername})(userPrincipalName=${cleanUsername}@cooperhealth.edu)(userPrincipalName=${username}))`,
+            filter: `(|(sAMAccountName=${escapedUsername})(userPrincipalName=${escapedUsername}@cooperhealth.edu)(userPrincipalName=${escapedOriginal}))`,
             scope: "sub",
             attributes: ["displayName", "department", "title", "telephoneNumber", "mail", "lockoutTime"],
         });
@@ -157,7 +175,7 @@ export async function getBulkUserDetails(emails: string[]) {
     const bindDN = process.env.AD_BIND_DN;
     const bindPassword = process.env.AD_BIND_PASSWORD;
     const baseDN = process.env.AD_BASE_DN;
-    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
+    const rejectUnauthorized = true;
 
     if (!url || !bindDN || !bindPassword || !baseDN || emails.length === 0) {
         return {};
@@ -175,7 +193,7 @@ export async function getBulkUserDetails(emails: string[]) {
 
         // Batch size of 50 to avoid LDAP filter length limits
         for (let i = 0; i < emails.length; i += 50) {
-            const batch = emails.slice(i, i + 50);
+            const batch = emails.slice(i, i + 50).map(escapeLDAPSearchFilter);
             const filter = `(|${batch.map(e => `(mail=${e})`).join("")})`;
 
             const { searchEntries } = await client.search(baseDN, {

@@ -1,5 +1,6 @@
 import NextAuth from "next-auth"
 import { authConfig } from "@/lib/auth.config"
+import { rateLimit } from "@/lib/rate-limit"
 
 export default NextAuth(authConfig).auth((req) => {
     // ---------------------------------------------------------
@@ -18,13 +19,21 @@ export default NextAuth(authConfig).auth((req) => {
     console.log(`[${timestamp}] ${ip} - ${method} ${path} | User: ${username} | Referer: ${referer} | Agent: ${userAgent}`);
     // ---------------------------------------------------------
 
+    // Apply strict rate limiting for login attempts
+    if (req.method === 'POST' && (req.nextUrl.pathname.includes('login') || req.nextUrl.pathname.startsWith('/api/auth'))) {
+        if (!rateLimit(ip, 10, 60000)) { // 10 requests per minute
+            return new Response("Too Many Requests", { status: 429 });
+        }
+    }
+
     const isLoggedIn = !!req.auth?.user;
     const isOnLoginPage = req.nextUrl.pathname.startsWith('/login');
     const isHealthCheck = req.nextUrl.pathname === '/api/health';
     const isPublicRoute = req.nextUrl.pathname.startsWith('/public/');
+    const isAuthRoute = req.nextUrl.pathname.startsWith('/api/auth');
 
-    // Allow public access to health check and public routes
-    if (isHealthCheck || isPublicRoute) return;
+    // Allow public access to health check, auth callbacks, and public routes
+    if (isHealthCheck || isPublicRoute || isAuthRoute) return;
 
     if (isOnLoginPage) {
         if (isLoggedIn) {
@@ -50,5 +59,5 @@ export default NextAuth(authConfig).auth((req) => {
 })
 
 export const config = {
-    matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+    matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }

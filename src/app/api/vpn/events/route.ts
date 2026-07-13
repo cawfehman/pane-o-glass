@@ -57,7 +57,7 @@ export async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: num
             ? `Basic ${Buffer.from(token).toString("base64")}`
             : `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
         
-        const agent = new https.Agent({ rejectUnauthorized: false });
+        const agent = new https.Agent({ rejectUnauthorized: true });
         
         let messages: any[] = [];
         const streamsToQuery = streamIds.length > 0 ? streamIds : [null];
@@ -409,7 +409,7 @@ export async function POST(req: NextRequest) {
             if (!verifyRotatingPassword(password)) {
                 await logAudit(
                     "VPN_SYNC_LOCKED_ATTEMPT_FAILED",
-                    `Sync attempted for range ${rangeSeconds}s with invalid password: "${password}".`,
+                    `Sync attempted for range ${rangeSeconds}s with invalid password provided.`,
                     session.user.id
                 ).catch(() => {});
 

@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/app/actions/permissions";
 
 export async function GET() {
     try {
+        const session = await auth();
+        const role = (session?.user as any)?.role;
+        if (!session?.user || !(await hasPermission(role, 'firewall'))) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+        }
+
         const guardianJob = await prisma.backgroundJob.findUnique({
             where: { name: "Firewall Guardian" }
         });

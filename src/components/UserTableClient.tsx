@@ -17,6 +17,7 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
         isExternal: false
     });
     const [actionLoading, setActionLoading] = useState(false);
+    const [dialog, setDialog] = useState<{ isOpen: boolean, type: 'alert' | 'confirm', message: string, onConfirm?: () => void } | null>(null);
 
     // Common sense interactive client sorting
     const sortedUsers = useMemo(() => {
@@ -100,20 +101,26 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
             }));
             setEditingUserId(null);
         } catch (err) {
-            alert("Failed to update user record.");
+            setDialog({ isOpen: true, type: 'alert', message: "Failed to update user record." });
         } finally {
             setActionLoading(false);
         }
     };
 
-    const handleDelete = async (id: string) => {
-        if (!confirm("Are you sure you want to delete this account?")) return;
-        try {
-            await deleteUser(id);
-            setUsers(prev => prev.filter(u => u.id !== id));
-        } catch (err: any) {
-            alert(err.message || "Failed to delete user.");
-        }
+    const handleDeleteClick = (id: string) => {
+        setDialog({ 
+            isOpen: true, 
+            type: 'confirm', 
+            message: "Are you sure you want to delete this account?",
+            onConfirm: async () => {
+                try {
+                    await deleteUser(id);
+                    setUsers(prev => prev.filter(u => u.id !== id));
+                } catch (err: any) {
+                    setDialog({ isOpen: true, type: 'alert', message: err.message || "Failed to delete user." });
+                }
+            }
+        });
     };
 
     const renderIndicator = (field: string) => {
@@ -122,6 +129,7 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
     };
 
     return (
+        <>
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead className="sticky-header">
                 <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
@@ -307,7 +315,7 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                     }} className="nav-link">
                                         Edit
                                     </button>
-                                    <button onClick={() => handleDelete(user.id)} style={{
+                                    <button onClick={() => handleDeleteClick(user.id)} style={{
                                         background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px'
                                     }} className="nav-link">
                                         Delete
@@ -326,5 +334,26 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                 )}
             </tbody>
         </table>
+        {dialog?.isOpen && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+                <div style={{ background: 'var(--bg-surface)', padding: '24px', borderRadius: '8px', minWidth: '300px', border: '1px solid var(--border-color)', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                    <p style={{ marginBottom: '24px' }}>{dialog.message}</p>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                        {dialog.type === 'confirm' && (
+                            <button onClick={() => setDialog(null)} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
+                        )}
+                        <button onClick={() => {
+                            if(dialog.type === 'confirm' && dialog.onConfirm) {
+                                dialog.onConfirm();
+                            }
+                            setDialog(null);
+                        }} style={{ padding: '8px 16px', background: 'var(--accent-primary)', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer' }}>
+                            {dialog.type === 'confirm' ? 'Confirm' : 'OK'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+        </>
     );
 }

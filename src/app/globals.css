@@ -11,6 +11,9 @@
   --text-muted: #64748b;
 
   --accent-primary: #3b82f6;
+  --accent-secondary: #0ea5e9;
+  --accent-tertiary: #6366f1;
+  --bg-card: #1a1d24;
   /* Beautiful Blue */
   --accent-primary-hover: #2563eb;
   --accent-glow: rgba(59, 130, 246, 0.2);
@@ -611,4 +614,9 @@ thead.sticky-header th {
 @keyframes slideInTop {
   from { transform: translateY(-1rem); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }

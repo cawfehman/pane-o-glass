@@ -16,17 +16,7 @@ export async function logAudit(
             }
         });
 
-        // 30 day rotating log cleanup: purge records older than 30 days
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-        await db.auditLog.deleteMany({
-            where: {
-                createdAt: {
-                    lt: thirtyDaysAgo
-                }
-            }
-        });
+        // Note: 30 day rotating log cleanup should be handled by a separate background job
 
     } catch (error) {
         console.error("Failed to write to audit log:", error);

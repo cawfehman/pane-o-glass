@@ -116,6 +116,11 @@ export async function GET(req: NextRequest) {
                 }
             };
         } else if (type === "domain") {
+            // Validate domain format to prevent SSRF
+            if (!/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(query)) {
+                return NextResponse.json({ error: "Invalid domain format" }, { status: 400 });
+            }
+
             // 1. DNS Records lookup (Resolve A, MX, NS, TXT)
             const dnsRecords: any = {};
             try {

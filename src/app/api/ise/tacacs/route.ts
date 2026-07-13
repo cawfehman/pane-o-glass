@@ -1,9 +1,17 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { auth } from "@/lib/auth";
+import { hasPermission } from "@/app/actions/permissions";
 
 export async function GET(request: Request) {
     try {
+        const session = await auth();
+        const role = (session?.user as any)?.role;
+        if (!session?.user || !(await hasPermission(role, 'ise'))) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+        }
+
         const { searchParams } = new URL(request.url);
         const query = (searchParams.get('query') || '').toLowerCase();
         const windowParam = searchParams.get('window') || '1h'; // 15m, 1h, 12h, 24h, 7d

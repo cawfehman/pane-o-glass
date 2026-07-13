@@ -20,15 +20,16 @@ export async function GET() {
         });
 
         // Generate CSV string
+        const safeString = (str: string) => str ? `'${str}` : '';
         const headers = ["ID", "Timestamp", "User", "Action", "Details", "IP Address"];
         const rows = logs.map(log => [
             log.id,
             new Date(log.createdAt).toISOString(),
-            log.user?.username || log.userId || "System",
-            log.action,
+            safeString(log.user?.username || log.userId || "System"),
+            safeString(log.action),
             // Wrap details in quotes in case it has commas
-            `"${log.details.replace(/"/g, '""')}"`,
-            log.ipAddress || "Internal"
+            `"${safeString(log.details).replace(/"/g, '""')}"`,
+            safeString(log.ipAddress || "Internal")
         ]);
 
         const csvContent = [

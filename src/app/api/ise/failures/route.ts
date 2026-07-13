@@ -44,7 +44,7 @@ export async function GET(req: Request) {
 
         const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
-        const agent = new https.Agent({ rejectUnauthorized: false });
+        const agent = new https.Agent({ rejectUnauthorized: true });
         const fetchAuthStatus = async (mac: string) => {
             const tryFormat = async (formattedMac: string) => {
                 // Expanded to 30 Days (2592000 seconds) for Service Account visibility

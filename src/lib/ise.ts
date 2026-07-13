@@ -49,7 +49,7 @@ export async function fetchIseSession(query: string) {
     const user = rawUser.replace(/^"|"$/g, '');
     const pass = rawPass.replace(/^"|"$/g, '');
     const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
-    const agent = new https.Agent({ rejectUnauthorized: false });
+    const agent = new https.Agent({ rejectUnauthorized: true });
 
     // Determine query type
     let searchType = "user_name";

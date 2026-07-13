@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 
-export default function Clock() {
+const Clock = React.memo(function Clock() {
     const [time, setTime] = useState(new Date());
 
     useEffect(() => {
@@ -48,4 +48,6 @@ export default function Clock() {
             </div>
         </div>
     );
-}
+});
+
+export default Clock;

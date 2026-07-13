@@ -11,6 +11,11 @@ export async function performLogout() {
 }
 
 export async function createUser(formData: FormData) {
+    const session = await auth();
+    if (!session || (session.user as any)?.role !== 'ADMIN') {
+        throw new Error("Unauthorized: Admin privileges required");
+    }
+
     const username = formData.get("username") as string;
     const password = formData.get("password") as string;
     const firstName = formData.get("firstName") as string || null;
@@ -39,14 +44,18 @@ export async function createUser(formData: FormData) {
         }
     });
 
-    const session = await auth();
-    await logAudit("USER_CREATE", `Created new user: ${username} (${firstName || ''} ${lastName || ''}) with role ${role}, isExternal: ${isExternal}`, session?.user?.id);
+    await logAudit("USER_CREATE", `Created new user: ${username} (${firstName || ''} ${lastName || ''}) with role ${role}, isExternal: ${isExternal}`, session.user.id);
 
     revalidatePath("/users");
     return newUser;
 }
 
 export async function deleteUser(id: string) {
+    const session = await auth();
+    if (!session || (session.user as any)?.role !== 'ADMIN') {
+        throw new Error("Unauthorized: Admin privileges required");
+    }
+
     const userToDelete = await prisma.user.findUnique({ where: { id } });
     if (userToDelete?.role === 'ADMIN') {
         const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } });
@@ -59,13 +68,17 @@ export async function deleteUser(id: string) {
         where: { id }
     });
 
-    const session = await auth();
-    await logAudit("USER_DELETE", `Deleted user: ${userToDelete?.username}`, session?.user?.id);
+    await logAudit("USER_DELETE", `Deleted user: ${userToDelete?.username}`, session.user.id);
 
     revalidatePath("/users");
 }
 
 export async function updateUser(id: string, formData: FormData) {
+    const session = await auth();
+    if (!session || (session.user as any)?.role !== 'ADMIN') {
+        throw new Error("Unauthorized: Admin privileges required");
+    }
+
     const username = formData.get("username") as string;
     const password = formData.get("password") as string;
     const firstName = formData.get("firstName") as string;
@@ -99,7 +112,6 @@ export async function updateUser(id: string, formData: FormData) {
         data: updateData
     });
 
-    const session = await auth();
     let auditMessage = `Updated user: ${userToUpdate?.username}`;
     const changes = [];
     if (password) changes.push("password");

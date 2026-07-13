@@ -23,6 +23,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Parameter 'ips' must be an array" }, { status: 400 });
         }
 
+        if (ips.length > 100) {
+            return NextResponse.json({ error: "Too many IPs requested. Maximum is 100." }, { status: 400 });
+        }
+
         const enriched = await enrichIpsBatch(ips, true); // true = ad-hoc analyst trigger
         
         return NextResponse.json({
