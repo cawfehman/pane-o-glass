@@ -265,7 +265,7 @@ export default function CiscoFirewallPage() {
 
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6">
+            <div className="flex-1 min-h-0 flex flex-col gap-6">
             {activeTab === "manual" ? (
                 <>
                     <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,450px)_1fr] gap-8 items-stretch">
@@ -399,7 +399,7 @@ export default function CiscoFirewallPage() {
                 ) : history.length === 0 ? (
                     <p className="text-text-muted">No queries have been executed yet.</p>
                 ) : (
-                    <div style={{ flex: 1, overflowX: 'auto' }}>
+                    <div style={{ flex: 1, overflow: 'auto' }} className="custom-scrollbar">
                         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                     <thead className="sticky top-0 bg-bg-surface z-10">
                                         <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
@@ -475,8 +475,8 @@ export default function CiscoFirewallPage() {
                 )}
             </div>
         </>
-    ) : activeTab === "guardian" ? (
-             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        ) : activeTab === "guardian" ? (
+             <div className="flex-1 min-h-0 flex flex-col gap-6">
                 {/* --- SEARCH & FILTER CONTROLS --- */}
                 <div className="glass-card" style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, minWidth: '250px' }}>
@@ -520,7 +520,7 @@ export default function CiscoFirewallPage() {
                 </div>
 
                 {/* --- GUARDIAN EVENTS TABLE --- */}
-                <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
+                <div className="glass-card flex-1 flex flex-col min-h-0" style={{ minHeight: '400px' }}>
                     <div className="mb-4">
                         <h3>Guardian Shun Intel Log</h3>
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
@@ -533,7 +533,7 @@ export default function CiscoFirewallPage() {
                     ) : guardianEvents.length === 0 ? (
                         <p className="text-text-muted">No matching logs found.</p>
                     ) : (
-                        <div style={{ overflowX: 'auto' }}>
+                        <div className="flex-1 overflow-auto custom-scrollbar">
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead className="sticky top-0 bg-bg-surface z-10">
                                     <tr style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
@@ -631,8 +631,8 @@ export default function CiscoFirewallPage() {
                 </div>
             </div>
         ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
+            <div className="flex-1 min-h-0 flex flex-col gap-6">
+                <div className="glass-card flex-1 flex flex-col min-h-0" style={{ minHeight: '400px' }}>
                     <div className="mb-4">
                         <h3>Guardian Do-Not-Unshun Blacklist</h3>
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
@@ -645,7 +645,7 @@ export default function CiscoFirewallPage() {
                     ) : blacklist.length === 0 ? (
                         <p className="text-text-muted">No IPs currently blacklisted.</p>
                     ) : (
-                        <div style={{ overflowX: 'auto' }}>
+                        <div className="flex-1 overflow-auto custom-scrollbar">
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead className="sticky top-0 bg-bg-surface z-10">
                                     <tr style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>

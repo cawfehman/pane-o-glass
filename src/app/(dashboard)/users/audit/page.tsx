@@ -186,7 +186,7 @@ export default async function AuditLogsPage(props: {
 
             <div className="glass-card flex-1 flex flex-col min-h-0">
                 <div className="flex-1 overflow-y-auto overflow-x-auto">
-                    <table className="w-full collapse text-left">
+                    <table className="w-full border-collapse text-left">
                         <thead className="sticky-header">
                             <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                                 <th style={{ padding: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Time</th>
