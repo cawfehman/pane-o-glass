@@ -268,7 +268,7 @@ export default function CiscoFirewallPage() {
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6">
             {activeTab === "manual" ? (
                 <>
-                    <div className="grid grid-cols-[minmax(300px,450px)_1fr] gap-8 items-stretch">
+                    <div className="grid grid-cols-1 lg:grid-cols-[minmax(300px,450px)_1fr] gap-8 items-stretch">
 
                     {/* --- CONTROLS CARD --- */}
                     <div className="glass-card">
