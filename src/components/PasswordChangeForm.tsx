@@ -35,8 +35,8 @@ export default function PasswordChangeForm() {
 
     return (
         <div className="glass-card">
-            <h3 style={{ marginBottom: '16px' }}>Change Password</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '24px' }}>
+            <h3 className="mb-4">Change Password</h3>
+            <p className="text-text-muted text-sm mb-6">
                 For local accounts only. Active Directory authenticated users must change their password through corporate systems.
             </p>
 
@@ -57,14 +57,7 @@ export default function PasswordChangeForm() {
                 </div>
 
                 {message.text && (
-                    <div style={{ 
-                        padding: '12px', 
-                        borderRadius: '4px', 
-                        backgroundColor: message.type === 'error' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)',
-                        color: message.type === 'error' ? '#ef4444' : '#4ade80',
-                        marginBottom: '16px',
-                        fontSize: '0.875rem'
-                    }}>
+                    <div className={`p-3 rounded mb-4 text-sm ${message.type === 'error' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
                         {message.text}
                     </div>
                 )}

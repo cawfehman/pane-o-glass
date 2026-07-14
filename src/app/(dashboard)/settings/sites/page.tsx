@@ -253,7 +253,7 @@ export default function SiteManagementPage() {
     return (
         <div className="internal-scroll-layout animate-in fade-in duration-400">
             {/* Top fixed sections layout housing standard actions and view configurations */}
-            <div style={{ flexShrink: 0 }}>
+            <div className="shrink-0">
                 <header className="flex justify-between items-center mb-6">
                     <div className="flex items-center gap-3">
                         <div className="p-2.5 rounded-xl bg-accent-primary/10 text-accent-primary border border-accent-primary/20">
@@ -290,41 +290,38 @@ export default function SiteManagementPage() {
                 )}
 
                 {/* Secondary Header Row: Tab Selectors & Directory Master collapse tool */}
-                <div className="flex flex-wrap items-center justify-between border-b pb-4 mb-4 gap-4" style={{ borderColor: 'var(--border-color)' }}>
+                <div className="flex flex-wrap items-center justify-between border-b border-border-color pb-4 mb-4 gap-4">
                     {/* Tab routes */}
                     <div className="flex items-center gap-2">
                         <button 
                             onClick={() => setActiveTab('directory')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer bg-transparent ${
                                 activeTab === 'directory'
-                                    ? 'text-accent-primary'
-                                    : 'text-muted hover:text-white'
+                                    ? 'text-accent-primary border border-border-color'
+                                    : 'text-muted hover:text-white border-none'
                             }`}
-                            style={{ background: 'transparent', border: activeTab === 'directory' ? '1px solid var(--border-color)' : 'none' }}
                         >
                             <List size={13} />
                             <span>Site Directory</span>
                         </button>
                         <button 
                             onClick={() => setActiveTab('csv')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer bg-transparent ${
                                 activeTab === 'csv'
-                                    ? 'text-accent-primary'
-                                    : 'text-muted hover:text-white'
+                                    ? 'text-accent-primary border border-border-color'
+                                    : 'text-muted hover:text-white border-none'
                             }`}
-                            style={{ background: 'transparent', border: activeTab === 'csv' ? '1px solid var(--border-color)' : 'none' }}
                         >
                             <FileSpreadsheet size={13} />
                             <span>CSV Directives</span>
                         </button>
                         <button 
                             onClick={() => setActiveTab('archive')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer bg-transparent ${
                                 activeTab === 'archive'
-                                    ? 'text-accent-primary'
-                                    : 'text-muted hover:text-white'
+                                    ? 'text-accent-primary border border-border-color'
+                                    : 'text-muted hover:text-white border-none'
                             }`}
-                            style={{ background: 'transparent', border: activeTab === 'archive' ? '1px solid var(--border-color)' : 'none' }}
                         >
                             <History size={13} />
                             <span>Archival Logs</span>
@@ -340,16 +337,14 @@ export default function SiteManagementPage() {
                                     parsedPreview.forEach((s: any) => { allExpanded[s.id] = true; });
                                     setExpandedSites(allExpanded);
                                 }}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-muted hover:text-accent-primary cursor-pointer"
-                                style={{ background: 'transparent', border: 'none' }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-muted hover:text-accent-primary cursor-pointer bg-transparent border-none"
                                 title="Expand all rows"
                             >
                                 Expand All
                             </button>
                             <button 
                                 onClick={() => setExpandedSites({})}
-                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-muted hover:text-accent-primary cursor-pointer"
-                                style={{ background: 'transparent', border: 'none' }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all text-muted hover:text-accent-primary cursor-pointer bg-transparent border-none"
                                 title="Collapse all rows"
                             >
                                 Collapse All
@@ -360,21 +355,20 @@ export default function SiteManagementPage() {
             </div>
 
             {/* Bottom flex-1 List Container housed inside a glass-card mimicking Account Management container boundaries */}
-            <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexShrink: 0 }}>
-                    <h3 style={{ margin: 0 }}>Configured Sites</h3>
+            <div className="glass-card flex-1 flex flex-col min-h-0">
+                <div className="flex justify-between items-center mb-4 shrink-0">
+                    <h3 className="m-0">Configured Sites</h3>
                     {activeTab === 'directory' && (
                         <button 
                             onClick={handleAddClick}
-                            className="flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg transition-all text-accent-primary hover:bg-accent-primary/10 border border-accent-primary/30 cursor-pointer"
-                            style={{ background: 'transparent' }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg transition-all text-accent-primary hover:bg-accent-primary/10 border border-accent-primary/30 cursor-pointer bg-transparent"
                         >
                             <Plus size={14} strokeWidth={2.5} />
                             <span>Add Site</span>
                         </button>
                     )}
                 </div>
-                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px' }} className="custom-scrollbar">
+                <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
                     
                     {/* TAB 1: SITE DIRECTORY */}
                     {activeTab === 'directory' && (
