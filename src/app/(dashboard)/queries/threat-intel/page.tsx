@@ -71,22 +71,22 @@ export default function ThreatIntelPage() {
     };
 
     return (
-        <div className="internal-scroll-layout" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div className="internal-scroll-layout flex flex-col h-full">
             <div style={{ flexShrink: 0 }}>
                 {/* Header */}
-                <div style={{ marginBottom: '24px' }}>
+                <div className="mb-6">
                     <h1 style={{ fontSize: '2.25rem', fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <Globe size={32} color="var(--accent-primary)" />
                         Threat Intelligence Reputation
                         <ToolHelp toolId="threat-intel" iconSize={24} />
                     </h1>
-                    <p style={{ color: 'var(--text-secondary)' }}>
+                    <p className="text-text-secondary">
                         Forensic indicator analysis correlating local DNS query resolution with Cisco Umbrella threat classification.
                     </p>
                 </div>
 
                 {/* Input Form */}
-                <form onSubmit={handleSearch} className="glass-card" style={{ display: 'flex', gap: '16px', padding: '16px', marginBottom: '24px' }}>
+                <form onSubmit={handleSearch} className="glass-card flex gap-4 p-4 mb-6">
                     <div style={{ position: 'relative', flex: 1 }}>
                         <input
                             type="text"
@@ -123,13 +123,13 @@ export default function ThreatIntelPage() {
                 {loading && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0' }}>
                         <div className="spinner-large" style={{ border: '3px solid var(--border-color)', borderTop: '3px solid var(--accent-primary)', borderRadius: '50%', width: '40px', height: '40px', animation: 'spin 1s linear infinite' }}></div>
-                        <p style={{ marginTop: '16px', color: 'var(--text-secondary)' }}>Querying global security feeds and resolving records...</p>
+                        <p className="mt-4 text-text-secondary">Querying global security feeds and resolving records...</p>
                     </div>
                 )}
 
                 {/* Snapshot Card (Summary & Info) */}
                 {result && !loading && (
-                    <div className="animate-fadeIn" style={{ marginBottom: '24px' }}>
+                    <div className="animate-fadeIn mb-6">
                         {(result.details?.iplocate?.simulated || result.details?.reputation?.source === "simulated") && (
                             <div style={{ padding: '12px 16px', marginBottom: '16px', background: 'rgba(234, 179, 8, 0.1)', color: '#eab308', border: '1px solid rgba(234, 179, 8, 0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
                                 <AlertTriangle size={18} />
@@ -138,7 +138,7 @@ export default function ThreatIntelPage() {
                         )}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
                             {/* Summary Card */}
-                            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '24px' }}>
+                            <div className="glass-card flex flex-col justify-between p-6">
                                 <div>
                                     <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                         Indicator Classification ({result.type.toUpperCase()})
@@ -147,15 +147,15 @@ export default function ThreatIntelPage() {
                                         {result.query}
                                     </h2>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <div className="flex items-center justify-between">
                                     <div>
-                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Reputation Severity</div>
+                                        <div className="text-xs text-text-muted">Reputation Severity</div>
                                         <div style={{ marginTop: '4px' }}>{renderReputationBadge(result.details.reputation.status)}</div>
                                     </div>
                                     <div style={{ textAlign: 'right' }}>
-                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Malicious Threat Index</div>
+                                        <div className="text-xs text-text-muted">Malicious Threat Index</div>
                                         <div style={{ fontSize: '2rem', fontWeight: 800, color: result.details.reputation.score > 70 ? '#ef4444' : result.details.reputation.score > 30 ? '#eab308' : '#22c55e' }}>
-                                            {result.details.reputation.score}<span style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>/100</span>
+                                            {result.details.reputation.score}<span className="text-base text-text-muted">/100</span>
                                         </div>
                                     </div>
                                 </div>
@@ -163,25 +163,25 @@ export default function ThreatIntelPage() {
 
                             {/* Additional Info depending on type */}
                             {result.type === "ip" && (
-                                <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                <div className="glass-card p-6 flex flex-col justify-between">
                                     <div>
                                         <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
                                             <Compass size={18} /> Network & Geolocation Metadata
                                         </h3>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                        <div className="flex flex-col gap-3">
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                                <span style={{ color: 'var(--text-muted)' }}>ISP/Carrier (Base):</span>
-                                                <span style={{ fontWeight: 600 }}>{result.details.geo.asn ? `ASN${result.details.geo.asn} (${result.details.geo.as_name || 'Unknown'})` : 'N/A'}</span>
+                                                <span className="text-text-muted">ISP/Carrier (Base):</span>
+                                                <span className="font-semibold">{result.details.geo.asn ? `ASN${result.details.geo.asn} (${result.details.geo.as_name || 'Unknown'})` : 'N/A'}</span>
                                             </div>
                                             {result.details.iplocate?.org && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>Enriched Org:</span>
-                                                    <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>{result.details.iplocate.org}</span>
+                                                    <span className="text-text-muted">Enriched Org:</span>
+                                                    <span className="font-semibold text-accent-primary">{result.details.iplocate.org}</span>
                                                 </div>
                                             )}
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                                <span style={{ color: 'var(--text-muted)' }}>Location Origin:</span>
-                                                <span style={{ fontWeight: 600 }}>
+                                                <span className="text-text-muted">Location Origin:</span>
+                                                <span className="font-semibold">
                                                     {result.details.iplocate?.city && result.details.iplocate?.subdivision 
                                                         ? `${result.details.iplocate.city}, ${result.details.iplocate.subdivision}, ${result.details.iplocate.country_code}`
                                                         : `${result.details.geo.country || 'N/A'} (${result.details.geo.country_code || 'N/A'})`
@@ -190,14 +190,14 @@ export default function ThreatIntelPage() {
                                             </div>
                                             {result.details.iplocate?.time_zone && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>Local Timezone:</span>
-                                                    <span style={{ fontWeight: 600 }}>{result.details.iplocate.time_zone}</span>
+                                                    <span className="text-text-muted">Local Timezone:</span>
+                                                    <span className="font-semibold">{result.details.iplocate.time_zone}</span>
                                                 </div>
                                             )}
                                             {result.details.iplocate?.latitude != null && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                                    <span style={{ color: 'var(--text-muted)' }}>Exact Coordinates:</span>
-                                                    <span style={{ fontWeight: 600 }}>
+                                                    <span className="text-text-muted">Exact Coordinates:</span>
+                                                    <span className="font-semibold">
                                                         <a 
                                                             href={`https://www.google.com/maps?q=${result.details.iplocate.latitude},${result.details.iplocate.longitude}`}
                                                             target="_blank"
@@ -210,8 +210,8 @@ export default function ThreatIntelPage() {
                                                 </div>
                                             )}
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                                <span style={{ color: 'var(--text-muted)' }}>Domain Space:</span>
-                                                <span style={{ fontWeight: 600 }}>{result.details.geo.as_domain || 'N/A'}</span>
+                                                <span className="text-text-muted">Domain Space:</span>
+                                                <span className="font-semibold">{result.details.geo.as_domain || 'N/A'}</span>
                                             </div>
                                         </div>
 
@@ -253,14 +253,14 @@ export default function ThreatIntelPage() {
                             )}
 
                             {result.type === "domain" && (
-                                <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                                <div className="glass-card p-6 flex flex-col justify-between">
                                     <div>
                                         <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
                                             <Activity size={18} /> Cisco Umbrella Threat Intelligence
                                         </h3>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                        <div className="flex flex-col gap-3">
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                                <span style={{ color: 'var(--text-muted)' }}>Source Feed:</span>
+                                                <span className="text-text-muted">Source Feed:</span>
                                                 <span style={{ fontWeight: 600, color: result.details.reputation.source === 'live' ? '#22c55e' : '#eab308' }}>
                                                     {result.details.reputation.source === 'live' ? 'Umbrella API (Live)' : 'Heuristic Engine (Offline)'}
                                                 </span>
@@ -271,7 +271,7 @@ export default function ThreatIntelPage() {
                                                 </div>
                                             )}
                                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                                <span style={{ color: 'var(--text-muted)' }}>Security Status:</span>
+                                                <span className="text-text-muted">Security Status:</span>
                                                 <span style={{ fontWeight: 600, color: result.details.reputation.status === 'malicious' ? '#ef4444' : '#22c55e' }}>
                                                     {result.details.reputation.status === 'malicious' ? 'Flagged Malicious' : 'Clean Classification'}
                                                 </span>
@@ -318,23 +318,23 @@ export default function ThreatIntelPage() {
                             )}
 
                             {result.type === "hash" && (
-                                <div className="glass-card" style={{ padding: '24px' }}>
+                                <div className="glass-card p-6">
                                     <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
                                         <Database size={18} /> Malware Fingerprint Metadata
                                     </h3>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    <div className="flex flex-col gap-3">
                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Hash Algorithm:</span>
-                                            <span style={{ fontWeight: 600 }}>{result.details.hashType}</span>
+                                            <span className="text-text-muted">Hash Algorithm:</span>
+                                            <span className="font-semibold">{result.details.hashType}</span>
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Detected Malware:</span>
+                                            <span className="text-text-muted">Detected Malware:</span>
                                             <span style={{ fontWeight: 600, color: result.details.reputation.malwareFamily ? '#ef4444' : 'var(--text-primary)' }}>
                                                 {result.details.reputation.malwareFamily || "No threat signature found"}
                                             </span>
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Verification Authority:</span>
+                                            <span className="text-text-muted">Verification Authority:</span>
                                             <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{result.details.reputation.signatureDatabase}</span>
                                         </div>
                                     </div>
@@ -349,7 +349,7 @@ export default function ThreatIntelPage() {
             {result && !loading && (
                 <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px', minHeight: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>
                     {/* Threat Analysis Factors / Log events */}
-                    <div className="glass-card" style={{ padding: '24px' }}>
+                    <div className="glass-card p-6">
                         <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
                             Forensic Threat Assessment
                         </h3>
@@ -363,7 +363,7 @@ export default function ThreatIntelPage() {
                             </ul>
                         )}
                         {result.type === "domain" && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            <div className="flex flex-col gap-4">
                                 <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', margin: 0 }}>
                                     {result.details.reputation.status === "malicious" 
                                         ? "This domain has been flagged by Cisco Umbrella Investigate as active in security threat propagation campaigns."
@@ -384,7 +384,7 @@ export default function ThreatIntelPage() {
 
                     {/* DNS Records Tab (Domains Only) */}
                     {result.type === "domain" && result.details.dns && (
-                        <div className="glass-card" style={{ padding: '24px' }}>
+                        <div className="glass-card p-6">
                             <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <Terminal size={18} /> Direct Name Server Resolution Diagnostics
                             </h3>
@@ -407,7 +407,7 @@ export default function ThreatIntelPage() {
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                             {result.details.dns.MX.map((mx: any, i: number) => (
                                                 <code key={i} style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                                                    Priority: <b style={{ color: 'var(--accent-primary)' }}>{mx.priority}</b> &rarr; Host: <b>{mx.exchange}</b>
+                                                    Priority: <b className="text-accent-primary">{mx.priority}</b> &rarr; Host: <b>{mx.exchange}</b>
                                                 </code>
                                             ))}
                                         </div>
@@ -430,7 +430,7 @@ export default function ThreatIntelPage() {
                                 <div>
                                     <h4 style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Text Declarations (TXT)</h4>
                                     {result.details.dns.TXT && result.details.dns.TXT.length > 0 ? (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <div className="flex flex-col gap-2">
                                             {result.details.dns.TXT.map((txt: string[], i: number) => (
                                                 <pre key={i} style={{ margin: 0, padding: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', borderRadius: '6px', fontSize: '0.85rem', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
                                                     {txt.join(' ')}

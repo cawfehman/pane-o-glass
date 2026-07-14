@@ -71,7 +71,7 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
             className="hover-bright"
         >
             <Icon size={12} color="var(--text-secondary)" />
-            <span style={{ color: 'var(--text-secondary)' }}>{label}:</span>
+            <span className="text-text-secondary">{label}:</span>
             <span style={{ fontWeight: '600', borderBottom: '1px dashed transparent' }} className="hover-underline">{value}</span>
         </div>
     );
@@ -108,7 +108,7 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
                         </div>
                     )}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div className="flex items-center gap-4">
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', fontFamily: 'monospace', opacity: 0.8 }}>{event.timestamp.split('T')[1].split('.')[0]}</span>
                     <ChevronDown size={14} color="var(--text-secondary)" />
                 </div>
@@ -124,7 +124,7 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
             animation: 'fadeIn 0.2s ease-out',
             background: 'var(--glass-bg-elevated)'
         }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div className="flex justify-between items-center mb-4">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }} onClick={() => onQuickSearch(event.user_name)}>
                     <div style={{ padding: '8px', background: 'var(--glass-bg)', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
                         <User size={20} color="var(--accent-primary)" />
@@ -134,8 +134,8 @@ const TacacsCard = ({ event, onQuickSearch }: { event: any, onQuickSearch: (val:
                         <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginLeft: '8px' }}>Forensic Analytics</span>
                     </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{event.timestamp}</span>
+                <div className="flex items-center gap-3">
+                    <span className="text-xs text-text-secondary">{event.timestamp}</span>
                     <button onClick={() => setIsExpanded(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
                         <ChevronUp size={20} />
                     </button>
@@ -245,18 +245,10 @@ export default function TacacsPage() {
     const failures = tacacsResult?.metrics?.failures || 0;
 
     return (
-        <div style={{ maxWidth: '1600px', margin: '0 auto', padding: '0 20px 60px' }}>
+        <div className="max-w-[1600px] mx-auto px-[20px] pb-[60px]">
             
-            <div style={{ 
-                position: 'sticky', 
-                top: '0px', 
-                zIndex: 100, 
-                padding: '30px 0 20px',
-                background: 'linear-gradient(to bottom, var(--background-page) 90%, transparent)',
-                backdropFilter: 'blur(16px)',
-                borderBottom: '1px solid rgba(255,255,255,0.05)'
-            }}>
-                <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="sticky top-[0px] z-100 py-[20px] pt-[30px] bg-[linear-gradient(to_bottom,var(--background-page)_90%,transparent)] backdrop-blur-[16px] border-b border-[rgba(255,255,255,0.05)]">
+                <div className="mb-[20px] flex justify-between items-center">
                     <div>
                         <h1 style={{ fontSize: '2.2rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '14px' }}>
                             <Shield size={36} color="var(--accent-primary)" />
@@ -266,7 +258,7 @@ export default function TacacsPage() {
                         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>Administrative command accountability & behavioral statistics.</p>
                     </div>
                     
-                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <div className="flex gap-3 items-center">
                         <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '4px', border: '1px solid var(--glass-border)' }}>
                             <Calendar size={14} style={{ margin: '0 8px', color: 'var(--text-secondary)' }} />
                             {['15m', '1h', '12h', '24h', '7d'].map((w) => (
@@ -291,7 +283,7 @@ export default function TacacsPage() {
                 </div>
 
                 <div className="glass-card" style={{ padding: '12px 20px', background: 'rgba(255,255,255,0.02)' }}>
-                    <div style={{ display: 'flex', gap: '16px' }}>
+                    <div className="flex gap-4">
                         <div style={{ flex: 1, position: 'relative' }}>
                             <Search style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} size={18} />
                             <input 

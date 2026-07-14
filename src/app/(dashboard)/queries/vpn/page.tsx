@@ -470,7 +470,7 @@ export default function VpnTroubleshootingPage() {
                         gap: '2px',
                         alignItems: 'flex-start'
                     }} title={lastSync?.message || undefined}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div className="flex items-center gap-2">
                             <span style={{ 
                                 width: '8px', 
                                 height: '8px', 
@@ -478,7 +478,7 @@ export default function VpnTroubleshootingPage() {
                                 background: lastSync?.status === "FAILURE" ? '#ef4444' : '#22c55e',
                                 boxShadow: lastSync?.status === "FAILURE" ? '0 0 8px #ef4444' : '0 0 8px #22c55e'
                             }} />
-                            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
+                            <span className="text-text-secondary font-medium">
                                 SIEM Poller: {lastSync ? `${lastSync.status} (${formatDate(lastSync.lastRun)})` : "Idle"}
                             </span>
                         </div>
@@ -551,7 +551,7 @@ export default function VpnTroubleshootingPage() {
                         <Activity size={24} />
                     </div>
                     <div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Active VPN Sessions</div>
+                        <div className="text-xs text-text-muted font-medium">Active VPN Sessions</div>
                         <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
                             {loading ? "..." : activeSessionsCount}
                         </div>
@@ -562,7 +562,7 @@ export default function VpnTroubleshootingPage() {
                         <TrendingUp size={24} />
                     </div>
                     <div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Peak 24h Unique Clients</div>
+                        <div className="text-xs text-text-muted font-medium">Peak 24h Unique Clients</div>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
                             <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
                                 {loading ? "..." : peakUniqueUsers24h}
@@ -584,7 +584,7 @@ export default function VpnTroubleshootingPage() {
                         <Users size={24} />
                     </div>
                     <div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Avg Weekday Clients</div>
+                        <div className="text-xs text-text-muted font-medium">Avg Weekday Clients</div>
                         <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
                             {loading ? "..." : averageWeekdayUsers}
                         </div>
@@ -595,7 +595,7 @@ export default function VpnTroubleshootingPage() {
                         <Calendar size={24} />
                     </div>
                     <div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 500 }}>Avg Weekend Clients</div>
+                        <div className="text-xs text-text-muted font-medium">Avg Weekend Clients</div>
                         <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
                             {loading ? "..." : averageWeekendUsers}
                         </div>
@@ -728,7 +728,7 @@ export default function VpnTroubleshootingPage() {
                         borderBottom: '1px solid var(--border-color)',
                         marginBottom: '2.5rem'
                     }}>
-                        <form onSubmit={handleSearch} style={{ display: 'flex', gap: '12px' }}>
+                        <form onSubmit={handleSearch} className="flex gap-3">
                             <div style={{ position: 'relative', flex: 1 }}>
                                 <Search size={20} style={{ 
                                     position: 'absolute', 
@@ -783,7 +783,7 @@ export default function VpnTroubleshootingPage() {
                         
                         {/* Subtabs Selector & Row Limit */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', gap: '12px', flexWrap: 'wrap' }}>
-                            <div style={{ display: 'flex', gap: '12px' }}>
+                            <div className="flex gap-3">
                                 <button
                                     onClick={() => setFeedSubTab("all")}
                                     style={{
@@ -838,8 +838,8 @@ export default function VpnTroubleshootingPage() {
                             </div>
 
                             {/* Row Limit Selector */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Rows:</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-text-secondary font-medium">Rows:</span>
                                 <select
                                     value={displayRows}
                                     onChange={(e) => handleDisplayRowsChange(Number(e.target.value))}
@@ -914,7 +914,7 @@ export default function VpnTroubleshootingPage() {
                                                      </td>
                                                         <td style={{ padding: '14px 16px', fontSize: '0.875rem' }}>
                                                             {evt.ipAsName ? (
-                                                                <span style={{ display: 'flex', flexDirection: 'column' }}>
+                                                                <span className="flex flex-col">
                                                                     <strong style={{ color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                         {evt.ipAsName}
                                                                         {isNonUs(evt) && (
@@ -935,11 +935,11 @@ export default function VpnTroubleshootingPage() {
                                                                     </span>
                                                                 </span>
                                                             ) : (
-                                                                <span style={{ color: 'var(--text-muted)' }}>Local / Unenriched</span>
+                                                                <span className="text-text-muted">Local / Unenriched</span>
                                                             )}
                                                         </td>
                                                         <td style={{ padding: '14px 16px' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                            <div className="flex items-center gap-2">
                                                                 <span style={{ 
                                                                     display: 'inline-flex', 
                                                                     alignItems: 'center', 
@@ -1024,9 +1024,9 @@ export default function VpnTroubleshootingPage() {
                     )}
 
                     {/* Recent activity timeline */}
-                    <section style={{ width: '100%' }}>
+                    <section className="w-full">
                         <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Database size={20} style={{ color: 'var(--accent-primary)' }} />
+                            <Database size={20} className="text-accent-primary" />
                             Recent Activity Feed
                         </h2>
                         <div className="glass-card" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
@@ -1079,7 +1079,7 @@ export default function VpnTroubleshootingPage() {
                                                     </td>
                                                     <td style={{ padding: '14px 16px', fontSize: '0.875rem' }}>
                                                         {evt.ipAsName ? (
-                                                            <span style={{ display: 'flex', flexDirection: 'column' }}>
+                                                            <span className="flex flex-col">
                                                                 <strong style={{ color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                     {evt.ipAsName}
                                                                     {isNonUs(evt) && (
@@ -1100,11 +1100,11 @@ export default function VpnTroubleshootingPage() {
                                                                 </span>
                                                             </span>
                                                         ) : (
-                                                            <span style={{ color: 'var(--text-muted)' }}>Local / Unenriched</span>
+                                                            <span className="text-text-muted">Local / Unenriched</span>
                                                         )}
                                                     </td>
                                                     <td style={{ padding: '14px 16px' }}>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <div className="flex items-center gap-2">
                                                             <span style={{ 
                                                                 display: 'inline-flex', 
                                                                 alignItems: 'center', 
@@ -1193,7 +1193,7 @@ export default function VpnTroubleshootingPage() {
             {activeTab === "security" && !isDesktop && (
                 <>
                     {/* Time Window Selector for Security Insights */}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '16px', gap: '8px' }}>
+                    <div className="flex justify-end items-center mb-4 gap-2">
                         <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Select Scope:</span>
                         <select
                             value={securityScope}
@@ -1286,7 +1286,7 @@ export default function VpnTroubleshootingPage() {
                                                     )}
                                                 </div>
                                                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                    <span className="text-xs text-text-secondary">
                                                         {renderUserHover(evt.username, evt.id + "-succ")}
                                                     </span>
                                                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1361,7 +1361,7 @@ export default function VpnTroubleshootingPage() {
                                                     )}
                                                 </div>
                                                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                    <span className="text-xs text-text-secondary">
                                                         {renderUserHover(evt.username, evt.id + "-fail")}
                                                     </span>
                                                     <span style={{ fontSize: '0.75rem', color: '#f87171', fontWeight: 500, display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
@@ -1720,7 +1720,7 @@ export default function VpnTroubleshootingPage() {
                                                     </span>
                                                 </div>
                                                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                    <span className="text-xs text-text-secondary">
                                                         {renderUserHover(evt.username, evt.id + "-top-up")}
                                                     </span>
                                                     <span style={{ fontSize: '0.85rem', color: 'var(--accent-primary)', fontWeight: 700 }}>
@@ -1789,7 +1789,7 @@ export default function VpnTroubleshootingPage() {
                                                     </span>
                                                 </div>
                                                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                    <span className="text-xs text-text-secondary">
                                                         {renderUserHover(evt.username, evt.id + "-top-dl")}
                                                     </span>
                                                     <span style={{ fontSize: '0.85rem', color: '#3b82f6', fontWeight: 700 }}>
@@ -1982,7 +1982,7 @@ export default function VpnTroubleshootingPage() {
                                         {failUserDetails.map((evt, idx) => (
                                             <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
                                                 <td style={{ padding: '10px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <div className="flex items-center gap-2">
                                                         <span style={{
                                                             display: 'inline-flex',
                                                             alignItems: 'center',
@@ -2031,7 +2031,7 @@ export default function VpnTroubleshootingPage() {
                                                             {evt.ipCountryCode === 'US' ? '🇺🇸' : '⚠️'} {evt.ipCountry}
                                                         </span>
                                                     ) : (
-                                                        <span style={{ color: 'var(--text-muted)' }}>Private / Local IP</span>
+                                                        <span className="text-text-muted">Private / Local IP</span>
                                                     )}
                                                 </td>
                                                 <td style={{ padding: '10px', color: 'var(--text-muted)', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={evt.ipAsName || "Local"}>

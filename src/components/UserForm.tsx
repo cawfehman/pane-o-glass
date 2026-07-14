@@ -39,7 +39,7 @@ export default function UserForm({
     }
 
     return (
-        <form id="user-form" action={handleSubmit} style={{ display: 'flex', gap: '16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <form id="user-form" action={handleSubmit} className="flex gap-4 items-end flex-wrap">
             <div className="input-group">
                 <label htmlFor="username">Username</label>
                 <input 
@@ -84,15 +84,7 @@ export default function UserForm({
                     id="role" 
                     defaultValue={user?.role || "USER"}
                     disabled={isPending}
-                    style={{ 
-                        background: 'var(--bg-dark)', 
-                        border: '1px solid var(--border-color)', 
-                        padding: '0.75rem 1rem', 
-                        borderRadius: 'var(--radius-sm)', 
-                        color: 'var(--text-primary)', 
-                        outline: 'none', 
-                        fontFamily: 'inherit' 
-                    }}
+                    className="bg-bg-dark border border-border-color py-3 px-4 rounded-[var(--radius-sm)] text-text-primary outline-none font-inherit"
                 >
                     <option value="USER">User</option>
                     <option value="ANALYST">Analyst</option>
@@ -105,7 +97,7 @@ export default function UserForm({
 
             <div className="input-group">
                 <label htmlFor="password">
-                    Password {isExternal && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>(Optional for AD)</span>}
+                    Password {isExternal && <span className="text-text-muted text-xs">(Optional for AD)</span>}
                 </label>
                 <input 
                     type="password" 
@@ -118,22 +110,22 @@ export default function UserForm({
             </div>
 
             <div className="input-group">
-                <label htmlFor="isExternal" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', paddingBottom: '8px' }}>
+                <label htmlFor="isExternal" className="flex items-center gap-2 cursor-pointer pb-2">
                     <input 
                         type="checkbox" 
                         name="isExternal" 
                         id="isExternal" 
                         checked={isExternal}
                         onChange={(e) => setIsExternal(e.target.checked)}
-                        style={{ width: '16px', height: '16px' }} 
+                        className="w-4 h-4" 
                         disabled={isPending}
                     />
                     Use Active Directory (External)
                 </label>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {error && <p style={{ color: '#ef4444', fontSize: '0.75rem' }}>{error}</p>}
+            <div className="flex flex-col gap-2">
+                {error && <p className="text-red-500 text-xs">{error}</p>}
                 <button type="submit" className="btn-primary" disabled={isPending}>
                     {isPending ? "Saving..." : mode === "create" ? "Create Account" : "Update Account"}
                 </button>

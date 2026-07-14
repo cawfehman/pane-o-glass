@@ -384,7 +384,7 @@ export default function SiteManagementPage() {
                                         }
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            Site Code {sortField === 'code' ? <span style={{ color: 'var(--accent-primary)' }}>{sortDirection === 'asc' ? '↑' : '↓'}</span> : <span style={{ opacity: 0.3 }}>↕</span>}
+                                            Site Code {sortField === 'code' ? <span className="text-accent-primary">{sortDirection === 'asc' ? '↑' : '↓'}</span> : <span style={{ opacity: 0.3 }}>↕</span>}
                                         </div>
                                     </th>
                                     <th style={{ padding: '12px 8px' }}>
@@ -399,7 +399,7 @@ export default function SiteManagementPage() {
                                         }
                                     }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            Status {sortField === 'status' ? <span style={{ color: 'var(--accent-primary)' }}>{sortDirection === 'asc' ? '↑' : '↓'}</span> : <span style={{ opacity: 0.3 }}>↕</span>}
+                                            Status {sortField === 'status' ? <span className="text-accent-primary">{sortDirection === 'asc' ? '↑' : '↓'}</span> : <span style={{ opacity: 0.3 }}>↕</span>}
                                         </div>
                                     </th>
                                     <th style={{ padding: '12px 8px', textAlign: 'right', width: '120px' }}>Actions</th>
@@ -545,10 +545,10 @@ export default function SiteManagementPage() {
                                                     </div>
                                                 </td>
                                                 <td style={{ padding: '12px 8px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <div className="flex items-center gap-2">
                                                         <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.9rem' }}>{s.name}</span>
                                                         {!isExpanded && s.address && (
-                                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }} className="truncate max-w-xs">
+                                                            <span className="text-xs text-text-muted truncate max-w-xs">
                                                                 • {s.address}
                                                             </span>
                                                         )}
@@ -568,7 +568,7 @@ export default function SiteManagementPage() {
                                                     </span>
                                                 </td>
                                                 <td style={{ padding: '12px 8px', textAlign: 'right' }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
+                                                    <div className="flex justify-end gap-2 items-center">
                                                         <button 
                                                             onClick={() => handleEditClick(s)} 
                                                             style={{ background: 'transparent', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontWeight: 600, fontSize: '0.8rem' }}

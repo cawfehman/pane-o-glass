@@ -239,7 +239,7 @@ export default function CiscoIsePage() {
             <div style={{ marginBottom: '12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '4px' }}>
                     <span style={{ color: 'var(--text-secondary)', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={label}>{label}</span>
-                    <span style={{ color: 'var(--text-muted)' }}>{count} ({percent}%)</span>
+                    <span className="text-text-muted">{count} ({percent}%)</span>
                 </div>
                 <div style={{ height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${percent}%`, background: color, borderRadius: '2px', transition: 'width 0.5s ease-out' }} />
@@ -259,10 +259,10 @@ export default function CiscoIsePage() {
     if (!hasIsePerm) return <div className="p-8 glass-card m-8 border-l-4 border-red-500 text-red-400">Access Denied: You do not have permission to view RADIUS endpoint forensics.</div>;
 
     return (
-        <div className="internal-scroll-layout" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div className="internal-scroll-layout flex flex-col h-full">
             {/* Header Section */}
             <div style={{ flexShrink: 0, paddingBottom: '24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '16px' }}>
+                <div className="flex justify-between items-end mb-4">
                     <div>
                         <h1 style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                             Cisco ISE Center
@@ -281,7 +281,7 @@ export default function CiscoIsePage() {
                 </div>
 
                 {/* Primary Search Bar */}
-                <form onSubmit={(e) => handleSearch(e)} className="glass-card" style={{ display: 'flex', gap: '16px', padding: '16px' }}>
+                <form onSubmit={(e) => handleSearch(e)} className="glass-card flex gap-4 p-4">
                     <div style={{ position: 'relative', flex: 1 }}>
                         <input
                             type="text"
@@ -351,7 +351,7 @@ export default function CiscoIsePage() {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '24px' }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                             
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div className="flex justify-between items-center">
                                 <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
                                     <AlertCircle size={20} color={triageData?.stats?.failures > 0 ? "#ef4444" : "#38bdf8"} />
                                     Global Forensic Triage
@@ -387,19 +387,19 @@ export default function CiscoIsePage() {
                                             animation: 'shimmer-move 1.5s infinite linear'
                                         }}></div>
                                     </div>
-                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '16px' }}>Polling ISE Session Directory (14,000+ Endpoints).</p>
+                                    <p className="text-xs text-text-muted mt-4">Polling ISE Session Directory (14,000+ Endpoints).</p>
                                 </div>
                             )}
 
                             {!triageLoading && triageData?.error && (
                                 <div className="glass-card" style={{ padding: '40px', textAlign: 'center', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
                                     <p style={{ color: '#ef4444', marginBottom: '16px' }}><strong>Triage Sync Failed:</strong> {triageData.error}</p>
-                                    <button onClick={() => loadTriage()} className="btn-secondary" style={{ fontSize: '0.8rem' }}>Retry Sync</button>
+                                    <button onClick={() => loadTriage()} className="btn-secondary text-xs">Retry Sync</button>
                                 </div>
                             )}
 
                             {!triageLoading && triageData && !triageData.error && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                <div className="flex flex-col gap-4">
                                             {filteredHotlist.length > 0 ? (
                                                 filteredHotlist.map((item: any, idx: number) => {
                                                     // Dynamic health color
@@ -413,10 +413,10 @@ export default function CiscoIsePage() {
                                                             className="glass-card" 
                                                             style={{ padding: '24px', borderLeft: `4px solid ${healthColor}`, background: 'rgba(255,255,255,0.02)', transition: 'all 0.2s' }}
                                                         >
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                                            <div className="flex justify-between items-start">
                                                                 <div style={{ flex: 1 }}>
                                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                                        <div className="flex items-center gap-3">
                                                                             <h3 style={{ fontSize: '1.75rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
                                                                                 {item.displayName}
                                                                             </h3>
@@ -434,7 +434,7 @@ export default function CiscoIsePage() {
                                                                             </span>
                                                                         </div>
                                                                         
-                                                                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                                                        <div className="flex gap-3 items-center">
                                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: healthColor }}></div>
                                                                                 <span style={{ fontSize: '0.85rem', fontWeight: 700, color: healthColor }}>
@@ -455,7 +455,7 @@ export default function CiscoIsePage() {
 
                                                                     {/* Site Metadata */}
                                                                     <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                        <div className="flex items-center gap-2">
                                                                             <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
                                                                                 {item.siteName}
                                                                             </p>
@@ -508,15 +508,15 @@ export default function CiscoIsePage() {
                                                                             <strong>Primary NAS:</strong> {item.nas}
                                                                         </span>
                                                                     </div>
-                                                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
+                                                                    <p className="text-xs text-text-muted mb-4">
                                                                         <strong>Primary Node:</strong> {item.nas}
                                                                     </p>
 
                                                                     {/* Wireless Section */}
                                                                     {item.wireless && Object.keys(item.wireless).length > 0 && (
-                                                                        <div style={{ marginBottom: '16px' }}>
+                                                                        <div className="mb-4">
                                                                             <p style={{ fontSize: '0.65rem', color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 'bold' }}>Wireless (SSID Groups)</p>
-                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                                            <div className="flex flex-col gap-3">
                                                                                 {Object.entries(item.wireless).map(([ssid, macObjs]: [string, any]) => (
                                                                                     <div key={ssid}>
                                                                                         <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>{ssid}</p>
@@ -543,7 +543,7 @@ export default function CiscoIsePage() {
                                                                     {item.wired && Object.keys(item.wired).length > 0 && (
                                                                         <div>
                                                                             <p style={{ fontSize: '0.65rem', color: '#4ade80', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 'bold' }}>Wired (Protocol Groups)</p>
-                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                                                            <div className="flex flex-col gap-3">
                                                                                 {Object.entries(item.wired).map(([method, macObjs]: [string, any]) => (
                                                                                     <div key={method}>
                                                                                         <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>{method}</p>
@@ -588,14 +588,14 @@ export default function CiscoIsePage() {
                                     Snapshot of 100 Sampled RADIUS Sessions
                                 </p>
                                 
-                                <div style={{ marginBottom: '24px' }}>
+                                <div className="mb-6">
                                     <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Site Distribution (Sampled)</p>
                                     {triageData?.siteDistribution && Object.entries(triageData.siteDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 6).map(([site, count]) => (
                                         <DistributionBar key={site} label={site} count={count as number} total={triageData.stats.total} color="var(--accent-primary)" />
                                     ))}
                                 </div>
 
-                                <div style={{ marginBottom: '24px' }}>
+                                <div className="mb-6">
                                     <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>SSID Distribution (Sampled)</p>
                                     {triageData?.ssidDistribution && Object.entries(triageData.ssidDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 6).map(([ssid, count]) => (
                                         <DistributionBar key={ssid} label={ssid} count={count as number} total={triageData.stats.total} color="var(--accent-secondary)" />
@@ -657,7 +657,7 @@ export default function CiscoIsePage() {
                     <div>
                         {discoveryResult ? (
                             <div>
-                                <h3 style={{ marginBottom: '16px' }}>Identity Conflict Detected: Multiple Devices for '{query}'</h3>
+                                <h3 className="mb-4">Identity Conflict Detected: Multiple Devices for '{query}'</h3>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
                                     {discoveryResult.sessions.map((item: any, idx: number) => (
                                         <div key={idx} className="glass-card hover-glow" style={{ cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => handleSearch(undefined, item.calling_station_id)}>
@@ -666,7 +666,7 @@ export default function CiscoIsePage() {
                                                 <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{item.framed_ip_address}</span>
                                             </div>
                                             <p style={{ fontSize: '0.9rem', marginBottom: '16px' }}><strong>Profile:</strong> {item.endpoint_profile || "Unknown"}</p>
-                                            <button className="btn-secondary" style={{ width: '100%', fontSize: '0.8rem' }}>Enrich & Expand &rarr;</button>
+                                            <button className="btn-secondary w-full text-xs">Enrich & Expand &rarr;</button>
                                         </div>
                                     ))}
                                 </div>
@@ -735,7 +735,7 @@ export default function CiscoIsePage() {
                         {sitesLoading ? (
                             <div className="glass-card" style={{ padding: '60px', textAlign: 'center', flexShrink: 0 }}>
                                 <div className="spinner-small" style={{ margin: '0 auto 16px' }}></div>
-                                <p style={{ color: 'var(--text-secondary)' }}>Loading configured site definitions...</p>
+                                <p className="text-text-secondary">Loading configured site definitions...</p>
                             </div>
                         ) : (
                             <div className="table-responsive custom-scrollbar" style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>

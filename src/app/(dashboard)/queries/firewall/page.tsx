@@ -193,14 +193,14 @@ export default function CiscoFirewallPage() {
 
     return (
         <div className="internal-scroll-layout">
-            <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div className="shrink-0 flex flex-col gap-8">
+                <div className="flex justify-between items-start">
                     <div>
-                        <h1 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <h1 className="flex items-center gap-3">
                             Cisco Firewall Utilities
                             <ToolHelp toolId="firewall" iconSize={24} />
                         </h1>
-                        <p style={{ color: 'var(--text-secondary)' }}>Query or remove IP address shuns across your configured Cisco devices.</p>
+                        <p className="text-text-secondary">Query or remove IP address shuns across your configured Cisco devices.</p>
                     </div>
 
                     {guardianStatus && (
@@ -214,70 +214,49 @@ export default function CiscoFirewallPage() {
                                             ? `WARNING: Guardian is running but encountered an error on its last scan.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
                                             : `ACTIVE: Guardian is running successfully.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
                             }
-                            style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: '10px', 
-                                backgroundColor: 'rgba(255,255,255,0.03)', 
-                                padding: '8px 16px', 
-                                borderRadius: '20px', 
-                                border: '1px solid var(--border-color)',
-                                cursor: 'help'
-                            }}
+                            className="flex items-center gap-2.5 bg-white/3 px-4 py-2 rounded-[20px] border border-border-color cursor-help"
                         >
-                            <div style={{ 
-                                width: '8px', 
-                                height: '8px', 
-                                borderRadius: '50%', 
+                            <div className="w-2 h-2 rounded-full" style={{ 
                                 backgroundColor: !guardianStatus.isLive ? '#ef4444' : (guardianStatus.status === 'INACTIVE' ? '#9ca3af' : (guardianStatus.status === 'WARNING' ? '#f59e0b' : '#10b981')),
                                 boxShadow: !guardianStatus.isLive ? 'none' : (guardianStatus.status === 'INACTIVE' ? '0 0 8px #9ca3af' : (guardianStatus.status === 'WARNING' ? '0 0 8px #f59e0b' : '0 0 8px #10b981'))
                             }}></div>
-                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: !guardianStatus.isLive ? '#ef4444' : (guardianStatus.status === 'INACTIVE' ? '#9ca3af' : (guardianStatus.status === 'WARNING' ? '#f59e0b' : '#10b981')) }}>
+                            <span className="text-[0.8rem] font-semibold" style={{ color: !guardianStatus.isLive ? '#ef4444' : (guardianStatus.status === 'INACTIVE' ? '#9ca3af' : (guardianStatus.status === 'WARNING' ? '#f59e0b' : '#10b981')) }}>
                                 GUARDIAN: {!guardianStatus.isLive ? "STALLED" : (guardianStatus.status === 'INACTIVE' ? "INACTIVE" : (guardianStatus.status === 'WARNING' ? "WARNING" : "ACTIVE"))}
                             </span>
                         </div>
                     )}
                 </div>
 
-                <div style={{ display: 'flex', gap: '12px', borderBottom: '1px solid var(--border-color)', paddingBottom: '1px', marginBottom: '12px' }}>
+                <div className="flex gap-3 border-b border-border-color pb-[1px] mb-3">
                     <button
                         onClick={() => setActiveTab("manual")}
+                        className="px-4 py-2 border-none font-semibold cursor-pointer"
                         style={{
-                            padding: '8px 16px',
                             background: activeTab === "manual" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                            border: 'none',
                             borderBottom: activeTab === "manual" ? '2px solid var(--accent-primary)' : '2px solid transparent',
                             color: activeTab === "manual" ? 'var(--text-primary)' : 'var(--text-secondary)',
-                            fontWeight: 600,
-                            cursor: 'pointer'
                         }}
                     >
                         Manual Shuns
                     </button>
                     <button
                         onClick={() => setActiveTab("guardian")}
+                        className="px-4 py-2 border-none font-semibold cursor-pointer"
                         style={{
-                            padding: '8px 16px',
                             background: activeTab === "guardian" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                            border: 'none',
                             borderBottom: activeTab === "guardian" ? '2px solid var(--accent-primary)' : '2px solid transparent',
                             color: activeTab === "guardian" ? 'var(--text-primary)' : 'var(--text-secondary)',
-                            fontWeight: 600,
-                            cursor: 'pointer'
                         }}
                     >
                         Guardian Auto-Unshun Logs
                     </button>
                     <button
                         onClick={() => setActiveTab("blacklist")}
+                        className="px-4 py-2 border-none font-semibold cursor-pointer"
                         style={{
-                            padding: '8px 16px',
                             background: activeTab === "blacklist" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
-                            border: 'none',
                             borderBottom: activeTab === "blacklist" ? '2px solid var(--accent-primary)' : '2px solid transparent',
                             color: activeTab === "blacklist" ? 'var(--text-primary)' : 'var(--text-secondary)',
-                            fontWeight: 600,
-                            cursor: 'pointer'
                         }}
                     >
                         Guardian Blacklist
@@ -288,34 +267,30 @@ export default function CiscoFirewallPage() {
 
             {activeTab === "manual" ? (
                 <>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 450px) 1fr', gap: '2rem', alignItems: 'stretch' }}>
+                    <div className="grid grid-cols-[minmax(300px,450px)_1fr] gap-8 items-stretch">
 
                     {/* --- CONTROLS CARD --- */}
                     <div className="glass-card">
-                        <h3 style={{ marginBottom: '16px' }}>Shun Management</h3>
+                        <h3 className="mb-4">Shun Management</h3>
 
                         {loadingHosts ? (
-                            <p style={{ color: 'var(--text-muted)' }}>Loading configured firewalls...</p>
+                            <p className="text-text-muted">Loading configured firewalls...</p>
                         ) : hostsError ? (
-                            <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1.5rem' }}>
+                            <div className="p-4 bg-red-500/10 text-red-500 rounded-md border border-red-500 mb-6">
                                 <strong>Configuration Error:</strong> {hostsError}
                             </div>
                         ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '2rem' }}>
+                            <div className="flex flex-col gap-5 mb-8">
                                 <div className="input-group">
                                     <label htmlFor="targetHost">Target Firewall</label>
                                     <select
                                         id="targetHost"
                                         value={targetHost}
                                         onChange={(e) => setTargetHost(e.target.value)}
-                                        style={{
-                                            width: '100%', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                                            border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)',
-                                            color: 'var(--text-primary)', fontSize: '1rem', outline: 'none'
-                                        }}
+                                        className="w-full p-3 bg-white/3 border border-border-color rounded-sm text-text-primary text-base outline-none"
                                     >
                                         {availableHosts.map(h => (
-                                            <option key={h.id} value={h.id} style={{ background: 'var(--bg-dark)' }}>{h.name}</option>
+                                            <option key={h.id} value={h.id} className="bg-bg-dark">{h.name}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -334,22 +309,20 @@ export default function CiscoFirewallPage() {
                         )}
 
                         {!loadingHosts && !hostsError && (
-                            <div style={{ display: 'flex', gap: '10px' }}>
+                            <div className="flex gap-2.5">
                                 <button
                                     type="button"
-                                    className="btn-primary"
+                                    className="btn-primary flex-1 bg-bg-surface-hover border-border-color text-text-primary"
                                     onClick={() => handleAction("show")}
                                     disabled={actionLoading || !ipAddress}
-                                    style={{ flex: 1, background: 'var(--bg-surface-hover)', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
                                 >
                                     {actionLoading ? "Processing..." : "Check Shun"}
                                 </button>
                                 <button
                                     type="button"
-                                    className="btn-primary"
+                                    className="btn-primary flex-1 bg-red-500 border-red-500"
                                     onClick={() => handleAction("remove")}
                                     disabled={actionLoading || !ipAddress}
-                                    style={{ flex: 1, background: '#ef4444', borderColor: '#ef4444' }}
                                 >
                                     {actionLoading ? "Processing..." : "Remove Shun"}
                                 </button>
@@ -359,7 +332,7 @@ export default function CiscoFirewallPage() {
 
                     {/* --- OUTPUT CARD --- */}
                     <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '250px' }}>
-                        <h3 style={{ marginBottom: '16px' }}>Terminal Output</h3>
+                        <h3 className="mb-4">Terminal Output</h3>
 
                         {actionError && (
                             <div style={{ padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1rem' }}>
@@ -414,16 +387,16 @@ export default function CiscoFirewallPage() {
             {/* --- RECENT HISTORY CARD --- */}
             <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                 <div style={{ flexShrink: 0 }}>
-                    <h3 style={{ marginBottom: '16px' }}>Recent Global Queries</h3>
+                    <h3 className="mb-4">Recent Global Queries</h3>
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
                         Showing the last 50 shun queries executed across all team members.
                     </p>
                 </div>
 
                 {loadingHistory ? (
-                    <p style={{ color: 'var(--text-muted)' }}>Loading history...</p>
+                    <p className="text-text-muted">Loading history...</p>
                 ) : history.length === 0 ? (
-                    <p style={{ color: 'var(--text-muted)' }}>No queries have been executed yet.</p>
+                    <p className="text-text-muted">No queries have been executed yet.</p>
                 ) : (
                     <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -470,8 +443,8 @@ export default function CiscoFirewallPage() {
                                                 <td style={{ padding: '12px 8px', fontSize: '0.875rem' }}>
                                                     {record.ipAsName ? (
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                            <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{record.ipAsName}</span>
-                                                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                                            <span className="text-text-primary font-medium">{record.ipAsName}</span>
+                                                            <div className="flex gap-2 items-center">
                                                                 <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{record.ipAsn}</span>
                                                                 {record.ipCountryCode && (
                                                                     <span style={{ 
@@ -537,17 +510,17 @@ export default function CiscoFirewallPage() {
                                 cursor: 'pointer'
                             }}
                         >
-                            <option value="" style={{ background: 'var(--bg-dark)' }}>All Actions</option>
-                            <option value="AUTO_UNSHUNNED" style={{ background: 'var(--bg-dark)' }}>Auto-Unshunned</option>
-                            <option value="SKIPPED" style={{ background: 'var(--bg-dark)' }}>Skipped (Retained)</option>
-                            <option value="FAILED" style={{ background: 'var(--bg-dark)' }}>Failed</option>
+                            <option value="" className="bg-bg-dark">All Actions</option>
+                            <option value="AUTO_UNSHUNNED" className="bg-bg-dark">Auto-Unshunned</option>
+                            <option value="SKIPPED" className="bg-bg-dark">Skipped (Retained)</option>
+                            <option value="FAILED" className="bg-bg-dark">Failed</option>
                         </select>
                     </div>
                 </div>
 
                 {/* --- GUARDIAN EVENTS TABLE --- */}
                 <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
-                    <div style={{ marginBottom: '16px' }}>
+                    <div className="mb-4">
                         <h3>Guardian Shun Intel Log</h3>
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                             Search, report, and display real-time Graylog shun logs that were auto-unshunned or retained.
@@ -555,9 +528,9 @@ export default function CiscoFirewallPage() {
                     </div>
 
                     {loadingGuardianEvents ? (
-                        <p style={{ color: 'var(--text-muted)' }}>Loading Guardian events...</p>
+                        <p className="text-text-muted">Loading Guardian events...</p>
                     ) : guardianEvents.length === 0 ? (
-                        <p style={{ color: 'var(--text-muted)' }}>No matching logs found.</p>
+                        <p className="text-text-muted">No matching logs found.</p>
                     ) : (
                         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '500px' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -587,7 +560,7 @@ export default function CiscoFirewallPage() {
                                             </td>
                                             <td style={{ padding: '12px 8px' }}>
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                    <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                                                    <span className="font-medium text-text-primary">
                                                         {event.companyName || "Unknown"}
                                                     </span>
                                                     {event.asn && <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{event.asn}</span>}
@@ -624,7 +597,7 @@ export default function CiscoFirewallPage() {
                                                         🟢 Yes
                                                     </span>
                                                 ) : (
-                                                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                                    <span className="text-text-muted text-xs">
                                                         ⚪ No
                                                     </span>
                                                 )}
@@ -659,7 +632,7 @@ export default function CiscoFirewallPage() {
         ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '400px' }}>
-                    <div style={{ marginBottom: '16px' }}>
+                    <div className="mb-4">
                         <h3>Guardian Do-Not-Unshun Blacklist</h3>
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                             The following IP addresses have triggered automated safety limits (e.g. repeated unshuns or suspicious brute forcing) and are barred from auto-unshunning. They must be manually cleared to allow automated handling again.
@@ -667,9 +640,9 @@ export default function CiscoFirewallPage() {
                     </div>
 
                     {loadingBlacklist ? (
-                        <p style={{ color: 'var(--text-muted)' }}>Loading blacklist...</p>
+                        <p className="text-text-muted">Loading blacklist...</p>
                     ) : blacklist.length === 0 ? (
-                        <p style={{ color: 'var(--text-muted)' }}>No IPs currently blacklisted.</p>
+                        <p className="text-text-muted">No IPs currently blacklisted.</p>
                     ) : (
                         <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>

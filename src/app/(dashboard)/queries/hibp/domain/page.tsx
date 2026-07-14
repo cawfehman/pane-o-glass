@@ -236,7 +236,7 @@ export default function DomainSecurityPage() {
                     position: 'relative'
                 }}
             >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="flex justify-between items-center">
                     <div>
                         <strong style={{ fontSize: '1.1rem', color: ad ? (ad.enabled ? '#eab308' : '#f87171') : 'var(--text-primary)' }}>
                             {alias}@{domainStr}
@@ -247,7 +247,7 @@ export default function DomainSecurityPage() {
                             )}
                         </strong>
                     </div>
-                    <div style={{ color: 'var(--text-muted)' }}>{isExpanded ? '▲' : '▼'}</div>
+                    <div className="text-text-muted">{isExpanded ? '▲' : '▼'}</div>
                 </div>
 
                 {!isExpanded && (
@@ -297,20 +297,20 @@ export default function DomainSecurityPage() {
     return (
         <div className="internal-scroll-layout">
             <div style={{ flexShrink: 0, marginBottom: '32px' }}>
-                <h1 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <h1 className="flex items-center gap-3">
                     Domain Security
                     <ToolHelp toolId="hibp-domain" iconSize={24} />
                 </h1>
-                <p style={{ color: 'var(--text-secondary)' }}>
+                <p className="text-text-secondary">
                     Check if your verified organizational domains have been impacted by specific or global data breaches. 
                     Search results are enriched with Active Directory status:
                 </p>
                 <div style={{ display: 'flex', gap: '1.5rem', marginTop: '12px', fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="flex items-center gap-2">
                         <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#eab308', boxShadow: '0 0 10px rgba(234, 179, 8, 0.4)' }}></span> 
                         Active Account
                     </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="flex items-center gap-2">
                         <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f87171', boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)' }}></span> 
                         Disabled Account
                     </span>
@@ -357,9 +357,9 @@ export default function DomainSecurityPage() {
                     <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '2rem', minHeight: 0, overflowY: 'auto', paddingRight: '4px' }}>
 
                         {/* --- DOMAIN SEARCH CARD --- */}
-                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
+                        <div className="glass-card flex flex-col">
                             <div style={{ flexShrink: 0 }}>
-                                <h3 style={{ marginBottom: '16px' }}>Domain Breach Check</h3>
+                                <h3 className="mb-4">Domain Breach Check</h3>
                                 <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
                                     Retrieves compromised email aliases for verified domains on your HIBP account.
                                 </p>
@@ -391,7 +391,7 @@ export default function DomainSecurityPage() {
                                                 }}
                                             >
                                                 {availableDomains.map(d => (
-                                                    <option key={d.DomainName} value={d.DomainName} style={{ background: 'var(--bg-dark)' }}>
+                                                    <option key={d.DomainName} value={d.DomainName} className="bg-bg-dark">
                                                         {d.DomainName}
                                                     </option>
                                                 ))}
@@ -524,10 +524,10 @@ export default function DomainSecurityPage() {
                                                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2rem', overflowY: 'auto', paddingRight: '8px' }}>
                                                     <div>
                                                         <h4 style={{ color: 'var(--text-primary)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)' }}>Top 10 Worst Breaches</h4>
-                                                        <div style={{ display: 'grid', gap: '8px' }}>
+                                                        <div className="grid gap-2">
                                                             {getBreachCounts().slice(0, 10).map((b, idx) => (
                                                                 <div key={b.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-dark)', padding: '8px 16px', borderRadius: 'var(--radius-sm)' }}>
-                                                                    <span style={{ color: 'var(--text-secondary)' }}>
+                                                                    <span className="text-text-secondary">
                                                                         <span style={{ color: 'var(--text-muted)', marginRight: '8px' }}>#{idx + 1}</span>
                                                                         {b.name} <span style={{ fontSize: '0.8rem', marginLeft: '6px', color: 'var(--text-muted)' }}>({b.date})</span>
                                                                     </span>
@@ -581,9 +581,9 @@ export default function DomainSecurityPage() {
                 {activeTab === 'breach' && (
                     <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '2rem', minHeight: 0, overflowY: 'auto', paddingRight: '4px' }}>
                         {/* --- BREACH NAME SEARCH CARD --- */}
-                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column' }}>
+                        <div className="glass-card flex flex-col">
                             <div style={{ flexShrink: 0 }}>
-                                <h3 style={{ marginBottom: '16px' }}>Breach Name Search</h3>
+                                <h3 className="mb-4">Breach Name Search</h3>
                                 <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
                                     Search for a specific data breach by name to see its details and find out if your domain was impacted.
                                 </p>
@@ -632,7 +632,7 @@ export default function DomainSecurityPage() {
                                                 }}
                                             >
                                                 {availableDomains.map(d => (
-                                                    <option key={d.DomainName} value={d.DomainName} style={{ background: 'var(--bg-dark)' }}>{d.DomainName}</option>
+                                                    <option key={d.DomainName} value={d.DomainName} className="bg-bg-dark">{d.DomainName}</option>
                                                 ))}
                                             </select>
                                         )}

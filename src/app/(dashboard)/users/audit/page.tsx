@@ -90,7 +90,7 @@ export default async function AuditLogsPage(props: {
 
     return (
         <div className="internal-scroll-layout">
-            <div style={{ flexShrink: 0, display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', marginBottom: '24px', paddingBottom: '8px' }}>
+            <div className="shrink-0 flex gap-2 border-b border-[var(--border-color)] mb-6 pb-2">
                 <Link 
                     href="/users/audit"
                     style={{
@@ -126,7 +126,7 @@ export default async function AuditLogsPage(props: {
             </div>
 
             {activeTab === 'quota' && (
-                <div style={{ flexShrink: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                <div className="shrink-0 grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-4 mb-6">
                     <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>Daily Queries</span>
                         <span style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>{quotaCounters.daily}</span>
@@ -150,19 +150,19 @@ export default async function AuditLogsPage(props: {
                 </div>
             )}
 
-            <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+            <div className="shrink-0 flex justify-between items-center mb-8">
                 <div>
                     <h1>Audit Logs</h1>
-                    <p style={{ color: 'var(--text-secondary)' }}>View system activity and track user actions.</p>
+                    <p className="text-[var(--text-secondary)]">View system activity and track user actions.</p>
                 </div>
                 <div>
-                    <a href="/api/audit/export" className="btn-primary" style={{ textDecoration: 'none', background: 'var(--bg-surface-hover)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}>
+                    <a href="/api/audit/export" className="btn-primary no-underline bg-[var(--bg-surface-hover)] border border-[var(--border-color)] text-[var(--text-primary)]">
                         Download CSV
                     </a>
                 </div>
             </div>
 
-            <form method="GET" style={{ flexShrink: 0, display: 'flex', gap: '16px', marginBottom: '24px' }}>
+            <form method="GET" className="shrink-0 flex gap-4 mb-6">
                 {activeTab === 'quota' && <input type="hidden" name="tab" value="quota" />}
                 <input 
                     type="text" 
@@ -179,14 +179,14 @@ export default async function AuditLogsPage(props: {
                     style={{ padding: '8px 12px', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-surface)', color: 'var(--text-primary)', width: '200px' }}
                 />
                 <button type="submit" className="btn-primary">Filter</button>
-                <Link href={activeTab === 'quota' ? "/users/audit?tab=quota" : "/users/audit"} className="btn-primary" style={{ textDecoration: 'none', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}>
+                <Link href={activeTab === 'quota' ? "/users/audit?tab=quota" : "/users/audit"} className="btn-primary no-underline bg-transparent border border-[var(--border-color)] text-[var(--text-primary)]">
                     Clear
                 </Link>
             </form>
 
-            <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+            <div className="glass-card flex-1 flex flex-col min-h-0">
+                <div className="flex-1 overflow-y-auto overflow-x-auto">
+                    <table className="w-full collapse text-left">
                         <thead className="sticky-header">
                             <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                                 <th style={{ padding: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>Time</th>

@@ -23,8 +23,8 @@ export default function SystemHealthPage() {
             });
     }, []);
 
-    if (loading) return <div style={{ padding: '24px', textAlign: 'center' }}>Loading live system metrics...</div>;
-    if (error) return <div style={{ padding: '24px', color: 'var(--accent-secondary)' }}>Error: {error}</div>;
+    if (loading) return <div className="p-6 text-center">Loading live system metrics...</div>;
+    if (error) return <div className="p-6 text-accent-secondary">Error: {error}</div>;
 
     // Calculate RAM usage
     const memTotalGB = (metrics.memTotal / (1024 ** 3)).toFixed(2);
@@ -36,21 +36,15 @@ export default function SystemHealthPage() {
     const minutes = Math.floor((metrics.uptime % 3600) / 60);
 
     const Gauge = ({ value, label, color = "var(--accent-primary)" }: { value: number, label: string, color?: string }) => (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px' }}>
-            <div style={{
-                width: '120px', height: '120px', borderRadius: '50%',
-                background: `conic-gradient(${color} ${value}%, var(--bg-card) ${value}%)`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)'
+        <div className="flex flex-col items-center p-4">
+            <div className="w-[120px] h-[120px] rounded-full flex items-center justify-center shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]" style={{
+                background: `conic-gradient(${color} ${value}%, var(--bg-card) ${value}%)`
             }}>
-                <div style={{
-                    width: '90px', height: '90px', borderRadius: '50%', background: 'var(--bg-surface)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold'
-                }}>
+                <div className="w-[90px] h-[90px] rounded-full bg-bg-surface flex items-center justify-center text-2xl font-bold">
                     {value}%
                 </div>
             </div>
-            <p style={{ marginTop: '12px', fontSize: '0.875rem', color: 'var(--text-secondary)', fontWeight: 'bold' }}>{label}</p>
+            <p className="mt-3 text-sm text-text-secondary font-bold">{label}</p>
         </div>
     );
 
@@ -88,13 +82,13 @@ export default function SystemHealthPage() {
                     <Gauge value={parseInt(metrics.diskUsage) || 0} label={`Disk Space (Root)`} color="var(--accent-tertiary)" />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '24px' }}>
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-6 mb-6">
 
                     {/* Graylog Connection Monitor */}
                     {metrics.graylogHealth && Array.isArray(metrics.graylogHealth) && metrics.graylogHealth.length > 0 && (
-                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '300px' }}>
-                            <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Graylog Cluster Monitor</h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        <div className="glass-card flex flex-col min-h-[300px]">
+                            <h3 className="shrink-0 mb-4 border-b border-border-color pb-2">Graylog Cluster Monitor</h3>
+                            <div className="flex flex-col gap-5">
                                 {metrics.graylogHealth.map((node: any, idx: number) => {
                                     const nodeName = node.url.includes("graylog-01") ? "graylog-01" 
                                         : node.url.includes("graylog-02") ? "graylog-02" 
@@ -102,16 +96,12 @@ export default function SystemHealthPage() {
                                         : "graylog-node";
                                     
                                     return (
-                                        <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(0, 0, 0, 0.15)', padding: '12px 14px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.03)' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <div key={idx} className="flex flex-col gap-2.5 bg-black/15 py-3 px-3.5 rounded-lg border border-white/5">
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-bold text-text-primary flex items-center gap-1.5">
                                                     🟢 {nodeName.toUpperCase()}
                                                 </span>
-                                                <span style={{ 
-                                                    padding: '3px 8px', 
-                                                    borderRadius: '6px', 
-                                                    fontSize: '0.7rem', 
-                                                    fontWeight: 'bold',
+                                                <span className="py-1 px-2 rounded-md text-[0.7rem] font-bold" style={{ 
                                                     background: node.status === "ONLINE" ? "rgba(34, 197, 94, 0.12)" : "rgba(239, 68, 68, 0.12)",
                                                     color: node.status === "ONLINE" ? "#22c55e" : "#ef4444",
                                                     border: node.status === "ONLINE" ? "1px solid rgba(34, 197, 94, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)"
@@ -121,16 +111,16 @@ export default function SystemHealthPage() {
                                             </div>
 
                                             {node.status === "ONLINE" ? (
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem', marginTop: '4px' }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                        <span style={{ color: 'var(--text-secondary)' }}>Latency / Version</span>
-                                                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{node.latency} | v{node.version}</span>
+                                                <div className="flex flex-col gap-2 text-[0.8rem] mt-1">
+                                                    <div className="flex justify-between">
+                                                        <span className="text-text-secondary">Latency / Version</span>
+                                                        <span className="font-semibold text-text-primary">{node.latency} | v{node.version}</span>
                                                     </div>
                                                     
                                                     {node.journal && (
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '8px', marginTop: '4px' }}>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Uncommitted Entries</span>
+                                                        <div className="flex flex-col gap-1.5 border-t border-white/5 pt-2 mt-1">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-text-secondary text-xs">Uncommitted Entries</span>
                                                                 <span style={{ 
                                                                     fontWeight: 'bold', 
                                                                     color: node.journal.uncommittedEntries > 1000 ? '#f87171' : 'var(--text-primary)'
@@ -138,21 +128,21 @@ export default function SystemHealthPage() {
                                                                     {node.journal.uncommittedEntries.toLocaleString()}
                                                                 </span>
                                                             </div>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Journal Size / Limit</span>
-                                                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                                            <div className="flex justify-between">
+                                                                <span className="text-text-secondary text-xs">Journal Size / Limit</span>
+                                                                <span className="font-semibold text-text-primary">
                                                                     {(node.journal.sizeBytes / (1024 * 1024)).toFixed(1)} MB / {(node.journal.sizeLimitBytes / (1024 * 1024 * 1024)).toFixed(0)} GB
                                                                 </span>
                                                             </div>
-                                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>Write/Read Rates</span>
-                                                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                                            <div className="flex justify-between">
+                                                                <span className="text-text-secondary text-xs">Write/Read Rates</span>
+                                                                <span className="font-semibold text-text-primary">
                                                                     {node.journal.appendPerSec}/s (in) | {node.journal.readPerSec}/s (out)
                                                                 </span>
                                                             </div>
-                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '2px' }}>
-                                                                <span style={{ color: 'var(--text-secondary)', fontSize: '0.7rem' }}>Oldest Segment Age</span>
-                                                                <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'monospace' }}>
+                                                            <div className="flex flex-col gap-0.5 mt-0.5">
+                                                                <span className="text-text-secondary text-[0.7rem]">Oldest Segment Age</span>
+                                                                <span className="text-text-muted text-[0.72rem] font-mono">
                                                                     {node.journal.oldestSegment ? new Date(node.journal.oldestSegment).toLocaleString() : "N/A"}
                                                                 </span>
                                                             </div>
@@ -160,10 +150,10 @@ export default function SystemHealthPage() {
                                                     )}
                                                 </div>
                                             ) : (
-                                                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                                                    <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)', wordBreak: 'break-all', fontFamily: 'monospace', marginBottom: '4px' }}>{node.url}</span>
+                                                <div className="text-[0.8rem] text-text-secondary mt-1">
+                                                    <span className="block text-[0.72rem] text-text-muted break-all font-mono mb-1">{node.url}</span>
                                                     {node.error && (
-                                                        <div style={{ padding: '6px 10px', background: 'rgba(239, 68, 68, 0.06)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '6px', fontSize: '0.72rem', color: '#f87171' }}>
+                                                        <div className="py-1.5 px-2.5 bg-red-500/5 border border-red-500/15 rounded-md text-[0.72rem] text-red-400">
                                                             {node.error}
                                                         </div>
                                                     )}
@@ -178,9 +168,9 @@ export default function SystemHealthPage() {
 
                     {/* Scheduled Jobs Monitor */}
                     {metrics.cronJobs && metrics.cronJobs.length > 0 && (
-                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '300px' }}>
-                            <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Scheduled Jobs Monitor</h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        <div className="glass-card flex flex-col min-h-[300px]">
+                            <h3 className="shrink-0 mb-4 border-b border-border-color pb-2">Scheduled Jobs Monitor</h3>
+                            <div className="flex flex-col gap-5">
                                 {metrics.cronJobs.map((job: any, idx: number) => {
                                     // Staleness Logic
                                     const expectedIntervals: Record<string, number> = {
@@ -223,9 +213,9 @@ export default function SystemHealthPage() {
                                     let timeAgoStr = minsAgo < 1 ? "Just now" : minsAgo < 60 ? `${minsAgo}m ago` : `${Math.floor(minsAgo/60)}h ${minsAgo%60}m ago`;
 
                                     return (
-                                        <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(0, 0, 0, 0.15)', padding: '12px 14px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.03)' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <div key={idx} className="flex flex-col gap-2 bg-black/15 py-3 px-3.5 rounded-lg border border-white/5">
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-bold text-text-primary flex items-center gap-1.5">
                                                     {icon} {job.name.toUpperCase()}
                                                 </span>
                                                 <span style={{ 
@@ -240,12 +230,12 @@ export default function SystemHealthPage() {
                                                     {displayStatus}
                                                 </span>
                                             </div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginTop: '4px' }}>
-                                                <span style={{ color: 'var(--text-secondary)' }}>Last Run</span>
-                                                <span style={{ fontWeight: 600, color: isStale ? '#eab308' : 'var(--text-primary)' }}>{timeAgoStr}</span>
+                                            <div className="flex justify-between text-[0.8rem] mt-1">
+                                                <span className="text-text-secondary">Last Run</span>
+                                                <span className="font-semibold" style={{ color: isStale ? '#eab308' : 'var(--text-primary)' }}>{timeAgoStr}</span>
                                             </div>
                                             {job.message && (
-                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'monospace', background: 'rgba(0,0,0,0.2)', padding: '6px 8px', borderRadius: '4px', marginTop: '4px', wordBreak: 'break-word' }}>
+                                                <div className="text-[0.72rem] text-text-muted font-mono bg-black/20 py-1.5 px-2 rounded mt-1 break-words">
                                                     {job.message}
                                                 </div>
                                             )}
@@ -257,22 +247,22 @@ export default function SystemHealthPage() {
                     )}
 
                     {/* Top Probes */}
-                    <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px' }}>
-                        <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Top API Probe Sources</h3>
-                        {metrics.topProbes.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>No probes recorded.</p> : (
-                            <div style={{ flex: 1, overflowY: 'auto' }}>
-                                <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+                    <div className="glass-card flex flex-col max-h-[400px]">
+                        <h3 className="shrink-0 mb-4 border-b border-border-color pb-2">Top API Probe Sources</h3>
+                        {metrics.topProbes.length === 0 ? <p className="text-text-muted">No probes recorded.</p> : (
+                            <div className="flex-1 overflow-y-auto">
+                                <table className="w-full text-left border-collapse">
                                     <thead className="sticky-header">
-                                        <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', fontSize: '0.875rem', background: 'var(--bg-card)' }}>
-                                            <th style={{ padding: '8px 0' }}>Client IP</th>
-                                            <th style={{ padding: '8px 0', textAlign: 'right' }}>Hits</th>
+                                        <tr className="border-b border-border-color text-text-secondary text-sm bg-bg-card">
+                                            <th className="py-2">Client IP</th>
+                                            <th className="py-2 text-right">Hits</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {metrics.topProbes.map((p: any, i: number) => (
-                                            <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                <td style={{ padding: '8px 0', fontFamily: 'monospace' }}>{p.ip}</td>
-                                                <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: 'bold' }}>{p.count}</td>
+                                            <tr key={i} className="border-b border-border-color">
+                                                <td className="py-2 font-mono">{p.ip}</td>
+                                                <td className="py-2 text-right font-bold">{p.count}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -282,24 +272,24 @@ export default function SystemHealthPage() {
                     </div>
 
                     {/* Top CPU Processes */}
-                    <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px' }}>
-                        <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Top CPU Processes</h3>
-                        {metrics.processesCpu.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>Linux strictly required for process tracking.</p> : (
-                            <div style={{ flex: 1, overflowY: 'auto' }}>
-                                <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                    <div className="glass-card flex flex-col max-h-[400px]">
+                        <h3 className="shrink-0 mb-4 border-b border-border-color pb-2">Top CPU Processes</h3>
+                        {metrics.processesCpu.length === 0 ? <p className="text-text-muted">Linux strictly required for process tracking.</p> : (
+                            <div className="flex-1 overflow-y-auto">
+                                <table className="w-full text-left border-collapse text-sm">
                                     <thead className="sticky-header">
-                                        <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', background: 'var(--bg-card)' }}>
-                                            <th style={{ padding: '8px 0' }}>PID</th>
-                                            <th style={{ padding: '8px 0' }}>Command</th>
-                                            <th style={{ padding: '8px 0', textAlign: 'right' }}>%CPU</th>
+                                        <tr className="border-b border-border-color text-text-secondary bg-bg-card">
+                                            <th className="py-2">PID</th>
+                                            <th className="py-2">Command</th>
+                                            <th className="py-2 text-right">%CPU</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {metrics.processesCpu.map((p: any, i: number) => (
-                                            <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                <td style={{ padding: '8px 0' }}>{p.pid}</td>
-                                                <td style={{ padding: '8px 0', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.cmd}>{p.cmd}</td>
-                                                <td style={{ padding: '8px 0', textAlign: 'right', color: 'var(--accent-primary)' }}>{p.cpu}%</td>
+                                            <tr key={i} className="border-b border-border-color">
+                                                <td className="py-2">{p.pid}</td>
+                                                <td className="py-2 max-w-[150px] overflow-hidden text-ellipsis whitespace-nowrap" title={p.cmd}>{p.cmd}</td>
+                                                <td className="py-2 text-right text-accent-primary">{p.cpu}%</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -309,24 +299,24 @@ export default function SystemHealthPage() {
                     </div>
 
                     {/* Top RAM Processes */}
-                    <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px' }}>
-                        <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Top RAM Processes</h3>
-                        {metrics.processesMem.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>Linux strictly required for process tracking.</p> : (
-                            <div style={{ flex: 1, overflowY: 'auto' }}>
-                                <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                    <div className="glass-card flex flex-col max-h-[400px]">
+                        <h3 className="shrink-0 mb-4 border-b border-border-color pb-2">Top RAM Processes</h3>
+                        {metrics.processesMem.length === 0 ? <p className="text-text-muted">Linux strictly required for process tracking.</p> : (
+                            <div className="flex-1 overflow-y-auto">
+                                <table className="w-full text-left border-collapse text-sm">
                                     <thead className="sticky-header">
-                                        <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', background: 'var(--bg-card)' }}>
-                                            <th style={{ padding: '8px 0' }}>PID</th>
-                                            <th style={{ padding: '8px 0' }}>Command</th>
-                                            <th style={{ padding: '8px 0', textAlign: 'right' }}>%MEM</th>
+                                        <tr className="border-b border-border-color text-text-secondary bg-bg-card">
+                                            <th className="py-2">PID</th>
+                                            <th className="py-2">Command</th>
+                                            <th className="py-2 text-right">%MEM</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {metrics.processesMem.map((p: any, i: number) => (
-                                            <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                <td style={{ padding: '8px 0' }}>{p.pid}</td>
-                                                <td style={{ padding: '8px 0', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.cmd}>{p.cmd}</td>
-                                                <td style={{ padding: '8px 0', textAlign: 'right', color: 'var(--accent-secondary)' }}>{p.mem}%</td>
+                                            <tr key={i} className="border-b border-border-color">
+                                                <td className="py-2">{p.pid}</td>
+                                                <td className="py-2 max-w-[150px] overflow-hidden text-ellipsis whitespace-nowrap" title={p.cmd}>{p.cmd}</td>
+                                                <td className="py-2 text-right text-accent-secondary">{p.mem}%</td>
                                             </tr>
                                         ))}
                                     </tbody>

@@ -124,8 +124,8 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
     };
 
     const renderIndicator = (field: string) => {
-        if (sortField !== field) return <span style={{ opacity: 0.3 }}>↕</span>;
-        return <span style={{ color: "var(--accent-primary)" }}>{sortDirection === "asc" ? "↑" : "↓"}</span>;
+        if (sortField !== field) return <span className="opacity-30">↕</span>;
+        return <span className="text-accent-primary">{sortDirection === "asc" ? "↑" : "↓"}</span>;
     };
 
     return (
@@ -157,13 +157,13 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
 
                     if (isEditing) {
                         return (
-                            <tr key={user.id} style={{ borderBottom: '2px solid var(--accent-primary)', backgroundColor: 'transparent' }}>
-                                <td style={{ padding: '12px 8px' }}>
+                            <tr key={user.id} className="border-b-2 border-accent-primary bg-transparent">
+                                <td className="py-3 px-2">
                                     <input 
                                         type="text" 
                                         value={editingUserData.username} 
                                         onChange={e => setEditingUserData({...editingUserData, username: e.target.value})}
-                                        style={{ width: '100%', padding: '6px 8px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '0.875rem' }}
+                                        className="w-full py-1.5 px-2 bg-transparent border border-border-color rounded-md text-white text-sm"
                                     />
                                     {!editingUserData.isExternal && (
                                         <input 
@@ -171,33 +171,33 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                             placeholder="New Password (optional)"
                                             value={editingUserData.password || ""}
                                             onChange={e => setEditingUserData({...editingUserData, password: e.target.value})}
-                                            style={{ width: '100%', padding: '6px 8px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '0.875rem', marginTop: '6px' }}
+                                            className="w-full py-1.5 px-2 bg-transparent border border-border-color rounded-md text-white text-sm mt-1.5"
                                         />
                                     )}
                                 </td>
-                                <td style={{ padding: '12px 8px' }}>
-                                    <div style={{ display: 'flex', gap: '4px' }}>
+                                <td className="py-3 px-2">
+                                    <div className="flex gap-1">
                                         <input 
                                             type="text" 
                                             placeholder="First" 
                                             value={editingUserData.firstName} 
                                             onChange={e => setEditingUserData({...editingUserData, firstName: e.target.value})}
-                                            style={{ width: '50%', padding: '6px 8px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '0.875rem' }}
+                                            className="w-1/2 py-1.5 px-2 bg-transparent border border-border-color rounded-md text-white text-sm"
                                         />
                                         <input 
                                             type="text" 
                                             placeholder="Last" 
                                             value={editingUserData.lastName} 
                                             onChange={e => setEditingUserData({...editingUserData, lastName: e.target.value})}
-                                            style={{ width: '50%', padding: '6px 8px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '0.875rem' }}
+                                            className="w-1/2 py-1.5 px-2 bg-transparent border border-border-color rounded-md text-white text-sm"
                                         />
                                     </div>
                                 </td>
-                                <td style={{ padding: '12px 8px' }}>
+                                <td className="py-3 px-2">
                                     <select 
                                         value={editingUserData.role} 
                                         onChange={e => setEditingUserData({...editingUserData, role: e.target.value})}
-                                        style={{ width: '100%', padding: '6px 8px', background: '#000', border: '1px solid var(--border-color)', borderRadius: '6px', color: '#fff', fontSize: '0.875rem' }}
+                                        className="w-full py-1.5 px-2 bg-black border border-border-color rounded-md text-white text-sm"
                                     >
                                         <option value="USER">USER</option>
                                         <option value="ANALYST">ANALYST</option>
@@ -207,9 +207,9 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                         <option value="ADMIN">ADMIN</option>
                                     </select>
                                 </td>
-                                <td colSpan={2} style={{ padding: '12px 8px' }}>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                <td colSpan={2} className="py-3 px-2">
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="flex items-center gap-1.5 text-xs text-text-muted">
                                             <input 
                                                 type="checkbox" 
                                                 checked={editingUserData.isExternal} 
@@ -217,7 +217,7 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                             />
                                             Active Directory / External Auth
                                         </label>
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                        <label className="flex items-center gap-1.5 text-xs text-text-muted">
                                             <input 
                                                 type="checkbox" 
                                                 checked={editingUserData.isRoleOverridden} 
@@ -227,19 +227,19 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                         </label>
                                     </div>
                                 </td>
-                                <td style={{ padding: '12px 8px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
+                                <td className="py-3 px-2">
+                                    <div className="flex justify-end gap-2 items-center">
                                         <button 
                                             onClick={() => setEditingUserId(null)}
                                             disabled={actionLoading}
-                                            style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem' }}
+                                            className="bg-transparent border border-white/20 text-text-muted cursor-pointer py-1 px-2 rounded text-xs"
                                         >
                                             Cancel
                                         </button>
                                         <button 
                                             onClick={() => handleSave(user.id)}
                                             disabled={actionLoading}
-                                            style={{ background: 'transparent', border: '1px solid var(--accent-primary)', color: 'var(--accent-primary)', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700 }}
+                                            className="bg-transparent border border-accent-primary text-accent-primary cursor-pointer py-1 px-2 rounded text-xs font-bold"
                                         >
                                             {actionLoading ? "..." : "Save"}
                                         </button>
@@ -260,12 +260,7 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                             </td>
                             <td className="p-3">
                                 <div className="flex gap-2 items-center">
-                                    <span style={{
-                                        padding: '4px 8px',
-                                        borderRadius: '12px',
-                                        fontSize: '0.75rem',
-                                        background: 'transparent',
-                                        border: '1px solid rgba(255,255,255,0.1)',
+                                    <span className="py-1 px-2 rounded-xl text-xs bg-transparent border border-white/10" style={{
                                         color: 
                                             user.role === 'ADMIN' ? 'var(--accent-primary)' : 
                                             user.role === 'SYSTEMS' ? 'rgb(45, 212, 191)' :
@@ -309,7 +304,7 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                 })}
                 {sortedUsers.length === 0 && (
                     <tr>
-                        <td colSpan={6} style={{ padding: '24px 8px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        <td colSpan={6} className="py-6 px-2 text-center text-text-muted">
                             No accounts found. Create the first one above!
                         </td>
                     </tr>
@@ -317,19 +312,19 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
             </tbody>
         </table>
         {dialog?.isOpen && (
-            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
-                <div style={{ background: 'var(--bg-surface)', padding: '24px', borderRadius: '8px', minWidth: '300px', border: '1px solid var(--border-color)', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-                    <p style={{ marginBottom: '24px' }}>{dialog.message}</p>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]">
+                <div className="bg-bg-surface p-6 rounded-lg min-w-[300px] border border-border-color shadow-md">
+                    <p className="mb-6">{dialog.message}</p>
+                    <div className="flex justify-end gap-3">
                         {dialog.type === 'confirm' && (
-                            <button onClick={() => setDialog(null)} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
+                            <button onClick={() => setDialog(null)} className="py-2 px-4 bg-transparent border border-border-color text-text-secondary rounded cursor-pointer">Cancel</button>
                         )}
                         <button onClick={() => {
                             if(dialog.type === 'confirm' && dialog.onConfirm) {
                                 dialog.onConfirm();
                             }
                             setDialog(null);
-                        }} style={{ padding: '8px 16px', background: 'var(--accent-primary)', border: 'none', color: '#fff', borderRadius: '4px', cursor: 'pointer' }}>
+                        }} className="py-2 px-4 bg-accent-primary border-none text-white rounded cursor-pointer">
                             {dialog.type === 'confirm' ? 'Confirm' : 'OK'}
                         </button>
                     </div>

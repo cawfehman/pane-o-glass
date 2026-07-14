@@ -876,7 +876,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                 {/* Failed Aggregations: IP-based Header */}
                                 {hoveredPoint.ip ? (
                                     <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div className="flex justify-between items-center">
                                             <span style={{ fontWeight: 800, fontSize: '0.9rem', fontFamily: 'monospace' }}>{hoveredPoint.ip}</span>
                                             <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontWeight: 'bold', border: '1px solid rgba(239,68,68,0.3)' }}>
                                                 {hoveredPoint.count} Failures
@@ -889,7 +889,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                 ) : (
                                     /* Country-based Header (Active / Completed) */
                                     <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div className="flex justify-between items-center">
                                             <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>{hoveredPoint.name}</span>
                                             <span style={{ fontSize: '0.75rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', border: '1px solid rgba(99,102,241,0.2)' }}>
                                                 {hoveredPoint.count} Node{hoveredPoint.count === 1 ? "" : "s"}
@@ -906,16 +906,16 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                 {/* Metrics for Failed IPs */}
                                 {hoveredPoint.ip && (
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>ISP/Org:</span>
+                                        <div className="flex justify-between">
+                                            <span className="text-text-muted">ISP/Org:</span>
                                             <span style={{ color: 'var(--text-secondary)', fontWeight: 600, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={hoveredPoint.asnName}>
                                                 {hoveredPoint.asnName}
                                             </span>
                                         </div>
                                         {hoveredPoint.timezone && (
-                                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                <span style={{ color: 'var(--text-muted)' }}>Timezone:</span>
-                                                <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+                                            <div className="flex justify-between">
+                                                <span className="text-text-muted">Timezone:</span>
+                                                <span className="text-text-secondary font-semibold">
                                                     {hoveredPoint.timezone}
                                                 </span>
                                             </div>
@@ -947,7 +947,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                         {hoveredPoint.events.map((evt: VpnEvent, index: number) => (
                                             <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: '3px', background: 'rgba(255,255,255,0.02)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.04)' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                                <div className="flex justify-between text-xs">
                                                     <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{evt.username}</span>
                                                     <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.75rem' }}>{evt.sourceIp}</span>
                                                 </div>
@@ -1006,7 +1006,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                                         .filter(pt => pt.stateName === selectedState)
                                         .map((pt, i) => (
                                             <div key={i} style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255,255,255,0.05)', padding: '10px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div className="flex justify-between items-center">
                                                     <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                                                         {pt.cityName || "Unknown City"}
                                                     </span>

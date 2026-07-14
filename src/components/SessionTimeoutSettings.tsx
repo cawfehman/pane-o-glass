@@ -31,48 +31,39 @@ export default function SessionTimeoutSettings({ currentTimeout }: SessionTimeou
     };
 
     return (
-        <div className="glass-card" style={{ padding: '1.5rem', background: 'var(--bg-surface)' }}>
-            <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Dashboard Settings</h3>
-            <div style={{ maxWidth: '400px' }}>
-                <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '8px' }}>
+        <div className="glass-card p-6 bg-bg-surface">
+            <h3 className="mb-4 text-text-primary">Dashboard Settings</h3>
+            <div className="max-w-[400px]">
+                <label className="block text-text-secondary text-[0.85rem] mb-2">
                     Idle Session Timeout (Minutes)
                 </label>
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                <div className="flex gap-3 items-center">
                     <input 
                         type="range" 
                         min="1" 
                         max="30" 
                         value={timeout} 
                         onChange={(e) => setTimeoutVal(parseInt(e.target.value))}
-                        style={{ flex: 1, accentColor: 'var(--accent-primary)' }}
+                        className="flex-1 accent-accent-primary"
                     />
-                    <span style={{ fontSize: '1.1rem', fontWeight: 600, minWidth: '3rem', textAlign: 'right' }}>
+                    <span className="text-[1.1rem] font-semibold min-w-[3rem] text-right">
                         {timeout}m
                     </span>
                 </div>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px', fontStyle: 'italic' }}>
+                <p className="text-[0.75rem] text-text-muted mt-2 italic">
                     * Automatically log out after {timeout} minutes of inactivity. Max 30 minutes.
                 </p>
 
                 <button 
                     onClick={handleSave}
                     disabled={loading || timeout === currentTimeout}
-                    className="btn-primary"
-                    style={{ marginTop: '20px', padding: '8px 24px', borderRadius: '8px' }}
+                    className="btn-primary mt-5 px-6 py-2 rounded-lg"
                 >
                     {loading ? "Saving..." : "Save Preferences"}
                 </button>
 
                 {message && (
-                    <div style={{ 
-                        marginTop: '16px', 
-                        padding: '12px', 
-                        borderRadius: '6px', 
-                        fontSize: '0.85rem',
-                        backgroundColor: message.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                        color: message.type === 'success' ? '#10b981' : '#ef4444',
-                        border: `1px solid ${message.type === 'success' ? '#10b981' : '#ef4444'}`
-                    }}>
+                    <div className={`mt-4 p-3 rounded-md text-[0.85rem] border ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500' : 'bg-red-500/10 text-red-500 border-red-500'}`}>
                         {message.text}
                     </div>
                 )}

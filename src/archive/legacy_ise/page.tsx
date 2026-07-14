@@ -75,11 +75,11 @@ export default function CiscoIsePage() {
         <div className="internal-scroll-layout">
             <div style={{ flexShrink: 0 }}>
                 <h1 style={{ marginBottom: '8px' }}>Cisco ISE Center</h1>
-                <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>
+                <p className="text-text-secondary mb-8">
                     Unified endpoint forensics: Real-time sessions and 24-hour RADIUS diagnostic history.
                 </p>
 
-                <form onSubmit={(e) => handleSearch(e)} className="glass-card" style={{ display: 'flex', gap: '16px', marginBottom: '32px' }}>
+                <form onSubmit={(e) => handleSearch(e)} className="glass-card flex gap-4 mb-8">
                     <input
                         type="text"
                         value={query}
@@ -108,7 +108,7 @@ export default function CiscoIsePage() {
             <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                 {activeView === "discovery" && discoveryResult && (
                     <div>
-                        <h3 style={{ marginBottom: '16px' }}>MAC Addresses associated with '{query}'</h3>
+                        <h3 className="mb-4">MAC Addresses associated with '{query}'</h3>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
                             {discoveryResult.sessions.map((item: any, idx: number) => (
                                 <div key={idx} className="glass-card" style={{ cursor: 'pointer', border: '1px solid var(--border-color)', transition: 'border-color 0.2s' }} onClick={() => handleSearch(undefined, item.calling_station_id)}>
@@ -222,7 +222,7 @@ function EndpointCard({ session }: { session: any }) {
                 </div>
                 <div>
                     <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Posture State</h4>
-                    <p title="The physical device type that ISE profiled this endpoint as"><strong>Profile:</strong> <span style={{ color: 'var(--accent-primary)' }}>{session.endpoint_profile || "Unknown"}</span></p>
+                    <p title="The physical device type that ISE profiled this endpoint as"><strong>Profile:</strong> <span className="text-accent-primary">{session.endpoint_profile || "Unknown"}</span></p>
                     <p title="The posture status of the endpoint"><strong>Posture:</strong> <span style={{ color: accentColor, fontWeight: 'bold' }}>{session.posture_status || "Unknown"}</span></p>
                     <span style={{ fontSize: '0.75rem', background: bgColor, color: accentColor, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', fontWeight: 'bold' }}>
                         {session.posture_status || "UNKNOWN"}
@@ -253,7 +253,7 @@ function FailureCard({ failure }: { failure: any }) {
     
     return (
         <div className="glass-card" style={{ marginBottom: '24px', borderLeft: `6px solid ${accentColor}`, padding: '0' }}>
-            <div style={{ padding: '24px' }}>
+            <div className="p-6">
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '24px' }}>
                     <div>
                         <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -266,7 +266,7 @@ function FailureCard({ failure }: { failure: any }) {
                         <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Identity & Device</h4>
                         <p><strong>Username:</strong> {failure.user_name || "N/A"}</p>
                         <p><strong>MAC Address:</strong> <span style={{ fontFamily: 'monospace' }}>{failure.calling_station_id}</span></p>
-                        <p><strong>Profile:</strong> <span style={{ color: 'var(--accent-primary)' }}>{failure.endpoint_profile || "Unknown"}</span></p>
+                        <p><strong>Profile:</strong> <span className="text-accent-primary">{failure.endpoint_profile || "Unknown"}</span></p>
                     </div>
                     <div>
                         <h4 style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '8px' }}>Network Location</h4>
@@ -283,17 +283,17 @@ function FailureCard({ failure }: { failure: any }) {
                 </div>
                 {failure.steps && failure.steps.length > 0 && (
                     <div style={{ marginTop: '24px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-                        <button onClick={() => setExpanded(!expanded)} className="btn-secondary" style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.875rem' }}>
+                        <button onClick={() => setExpanded(!expanded)} className="btn-secondary w-full flex justify-between items-center text-sm">
                             <span>{expanded ? 'Hide' : 'Show'} Technical Details ({failure.steps.length} Steps)</span>
                             <span>{expanded ? '▲' : '▼'}</span>
                         </button>
                         {expanded && (
                             <div style={{ marginTop: '16px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '16px', border: '1px solid var(--border-color)' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <div className="flex flex-col gap-2">
                                     {failure.steps.map((step: any, sIdx: number) => (
                                         <div key={sIdx} style={{ display: 'flex', gap: '12px', fontSize: '0.85rem' }}>
                                             <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', minWidth: '45px' }}>{step.id}</span>
-                                            <span style={{ color: 'var(--text-secondary)' }}>{step.description}</span>
+                                            <span className="text-text-secondary">{step.description}</span>
                                         </div>
                                     ))}
                                 </div>

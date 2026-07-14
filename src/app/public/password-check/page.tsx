@@ -9,15 +9,15 @@ export const metadata = {
 export default function PublicPasswordCheckPage() {
     return (
         <div>
-            <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-                <h1 style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>Password Safety Check</h1>
-                <p style={{ color: 'var(--text-secondary)', maxWidth: '600px', margin: '0 auto' }}>
+            <div className="text-center mb-12">
+                <h1 className="text-4xl mb-4">Password Safety Check</h1>
+                <p className="text-text-secondary max-w-[600px] mx-auto">
                     Use our secure, k-anonymity based tool to verify if your passwords have appeared in known data breaches. 
                     <strong> No data is sent to our servers.</strong>
                 </p>
             </div>
 
-            <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+            <div className="max-w-[600px] mx-auto">
                 <PasswordCheckCard />
             </div>
 

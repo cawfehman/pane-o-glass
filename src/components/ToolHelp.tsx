@@ -151,99 +151,43 @@ export function ToolHelp({ toolId, iconSize = 20, triggerStyle }: ToolHelpProps)
                     e.preventDefault();
                     setIsOpen(true);
                 }}
-                style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--text-muted)',
-                    cursor: 'pointer',
-                    padding: '6px',
-                    borderRadius: '50%',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'color 0.2s, background-color 0.2s',
-                    verticalAlign: 'middle',
-                    ...triggerStyle
-                }}
-                className="help-trigger-btn"
+                style={triggerStyle}
+                className="bg-transparent border-none text-text-muted cursor-pointer p-1.5 rounded-full inline-flex items-center justify-center transition-colors duration-200 align-middle help-trigger-btn hover:bg-white/10 hover:text-text-primary"
                 title="View Tool Tip Sheet"
             >
                 <HelpCircle size={iconSize} />
             </button>
 
             {isOpen && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    width: '100vw',
-                    height: '100vh',
-                    background: 'rgba(0, 0, 0, 0.7)',
-                    backdropFilter: 'blur(4px)',
-                    zIndex: 999,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '20px'
-                }}
-                onClick={() => setIsOpen(false)}
+                <div 
+                    className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[999] flex items-center justify-center p-5"
+                    onClick={() => setIsOpen(false)}
                 >
-                    <div style={{
-                        background: '#121214',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '16px',
-                        width: '100%',
-                        maxWidth: '560px',
-                        padding: '28px',
-                        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.4)',
-                        position: 'relative',
-                        animation: 'fadeIn 0.25s ease-out'
-                    }}
-                    onClick={(e) => e.stopPropagation()}
+                    <div 
+                        className="bg-[#121214] border border-border-color rounded-2xl w-full max-w-[560px] p-7 shadow-[0_20px_25px_-5px_rgba(0,0,0,0.5),0_10px_10px_-5px_rgba(0,0,0,0.4)] relative animate-[fadeIn_0.25s_ease-out]"
+                        onClick={(e) => e.stopPropagation()}
                     >
                         <button
                             onClick={() => setIsOpen(false)}
-                            style={{
-                                position: 'absolute',
-                                top: '20px',
-                                right: '20px',
-                                background: 'transparent',
-                                border: 'none',
-                                color: 'var(--text-secondary)',
-                                cursor: 'pointer',
-                                padding: '4px',
-                                borderRadius: '4px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                            }}
+                            className="absolute top-5 right-5 bg-transparent border-none text-text-secondary cursor-pointer p-1 rounded flex items-center justify-center hover:bg-white/10 hover:text-text-primary transition-colors"
                         >
                             <X size={20} />
                         </button>
 
-                        <h2 style={{ margin: '0 0 16px 0', fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                            <HelpCircle size={24} style={{ color: 'var(--accent-primary)' }} />
+                        <h2 className="m-0 mb-4 text-2xl font-extrabold text-text-primary flex items-center gap-2.5 flex-wrap">
+                            <HelpCircle size={24} className="text-accent-primary" />
                             <span>{details.title}</span>
                             {details.version && (
-                                <span style={{ 
-                                    fontSize: '0.75rem', 
-                                    background: 'var(--bg-secondary, #1e1e24)', 
-                                    color: 'var(--text-secondary)', 
-                                    padding: '2px 8px', 
-                                    borderRadius: '12px',
-                                    border: '1px solid var(--border-color)',
-                                    fontWeight: 500,
-                                    marginLeft: 'auto'
-                                }}>
+                                <span className="text-xs bg-[var(--bg-secondary,#1e1e24)] text-text-secondary py-0.5 px-2 rounded-xl border border-border-color font-medium ml-auto">
                                     v{details.version}
                                 </span>
                             )}
                         </h2>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxHeight: '70vh', overflowY: 'auto', paddingRight: '4px' }}>
+                        <div className="flex flex-col gap-5 max-h-[70vh] overflow-y-auto pr-1">
                             <div>
-                                <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em', fontWeight: 700 }}>Capabilities & Uses</h4>
-                                <ul style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-primary)', fontSize: '0.925rem', display: 'flex', flexDirection: 'column', gap: '6px', lineHeight: 1.5 }}>
+                                <h4 className="m-0 mb-2 text-text-secondary uppercase text-xs tracking-wider font-bold">Capabilities & Uses</h4>
+                                <ul className="m-0 pl-5 text-text-primary text-[0.925rem] flex flex-col gap-1.5 leading-relaxed list-disc">
                                     {details.capabilities.map((cap, i) => (
                                         <li key={i}>{cap}</li>
                                     ))}
@@ -251,22 +195,20 @@ export function ToolHelp({ toolId, iconSize = 20, triggerStyle }: ToolHelpProps)
                             </div>
 
                             <div>
-                                <h4 style={{ margin: '0 0 10px 0', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em', fontWeight: 700 }}>Color Codes & Legends</h4>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <h4 className="m-0 mb-2.5 text-text-secondary uppercase text-xs tracking-wider font-bold">Color Codes & Legends</h4>
+                                <div className="flex flex-col gap-2">
                                     {details.colors.map((color, i) => (
-                                        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                                            <span style={{ 
-                                                width: '10px', 
-                                                height: '10px', 
-                                                borderRadius: '50%', 
-                                                background: color.rgb,
-                                                marginTop: '5px',
-                                                flexShrink: 0,
-                                                boxShadow: `0 0 6px ${color.rgb}`
-                                            }} />
-                                            <div style={{ fontSize: '0.9rem', lineHeight: 1.4 }}>
-                                                <strong style={{ color: 'var(--text-primary)' }}>{color.name}: </strong>
-                                                <span style={{ color: 'var(--text-secondary)' }}>{color.meaning}</span>
+                                        <div key={i} className="flex items-start gap-2.5">
+                                            <span 
+                                                className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0"
+                                                style={{ 
+                                                    background: color.rgb,
+                                                    boxShadow: `0 0 6px ${color.rgb}`
+                                                }} 
+                                            />
+                                            <div className="text-[0.9rem] leading-snug">
+                                                <strong className="text-text-primary">{color.name}: </strong>
+                                                <span className="text-text-secondary">{color.meaning}</span>
                                             </div>
                                         </div>
                                     ))}
@@ -274,9 +216,9 @@ export function ToolHelp({ toolId, iconSize = 20, triggerStyle }: ToolHelpProps)
                             </div>
 
                             {details.backgroundJobs && (
-                                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-                                    <h4 style={{ margin: '0 0 8px 0', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em', fontWeight: 700 }}>Background Services</h4>
-                                    <ul style={{ margin: 0, paddingLeft: '20px', color: 'var(--text-muted)', fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '4px', lineHeight: 1.4 }}>
+                                <div className="border-t border-border-color pt-4">
+                                    <h4 className="m-0 mb-2 text-text-secondary uppercase text-xs tracking-wider font-bold">Background Services</h4>
+                                    <ul className="m-0 pl-5 text-text-muted text-[0.85rem] flex flex-col gap-1 leading-snug list-disc">
                                         {details.backgroundJobs.map((job, i) => (
                                             <li key={i}>{job}</li>
                                         ))}

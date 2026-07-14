@@ -29,49 +29,49 @@ export default function AdminFeedbackPage() {
 
     return (
         <div className="internal-scroll-layout">
-            <div style={{ flexShrink: 0, marginBottom: '32px' }}>
+            <div className="shrink-0 mb-8">
                 <h1>User Feedback Management</h1>
-                <p style={{ color: 'var(--text-secondary)' }}>Review and track feedback submitted by members across the utility suite.</p>
+                <p className="text-text-secondary">Review and track feedback submitted by members across the utility suite.</p>
             </div>
 
-            <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, paddingBottom: 0 }}>
+            <div className="glass-card flex-1 flex flex-col min-h-0 pb-0">
                 {loading ? (
-                    <p style={{ color: 'var(--text-muted)', padding: '24px' }}>Loading feedback...</p>
+                    <p className="text-text-muted p-6">Loading feedback...</p>
                 ) : error ? (
-                    <div style={{ margin: '24px', padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444' }}>
+                    <div className="m-6 p-4 bg-red-500/10 text-red-500 rounded-md border border-red-500">
                         {error}
                     </div>
                 ) : feedbackList.length === 0 ? (
-                    <p style={{ color: 'var(--text-muted)', padding: '24px' }}>No feedback has been submitted yet.</p>
+                    <p className="text-text-muted p-6">No feedback has been submitted yet.</p>
                 ) : (
-                    <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <div className="flex-1 overflow-auto">
+                        <table className="w-full border-collapse text-left">
                             <thead className="sticky-header">
-                                <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-                                    <th style={{ padding: '12px 0 12px 24px' }}>Timestamp</th>
-                                    <th style={{ padding: '12px 8px' }}>User</th>
-                                    <th style={{ padding: '12px 8px' }}>Tool/Page</th>
-                                    <th style={{ padding: '12px 8px' }}>Subject</th>
-                                    <th style={{ padding: '12px 8px 12px 0' }}>Details</th>
+                                <tr className="border-b border-border-color text-text-secondary">
+                                    <th className="py-3 pl-6 pr-0">Timestamp</th>
+                                    <th className="py-3 px-2">User</th>
+                                    <th className="py-3 px-2">Tool/Page</th>
+                                    <th className="py-3 px-2">Subject</th>
+                                    <th className="py-3 pr-2 pl-0">Details</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {feedbackList.map((item) => (
-                                    <tr key={item.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                        <td style={{ padding: '12px 0 12px 24px', color: 'var(--text-muted)', fontSize: '0.875rem', whiteSpace: 'nowrap' }}>
+                                    <tr key={item.id} className="border-b border-border-color">
+                                        <td className="py-3 pl-6 pr-0 text-text-muted text-sm whitespace-nowrap">
                                             {new Date(item.createdAt).toLocaleString()}
                                         </td>
-                                        <td style={{ padding: '12px 8px', fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+                                        <td className="py-3 px-2 font-medium text-text-primary whitespace-nowrap">
                                             {item.user?.username || "Unknown"}
                                             {item.user?.firstName && ` (${item.user.firstName})`}
                                         </td>
-                                        <td style={{ padding: '12px 8px', color: 'var(--accent-primary)', fontSize: '0.875rem' }}>
+                                        <td className="py-3 px-2 text-accent-primary text-sm">
                                             <code>{item.tool}</code>
                                         </td>
-                                        <td style={{ padding: '12px 8px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                        <td className="py-3 px-2 font-semibold text-text-primary">
                                             {item.subject}
                                         </td>
-                                        <td style={{ padding: '12px 8px 12px 0', color: 'var(--text-secondary)', fontSize: '0.9rem', maxWidth: '400px' }}>
+                                        <td className="py-3 pr-2 pl-0 text-text-secondary text-[0.9rem] max-w-[400px]">
                                             {item.body}
                                         </td>
                                     </tr>

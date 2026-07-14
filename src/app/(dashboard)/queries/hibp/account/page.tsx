@@ -89,19 +89,19 @@ export default function AccountSecurityPage() {
 
     return (
         <div>
-            <div style={{ marginBottom: '32px' }}>
-                <h1 style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className="mb-8">
+                <h1 className="flex items-center gap-3">
                     Account Security
                     <ToolHelp toolId="hibp-account" iconSize={24} />
                 </h1>
-                <p style={{ color: 'var(--text-secondary)' }}>Check if your email or passwords have been compromised in data breaches.</p>
+                <p className="text-text-secondary">Check if your email or passwords have been compromised in data breaches.</p>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>
 
                 {/* --- EMAIL SEARCH CARD --- */}
                 <div className="glass-card">
-                    <h3 style={{ marginBottom: '16px' }}>Email & Account Check</h3>
+                    <h3 className="mb-4">Email & Account Check</h3>
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
                         Queries the HIBP database to see if this email was involved in a known breach.
                     </p>
