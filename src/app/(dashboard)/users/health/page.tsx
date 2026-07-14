@@ -56,33 +56,33 @@ export default function SystemHealthPage() {
 
     return (
         <div className="internal-scroll-layout">
-             <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
+             <div className="shrink-0 flex justify-between items-center mb-6 flex-wrap gap-4">
+                <div className="flex items-center gap-5 flex-wrap">
                     <div>
                         <h1>System Health</h1>
-                        <p style={{ color: 'var(--text-muted)' }}>{metrics.osType} {metrics.osRelease} | Uptime: {hours}h {minutes}m</p>
+                        <p className="text-text-muted">{metrics.osType} {metrics.osRelease} | Uptime: {hours}h {minutes}m</p>
                     </div>
                     {metrics.rotatingPassword && (
-                        <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 18px', background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', borderRadius: '12px' }}>
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🔐 ROTATING OTP</span>
-                            <span style={{ fontFamily: 'monospace', fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent-primary)', letterSpacing: '0.1em' }}>
+                        <div className="glass-card flex items-center gap-3 px-4 py-2.5 bg-blue-500/10 border border-blue-500/25 rounded-xl">
+                            <span className="text-[0.72rem] text-text-secondary font-bold uppercase tracking-widest">🔐 ROTATING OTP</span>
+                            <span className="font-mono text-[1.1rem] font-extrabold text-accent-primary tracking-widest">
                                 {metrics.rotatingPassword}
                             </span>
-                            <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>(Rotates every 2m)</span>
+                            <span className="text-[0.62rem] text-text-muted">(Rotates every 2m)</span>
                         </div>
                     )}
                 </div>
-                <div className="glass-card" style={{ display: 'flex', gap: '24px', padding: '12px 24px' }}>
-                    <div style={{ textAlign: 'center' }}>
-                        <p style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--accent-tertiary)' }}>{metrics.totalProbes}</p>
-                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Lifetime Health Probes</p>
+                <div className="glass-card flex gap-6 px-6 py-3">
+                    <div className="text-center">
+                        <p className="text-3xl font-bold text-accent-tertiary">{metrics.totalProbes}</p>
+                        <p className="text-xs text-text-muted">Lifetime Health Probes</p>
                     </div>
                 </div>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingRight: '4px' }}>
+            <div className="flex-1 overflow-y-auto min-h-0 pr-1">
                 {/* Utilization Dials */}
-                <div className="glass-card" style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', marginBottom: '24px' }}>
+                <div className="glass-card flex justify-around flex-wrap mb-6">
                     <Gauge value={metrics.cpuUsage || 0} label="CPU Usage" />
                     <Gauge value={memPercent || 0} label={`RAM (${memUsedGB}GB / ${memTotalGB}GB)`} color="var(--accent-secondary)" />
                     <Gauge value={parseInt(metrics.diskUsage) || 0} label={`Disk Space (Root)`} color="var(--accent-tertiary)" />

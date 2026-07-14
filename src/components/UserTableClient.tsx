@@ -130,25 +130,25 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
 
     return (
         <>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+        <table className="w-full border-collapse text-left">
             <thead className="sticky-header">
-                <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-                    <th style={{ padding: '12px 8px', cursor: 'pointer' }} onClick={() => handleSort('username')}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>Username {renderIndicator('username')}</div>
+                <tr className="border-b border-border-color text-text-secondary">
+                    <th className="p-3 cursor-pointer" onClick={() => handleSort('username')}>
+                        <div className="flex items-center gap-1">Username {renderIndicator('username')}</div>
                     </th>
-                    <th style={{ padding: '12px 8px', cursor: 'pointer' }} onClick={() => handleSort('name')}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>Name {renderIndicator('name')}</div>
+                    <th className="p-3 cursor-pointer" onClick={() => handleSort('name')}>
+                        <div className="flex items-center gap-1">Name {renderIndicator('name')}</div>
                     </th>
-                    <th style={{ padding: '12px 8px', cursor: 'pointer' }} onClick={() => handleSort('role')}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>Role {renderIndicator('role')}</div>
+                    <th className="p-3 cursor-pointer" onClick={() => handleSort('role')}>
+                        <div className="flex items-center gap-1">Role {renderIndicator('role')}</div>
                     </th>
-                    <th style={{ padding: '12px 8px', cursor: 'pointer' }} onClick={() => handleSort('lastLogin')}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>Last Login {renderIndicator('lastLogin')}</div>
+                    <th className="p-3 cursor-pointer" onClick={() => handleSort('lastLogin')}>
+                        <div className="flex items-center gap-1">Last Login {renderIndicator('lastLogin')}</div>
                     </th>
-                    <th style={{ padding: '12px 8px', cursor: 'pointer' }} onClick={() => handleSort('createdAt')}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>Created At {renderIndicator('createdAt')}</div>
+                    <th className="p-3 cursor-pointer" onClick={() => handleSort('createdAt')}>
+                        <div className="flex items-center gap-1">Created At {renderIndicator('createdAt')}</div>
                     </th>
-                    <th style={{ padding: '12px 8px', textAlign: 'right' }}>Actions</th>
+                    <th className="p-3 text-right">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -250,16 +250,16 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                     }
 
                     return (
-                        <tr key={user.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                            <td style={{ padding: '12px 8px', fontWeight: 500 }}>{user.username}</td>
-                            <td style={{ padding: '12px 8px', color: 'var(--text-primary)' }}>
+                        <tr key={user.id} className="border-b border-border-color">
+                            <td className="p-3 font-medium">{user.username}</td>
+                            <td className="p-3 text-text-primary">
                                 {user.firstName || user.lastName 
                                     ? `${user.firstName || ''} ${user.lastName || ''}`.trim() 
-                                    : <span style={{ color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.875rem' }}>Not set</span>
+                                    : <span className="text-text-muted italic text-sm">Not set</span>
                                 }
                             </td>
-                            <td style={{ padding: '12px 8px' }}>
-                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <td className="p-3">
+                                <div className="flex gap-2 items-center">
                                     <span style={{
                                         padding: '4px 8px',
                                         borderRadius: '12px',
@@ -277,47 +277,29 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                         {user.role}
                                     </span>
                                     {user.isExternal && (
-                                        <span style={{
-                                            padding: '4px 8px',
-                                            borderRadius: '12px',
-                                            fontSize: '0.75rem',
-                                            background: 'transparent',
-                                            color: 'rgb(74, 222, 128)',
-                                            border: '1px solid rgba(34, 197, 94, 0.2)'
-                                        }} title="Authenticates via Active Directory">
+                                        <span className="px-2 py-1 rounded-xl text-xs bg-transparent text-green-400 border border-green-500/20" title="Authenticates via Active Directory">
                                             AD / EXT
                                         </span>
                                     )}
                                     {user.isRoleOverridden && (
-                                        <span style={{
-                                            padding: '4px 8px',
-                                            borderRadius: '12px',
-                                            fontSize: '0.75rem',
-                                            background: 'transparent',
-                                            color: 'rgb(244, 63, 94)',
-                                            border: '1px solid rgba(244, 63, 94, 0.2)'
-                                        }} title="Local Role Override (will not sync from AD Groups)">
+                                        <span className="px-2 py-1 rounded-xl text-xs bg-transparent text-rose-500 border border-rose-500/20" title="Local Role Override (will not sync from AD Groups)">
                                             OVERRIDE
                                         </span>
                                     )}
                                 </div>
                             </td>
-                            <td style={{ padding: '12px 8px', color: 'var(--text-muted)' }}>
+                            <td className="p-3 text-text-muted">
                                 {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
                             </td>
-                            <td style={{ padding: '12px 8px', color: 'var(--text-muted)' }}>
+                            <td className="p-3 text-text-muted">
                                 {new Date(user.createdAt).toLocaleDateString()}
                             </td>
-                            <td style={{ padding: '12px 8px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', alignItems: 'center' }}>
-                                    <button onClick={() => startEdit(user)} style={{
-                                        background: 'transparent', border: 'none', color: 'var(--accent-primary)', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px'
-                                    }} className="nav-link">
+                            <td className="p-3">
+                                <div className="flex justify-end gap-2 items-center">
+                                    <button onClick={() => startEdit(user)} className="nav-link bg-transparent border-none text-accent-primary cursor-pointer px-2 py-1 rounded">
                                         Edit
                                     </button>
-                                    <button onClick={() => handleDeleteClick(user.id)} style={{
-                                        background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px 8px', borderRadius: '4px'
-                                    }} className="nav-link">
+                                    <button onClick={() => handleDeleteClick(user.id)} className="nav-link bg-transparent border-none text-red-500 cursor-pointer px-2 py-1 rounded">
                                         Delete
                                     </button>
                                 </div>

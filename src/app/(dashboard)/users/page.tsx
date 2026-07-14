@@ -18,20 +18,20 @@ export default async function UsersPage() {
 
     return (
         <div className="internal-scroll-layout">
-            <div style={{ flexShrink: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+            <div className="shrink-0">
+                <div className="flex justify-between items-center mb-8">
                     <h1>Local Accounts</h1>
                 </div>
 
-                <div className="glass-card" style={{ marginBottom: '32px' }}>
-                    <h3 style={{ marginBottom: '16px' }}>Create New Account</h3>
+                <div className="glass-card mb-8">
+                    <h3 className="mb-4">Create New Account</h3>
                     <UserForm />
                 </div>
             </div>
 
-            <div className="glass-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <h3 style={{ marginBottom: '16px', flexShrink: 0 }}>Existing Accounts</h3>
-                <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
+            <div className="glass-card flex-1 flex flex-col min-h-0">
+                <h3 className="mb-4 shrink-0">Existing Accounts</h3>
+                <div className="flex-1 overflow-auto">
                     <UserTableClient initialUsers={users} />
                 </div>
             </div>

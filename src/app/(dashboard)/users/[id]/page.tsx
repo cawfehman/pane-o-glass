@@ -24,12 +24,12 @@ export default async function EditUserPage({ params }: { params: { id: string } 
 
     return (
         <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '32px' }}>
-                <Link href="/users" style={{ color: 'var(--text-secondary)' }}>&larr; Back</Link>
+            <div className="flex items-center gap-4 mb-8">
+                <Link href="/users" className="text-text-secondary no-underline">&larr; Back</Link>
                 <h1>Edit Account: {user.username}</h1>
             </div>
 
-            <div className="glass-card" style={{ maxWidth: '800px' }}>
+            <div className="glass-card max-w-[800px]">
                 <UserForm user={user} mode="edit" />
             </div>
         </div>
