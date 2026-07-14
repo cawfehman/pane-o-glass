@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getPermissionsForRole } from "@/app/actions/permissions";
-import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe } from "lucide-react";
+import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe, Shield, Server, Network } from "lucide-react";
 import QueriesPageClient from "./QueriesPageClient";
 
 export default async function QueriesPage() {
@@ -16,24 +16,24 @@ export default async function QueriesPage() {
     const tools = [
         {
             id: 'firewall',
-            title: "Cisco Firewall",
+            title: "Cisco Firewall Utilities",
             href: "/queries/firewall",
             description: "Query IP shuns across edge firewalls and audit background 'Guardian' automation events.",
-            icon: <Terminal size={24} />
+            icon: <Shield size={24} />
         },
         {
             id: 'ise',
             title: "Cisco ISE Center",
             href: "/queries/ise",
             description: "Monitor real-time network authentication sessions and identity services for wired and wireless clients.",
-            icon: <Activity size={24} />
+            icon: <Server size={24} />
         },
         {
             id: 'vpn',
             title: "VPN Troubleshooting",
             href: "/queries/vpn",
             description: "Analyze, search, and troubleshoot Secure Client (AnyConnect) VPN session connectivity, duration, bandwidth, and failures.",
-            icon: <Wifi size={24} />
+            icon: <Network size={24} />
         },
         {
             id: 'ise-tacacs',
@@ -58,7 +58,7 @@ export default async function QueriesPage() {
         },
         {
             id: 'threat-intel',
-            title: "Threat Intelligence reputation",
+            title: "Threat Intelligence",
             href: "/queries/threat-intel",
             description: "Query IP reputation, DNS zones, and file signatures correlated with Cisco Umbrella categorization.",
             icon: <Globe size={24} />
