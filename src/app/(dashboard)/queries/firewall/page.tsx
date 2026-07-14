@@ -193,7 +193,7 @@ export default function CiscoFirewallPage() {
 
     return (
         <div className="internal-scroll-layout">
-            <div className="shrink-0 flex flex-col gap-8">
+            <div className="shrink-0 flex flex-col gap-4">
                 <div className="flex justify-between items-start">
                     <div>
                         <h1 className="flex items-center gap-3">
@@ -265,6 +265,7 @@ export default function CiscoFirewallPage() {
 
             </div>
 
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6">
             {activeTab === "manual" ? (
                 <>
                     <div className="grid grid-cols-[minmax(300px,450px)_1fr] gap-8 items-stretch">
@@ -398,9 +399,9 @@ export default function CiscoFirewallPage() {
                 ) : history.length === 0 ? (
                     <p className="text-text-muted">No queries have been executed yet.</p>
                 ) : (
-                    <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
+                    <div style={{ flex: 1, overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                                    <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--bg-surface)', zIndex: 10 }}>
+                                    <thead className="sticky top-0 bg-bg-surface z-10">
                                         <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
                                             <th style={{ padding: '12px 8px' }}>Timestamp</th>
                                             <th style={{ padding: '12px 8px' }}>User</th>
@@ -532,18 +533,18 @@ export default function CiscoFirewallPage() {
                     ) : guardianEvents.length === 0 ? (
                         <p className="text-text-muted">No matching logs found.</p>
                     ) : (
-                        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '500px' }}>
+                        <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                                <thead>
+                                <thead className="sticky top-0 bg-bg-surface z-10">
                                     <tr style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Timestamp</th>
-                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>IP / CIDR</th>
-                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Company / ASN</th>
-                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Type</th>
-                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Action</th>
-                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>VPN History</th>
-                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Trigger</th>
-                                        <th style={{ padding: '12px 8px', position: 'sticky', top: 0, background: 'var(--bg-surface)', zIndex: 10, borderBottom: '1px solid var(--border-color)' }}>Details</th>
+                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Timestamp</th>
+                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>IP / CIDR</th>
+                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Company / ASN</th>
+                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Type</th>
+                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Action</th>
+                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>VPN History</th>
+                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Trigger</th>
+                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Details</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -646,7 +647,7 @@ export default function CiscoFirewallPage() {
                     ) : (
                         <div style={{ overflowX: 'auto' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                                <thead>
+                                <thead className="sticky top-0 bg-bg-surface z-10">
                                     <tr style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
                                         <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Blacklisted Date</th>
                                         <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>IP Address</th>
@@ -689,6 +690,7 @@ export default function CiscoFirewallPage() {
                 </div>
             </div>
         )}
+            </div>
     </div>
     );
 }

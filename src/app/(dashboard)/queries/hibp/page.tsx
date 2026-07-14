@@ -2,13 +2,16 @@ import Link from "next/link";
 
 export default function HIBPQueryPage() {
     return (
-        <div>
-            <div className="mb-8">
-                <h1>Have I Been Pwned Utilities</h1>
-                <p className="text-text-secondary">Check if your accounts, passwords, or company domains have been compromised in data breaches.</p>
+        <div className="internal-scroll-layout">
+            <div className="shrink-0 flex flex-col gap-4">
+                <div className="mb-8">
+                    <h1>Have I Been Pwned Utilities</h1>
+                    <p className="text-text-secondary">Check if your accounts, passwords, or company domains have been compromised in data breaches.</p>
+                </div>
             </div>
 
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-8">
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-8">
                 <Link href="/queries/hibp/account" className="no-underline">
                     <div className="glass-card h-full cursor-pointer transition-colors duration-200 border border-transparent">
                         <div className="flex items-center mb-4 gap-3">
@@ -43,6 +46,7 @@ export default function HIBPQueryPage() {
                         </p>
                     </div>
                 </Link>
+                </div>
             </div>
         </div>
     );

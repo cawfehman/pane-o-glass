@@ -433,7 +433,8 @@ export default function VpnTroubleshootingPage() {
     };
 
     return (
-        <div className="wide-layout" style={{ paddingBottom: '3rem', width: '100%' }}>
+        <div className="internal-scroll-layout">
+            <div className="shrink-0 flex flex-col gap-4">
             {/* Header Area containing Title and Less Prominent SIEM Poller widget */}
             <header style={{ 
                 marginBottom: '2rem', 
@@ -715,14 +716,14 @@ export default function VpnTroubleshootingPage() {
                 )}
             </div>
 
+            </div> {/* Close shrink-0 flex flex-col gap-4 */}
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6 flex flex-col gap-4">
+
             {/* TAB CONTENT: feed */}
             {activeTab === "feed" && (
                 <>
                     {/* Sticky Search Bar (retains position on scroll with solid background & z-index) */}
                     <section style={{ 
-                        position: 'sticky', 
-                        top: '0px', 
-                        zIndex: 110, 
                         background: 'var(--bg-background)', 
                         padding: '16px 0',
                         borderBottom: '1px solid var(--border-color)',
@@ -870,8 +871,8 @@ export default function VpnTroubleshootingPage() {
                             <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1rem' }}>
                                 Search Results ({searchResults.length})
                             </h2>
-                            <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
-                                <div style={{ overflowY: 'auto', overflowX: 'auto', maxHeight: '400px', width: '100%' }}>
+                            <div className="glass-card flex-1 min-h-0 flex flex-col" style={{ padding: 0, overflow: 'hidden' }}>
+                                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6" style={{ width: '100%' }}>
                                     <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', textAlign: 'left' }}>
                                         <thead>
                                             <tr style={{ borderBottom: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
@@ -1029,8 +1030,8 @@ export default function VpnTroubleshootingPage() {
                             <Database size={20} className="text-accent-primary" />
                             Recent Activity Feed
                         </h2>
-                        <div className="glass-card" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
-                            <div style={{ overflowY: 'auto', overflowX: 'auto', maxHeight: '550px', width: '100%' }}>
+                        <div className="glass-card flex-1 min-h-0 flex flex-col" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
+                            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6" style={{ width: '100%' }}>
                                 <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', textAlign: 'left' }}>
                                     <thead>
                                         <tr style={{ borderBottom: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
@@ -1221,7 +1222,7 @@ export default function VpnTroubleshootingPage() {
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '2.5rem' }}>
                         {/* Last 10 Successful Source IPs */}
-                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '520px' }}>
+                        <div className="glass-card flex-1 min-h-0 flex flex-col">
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
                                 <div style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', padding: '8px', borderRadius: '8px' }}>
                                     <Wifi size={20} />
@@ -1301,7 +1302,7 @@ export default function VpnTroubleshootingPage() {
                         </div>
 
                         {/* Last 10 Failed Source IPs */}
-                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '520px' }}>
+                        <div className="glass-card flex-1 min-h-0 flex flex-col">
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
                                 <div style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '8px', borderRadius: '8px' }}>
                                     <ShieldAlert size={20} />
@@ -1666,7 +1667,7 @@ export default function VpnTroubleshootingPage() {
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(450px, 1fr))', gap: '24px', marginBottom: '2.5rem' }}>
                         {/* Top 10 Sessions by Upload (Tx) */}
-                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '540px' }}>
+                        <div className="glass-card flex-1 min-h-0 flex flex-col">
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
                                 <div style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', padding: '8px', borderRadius: '8px' }}>
                                     <ArrowUpRight size={20} />
@@ -1735,7 +1736,7 @@ export default function VpnTroubleshootingPage() {
                         </div>
 
                         {/* Top 10 Sessions by Download (Rx) */}
-                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', height: '540px' }}>
+                        <div className="glass-card flex-1 min-h-0 flex flex-col">
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
                                 <div style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', padding: '8px', borderRadius: '8px' }}>
                                     <ArrowDownLeft size={20} />
@@ -1817,6 +1818,7 @@ export default function VpnTroubleshootingPage() {
                     onRefreshData={fetchDashboardData}
                 />
             )}
+            </div>
 
             {/* Global viewport-fixed tooltip to avoid container clipping or screen edge overflow */}
             {hoveredUser && adUsers[hoveredUser] && (

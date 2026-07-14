@@ -71,8 +71,8 @@ export default function ThreatIntelPage() {
     };
 
     return (
-        <div className="internal-scroll-layout flex flex-col h-full">
-            <div style={{ flexShrink: 0 }}>
+        <div className="internal-scroll-layout">
+            <div className="shrink-0 flex flex-col gap-4">
                 {/* Header */}
                 <div className="mb-6">
                     <h1 style={{ fontSize: '2.25rem', fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -347,7 +347,7 @@ export default function ThreatIntelPage() {
 
             {/* Scrollable details below */}
             {result && !loading && (
-                <div style={{ flex: 1, overflowY: 'auto', paddingRight: '8px', minHeight: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                     {/* Threat Analysis Factors / Log events */}
                     <div className="glass-card p-6">
                         <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>

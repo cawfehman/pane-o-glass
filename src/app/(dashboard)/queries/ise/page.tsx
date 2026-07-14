@@ -259,9 +259,10 @@ export default function CiscoIsePage() {
     if (!hasIsePerm) return <div className="p-8 glass-card m-8 border-l-4 border-red-500 text-red-400">Access Denied: You do not have permission to view RADIUS endpoint forensics.</div>;
 
     return (
-        <div className="internal-scroll-layout flex flex-col h-full">
+        <div className="internal-scroll-layout">
+            <div className="shrink-0 flex flex-col gap-4">
             {/* Header Section */}
-            <div style={{ flexShrink: 0, paddingBottom: '24px' }}>
+            <div>
                 <div className="flex justify-between items-end mb-4">
                     <div>
                         <h1 style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -315,7 +316,7 @@ export default function CiscoIsePage() {
             </div>
 
             {/* Navigation Tabs */}
-            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', marginBottom: '32px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)' }}>
                 {([
                     { id: 'dashboard', label: 'Triage Heatmap' },
                     { id: 'live', label: 'Live Session' },
@@ -343,8 +344,10 @@ export default function CiscoIsePage() {
                 ))}
             </div>
 
+            </div>
+
             {/* Body Content */}
-            <div style={{ flex: 1, overflowY: activeTab === 'sites' ? 'hidden' : 'auto', display: 'flex', flexDirection: 'column', paddingRight: '4px' }} className="custom-scrollbar">
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6">
                 
                 {/* Triage Dashboard Tab */}
                 {activeTab === "dashboard" && (
@@ -703,7 +706,7 @@ export default function CiscoIsePage() {
 
                 {/* Read-Only Site Directory Tab */}
                 {activeTab === "sites" && (
-                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100%', overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                         <div className="glass-card mb-6" style={{ padding: '20px', borderTop: '4px solid var(--accent-primary)', textAlign: 'center', flexShrink: 0 }}>
                             <h3 style={{ margin: 0, marginBottom: '8px' }}>Site Codes and Locations</h3>
                             <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
@@ -738,7 +741,7 @@ export default function CiscoIsePage() {
                                 <p className="text-text-secondary">Loading configured site definitions...</p>
                             </div>
                         ) : (
-                            <div className="table-responsive custom-scrollbar" style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+                            <div className="table-responsive">
                                 <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0 }}>
                                     <thead>
                                         <tr>

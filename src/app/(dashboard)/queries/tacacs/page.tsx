@@ -245,9 +245,10 @@ export default function TacacsPage() {
     const failures = tacacsResult?.metrics?.failures || 0;
 
     return (
-        <div className="max-w-[1600px] mx-auto px-[20px] pb-[60px]">
+        <div className="internal-scroll-layout">
             
-            <div className="sticky top-[0px] z-100 py-[20px] pt-[30px] bg-[linear-gradient(to_bottom,var(--background-page)_90%,transparent)] backdrop-blur-[16px] border-b border-[rgba(255,255,255,0.05)]">
+            <div className="shrink-0 flex flex-col gap-4">
+                <div className="py-[20px] pt-[30px] border-b border-[rgba(255,255,255,0.05)]">
                 <div className="mb-[20px] flex justify-between items-center">
                     <div>
                         <h1 style={{ fontSize: '2.2rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -321,7 +322,9 @@ export default function TacacsPage() {
                 </h3>
                 <span className="count-badge">{tacacsResult?.sessions?.length || 0} RECORDS</span>
             </div>
+            </div>
 
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6">
             {isSearching ? (
                 <div style={{ textAlign: 'center', padding: '120px' }}>
                     <RefreshCw size={48} className="animate-spin" style={{ color: 'var(--accent-primary)', opacity: 0.3 }} />
@@ -333,6 +336,7 @@ export default function TacacsPage() {
                     ))}
                 </div>
             )}
+            </div>
             
             <style jsx>{`
                 .feed-card-compact:hover { background: rgba(255,255,255,0.05) !important; z-index: 10; }
