@@ -15,8 +15,15 @@ export default function UserMenu({ userName }: { userName: string }) {
                 setIsOpen(false);
             }
         }
+        function handleKeyDown(e: KeyboardEvent) {
+            if (e.key === "Escape") setIsOpen(false);
+        }
         document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+        document.addEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+            document.removeEventListener("keydown", handleKeyDown);
+        };
     }, []);
 
     return (

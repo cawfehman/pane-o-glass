@@ -1,7 +1,10 @@
 import type { NextAuthConfig } from "next-auth"
 
 export const authConfig = {
-    session: { strategy: "jwt" },
+    session: { 
+        strategy: "jwt",
+        maxAge: 30 * 60 // 30 minutes to match client-side timeout max
+    },
     pages: {
         signIn: '/login',
     },

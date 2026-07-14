@@ -123,7 +123,8 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                     asn: `AS${10000 + lastOctet}`,
                     org: mock.org,
                     subdivision: mock.subdivision,
-                    time_zone: "America/New_York"
+                    time_zone: "America/New_York",
+                    simulated: true
                 };
                 
                 await prisma.ipLookupCache.upsert({

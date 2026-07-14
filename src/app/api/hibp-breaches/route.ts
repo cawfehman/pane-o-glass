@@ -24,7 +24,7 @@ export async function GET(req: Request) {
         // Check if just fetching meta or a specific breach
         const params = url.searchParams;
         if (params.get("breachName")) {
-            endpoint = `https://haveibeenpwned.com/api/v3/breach/${params.get("breachName")}`;
+            endpoint = `https://haveibeenpwned.com/api/v3/breach/${encodeURIComponent(params.get("breachName") as string)}`;
             const clientIp = req.headers.get("x-forwarded-for")?.split(',')[0] || 'unknown';
             await logAudit("HIBP_BREACH_SEARCH", `Searched for breach details: ${params.get("breachName")}`, session.user?.id, clientIp);
         }

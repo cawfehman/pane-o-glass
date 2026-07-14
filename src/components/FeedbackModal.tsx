@@ -11,6 +11,14 @@ export default function FeedbackModal() {
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const pathname = usePathname();
 
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setIsOpen(false);
+        };
+        if (isOpen) document.addEventListener("keydown", handleKeyDown);
+        return () => document.removeEventListener("keydown", handleKeyDown);
+    }, [isOpen]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);

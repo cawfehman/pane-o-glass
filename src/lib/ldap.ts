@@ -1,4 +1,5 @@
 import { Client } from "ldapts";
+import logger from "@/lib/logger";
 
 function escapeLDAPSearchFilter(input: string): string {
     return String(input).replace(/[\*\(\)\\\0]/g, match => {
@@ -29,7 +30,7 @@ export async function authenticateWithAD(username: string, password: string): Pr
     const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
 
     if (!url || !bindDN || !bindPassword || !baseDN) {
-        console.error("LDAP configuration missing in environment variables.");
+        logger.error("LDAP configuration missing in environment variables.");
         return { isValid: false, groups: [] };
     }
 
@@ -39,12 +40,12 @@ export async function authenticateWithAD(username: string, password: string): Pr
     });
 
     try {
-        console.log(`LDAP: Attempting service account bind to ${url} with DN: ${bindDN}`);
+        logger.info(`LDAP: Attempting service account bind to ${url} with DN: ${bindDN}`);
         // Step 1: Bind with service account
         await client.bind(bindDN, bindPassword);
-        console.log("LDAP: Service account bind successful.");
+        logger.info("LDAP: Service account bind successful.");
 
-        console.log(`LDAP: Searching for user "${cleanUsername}" (original: "${username}") in baseDN "${baseDN}"`);
+        logger.info(`LDAP: Searching for user "${cleanUsername}" (original: "${username}") in baseDN "${baseDN}"`);
         // Step 2: Search for the user to get their full DN and groups
         // We search both sAMAccountName and userPrincipalName to be robust
         const escapedUsername = escapeLDAPSearchFilter(cleanUsername);
@@ -54,10 +55,10 @@ export async function authenticateWithAD(username: string, password: string): Pr
             scope: "sub",
             attributes: ["dn", "memberOf"],
         });
-        console.log(`LDAP: Search returned ${searchEntries.length} results.`);
+        logger.info(`LDAP: Search returned ${searchEntries.length} results.`);
 
         if (searchEntries.length === 0) {
-            console.warn(`LDAP User not found: ${username}`);
+            logger.warn(`LDAP User not found: ${username}`);
             return { isValid: false, groups: [] };
         }
 
@@ -79,19 +80,19 @@ export async function authenticateWithAD(username: string, password: string): Pr
             tlsOptions: url.startsWith("ldaps") ? { rejectUnauthorized } : undefined,
         });
 
-        console.log(`LDAP: Attempting user bind with DN: ${userDN}`);
+        logger.info(`LDAP: Attempting user bind with DN: ${userDN}`);
         try {
             await authClient.bind(userDN, password);
-            console.log(`LDAP: User ${username} authentication SUCCESSFUL.`);
+            logger.info(`LDAP: User ${username} authentication SUCCESSFUL.`);
             return { isValid: true, groups };
         } catch (err: any) {
-            console.warn(`LDAP Authentication failed for ${username}:`, err.message);
+            logger.warn(`LDAP Authentication failed for ${username}:`, err.message);
             return { isValid: false, groups: [] };
         } finally {
             await authClient.unbind();
         }
     } catch (err: any) {
-        console.error("LDAP Error:", err.message);
+        logger.error("LDAP Error:", err.message);
         return { isValid: false, groups: [] };
     } finally {
         try {
@@ -161,7 +162,7 @@ export async function getUserDetails(username: string) {
             isLockedOut: entry.lockoutTime && String(entry.lockoutTime) !== "0" && parseInt(String(entry.lockoutTime), 10) > 0 ? true : false,
         };
     } catch (err: any) {
-        console.error("LDAP Enrichment Error:", err.message);
+        logger.error("LDAP Enrichment Error:", err.message);
         return null;
     } finally {
         try { await client.unbind(); } catch (e) { }
@@ -232,7 +233,7 @@ export async function getBulkUserDetails(emails: string[]) {
             });
         }
     } catch (err: any) {
-        console.error("LDAP Bulk Enrichment Error:", err.message);
+        logger.error("LDAP Bulk Enrichment Error:", err.message);
     } finally {
         try { await client.unbind(); } catch (e) { }
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { HelpCircle, X } from "lucide-react";
 
 export interface TooltipDetails {
@@ -132,6 +132,14 @@ interface ToolHelpProps {
 export function ToolHelp({ toolId, iconSize = 20, triggerStyle }: ToolHelpProps) {
     const [isOpen, setIsOpen] = useState(false);
     const details = helpData[toolId];
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setIsOpen(false);
+        };
+        if (isOpen) document.addEventListener("keydown", handleKeyDown);
+        return () => document.removeEventListener("keydown", handleKeyDown);
+    }, [isOpen]);
 
     if (!details) return null;
 

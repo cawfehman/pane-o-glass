@@ -130,6 +130,12 @@ export default function ThreatIntelPage() {
                 {/* Snapshot Card (Summary & Info) */}
                 {result && !loading && (
                     <div className="animate-fadeIn" style={{ marginBottom: '24px' }}>
+                        {(result.details?.iplocate?.simulated || result.details?.reputation?.source === "simulated") && (
+                            <div style={{ padding: '12px 16px', marginBottom: '16px', background: 'rgba(234, 179, 8, 0.1)', color: '#eab308', border: '1px solid rgba(234, 179, 8, 0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                                <AlertTriangle size={18} />
+                                ⚠️ Simulated Data - API Key Missing for Enrichment Source
+                            </div>
+                        )}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
                             {/* Summary Card */}
                             <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '24px' }}>
