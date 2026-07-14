@@ -142,6 +142,11 @@ export async function GET() {
         // Fetch Probe Stats from SQLite
         metrics.totalProbes = await prisma.healthProbe.count();
 
+        // Fetch Cron Jobs
+        metrics.cronJobs = await prisma.backgroundJob.findMany({
+            orderBy: { name: 'asc' }
+        });
+
         const topSources = await prisma.healthProbe.groupBy({
             by: ['ipAddress'],
             _count: {

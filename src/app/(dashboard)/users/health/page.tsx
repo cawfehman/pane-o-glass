@@ -176,6 +176,86 @@ export default function SystemHealthPage() {
                         </div>
                     )}
 
+                    {/* Scheduled Jobs Monitor */}
+                    {metrics.cronJobs && metrics.cronJobs.length > 0 && (
+                        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', minHeight: '300px' }}>
+                            <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Scheduled Jobs Monitor</h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                {metrics.cronJobs.map((job: any, idx: number) => {
+                                    // Staleness Logic
+                                    const expectedIntervals: Record<string, number> = {
+                                        "Firewall Guardian": 2 * 60 * 1000, // 2 minutes
+                                        "Graylog VPN Sync": 5 * 60 * 1000,  // Daemon runs every 5 minutes
+                                        "Audit Log Cleanup": 24 * 60 * 60 * 1000 // 24 hours
+                                    };
+                                    
+                                    const lastRunTime = new Date(job.lastRun).getTime();
+                                    const timeSinceLastRun = Date.now() - lastRunTime;
+                                    const expectedInterval = expectedIntervals[job.name] || (24 * 60 * 60 * 1000); // default 24h
+                                    const isStale = timeSinceLastRun > expectedInterval * 2.5;
+
+                                    let displayStatus = job.status;
+                                    let statusColor = "var(--text-primary)";
+                                    let statusBg = "transparent";
+                                    let statusBorder = "transparent";
+                                    let icon = "⚪";
+
+                                    if (isStale) {
+                                        displayStatus = "STALE";
+                                        statusColor = "#eab308"; // yellow
+                                        statusBg = "rgba(234, 179, 8, 0.12)";
+                                        statusBorder = "1px solid rgba(234, 179, 8, 0.3)";
+                                        icon = "🟡";
+                                    } else if (job.status === "SUCCESS") {
+                                        statusColor = "#22c55e"; // green
+                                        statusBg = "rgba(34, 197, 94, 0.12)";
+                                        statusBorder = "1px solid rgba(34, 197, 94, 0.3)";
+                                        icon = "🟢";
+                                    } else {
+                                        statusColor = "#ef4444"; // red
+                                        statusBg = "rgba(239, 68, 68, 0.12)";
+                                        statusBorder = "1px solid rgba(239, 68, 68, 0.3)";
+                                        icon = "🔴";
+                                    }
+
+                                    // Format time ago
+                                    const minsAgo = Math.floor(timeSinceLastRun / 60000);
+                                    let timeAgoStr = minsAgo < 1 ? "Just now" : minsAgo < 60 ? `${minsAgo}m ago` : `${Math.floor(minsAgo/60)}h ${minsAgo%60}m ago`;
+
+                                    return (
+                                        <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(0, 0, 0, 0.15)', padding: '12px 14px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.03)' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    {icon} {job.name.toUpperCase()}
+                                                </span>
+                                                <span style={{ 
+                                                    padding: '3px 8px', 
+                                                    borderRadius: '6px', 
+                                                    fontSize: '0.7rem', 
+                                                    fontWeight: 'bold',
+                                                    background: statusBg,
+                                                    color: statusColor,
+                                                    border: statusBorder
+                                                }}>
+                                                    {displayStatus}
+                                                </span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginTop: '4px' }}>
+                                                <span style={{ color: 'var(--text-secondary)' }}>Last Run</span>
+                                                <span style={{ fontWeight: 600, color: isStale ? '#eab308' : 'var(--text-primary)' }}>{timeAgoStr}</span>
+                                            </div>
+                                            {job.message && (
+                                                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'monospace', background: 'rgba(0,0,0,0.2)', padding: '6px 8px', borderRadius: '4px', marginTop: '4px', wordBreak: 'break-word' }}>
+                                                    {job.message}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Top Probes */}
                     <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', maxHeight: '400px' }}>
                         <h3 style={{ flexShrink: 0, marginBottom: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '8px' }}>Top API Probe Sources</h3>
