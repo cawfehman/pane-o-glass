@@ -1,50 +1,11 @@
 "use client";
 
-import { useState, useRef, MouseEvent, WheelEvent, useEffect } from "react";
-import { ZoomIn, ZoomOut, RotateCcw, Globe, ShieldAlert, CheckCircle, Activity, Play } from "lucide-react";
-
-interface VpnEvent {
-    id: string;
-    username: string;
-    sourceIp: string;
-    assignedIp?: string | null;
-    status: string;
-    duration?: number | null;
-    bytesSent?: number | null;
-    bytesReceived?: number | null;
-    bytesTotal?: number | null;
-    failureReason?: string | null;
-    vpnType?: string | null;
-    vpnStream?: string | null;
-    ipAsn?: string | null;
-    ipAsName?: string | null;
-    ipAsDomain?: string | null;
-    ipCountry?: string | null;
-    ipCountryCode?: string | null;
-    createdAt: string | Date;
-}
-
-interface VpnWorldMapProps {
-    successfulIps: VpnEvent[];
-    failedIps: VpnEvent[];
-    recentEvents: VpnEvent[];
-    securityScope: string;
-    setSecurityScope: (val: string) => void;
-    ipCache?: Record<string, any>;
-    onRefreshData?: () => Promise<void> | void;
-}
-
-interface GeoJsonFeature {
-    type: "Feature";
-    properties: {
-        name: string;
-        [key: string]: any;
-    };
-    geometry: {
-        type: "Polygon" | "MultiPolygon";
-        coordinates: any[];
-    };
-}
+import { useState, useRef, useEffect, useMemo } from "react";
+import { Globe } from "lucide-react";
+import { VpnEvent, GeoJsonFeature } from "./vpn/types";
+import { MapFilters } from "./vpn/MapFilters";
+import { MapControls } from "./vpn/MapControls";
+import { MapCanvas, project, projectUS, projectWorld } from "./vpn/MapCanvas";
 
 // Center points mapping for common country codes (Equirectangular Projection)
 const countryCoordinates: Record<string, { lat: number; lng: number; name: string }> = {
@@ -99,6 +60,16 @@ const countryCoordinates: Record<string, { lat: number; lng: number; name: strin
 
 const HQ_COORDS = { lat: 39.9526, lng: -75.1652, name: "Corporate Gateways" };
 
+export interface VpnWorldMapProps {
+    successfulIps: VpnEvent[];
+    failedIps: VpnEvent[];
+    recentEvents: VpnEvent[];
+    securityScope: string;
+    setSecurityScope: (val: string) => void;
+    ipCache?: Record<string, any>;
+    onRefreshData?: () => Promise<void> | void;
+}
+
 export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents = [], securityScope, setSecurityScope, ipCache = {}, onRefreshData }: VpnWorldMapProps) {
     const [zoom, setZoom] = useState<number>(1);
     const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -121,7 +92,9 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
     const isUsView = showUsStates;
 
-    // Zoom to specific state bounds
+    const svgRef = useRef<SVGSVGElement | null>(null);
+    const hqPos = useMemo(() => project(HQ_COORDS.lat, HQ_COORDS.lng, isUsView), [isUsView]);
+
     const zoomToStateBounds = (stateName: string) => {
         if (!usStatesGeoJson) return;
         const feature = usStatesGeoJson.features.find((f: any) => f.properties.name === stateName);
@@ -217,35 +190,6 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
         checkAndEnrich();
     }, [showUsStates, ipCache, successfulIps, failedIps, onRefreshData]);
 
-    const svgRef = useRef<SVGSVGElement | null>(null);
-
-    // World Equirectangular projection (900x500 viewport)
-    const projectWorld = (lat: number, lng: number) => {
-        const x = 450 + (lng * 400) / 180;
-        const y = 250 - (lat * 200) / 90;
-        return { x, y };
-    };
-
-    // US-dedicated projection: maps continental US bounding box to fill 900x500 viewport
-    // Continental US bounds: lat 24.5..49.5, lng -125..-66.5
-    const projectUS = (lat: number, lng: number) => {
-        const minLat = 24.0, maxLat = 50.0;
-        const minLng = -126.0, maxLng = -65.0;
-        const padX = 40, padY = 30;
-        const w = 900 - padX * 2;
-        const h = 500 - padY * 2;
-        const x = padX + ((lng - minLng) / (maxLng - minLng)) * w;
-        const y = padY + ((maxLat - lat) / (maxLat - minLat)) * h;
-        return { x, y };
-    };
-
-    // Active projection: switches based on current view
-    const project = (lat: number, lng: number) => {
-        return isUsView ? projectUS(lat, lng) : projectWorld(lat, lng);
-    };
-
-    const hqPos = project(HQ_COORDS.lat, HQ_COORDS.lng);
-
     // Fetch simplified world geometry on mount
     useEffect(() => {
         let active = true;
@@ -279,188 +223,6 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
         }
     }, [showUsStates, usStatesGeoJson, loadingStates]);
 
-    // Path generators
-    const getFeaturePath = (feature: GeoJsonFeature, useProjection?: (lat: number, lng: number) => { x: number; y: number }) => {
-        const { type, coordinates } = feature.geometry;
-        const proj = useProjection || project;
-        const formatCoord = (coord: [number, number]) => {
-            const pt = proj(coord[1], coord[0]);
-            return `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
-        };
-
-        if (type === "Polygon") {
-            return coordinates.map(ring => "M " + ring.map(formatCoord).join(" L ") + " Z").join(" ");
-        } else if (type === "MultiPolygon") {
-            return coordinates.map(poly => poly.map((ring: any[]) => "M " + ring.map(formatCoord).join(" L ") + " Z").join(" ")).join(" ");
-        }
-        return "";
-    };
-
-    // Advanced Data Filtering & Aggregation Logics
-    const getAggregatedData = () => {
-        const list: any[] = [];
-        const allEvents = [...recentEvents, ...successfulIps, ...failedIps];
-
-        // Sort events chronologically to evaluate state transitions correctly
-        const sortedEvents = [...allEvents].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-
-        if (mapFilter === "active") {
-            // Track active successful tunnels (SUCCESS without matching subsequent DISCONNECT)
-            const activeTunnels = new Map<string, VpnEvent>();
-            for (const evt of sortedEvents) {
-                const key = `${evt.username}-${evt.sourceIp}`;
-                if (evt.status === "SUCCESS") {
-                    activeTunnels.set(key, evt);
-                } else if (evt.status === "DISCONNECT") {
-                    activeTunnels.delete(key);
-                }
-            }
-
-            // Group active connections by location (IP/City-level)
-            const grouped: Record<string, { key: string; countryCode: string; name: string; coords: { x: number; y: number }; count: number; events: VpnEvent[]; cityName?: string | null; stateName?: string | null; org?: string }> = {};
-            activeTunnels.forEach(evt => {
-                const code = evt.ipCountryCode?.toUpperCase() || "US";
-                const ip = evt.sourceIp;
-                const cacheEntry = ipCache && ipCache[ip];
-                
-                // Group key is the IP if cached (to show city beacon), or country code if not cached
-                const groupKey = cacheEntry ? ip : code;
-
-                if (!grouped[groupKey]) {
-                    const coords = cacheEntry && cacheEntry.latitude != null
-                        ? project(cacheEntry.latitude, cacheEntry.longitude)
-                        : (countryCoordinates[code] ? project(countryCoordinates[code].lat, countryCoordinates[code].lng) : project(37.0902, -95.7129));
-                    
-                    const cityName = cacheEntry?.city || null;
-                    const stateName = cacheEntry?.subdivision || null;
-                    const org = cacheEntry?.details?.org || evt.ipAsName || "N/A";
-
-                    grouped[groupKey] = {
-                        key: groupKey,
-                        countryCode: code,
-                        name: cityName && stateName ? `${cityName}, ${stateName}` : (evt.ipCountry || countryCoordinates[code]?.name || "Unknown Location"),
-                        coords,
-                        count: 0,
-                        events: [],
-                        cityName,
-                        stateName,
-                        org
-                    };
-                }
-                grouped[groupKey].count++;
-                if (grouped[groupKey].events.length < 5) grouped[groupKey].events.push(evt);
-            });
-            return Object.values(grouped);
-
-        } else if (mapFilter === "completed") {
-            // Completed connections = DISCONNECT events in current window
-            const completedEvents = sortedEvents.filter(e => e.status === "DISCONNECT");
-            const grouped: Record<string, { key: string; countryCode: string; name: string; coords: { x: number; y: number }; count: number; events: VpnEvent[]; cityName?: string | null; stateName?: string | null; org?: string }> = {};
-            
-            for (const evt of completedEvents) {
-                const code = evt.ipCountryCode?.toUpperCase() || "US";
-                const ip = evt.sourceIp;
-                const cacheEntry = ipCache && ipCache[ip];
-                
-                // Group key is the IP if cached (to show city beacon), or country code if not cached
-                const groupKey = cacheEntry ? ip : code;
-
-                if (!grouped[groupKey]) {
-                    const coords = cacheEntry && cacheEntry.latitude != null
-                        ? project(cacheEntry.latitude, cacheEntry.longitude)
-                        : (countryCoordinates[code] ? project(countryCoordinates[code].lat, countryCoordinates[code].lng) : project(37.0902, -95.7129));
-                    
-                    const cityName = cacheEntry?.city || null;
-                    const stateName = cacheEntry?.subdivision || null;
-                    const org = cacheEntry?.details?.org || evt.ipAsName || "N/A";
-
-                    grouped[groupKey] = {
-                        key: groupKey,
-                        countryCode: code,
-                        name: cityName && stateName ? `${cityName}, ${stateName}` : (evt.ipCountry || countryCoordinates[code]?.name || "Unknown Location"),
-                        coords,
-                        count: 0,
-                        events: [],
-                        cityName,
-                        stateName,
-                        org
-                    };
-                }
-                grouped[groupKey].count++;
-                if (grouped[groupKey].events.length < 5) grouped[groupKey].events.push(evt);
-            }
-            return Object.values(grouped);
-
-        } else {
-            // FAILED / FAILED-VALID: Aggregate by Source IP
-            const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
-            const failures = sortedEvents.filter(evt => {
-                if (evt.status !== "FAILURE") return false;
-                if (mapFilter === "failed-valid") {
-                    const clean = evt.username?.toLowerCase().endsWith("@cooperhealth.edu") ? evt.username.slice(0, -17) : evt.username;
-                    return nameNameRegex.test(clean);
-                }
-                return true;
-            });
-
-            const ipGrouped: Record<string, {
-                ip: string;
-                countryCode: string;
-                countryName: string;
-                coords: { x: number; y: number };
-                count: number;
-                reasons: Set<string>;
-                usernames: Set<string>;
-                asnName: string;
-                lastEvent: VpnEvent;
-                cityName?: string | null;
-                stateName?: string | null;
-                org?: string;
-                timezone?: string | null;
-            }> = {};
-
-            for (const evt of failures) {
-                const ip = evt.sourceIp;
-                const code = evt.ipCountryCode?.toUpperCase() || "US";
-                const cacheEntry = ipCache && ipCache[ip];
-
-                const coords = cacheEntry && cacheEntry.latitude != null
-                    ? project(cacheEntry.latitude, cacheEntry.longitude)
-                    : (countryCoordinates[code] ? project(countryCoordinates[code].lat, countryCoordinates[code].lng) : project(37.0902, -95.7129));
-
-                if (!ipGrouped[ip]) {
-                    const cityName = cacheEntry?.city || null;
-                    const stateName = cacheEntry?.subdivision || null;
-                    const org = cacheEntry?.details?.org || evt.ipAsName || "N/A";
-                    const timezone = cacheEntry?.details?.time_zone || null;
-
-                    ipGrouped[ip] = {
-                        ip,
-                        countryCode: code,
-                        countryName: cityName && stateName ? `${cityName}, ${stateName}` : (evt.ipCountry || countryCoordinates[code]?.name || "Unknown Location"),
-                        coords,
-                        count: 0,
-                        reasons: new Set(),
-                        usernames: new Set(),
-                        asnName: org,
-                        lastEvent: evt,
-                        cityName,
-                        stateName,
-                        org,
-                        timezone
-                    };
-                }
-                ipGrouped[ip].count++;
-                if (evt.failureReason) ipGrouped[ip].reasons.add(evt.failureReason);
-                if (evt.username) ipGrouped[ip].usernames.add(evt.username);
-            }
-
-            const points = Object.values(ipGrouped);
-            return applyRadialSpidering(points);
-        }
-    };
-
-    // Apply radial spidering offset to collision nodes (same city/coord) to prevent overlapping circles
     const applyRadialSpidering = (points: any[]) => {
         const coordGroups: Record<string, any[]> = {};
         points.forEach(pt => {
@@ -492,28 +254,146 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
         return points;
     };
 
-    const mapPoints = getAggregatedData();
+    const mapPoints = useMemo(() => {
+        const list: any[] = [];
+        const allEvents = [...recentEvents, ...successfulIps, ...failedIps];
 
-    // Mouse scroll wheel zooming
-    const handleWheel = (e: WheelEvent<SVGSVGElement>) => {
-        e.preventDefault();
-        const zoomFactor = 0.1;
-        const newZoom = e.deltaY < 0 ? Math.min(zoom + zoomFactor, 6) : Math.max(zoom - zoomFactor, 0.8);
-        setZoom(newZoom);
-    };
+        // Sort events chronologically to evaluate state transitions correctly
+        const sortedEvents = [...allEvents].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-    // Dragging viewport handlers
-    const handleMouseDown = (e: MouseEvent<SVGSVGElement>) => {
-        setIsDragging(true);
-        setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
-    };
+        if (mapFilter === "active") {
+            const activeTunnels = new Map<string, VpnEvent>();
+            for (const evt of sortedEvents) {
+                const key = `${evt.username}-${evt.sourceIp}`;
+                if (evt.status === "SUCCESS") {
+                    activeTunnels.set(key, evt);
+                } else if (evt.status === "DISCONNECT") {
+                    activeTunnels.delete(key);
+                }
+            }
 
-    const handleMouseMove = (e: MouseEvent<SVGSVGElement>) => {
-        if (!isDragging) return;
-        setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
-    };
+            const grouped: Record<string, any> = {};
+            activeTunnels.forEach(evt => {
+                const code = evt.ipCountryCode?.toUpperCase() || "US";
+                const ip = evt.sourceIp;
+                const cacheEntry = ipCache && ipCache[ip];
+                const groupKey = cacheEntry ? ip : code;
 
-    const handleMouseUp = () => { setIsDragging(false); };
+                if (!grouped[groupKey]) {
+                    const coords = cacheEntry && cacheEntry.latitude != null
+                        ? project(cacheEntry.latitude, cacheEntry.longitude, isUsView)
+                        : (countryCoordinates[code] ? project(countryCoordinates[code].lat, countryCoordinates[code].lng, isUsView) : project(37.0902, -95.7129, isUsView));
+                    
+                    const cityName = cacheEntry?.city || null;
+                    const stateName = cacheEntry?.subdivision || null;
+                    const org = cacheEntry?.details?.org || evt.ipAsName || "N/A";
+
+                    grouped[groupKey] = {
+                        key: groupKey,
+                        countryCode: code,
+                        name: cityName && stateName ? `${cityName}, ${stateName}` : (evt.ipCountry || countryCoordinates[code]?.name || "Unknown Location"),
+                        coords,
+                        count: 0,
+                        events: [],
+                        cityName,
+                        stateName,
+                        org
+                    };
+                }
+                grouped[groupKey].count++;
+                if (grouped[groupKey].events.length < 5) grouped[groupKey].events.push(evt);
+            });
+            return Object.values(grouped);
+
+        } else if (mapFilter === "completed") {
+            const completedEvents = sortedEvents.filter(e => e.status === "DISCONNECT");
+            const grouped: Record<string, any> = {};
+            
+            for (const evt of completedEvents) {
+                const code = evt.ipCountryCode?.toUpperCase() || "US";
+                const ip = evt.sourceIp;
+                const cacheEntry = ipCache && ipCache[ip];
+                const groupKey = cacheEntry ? ip : code;
+
+                if (!grouped[groupKey]) {
+                    const coords = cacheEntry && cacheEntry.latitude != null
+                        ? project(cacheEntry.latitude, cacheEntry.longitude, isUsView)
+                        : (countryCoordinates[code] ? project(countryCoordinates[code].lat, countryCoordinates[code].lng, isUsView) : project(37.0902, -95.7129, isUsView));
+                    
+                    const cityName = cacheEntry?.city || null;
+                    const stateName = cacheEntry?.subdivision || null;
+                    const org = cacheEntry?.details?.org || evt.ipAsName || "N/A";
+
+                    grouped[groupKey] = {
+                        key: groupKey,
+                        countryCode: code,
+                        name: cityName && stateName ? `${cityName}, ${stateName}` : (evt.ipCountry || countryCoordinates[code]?.name || "Unknown Location"),
+                        coords,
+                        count: 0,
+                        events: [],
+                        cityName,
+                        stateName,
+                        org
+                    };
+                }
+                grouped[groupKey].count++;
+                if (grouped[groupKey].events.length < 5) grouped[groupKey].events.push(evt);
+            }
+            return Object.values(grouped);
+
+        } else {
+            const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
+            const failures = sortedEvents.filter(evt => {
+                if (evt.status !== "FAILURE") return false;
+                if (mapFilter === "failed-valid") {
+                    const clean = evt.username?.toLowerCase().endsWith("@cooperhealth.edu") ? evt.username.slice(0, -17) : evt.username;
+                    return nameNameRegex.test(clean);
+                }
+                return true;
+            });
+
+            const ipGrouped: Record<string, any> = {};
+
+            for (const evt of failures) {
+                const ip = evt.sourceIp;
+                const code = evt.ipCountryCode?.toUpperCase() || "US";
+                const cacheEntry = ipCache && ipCache[ip];
+
+                const coords = cacheEntry && cacheEntry.latitude != null
+                    ? project(cacheEntry.latitude, cacheEntry.longitude, isUsView)
+                    : (countryCoordinates[code] ? project(countryCoordinates[code].lat, countryCoordinates[code].lng, isUsView) : project(37.0902, -95.7129, isUsView));
+
+                if (!ipGrouped[ip]) {
+                    const cityName = cacheEntry?.city || null;
+                    const stateName = cacheEntry?.subdivision || null;
+                    const org = cacheEntry?.details?.org || evt.ipAsName || "N/A";
+                    const timezone = cacheEntry?.details?.time_zone || null;
+
+                    ipGrouped[ip] = {
+                        ip,
+                        countryCode: code,
+                        countryName: cityName && stateName ? `${cityName}, ${stateName}` : (evt.ipCountry || countryCoordinates[code]?.name || "Unknown Location"),
+                        coords,
+                        count: 0,
+                        reasons: new Set(),
+                        usernames: new Set(),
+                        asnName: org,
+                        lastEvent: evt,
+                        cityName,
+                        stateName,
+                        org,
+                        timezone
+                    };
+                }
+                ipGrouped[ip].count++;
+                if (evt.failureReason) ipGrouped[ip].reasons.add(evt.failureReason);
+                if (evt.username) ipGrouped[ip].usernames.add(evt.username);
+            }
+
+            const points = Object.values(ipGrouped);
+            return applyRadialSpidering(points);
+        }
+    }, [recentEvents, successfulIps, failedIps, mapFilter, ipCache, isUsView]);
 
     const handleFocusUS = () => {
         setShowUsStates(true);
@@ -529,104 +409,15 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
         setPan({ x: 0, y: 0 });
     };
 
-    // format session duration helper
-    const formatDuration = (sec: number | null | undefined) => {
-        if (!sec) return "N/A";
-        const h = Math.floor(sec / 3600);
-        const m = Math.floor((sec % 3600) / 60);
-        return h > 0 ? `${h}h ${m}m` : `${m} min`;
-    };
-
-    // format bytes helper
-    const formatBytes = (bytes: number | null | undefined) => {
-        if (bytes == null) return "0 B";
-        if (bytes === 0) return "0 B";
-        const k = 1024;
-        const sizes = ["B", "KB", "MB", "GB"];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-    };
-
-    const calculateArcPath = (startX: number, startY: number, endX: number, endY: number) => {
-        const dx = endX - startX;
-        const dy = endY - startY;
-        const dr = Math.sqrt(dx * dx + dy * dy);
-        
-        const midX = (startX + endX) / 2;
-        const midY = (startY + endY) / 2;
-        
-        const angle = Math.atan2(dy, dx);
-        const perpAngle = angle - Math.PI / 2;
-        const offset = Math.min(dr * 0.25, 120);
-        
-        const ctrlX = midX + Math.cos(perpAngle) * offset;
-        const ctrlY = midY + Math.sin(perpAngle) * offset;
-
-        return `M ${startX} ${startY} Q ${ctrlX} ${ctrlY} ${endX} ${endY}`;
-    };
-
-    const getArcColor = (c: any) => {
-        if (mapFilter === "failed" || mapFilter === "failed-valid") return "rgba(239, 68, 68, 0.35)";
-        if (mapFilter === "completed") return "rgba(156, 163, 175, 0.4)";
-        return "rgba(34, 197, 94, 0.4)"; // active
-    };
-
-    const getGlowColor = (c: any) => {
-        if (mapFilter === "failed" || mapFilter === "failed-valid") return "#ef4444";
-        if (mapFilter === "completed") return "#9ca3af";
-        return "#22c55e"; // active
-    };
-
     return (
         <div className="flex flex-col gap-5 flex-1 min-h-0 animate-fadeIn">
             
-            {/* Tab Filter & Period Header Configuration Bar */}
-            <div className="flex justify-between items-center bg-bg-surface px-4 py-3 rounded-xl border border-border-color flex-wrap gap-4">
-                {/* Visualizer Filters */}
-                <div className="flex gap-2 flex-wrap">
-                    <button
-                        onClick={() => setMapFilter("active")}
-                        className={`flex items-center gap-1.5 text-[0.8rem] px-3 py-1.5 rounded-md ${mapFilter === "active" ? "btn-primary" : "btn-secondary"}`}
-                    >
-                        <Activity size={14} /> Active Connections
-                    </button>
-                    <button
-                        onClick={() => setMapFilter("failed")}
-                        className={`flex items-center gap-1.5 text-[0.8rem] px-3 py-1.5 rounded-md ${mapFilter === "failed" ? "btn-primary" : "btn-secondary"}`}
-                    >
-                        <ShieldAlert size={14} color="#ef4444" /> All Failed Attempts
-                    </button>
-                    <button
-                        onClick={() => setMapFilter("failed-valid")}
-                        className={`flex items-center gap-1.5 text-[0.8rem] px-3 py-1.5 rounded-md ${mapFilter === "failed-valid" ? "btn-primary" : "btn-secondary"}`}
-                    >
-                        <ShieldAlert size={14} color="#f59e0b" /> Failed Valid Users
-                    </button>
-                    <button
-                        onClick={() => setMapFilter("completed")}
-                        className={`flex items-center gap-1.5 text-[0.8rem] px-3 py-1.5 rounded-md ${mapFilter === "completed" ? "btn-primary" : "btn-secondary"}`}
-                    >
-                        <CheckCircle size={14} /> Completed Sessions
-                    </button>
-                </div>
-
-                {/* Time scope dropdown selector matching page layout */}
-                <div className="flex items-center gap-2.5">
-                    <span className="text-[0.8rem] text-text-muted font-semibold">Time Filter:</span>
-                    <select
-                        value={securityScope}
-                        onChange={(e) => setSecurityScope(e.target.value)}
-                        className="bg-black/20 border border-border-color text-text-primary px-3 py-1.5 rounded-md text-[0.8rem] outline-none cursor-pointer focus:border-accent-primary"
-                    >
-                        <option value="last24hours">Last 24 Hours</option>
-                        <option value="today">Today</option>
-                        <option value="yesterday">Yesterday</option>
-                        <option value="last7days">Last 7 Days</option>
-                        <option value="last14days">Last 14 Days</option>
-                        <option value="last30days">Last 30 Days</option>
-                    </select>
-                </div>
-            </div>
+            <MapFilters
+                mapFilter={mapFilter as any}
+                setMapFilter={setMapFilter as any}
+                securityScope={securityScope}
+                setSecurityScope={setSecurityScope}
+            />
 
             <div className="glass-card p-6 flex flex-col flex-1 relative min-h-[520px] overflow-hidden">
                 
@@ -653,324 +444,43 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                 <div className="flex gap-5 flex-1 min-h-[520px]">
                     
                     <div className="flex-1 relative overflow-hidden bg-[#090a0f] rounded-lg border border-border-color flex flex-col">
-                        {/* Viewport Controls with Focus US Option inside the map canvas area */}
-                        <div className="absolute right-4 top-4 flex flex-col gap-2 z-20">
-                            <button onClick={() => setZoom(prev => Math.min(prev + 0.3, 6))} className="btn-primary p-2 rounded-md border border-border-color cursor-pointer flex items-center justify-center">
-                                <ZoomIn size={16} />
-                            </button>
-                            <button onClick={() => setZoom(prev => Math.max(prev - 0.3, 0.8))} className="btn-primary p-2 rounded-md border border-border-color cursor-pointer flex items-center justify-center">
-                                <ZoomOut size={16} />
-                            </button>
-                            <button onClick={handleFocusUS} className="btn-primary px-3 py-2 rounded-md border border-border-color cursor-pointer text-xs font-bold">
-                                Focus US
-                            </button>
-                            <button onClick={handleReset} className="btn-primary p-2 rounded-md border border-border-color cursor-pointer flex items-center justify-center">
-                                <RotateCcw size={16} />
-                            </button>
-                        </div>
+                        <MapControls
+                            onZoomIn={() => setZoom(prev => Math.min(prev + 0.3, 6))}
+                            onZoomOut={() => setZoom(prev => Math.max(prev - 0.3, 0.8))}
+                            onFocusUS={handleFocusUS}
+                            onReset={handleReset}
+                        />
+
                         {loadingMap ? (
                             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-text-muted">
                                 <div className="w-6 h-6 border-2 border-white/10 border-t-accent-primary rounded-full animate-spin"></div>
                                 <span className="text-[0.85rem]">LOADING CARTOGRAPHY...</span>
                             </div>
                         ) : (
-                            <svg
-                                ref={svgRef}
-                                width="100%"
-                                height="100%"
-                                viewBox="0 0 900 500"
-                                onMouseDown={handleMouseDown}
-                                onMouseMove={handleMouseMove}
-                                onMouseUp={handleMouseUp}
-                                onMouseLeave={handleMouseUp}
-                                onWheel={handleWheel}
-                                style={{ cursor: isDragging ? 'grabbing' : 'grab', flex: 1 }}
-                            >
-                                <g transform={isUsView ? `translate(${pan.x}, ${pan.y}) scale(${zoom})` : `translate(${450 + pan.x}, ${250 + pan.y}) scale(${zoom}) translate(-450, -250)`} style={{ transition: isDragging ? 'none' : 'transform 0.15s ease-out' }}>
-                                    
-                                    <rect width="900" height="500" fill="#090a0f" />
-
-                                    {/* Render US states borders if US view active, else render world countries */}
-                                    {isUsView ? (
-                                        usStatesGeoJson && (
-                                            <g fill="rgba(99, 102, 241, 0.03)" stroke="rgba(99, 102, 241, 0.25)" strokeWidth="0.6" className="animate-fadeIn">
-                                                {usStatesGeoJson?.features?.map((feat: GeoJsonFeature, i: number) => {
-                                                    const stateName = feat.properties.name;
-                                                    const isSelected = selectedState === stateName;
-                                                    return (
-                                                        <path 
-                                                            key={`us-state-${i}`} 
-                                                            d={getFeaturePath(feat, projectUS)}
-                                                            fill={isSelected ? "rgba(99, 102, 241, 0.12)" : "rgba(99, 102, 241, 0.03)"}
-                                                            stroke={isSelected ? "var(--accent-primary)" : "rgba(99, 102, 241, 0.25)"}
-                                                            strokeWidth={isSelected ? "1.2" : "0.6"}
-                                                            style={{ transition: 'all 0.25s', cursor: 'pointer' }}
-                                                            onClick={() => zoomToStateBounds(stateName)}
-                                                            onMouseEnter={(e) => {
-                                                                if (!isSelected) {
-                                                                    (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.08)");
-                                                                }
-                                                            }}
-                                                            onMouseLeave={(e) => {
-                                                                if (!isSelected) {
-                                                                    (e.target as SVGPathElement).setAttribute("fill", "rgba(99, 102, 241, 0.03)");
-                                                                }
-                                                            }}
-                                                        />
-                                                    );
-                                                })}
-                                            </g>
-                                        )
-                                    ) : (
-                                        <g fill="rgba(255, 255, 255, 0.02)" stroke="rgba(255, 255, 255, 0.07)" strokeWidth="0.8">
-                                            {geoJson?.features?.map((feat: GeoJsonFeature, i: number) => {
-                                                const isUS = feat.properties.name === "United States of America" || feat.properties.name === "United States" || feat.properties.name === "USA";
-                                                return (
-                                                    <path 
-                                                        key={`world-country-${i}`} 
-                                                        d={getFeaturePath(feat, projectWorld)} 
-                                                        style={{ 
-                                                            transition: 'fill 0.2s',
-                                                            cursor: isUS ? 'pointer' : 'default'
-                                                        }}
-                                                        onClick={() => {
-                                                            if (isUS) {
-                                                                handleFocusUS();
-                                                            }
-                                                        }}
-                                                        onMouseEnter={(e) => {
-                                                            (e.target as SVGPathElement).setAttribute("fill", isUS ? "rgba(99, 102, 241, 0.12)" : "rgba(99, 102, 241, 0.06)");
-                                                        }}
-                                                        onMouseLeave={(e) => {
-                                                            (e.target as SVGPathElement).setAttribute("fill", "rgba(255, 255, 255, 0.02)");
-                                                        }}
-                                                    />
-                                                );
-                                            })}
-                                        </g>
-                                    )}
-
-                                    {/* Render spider offset lines linking offset beacons to city centers */}
-                                    {isUsView && mapPoints.map((pt, idx) => {
-                                        if (pt.parentCoords && (!selectedState || pt.stateName === selectedState)) {
-                                            return (
-                                                <line
-                                                    key={`spider-leg-${idx}`}
-                                                    x1={pt.parentCoords.x}
-                                                    y1={pt.parentCoords.y}
-                                                    x2={pt.coords.x}
-                                                    y2={pt.coords.y}
-                                                    stroke="rgba(99, 102, 241, 0.4)"
-                                                    strokeWidth="0.8"
-                                                    strokeDasharray="2,2"
-                                                />
-                                            );
-                                        }
-                                        return null;
-                                    })}
-
-                                    {/* Connection Bezier curves (clean static solid paths) */}
-                                    {mapPoints.map((pt, idx) => {
-                                        if (isUsView && pt.countryCode !== "US") return null;
-                                        if (isUsView && selectedState && pt.stateName !== selectedState) return null;
-                                        return (
-                                            <g key={`arc-${idx}`}>
-                                                <path
-                                                    d={calculateArcPath(hqPos.x, hqPos.y, pt.coords.x, pt.coords.y)}
-                                                    fill="none"
-                                                    stroke={getArcColor(pt)}
-                                                    strokeWidth={Math.min(1.5 + (pt.count * 0.4), 4)}
-                                                    opacity="0.85"
-                                                    strokeDasharray="4,4"
-                                                    style={{ animation: 'pulseFlow 4s linear infinite', pointerEvents: 'none' }}
-                                                />
-                                            </g>
-                                        );
-                                    })}
-
-                                    {/* Aggregated Beacons */}
-                                    {mapPoints.map((pt, idx) => {
-                                        if (isUsView && pt.countryCode !== "US") return null;
-                                        if (isUsView && selectedState && pt.stateName !== selectedState) return null;
-
-                                        const isFail = mapFilter === "failed" || mapFilter === "failed-valid";
-                                        const pointColor = getGlowColor(pt);
-                                        
-                                        return (
-                                            <g
-                                                key={`point-${idx}`}
-                                                transform={`translate(${pt.coords.x}, ${pt.coords.y})`}
-                                                onMouseEnter={(e) => {
-                                                    const projectedX = pt.coords.x * zoom + pan.x;
-                                                    const projectedY = pt.coords.y * zoom + pan.y;
-                                                    
-                                                    // Tooltip width is 310px. Offset position cleanly based on screen location
-                                                    let tx = projectedX + 15;
-                                                    if (projectedX > 550) {
-                                                        tx = projectedX - 325; // render to the left
-                                                    }
-                                                    
-                                                    let ty = projectedY - 80;
-                                                    if (projectedY > 350) {
-                                                        ty = projectedY - 220; // render higher up to avoid bottom overflow
-                                                    } else if (projectedY < 100) {
-                                                        ty = projectedY + 15; // render lower down
-                                                    }
-
-                                                    setHoveredPoint(pt);
-                                                    setTooltipPos({
-                                                        x: tx,
-                                                        y: ty
-                                                    });
-                                                }}
-                                                onMouseLeave={() => setHoveredPoint(null)}
-                                                onClick={() => {
-                                                    if (!selectedState && pt.stateName) {
-                                                        zoomToStateBounds(pt.stateName);
-                                                    }
-                                                }}
-                                                style={{ cursor: 'pointer' }}
-                                            >
-                                                {/* Outer ripple rings for visual density feedback */}
-                                                <circle r={isFail ? 11 : 9} fill={pointColor} opacity="0.08" style={{ pointerEvents: 'none' }} />
-                                                <circle r={isFail ? 7 : 5} fill={pointColor} opacity="0.25" style={{ pointerEvents: 'none' }} />
-                                                
-                                                {/* Core active locator node */}
-                                                <circle r={isFail ? 4 : 3} fill={pointColor} />
-                                            </g>
-                                        );
-                                    })}
-                                    {/* Core Corporate Gateways Landmark Beacon */}
-                                    <g transform={`translate(${hqPos.x}, ${hqPos.y})`}>
-                                        <circle r="12" fill="var(--accent-primary)" opacity="0.1" />
-                                        <circle r="8" fill="var(--accent-primary)" opacity="0.3" />
-                                        <circle r="4.5" fill="var(--accent-primary)" />
-                                    </g>
-                                </g>
-                            </svg>
-                        )}
-
-                        {/* Popover Hover details */}
-                        {hoveredPoint && (
-                            <div
-                                style={{
-                                    position: 'absolute',
-                                    left: `${tooltipPos.x}px`,
-                                    top: `${tooltipPos.y}px`,
-                                    width: '310px',
-                                    background: 'rgba(10, 11, 20, 0.96)',
-                                    backdropFilter: 'blur(10px)',
-                                    border: `1px solid ${mapFilter.startsWith('failed') ? 'rgba(239, 68, 68, 0.45)' : 'rgba(99, 102, 241, 0.45)'}`,
-                                    borderRadius: '8px',
-                                    padding: '14px',
-                                    color: 'var(--text-primary)',
-                                    boxShadow: '0 12px 36px rgba(0, 0, 0, 0.65)',
-                                    pointerEvents: 'none',
-                                    zIndex: 100,
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '8px'
-                                }}
-                                className="animate-fadeIn"
-                            >
-                                {/* Failed Aggregations: IP-based Header */}
-                                {hoveredPoint.ip ? (
-                                    <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
-                                        <div className="flex justify-between items-center">
-                                            <span style={{ fontWeight: 800, fontSize: '0.9rem', fontFamily: 'monospace' }}>{hoveredPoint.ip}</span>
-                                            <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontWeight: 'bold', border: '1px solid rgba(239,68,68,0.3)' }}>
-                                                {hoveredPoint.count} Failures
-                                            </span>
-                                        </div>
-                                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px', display: 'block' }}>
-                                            📍 {hoveredPoint.cityName && hoveredPoint.stateName ? `${hoveredPoint.cityName}, ${hoveredPoint.stateName}, ${hoveredPoint.countryCode}` : `${hoveredPoint.countryName} (${hoveredPoint.countryCode})`}
-                                        </span>
-                                    </div>
-                                ) : (
-                                    /* Country-based Header (Active / Completed) */
-                                    <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
-                                        <div className="flex justify-between items-center">
-                                            <span style={{ fontWeight: 800, fontSize: '0.9rem' }}>{hoveredPoint.name}</span>
-                                            <span style={{ fontSize: '0.75rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--accent-primary)', border: '1px solid rgba(99,102,241,0.2)' }}>
-                                                {hoveredPoint.count} Node{hoveredPoint.count === 1 ? "" : "s"}
-                                            </span>
-                                        </div>
-                                        {hoveredPoint.org && (
-                                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2.5px', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={hoveredPoint.org}>
-                                                🏢 {hoveredPoint.org}
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Metrics for Failed IPs */}
-                                {hoveredPoint.ip && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem' }}>
-                                        <div className="flex justify-between">
-                                            <span className="text-text-muted">ISP/Org:</span>
-                                            <span style={{ color: 'var(--text-secondary)', fontWeight: 600, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={hoveredPoint.asnName}>
-                                                {hoveredPoint.asnName}
-                                            </span>
-                                        </div>
-                                        {hoveredPoint.timezone && (
-                                            <div className="flex justify-between">
-                                                <span className="text-text-muted">Timezone:</span>
-                                                <span className="text-text-secondary font-semibold">
-                                                    {hoveredPoint.timezone}
-                                                </span>
-                                            </div>
-                                        )}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
-                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Targeted Accounts:</span>
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                                {Array.from(hoveredPoint.usernames).slice(0, 3).map((uname: any, i) => (
-                                                    <span key={i} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-color)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem' }}>
-                                                        {uname}
-                                                    </span>
-                                                ))}
-                                                {hoveredPoint.usernames.size > 3 && (
-                                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>+{hoveredPoint.usernames.size - 3} more</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '4px' }}>
-                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>Reasons:</span>
-                                            {Array.from(hoveredPoint.reasons).slice(0, 2).map((reason: any, i) => (
-                                                <span key={i} style={{ color: '#f87171', fontSize: '0.75rem' }}>• {reason}</span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Metrics for Active / Completed connections */}
-                                {!hoveredPoint.ip && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        {hoveredPoint.events.map((evt: VpnEvent, index: number) => (
-                                            <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: '3px', background: 'rgba(255,255,255,0.02)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.04)' }}>
-                                                <div className="flex justify-between text-xs">
-                                                    <span style={{ fontWeight: 700, color: 'var(--text-secondary)' }}>{evt.username}</span>
-                                                    <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.75rem' }}>{evt.sourceIp}</span>
-                                                </div>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                                    {mapFilter === "active" ? (
-                                                        <>
-                                                            <span>Time: {new Date(evt.createdAt).toLocaleTimeString()}</span>
-                                                            <span style={{ color: '#22c55e', fontWeight: 'bold' }}>Connected</span>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <span>Duration: {formatDuration(evt.duration)}</span>
-                                                            <span style={{ color: 'var(--accent-primary)', fontWeight: 'bold' }}>
-                                                                {formatBytes((evt.bytesSent || 0) + (evt.bytesReceived || 0))}
-                                                            </span>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                            <MapCanvas
+                                svgRef={svgRef}
+                                zoom={zoom}
+                                setZoom={setZoom}
+                                pan={pan}
+                                setPan={setPan}
+                                isDragging={isDragging}
+                                setIsDragging={setIsDragging}
+                                dragStart={dragStart}
+                                setDragStart={setDragStart}
+                                hoveredPoint={hoveredPoint}
+                                setHoveredPoint={setHoveredPoint}
+                                tooltipPos={tooltipPos}
+                                setTooltipPos={setTooltipPos}
+                                isUsView={isUsView}
+                                geoJson={geoJson}
+                                usStatesGeoJson={usStatesGeoJson}
+                                selectedState={selectedState}
+                                zoomToStateBounds={zoomToStateBounds}
+                                handleFocusUS={handleFocusUS}
+                                mapPoints={mapPoints}
+                                mapFilter={mapFilter}
+                                hqPos={hqPos}
+                            />
                         )}
                     </div>
 
