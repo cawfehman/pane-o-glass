@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @theme {
   --color-bg-dark: var(--bg-dark);
@@ -14,6 +15,12 @@
   --color-accent-primary-hover: var(--accent-primary-hover);
   --color-accent-glow: var(--accent-glow);
   --color-border-color: var(--border-color);
+  --color-border-hover: var(--border-hover);
+  --color-table-header-bg: var(--table-header-bg);
+  --color-row-hover: var(--row-hover);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
   --color-glass-bg: var(--glass-bg);
   --font-main: var(--font-main);
   --radius-sm: var(--radius-sm);
@@ -21,8 +28,6 @@
   --radius-lg: var(--radius-lg);
   --shadow-glow: var(--shadow-glow);
 }
-
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
   /* Rich Dark Color Palette */
