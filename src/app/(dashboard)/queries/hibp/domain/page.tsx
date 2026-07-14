@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Lock } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 
 export default function DomainSecurityPage() {
@@ -298,10 +298,10 @@ export default function DomainSecurityPage() {
     return (
         <div className="internal-scroll-layout">
             <QueryHeader
-                title="Domain Security"
+                title="HIBP Domain Security"
                 description="Check if your verified organizational domains have been impacted by specific or global data breaches. Search results are enriched with Active Directory status:"
                 toolId="hibp-domain"
-                icon={<Lock size={32} />}
+                icon={<ShieldCheck />}
                 actions={
                     <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                         <span className="flex items-center gap-2">

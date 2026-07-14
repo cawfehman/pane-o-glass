@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Lock } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 
 // Helper function to hash passwords for k-Anonymity using Web Crypto API
@@ -91,10 +91,10 @@ export default function AccountSecurityPage() {
     return (
         <div>
             <QueryHeader
-                title="Account Security"
+                title="HIBP Account Security"
                 description="Check if your email or passwords have been compromised in data breaches."
                 toolId="hibp-account"
-                icon={<Lock size={32} />}
+                icon={<ShieldAlert />}
             />
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '2rem' }}>

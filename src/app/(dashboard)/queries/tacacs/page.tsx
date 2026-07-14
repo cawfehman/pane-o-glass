@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Shield, Search, RefreshCw, Clock, Wifi, User, Activity, Globe, Save, ChevronDown, ChevronUp, Terminal, ShieldCheck, Key, Hash, Layers, Pocket, ExternalLink, BarChart3, Users, Monitor, MapPin, Calendar, Filter, ArrowUpRight, AlertCircle } from 'lucide-react';
+import { Lock, Shield, Search, RefreshCw, Clock, Wifi, User, Activity, Globe, Save, ChevronDown, ChevronUp, Terminal, ShieldCheck, Key, Hash, Layers, Pocket, ExternalLink, BarChart3, Users, Monitor, MapPin, Calendar, Filter, ArrowUpRight, AlertCircle } from 'lucide-react';
 import { QueryHeader } from '@/components/queries/QueryHeader';
 
 interface TacacsEvent {
@@ -250,10 +250,10 @@ export default function TacacsPage() {
             <div className="shrink-0 flex flex-col gap-4">
                 <div className="py-[20px] pt-[30px] border-b border-[rgba(255,255,255,0.05)]">
                 <QueryHeader
-                    title="Forensic Intelligence"
+                    title="TACACS+ Administration"
                     description="Administrative command accountability & behavioral statistics."
                     toolId="ise-tacacs"
-                    icon={<Shield />}
+                    icon={<Lock />}
                     actions={
                         <div className="flex gap-3 items-center">
                             <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '4px', border: '1px solid var(--glass-border)' }}>
