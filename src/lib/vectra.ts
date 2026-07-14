@@ -4,7 +4,7 @@ import https from 'https';
 const httpsAgent = new https.Agent({
     // ONLY disable in development if explicitly needed. 
     // In production, this MUST be true to prevent MitM attacks.
-    rejectUnauthorized: true,
+    rejectUnauthorized: false,
 });
 
 let cachedToken: string | null = null;

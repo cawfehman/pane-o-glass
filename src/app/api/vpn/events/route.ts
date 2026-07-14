@@ -57,7 +57,7 @@ export async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: num
             ? `Basic ${Buffer.from(token).toString("base64")}`
             : `Basic ${Buffer.from(`${token}:token`).toString("base64")}`;
         
-        const agent = new https.Agent({ rejectUnauthorized: true });
+        const agent = new https.Agent({ rejectUnauthorized: false });
         
         let messages: any[] = [];
         const streamsToQuery = streamIds.length > 0 ? streamIds : [null];

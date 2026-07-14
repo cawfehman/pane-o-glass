@@ -110,7 +110,7 @@ export async function getUserDetails(username: string) {
     const bindDN = process.env.AD_BIND_DN;
     const bindPassword = process.env.AD_BIND_PASSWORD;
     const baseDN = process.env.AD_BASE_DN;
-    const rejectUnauthorized = true;
+    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
 
     if (!url || !bindDN || !bindPassword || !baseDN) {
         return null;
@@ -175,7 +175,7 @@ export async function getBulkUserDetails(emails: string[]) {
     const bindDN = process.env.AD_BIND_DN;
     const bindPassword = process.env.AD_BIND_PASSWORD;
     const baseDN = process.env.AD_BASE_DN;
-    const rejectUnauthorized = true;
+    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
 
     if (!url || !bindDN || !bindPassword || !baseDN || emails.length === 0) {
         return {};

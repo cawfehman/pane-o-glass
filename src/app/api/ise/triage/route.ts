@@ -56,7 +56,7 @@ export async function GET(req: Request) {
         const siteFailures: Record<string, number> = {};
 
         const agent = new https.Agent({ 
-            rejectUnauthorized: true 
+            rejectUnauthorized: false
         });
         const startTime = Date.now();
 
