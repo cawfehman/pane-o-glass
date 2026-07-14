@@ -55,16 +55,7 @@ export default function FeedbackModal() {
         <>
             <button 
                 onClick={() => setIsOpen(true)}
-                className="nav-link"
-                style={{ 
-                    cursor: 'pointer', 
-                    width: '100%', 
-                    border: 'none', 
-                    background: 'none', 
-                    textAlign: 'left',
-                    color: 'var(--text-secondary)',
-                    marginTop: '1rem'
-                }}
+                className="nav-link w-full border-none bg-transparent text-left text-text-secondary mt-4 cursor-pointer"
             >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -73,35 +64,23 @@ export default function FeedbackModal() {
             </button>
 
             {isOpen && (
-                <div style={{
-                    position: 'fixed',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    backgroundColor: 'rgba(0,0,0,0.8)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 9999,
-                    backdropFilter: 'blur(4px)'
-                }}>
-                    <div className="glass-card" style={{ width: '450px', maxWidth: '90%' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                            <h3 style={{ margin: 0 }}>Provide Feedback</h3>
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[9999] backdrop-blur-sm">
+                    <div className="glass-card w-[450px] max-w-[90%]">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="m-0">Provide Feedback</h3>
                             <button 
                                 onClick={() => setIsOpen(false)}
-                                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.5rem' }}
+                                className="bg-transparent border-none text-text-muted cursor-pointer text-2xl"
                             >
                                 &times;
                             </button>
                         </div>
 
-                        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
+                        <p className="text-sm text-text-muted mb-6">
                             Your feedback helps us improve. This will be linked to your account and the current tool (**{pathname}**).
                         </p>
 
-                        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                             <div className="input-group">
                                 <label>Subject</label>
                                 <input 
@@ -120,41 +99,28 @@ export default function FeedbackModal() {
                                     value={body}
                                     onChange={(e) => setBody(e.target.value)}
                                     placeholder="What's on your mind?"
-                                    style={{
-                                        width: '100%', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.03)',
-                                        border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)',
-                                        color: 'var(--text-primary)', fontSize: '0.9rem', outline: 'none', resize: 'vertical'
-                                    }}
+                                    className="w-full p-3 bg-white/5 border border-border-color rounded text-text-primary text-[0.9rem] outline-none resize-y focus:border-accent-primary focus:shadow-glow transition-all"
                                 />
                             </div>
 
                             {message && (
-                                <div style={{ 
-                                    padding: '10px', 
-                                    borderRadius: 'var(--radius-sm)', 
-                                    backgroundColor: message.type === 'success' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-                                    color: message.type === 'success' ? '#22c55e' : '#ef4444',
-                                    border: `1px solid ${message.type === 'success' ? '#22c55e' : '#ef4444'}`,
-                                    fontSize: '0.875rem'
-                                }}>
+                                <div className={`p-[10px] rounded text-sm border ${message.type === 'success' ? 'bg-green-500/10 text-green-500 border-green-500' : 'bg-red-500/10 text-red-500 border-red-500'}`}>
                                     {message.text}
                                 </div>
                             )}
 
-                            <div style={{ display: 'flex', gap: '10px', marginTop: '0.5rem' }}>
+                            <div className="flex gap-[10px] mt-2">
                                 <button 
                                     type="button" 
                                     onClick={() => setIsOpen(false)}
-                                    className="btn-primary"
-                                    style={{ flex: 1, background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+                                    className="btn-primary flex-1 bg-transparent border border-border-color text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary"
                                 >
                                     Cancel
                                 </button>
                                 <button 
                                     type="submit" 
                                     disabled={isSubmitting}
-                                    className="btn-primary"
-                                    style={{ flex: 2 }}
+                                    className="btn-primary flex-[2]"
                                 >
                                     {isSubmitting ? "Sending..." : "Submit Feedback"}
                                 </button>

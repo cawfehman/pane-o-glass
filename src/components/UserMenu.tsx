@@ -39,7 +39,7 @@ export default function UserMenu({ userName }: { userName: string }) {
                     <circle cx="12" cy="7" r="4"></circle>
                 </svg>
                 <span>{userName}</span>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : 'rotate-0'}`}>
                     <polyline points="6 9 12 15 18 9"></polyline>
                 </svg>
             </button>
@@ -52,7 +52,7 @@ export default function UserMenu({ userName }: { userName: string }) {
                     </Link>
                     <div className="user-menu-divider"></div>
                     <form action={performLogout}>
-                        <button type="submit" className="user-menu-item" style={{ color: '#ef4444' }}>
+                        <button type="submit" className="user-menu-item text-red-500 hover:text-red-400">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
                             Logout
                         </button>

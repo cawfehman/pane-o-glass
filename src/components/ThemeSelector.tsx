@@ -16,12 +16,12 @@ export default function ThemeSelector() {
     const { theme, setTheme } = useTheme();
 
     return (
-        <section style={{ marginTop: '2rem' }}>
-            <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <section className="mt-8">
+            <h2 className="text-xl mb-4 flex items-center gap-2">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a10 10 0 0 1 0 20z"></path></svg>
                 UI Customization
             </h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+            <p className="text-text-secondary mb-6 text-[0.9rem]">
                 Select a visual theme to personalize your dashboard experience.
             </p>
 
@@ -41,7 +41,7 @@ export default function ThemeSelector() {
                                 />
                             ))}
                         </div>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{t.name}</span>
+                        <span className="text-[0.85rem] font-semibold">{t.name}</span>
                     </div>
                 ))}
             </div>
