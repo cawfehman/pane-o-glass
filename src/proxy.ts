@@ -1,5 +1,4 @@
 import NextAuth from "next-auth"
-import logger from "@/lib/logger"
 import { authConfig } from "@/lib/auth.config"
 import { rateLimit } from "@/lib/rate-limit"
 
@@ -18,7 +17,9 @@ export default NextAuth(authConfig).auth((req) => {
     const referer = req.headers.get('referer') || 'Direct';
     const username = req.auth?.user?.name || req.auth?.user?.email || 'Anonymous';
 
-    logger.info({ ip, method, path, username, referer, userAgent }, `Request from ${ip}`);
+    const safeIp = ip === 'Unknown IP' ? ip : '[REDACTED]';
+    const safeUsername = username === 'Anonymous' ? username : '[REDACTED]';
+    console.log(`[${timestamp}] ${safeIp} - ${method} ${path} | User: ${safeUsername} | Referer: ${referer} | Agent: ${userAgent}`);
     // ---------------------------------------------------------
 
     // Apply strict rate limiting for login attempts
