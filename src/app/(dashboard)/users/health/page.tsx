@@ -185,7 +185,7 @@ export default function SystemHealthPage() {
                                     // Staleness Logic
                                     const expectedIntervals: Record<string, number> = {
                                         "Firewall Guardian": 2 * 60 * 1000, // 2 minutes
-                                        "Graylog VPN Sync": 5 * 60 * 1000,  // Daemon runs every 5 minutes
+                                        "Graylog VPN Sync": 30 * 60 * 1000, // 30 minutes
                                         "Audit Log Cleanup": 24 * 60 * 60 * 1000 // 24 hours
                                     };
                                     
