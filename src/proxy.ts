@@ -24,7 +24,12 @@ export default NextAuth(authConfig).auth((req) => {
 
     // Apply strict rate limiting for login attempts
     if (req.method === 'POST' && (req.nextUrl.pathname.includes('login') || req.nextUrl.pathname.startsWith('/api/auth'))) {
-        if (!rateLimit(ip, 50, 60000)) { // 50 requests per minute to prevent NAT/Proxy lockouts
+        if (!rateLimit(`${ip}-auth`, 50, 60000)) { // 50 requests per minute to prevent NAT/Proxy lockouts
+            return new Response("Too Many Requests", { status: 429 });
+        }
+    } else if (req.nextUrl.pathname.startsWith('/api/')) {
+        // Apply general API rate limiting (e.g., 200 requests per minute)
+        if (!rateLimit(`${ip}-api`, 200, 60000)) {
             return new Response("Too Many Requests", { status: 429 });
         }
     }
