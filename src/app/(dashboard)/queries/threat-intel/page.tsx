@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { Globe, Search, ShieldAlert, ShieldCheck, Activity, Terminal, AlertTriangle, Info, Database, Compass, CheckCircle, ExternalLink } from "lucide-react";
-import { ToolHelp } from "@/components/ToolHelp";
-
+import { QueryHeader } from "@/components/queries/QueryHeader";
 export default function ThreatIntelPage() {
     const [query, setQuery] = useState("");
     const [loading, setLoading] = useState(false);
@@ -74,16 +73,12 @@ export default function ThreatIntelPage() {
         <div className="internal-scroll-layout">
             <div className="shrink-0 flex flex-col gap-4">
                 {/* Header */}
-                <div className="mb-6">
-                    <h1 style={{ fontSize: '2.25rem', fontWeight: 800, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <Globe size={32} color="var(--accent-primary)" />
-                        Threat Intelligence Reputation
-                        <ToolHelp toolId="threat-intel" iconSize={24} />
-                    </h1>
-                    <p className="text-text-secondary">
-                        Forensic indicator analysis correlating local DNS query resolution with Cisco Umbrella threat classification.
-                    </p>
-                </div>
+                <QueryHeader
+                    title="Threat Intelligence Reputation"
+                    description="Forensic indicator analysis correlating local DNS query resolution with Cisco Umbrella threat classification."
+                    toolId="threat-intel"
+                    icon={<Globe size={32} />}
+                />
 
                 {/* Input Form */}
                 <form onSubmit={handleSearch} className="glass-card flex gap-4 p-4 mb-6">

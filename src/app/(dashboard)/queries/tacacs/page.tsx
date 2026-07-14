@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Shield, Search, RefreshCw, Clock, Wifi, User, Activity, Globe, Save, ChevronDown, ChevronUp, Terminal, ShieldCheck, Key, Hash, Layers, Pocket, ExternalLink, BarChart3, Users, Monitor, MapPin, Calendar, Filter, ArrowUpRight, AlertCircle } from 'lucide-react';
-import { ToolHelp } from '@/components/ToolHelp';
+import { QueryHeader } from '@/components/queries/QueryHeader';
 
 interface TacacsEvent {
     timestamp: string;
@@ -249,39 +249,36 @@ export default function TacacsPage() {
             
             <div className="shrink-0 flex flex-col gap-4">
                 <div className="py-[20px] pt-[30px] border-b border-[rgba(255,255,255,0.05)]">
-                <div className="mb-[20px] flex justify-between items-center">
-                    <div>
-                        <h1 style={{ fontSize: '2.2rem', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '14px' }}>
-                            <Shield size={36} color="var(--accent-primary)" />
-                            Forensic Intelligence
-                            <ToolHelp toolId="ise-tacacs" iconSize={24} />
-                        </h1>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>Administrative command accountability & behavioral statistics.</p>
-                    </div>
-                    
-                    <div className="flex gap-3 items-center">
-                        <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '4px', border: '1px solid var(--glass-border)' }}>
-                            <Calendar size={14} style={{ margin: '0 8px', color: 'var(--text-secondary)' }} />
-                            {['15m', '1h', '12h', '24h', '7d'].map((w) => (
-                                <button
-                                    key={w}
-                                    onClick={() => handleWindowChange(w)}
-                                    style={{ 
-                                        padding: '6px 16px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '800', border: 'none', cursor: 'pointer',
-                                        background: window === w ? 'var(--accent-primary)' : 'transparent',
-                                        color: window === w ? '#000' : 'var(--text-secondary)',
-                                        transition: 'all 0.2s xase'
-                                    }}
-                                >
-                                    {w}
-                                </button>
-                            ))}
+                <QueryHeader
+                    title="Forensic Intelligence"
+                    description="Administrative command accountability & behavioral statistics."
+                    toolId="ise-tacacs"
+                    icon={<Shield />}
+                    actions={
+                        <div className="flex gap-3 items-center">
+                            <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '4px', border: '1px solid var(--glass-border)' }}>
+                                <Calendar size={14} style={{ margin: '0 8px', color: 'var(--text-secondary)' }} />
+                                {['15m', '1h', '12h', '24h', '7d'].map((w) => (
+                                    <button
+                                        key={w}
+                                        onClick={() => handleWindowChange(w)}
+                                        style={{ 
+                                            padding: '6px 16px', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '800', border: 'none', cursor: 'pointer',
+                                            background: window === w ? 'var(--accent-primary)' : 'transparent',
+                                            color: window === w ? '#000' : 'var(--text-secondary)',
+                                            transition: 'all 0.2s xase'
+                                        }}
+                                    >
+                                        {w}
+                                    </button>
+                                ))}
+                            </div>
+                            <button onClick={() => performSearch()} disabled={isSearching} className="glass-button" style={{ padding: '10px' }}>
+                                <RefreshCw size={18} className={isSearching ? 'animate-spin' : ''} />
+                            </button>
                         </div>
-                        <button onClick={() => performSearch()} disabled={isSearching} className="glass-button" style={{ padding: '10px' }}>
-                            <RefreshCw size={18} className={isSearching ? 'animate-spin' : ''} />
-                        </button>
-                    </div>
-                </div>
+                    }
+                />
 
                 <div className="glass-card" style={{ padding: '12px 20px', background: 'rgba(255,255,255,0.02)' }}>
                     <div className="flex gap-4">

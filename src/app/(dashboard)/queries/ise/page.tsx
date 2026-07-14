@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { AlertCircle, RefreshCw, History } from "lucide-react";
-import { ToolHelp } from "@/components/ToolHelp";
+import { AlertCircle, RefreshCw, History, Server } from "lucide-react";
+import { QueryHeader } from "@/components/queries/QueryHeader";
 import ConnectionPath from "@/components/ise/ConnectionPath";
 import EnrichedEndpointCard from "@/components/ise/EnrichedEndpointCard";
 
@@ -263,23 +263,20 @@ export default function CiscoIsePage() {
             <div className="shrink-0 flex flex-col gap-4">
             {/* Header Section */}
             <div>
-                <div className="flex justify-between items-end mb-4">
-                    <div>
-                        <h1 style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            Cisco ISE Center
-                            <ToolHelp toolId="ise" iconSize={24} />
-                        </h1>
-                        <p style={{ color: 'var(--text-secondary)', maxWidth: '600px' }}>
-                            Unified identity and network forensics. Correlated results from ISE, AD, and Vectra AI.
-                        </p>
-                    </div>
-                    {(loading || triageLoading) && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--accent-primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
-                            <div className="spinner-small"></div>
-                            Synchronizing Global Telemetry...
-                        </div>
-                    )}
-                </div>
+                <QueryHeader
+                    title="Cisco ISE Center"
+                    description="Unified identity and network forensics. Correlated results from ISE, AD, and Vectra AI."
+                    toolId="ise"
+                    icon={<Server />}
+                    actions={
+                        (loading || triageLoading) && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--accent-primary)', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                                <div className="spinner-small"></div>
+                                Synchronizing Global Telemetry...
+                            </div>
+                        )
+                    }
+                />
 
                 {/* Primary Search Bar */}
                 <form onSubmit={(e) => handleSearch(e)} className="glass-card flex gap-4 p-4">

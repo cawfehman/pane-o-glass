@@ -1,13 +1,16 @@
 import Link from "next/link";
+import { Lock } from "lucide-react";
+import { QueryHeader } from "@/components/queries/QueryHeader";
 
 export default function HIBPQueryPage() {
     return (
         <div className="internal-scroll-layout">
             <div className="shrink-0 flex flex-col gap-4">
-                <div className="mb-8">
-                    <h1>Have I Been Pwned Utilities</h1>
-                    <p className="text-text-secondary">Check if your accounts, passwords, or company domains have been compromised in data breaches.</p>
-                </div>
+                <QueryHeader
+                    title="Have I Been Pwned Utilities"
+                    description="Check if your accounts, passwords, or company domains have been compromised in data breaches."
+                    icon={<Lock size={32} />}
+                />
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6">

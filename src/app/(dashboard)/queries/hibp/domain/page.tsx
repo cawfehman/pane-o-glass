@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ToolHelp } from "@/components/ToolHelp";
+import { Lock } from "lucide-react";
+import { QueryHeader } from "@/components/queries/QueryHeader";
 
 export default function DomainSecurityPage() {
     // Domain Search State
@@ -296,26 +297,24 @@ export default function DomainSecurityPage() {
 
     return (
         <div className="internal-scroll-layout">
-            <div style={{ flexShrink: 0, marginBottom: '32px' }}>
-                <h1 className="flex items-center gap-3">
-                    Domain Security
-                    <ToolHelp toolId="hibp-domain" iconSize={24} />
-                </h1>
-                <p className="text-text-secondary">
-                    Check if your verified organizational domains have been impacted by specific or global data breaches. 
-                    Search results are enriched with Active Directory status:
-                </p>
-                <div style={{ display: 'flex', gap: '1.5rem', marginTop: '12px', fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    <span className="flex items-center gap-2">
-                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#eab308', boxShadow: '0 0 10px rgba(234, 179, 8, 0.4)' }}></span> 
-                        Active Account
-                    </span>
-                    <span className="flex items-center gap-2">
-                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f87171', boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)' }}></span> 
-                        Disabled Account
-                    </span>
-                </div>
-            </div>
+            <QueryHeader
+                title="Domain Security"
+                description="Check if your verified organizational domains have been impacted by specific or global data breaches. Search results are enriched with Active Directory status:"
+                toolId="hibp-domain"
+                icon={<Lock size={32} />}
+                actions={
+                    <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <span className="flex items-center gap-2">
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#eab308', boxShadow: '0 0 10px rgba(234, 179, 8, 0.4)' }}></span> 
+                            Active Account
+                        </span>
+                        <span className="flex items-center gap-2">
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f87171', boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)' }}></span> 
+                            Disabled Account
+                        </span>
+                    </div>
+                }
+            />
 
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, gap: '1rem' }}>
                 

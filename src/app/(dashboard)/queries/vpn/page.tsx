@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import { 
     Search, Wifi, ShieldAlert, AlertCircle, CheckCircle, 
     ArrowUpRight, ArrowDownLeft, Clock, Database, Globe, User,
-    Activity, TrendingUp, Calendar, Users
+    Activity, TrendingUp, Calendar, Users, Network
 } from "lucide-react";
-import { ToolHelp } from "@/components/ToolHelp";
+import { QueryHeader } from "@/components/queries/QueryHeader";
 import { VpnWorldMap } from "@/components/VpnWorldMap";
 import { useSession } from "next-auth/react";
 
@@ -436,109 +436,99 @@ export default function VpnTroubleshootingPage() {
         <div className="internal-scroll-layout">
             <div className="shrink-0 flex flex-col gap-4">
             {/* Header Area containing Title and Less Prominent SIEM Poller widget */}
-            <header style={{ 
-                marginBottom: '2rem', 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center', 
-                flexWrap: 'wrap', 
-                gap: '16px' 
-            }}>
-                <div>
-                    <h1 style={{ fontSize: '2.25rem', fontWeight: 800, marginBottom: '0.5rem', letterSpacing: '-0.025em', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        VPN Connectivity & Troubleshooting
-                        <ToolHelp toolId="vpn" iconSize={24} />
-                    </h1>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', margin: 0 }}>
-                        Real-time ingestion, intelligence, and search for Secure Client VPN sessions.
-                    </p>
-                    <p style={{ color: 'rgba(255, 255, 255, 0.45)', fontSize: '0.825rem', marginTop: '6px', marginBottom: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Clock size={12} />
-                        Data may be up to 30 minutes old. For the latest logs, click <strong>Sync Now</strong>.
-                    </p>
-                </div>
-
-                {/* Streamlined SIEM Poller Widget */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                    <div style={{ 
-                        fontSize: '0.8rem', 
-                        padding: '6px 12px', 
-                        borderRadius: '12px', 
-                        background: 'var(--bg-surface)', 
-                        border: '1px solid var(--border-color)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '2px',
-                        alignItems: 'flex-start'
-                    }} title={lastSync?.message || undefined}>
-                        <div className="flex items-center gap-2">
-                            <span style={{ 
-                                width: '8px', 
-                                height: '8px', 
-                                borderRadius: '50%', 
-                                background: lastSync?.status === "FAILURE" ? '#ef4444' : '#22c55e',
-                                boxShadow: lastSync?.status === "FAILURE" ? '0 0 8px #ef4444' : '0 0 8px #22c55e'
-                            }} />
-                            <span className="text-text-secondary font-medium">
-                                SIEM Poller: {lastSync ? `${lastSync.status} (${formatDate(lastSync.lastRun)})` : "Idle"}
-                            </span>
-                        </div>
-                        {syncing ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '16px', color: '#3b82f6', fontSize: '0.75rem', fontWeight: 600 }}>
-                                <span style={{ animation: 'pulse 1.5s infinite' }}>🔄</span>
-                                <span>{syncStatus}</span>
-                            </div>
-                        ) : lastSync?.message ? (
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', paddingLeft: '16px' }}>
-                                {lastSync.message}
-                            </span>
-                        ) : null}
-                    </div>
-                    
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <select
-                            value={syncRange}
-                            onChange={(e) => setSyncRange(Number(e.target.value))}
-                            disabled={syncing}
-                            style={{
-                                padding: '6px 10px',
-                                borderRadius: '8px',
-                                fontSize: '0.8rem',
-                                fontWeight: 500,
-                                background: 'var(--bg-surface)',
-                                border: '1px solid var(--border-color)',
-                                color: 'var(--text-primary)',
-                                outline: 'none',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <option value={2100}>Last 35 Mins</option>
-                            <option value={7200}>Last 2 Hours</option>
-                            <option value={14400}>Last 4 Hours</option>
-                            <option value={86400}>🔒 Last 24 Hours</option>
-                            <option value={604800}>🔒 Last 7 Days</option>
-                            <option value={2592000}>🔒 Last 30 Days</option>
-                        </select>
-                        <button 
-                            onClick={handleSync} 
-                            disabled={syncing}
-                            className="btn-secondary"
-                            style={{ 
-                                padding: '6px 12px', 
-                                borderRadius: '8px', 
-                                fontSize: '0.8rem', 
-                                fontWeight: 600, 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: '6px' 
-                            }}
-                        >
+            <QueryHeader
+                title="VPN Connectivity & Troubleshooting"
+                description="Real-time ingestion, intelligence, and search for Secure Client VPN sessions."
+                toolId="vpn"
+                icon={<Network />}
+                actions={
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                        <p style={{ color: 'rgba(255, 255, 255, 0.45)', fontSize: '0.825rem', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <Clock size={12} />
-                            {syncing ? "Syncing..." : "Sync Now"}
-                        </button>
+                            Data may be up to 30 minutes old. For the latest logs, click <strong>Sync Now</strong>.
+                        </p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                            <div style={{ 
+                                fontSize: '0.8rem', 
+                                padding: '6px 12px', 
+                                borderRadius: '12px', 
+                                background: 'var(--bg-surface)', 
+                                border: '1px solid var(--border-color)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '2px',
+                                alignItems: 'flex-start'
+                            }} title={lastSync?.message || undefined}>
+                                <div className="flex items-center gap-2">
+                                    <span style={{ 
+                                        width: '8px', 
+                                        height: '8px', 
+                                        borderRadius: '50%', 
+                                        background: lastSync?.status === "FAILURE" ? '#ef4444' : '#22c55e',
+                                        boxShadow: lastSync?.status === "FAILURE" ? '0 0 8px #ef4444' : '0 0 8px #22c55e'
+                                    }} />
+                                    <span className="text-text-secondary font-medium">
+                                        SIEM Poller: {lastSync ? `${lastSync.status} (${formatDate(lastSync.lastRun)})` : "Idle"}
+                                    </span>
+                                </div>
+                                {syncing ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '16px', color: '#3b82f6', fontSize: '0.75rem', fontWeight: 600 }}>
+                                        <span style={{ animation: 'pulse 1.5s infinite' }}>🔄</span>
+                                        <span>{syncStatus}</span>
+                                    </div>
+                                ) : lastSync?.message ? (
+                                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', paddingLeft: '16px' }}>
+                                        {lastSync.message}
+                                    </span>
+                                ) : null}
+                            </div>
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <select
+                                    value={syncRange}
+                                    onChange={(e) => setSyncRange(Number(e.target.value))}
+                                    disabled={syncing}
+                                    style={{
+                                        padding: '6px 10px',
+                                        borderRadius: '8px',
+                                        fontSize: '0.8rem',
+                                        fontWeight: 500,
+                                        background: 'var(--bg-surface)',
+                                        border: '1px solid var(--border-color)',
+                                        color: 'var(--text-primary)',
+                                        outline: 'none',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    <option value={2100}>Last 35 Mins</option>
+                                    <option value={7200}>Last 2 Hours</option>
+                                    <option value={14400}>Last 4 Hours</option>
+                                    <option value={86400}>🔒 Last 24 Hours</option>
+                                    <option value={604800}>🔒 Last 7 Days</option>
+                                    <option value={2592000}>🔒 Last 30 Days</option>
+                                </select>
+                                <button 
+                                    onClick={handleSync} 
+                                    disabled={syncing}
+                                    className="btn-secondary"
+                                    style={{ 
+                                        padding: '6px 12px', 
+                                        borderRadius: '8px', 
+                                        fontSize: '0.8rem', 
+                                        fontWeight: 600, 
+                                        display: 'flex', 
+                                        alignItems: 'center', 
+                                        gap: '6px' 
+                                    }}
+                                >
+                                    <Clock size={12} />
+                                    {syncing ? "Syncing..." : "Sync Now"}
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </header>
+                }
+            />
 
             {/* Real-time VPN Session Metrics */}
             <div style={{ 

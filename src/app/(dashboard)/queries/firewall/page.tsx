@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ToolHelp } from "@/components/ToolHelp";
+import { QueryHeader } from "@/components/queries/QueryHeader";
+import { Shield } from "lucide-react";
 
 export default function CiscoFirewallPage() {
     const [activeTab, setActiveTab] = useState<"manual" | "guardian" | "blacklist">("manual");
@@ -194,38 +195,36 @@ export default function CiscoFirewallPage() {
     return (
         <div className="internal-scroll-layout">
             <div className="shrink-0 flex flex-col gap-4">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <h1 className="flex items-center gap-3">
-                            Cisco Firewall Utilities
-                            <ToolHelp toolId="firewall" iconSize={24} />
-                        </h1>
-                        <p className="text-text-secondary">Query or remove IP address shuns across your configured Cisco devices.</p>
-                    </div>
-
-                    {guardianStatus && (
-                        <div 
-                            title={
-                                !guardianStatus.isLive 
-                                    ? `STALLED: Guardian heartbeat not detected in the last 5 minutes.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
-                                    : guardianStatus.status === 'INACTIVE'
-                                        ? `INACTIVE: No IPs configured for monitoring.`
-                                        : guardianStatus.status === 'WARNING'
-                                            ? `WARNING: Guardian is running but encountered an error on its last scan.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
-                                            : `ACTIVE: Guardian is running successfully.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
-                            }
-                            className="flex items-center gap-2.5 bg-white/3 px-4 py-2 rounded-[20px] border border-border-color cursor-help"
-                        >
-                            <div className="w-2 h-2 rounded-full" style={{ 
-                                backgroundColor: !guardianStatus.isLive ? '#ef4444' : (guardianStatus.status === 'INACTIVE' ? '#9ca3af' : (guardianStatus.status === 'WARNING' ? '#f59e0b' : '#10b981')),
-                                boxShadow: !guardianStatus.isLive ? 'none' : (guardianStatus.status === 'INACTIVE' ? '0 0 8px #9ca3af' : (guardianStatus.status === 'WARNING' ? '0 0 8px #f59e0b' : '0 0 8px #10b981'))
-                            }}></div>
-                            <span className="text-[0.8rem] font-semibold" style={{ color: !guardianStatus.isLive ? '#ef4444' : (guardianStatus.status === 'INACTIVE' ? '#9ca3af' : (guardianStatus.status === 'WARNING' ? '#f59e0b' : '#10b981')) }}>
-                                GUARDIAN: {!guardianStatus.isLive ? "STALLED" : (guardianStatus.status === 'INACTIVE' ? "INACTIVE" : (guardianStatus.status === 'WARNING' ? "WARNING" : "ACTIVE"))}
-                            </span>
-                        </div>
-                    )}
-                </div>
+                <QueryHeader
+                    title="Cisco Firewall Utilities"
+                    description="Query or remove IP address shuns across your configured Cisco devices."
+                    toolId="firewall"
+                    icon={<Shield />}
+                    actions={
+                        guardianStatus && (
+                            <div 
+                                title={
+                                    !guardianStatus.isLive 
+                                        ? `STALLED: Guardian heartbeat not detected in the last 5 minutes.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
+                                        : guardianStatus.status === 'INACTIVE'
+                                            ? `INACTIVE: No IPs configured for monitoring.`
+                                            : guardianStatus.status === 'WARNING'
+                                                ? `WARNING: Guardian is running but encountered an error on its last scan.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
+                                                : `ACTIVE: Guardian is running successfully.\nMonitoring: ${guardianStatus.watchList.join(', ')}`
+                                }
+                                className="flex items-center gap-2.5 bg-white/3 px-4 py-2 rounded-[20px] border border-border-color cursor-help"
+                            >
+                                <div className="w-2 h-2 rounded-full" style={{ 
+                                    backgroundColor: !guardianStatus.isLive ? '#ef4444' : (guardianStatus.status === 'INACTIVE' ? '#9ca3af' : (guardianStatus.status === 'WARNING' ? '#f59e0b' : '#10b981')),
+                                    boxShadow: !guardianStatus.isLive ? 'none' : (guardianStatus.status === 'INACTIVE' ? '0 0 8px #9ca3af' : (guardianStatus.status === 'WARNING' ? '0 0 8px #f59e0b' : '0 0 8px #10b981'))
+                                }}></div>
+                                <span className="text-[0.8rem] font-semibold" style={{ color: !guardianStatus.isLive ? '#ef4444' : (guardianStatus.status === 'INACTIVE' ? '#9ca3af' : (guardianStatus.status === 'WARNING' ? '#f59e0b' : '#10b981')) }}>
+                                    GUARDIAN: {!guardianStatus.isLive ? "STALLED" : (guardianStatus.status === 'INACTIVE' ? "INACTIVE" : (guardianStatus.status === 'WARNING' ? "WARNING" : "ACTIVE"))}
+                                </span>
+                            </div>
+                        )
+                    }
+                />
 
                 <div className="flex gap-3 border-b border-border-color pb-[1px] mb-3">
                     <button
