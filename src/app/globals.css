@@ -1,3 +1,27 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-dark: var(--bg-dark);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-surface-hover: var(--bg-surface-hover);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-accent-primary: var(--accent-primary);
+  --color-accent-secondary: var(--accent-secondary);
+  --color-accent-tertiary: var(--accent-tertiary);
+  --color-bg-card: var(--bg-card);
+  --color-accent-primary-hover: var(--accent-primary-hover);
+  --color-accent-glow: var(--accent-glow);
+  --color-border-color: var(--border-color);
+  --color-glass-bg: var(--glass-bg);
+  --font-main: var(--font-main);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --shadow-glow: var(--shadow-glow);
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
