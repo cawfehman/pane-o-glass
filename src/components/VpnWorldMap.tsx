@@ -578,68 +578,45 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', flex: 1, minHeight: 0 }} className="animate-fadeIn">
+        <div className="flex flex-col gap-5 flex-1 min-h-0 animate-fadeIn">
             
             {/* Tab Filter & Period Header Configuration Bar */}
-            <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                background: 'var(--bg-surface)',
-                padding: '12px 18px',
-                borderRadius: '12px',
-                border: '1px solid var(--border-color)',
-                flexWrap: 'wrap',
-                gap: '16px'
-            }}>
+            <div className="flex justify-between items-center bg-bg-surface px-4 py-3 rounded-xl border border-border-color flex-wrap gap-4">
                 {/* Visualizer Filters */}
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <div className="flex gap-2 flex-wrap">
                     <button
                         onClick={() => setMapFilter("active")}
-                        className={mapFilter === "active" ? "btn-primary" : "btn-secondary"}
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 12px', borderRadius: '6px' }}
+                        className={`flex items-center gap-1.5 text-[0.8rem] px-3 py-1.5 rounded-md ${mapFilter === "active" ? "btn-primary" : "btn-secondary"}`}
                     >
                         <Activity size={14} /> Active Connections
                     </button>
                     <button
                         onClick={() => setMapFilter("failed")}
-                        className={mapFilter === "failed" ? "btn-primary" : "btn-secondary"}
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 12px', borderRadius: '6px' }}
+                        className={`flex items-center gap-1.5 text-[0.8rem] px-3 py-1.5 rounded-md ${mapFilter === "failed" ? "btn-primary" : "btn-secondary"}`}
                     >
                         <ShieldAlert size={14} color="#ef4444" /> All Failed Attempts
                     </button>
                     <button
                         onClick={() => setMapFilter("failed-valid")}
-                        className={mapFilter === "failed-valid" ? "btn-primary" : "btn-secondary"}
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 12px', borderRadius: '6px' }}
+                        className={`flex items-center gap-1.5 text-[0.8rem] px-3 py-1.5 rounded-md ${mapFilter === "failed-valid" ? "btn-primary" : "btn-secondary"}`}
                     >
                         <ShieldAlert size={14} color="#f59e0b" /> Failed Valid Users
                     </button>
                     <button
                         onClick={() => setMapFilter("completed")}
-                        className={mapFilter === "completed" ? "btn-primary" : "btn-secondary"}
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', padding: '6px 12px', borderRadius: '6px' }}
+                        className={`flex items-center gap-1.5 text-[0.8rem] px-3 py-1.5 rounded-md ${mapFilter === "completed" ? "btn-primary" : "btn-secondary"}`}
                     >
                         <CheckCircle size={14} /> Completed Sessions
                     </button>
                 </div>
 
                 {/* Time scope dropdown selector matching page layout */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Time Filter:</span>
+                <div className="flex items-center gap-2.5">
+                    <span className="text-[0.8rem] text-text-muted font-semibold">Time Filter:</span>
                     <select
                         value={securityScope}
                         onChange={(e) => setSecurityScope(e.target.value)}
-                        style={{
-                            background: 'rgba(0,0,0,0.2)',
-                            border: '1px solid var(--border-color)',
-                            color: 'var(--text-primary)',
-                            padding: '6px 12px',
-                            borderRadius: '6px',
-                            fontSize: '0.8rem',
-                            outline: 'none',
-                            cursor: 'pointer'
-                        }}
+                        className="bg-black/20 border border-border-color text-text-primary px-3 py-1.5 rounded-md text-[0.8rem] outline-none cursor-pointer focus:border-accent-primary"
                     >
                         <option value="last24hours">Last 24 Hours</option>
                         <option value="today">Today</option>
@@ -651,15 +628,15 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                 </div>
             </div>
 
-            <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', flex: 1, position: 'relative', minHeight: '520px', overflow: 'hidden' }}>
+            <div className="glass-card p-6 flex flex-col flex-1 relative min-h-[520px] overflow-hidden">
                 
                 {/* Subtitle details */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', zIndex: 10 }}>
+                <div className="flex justify-between items-center mb-4 z-10">
                     <div>
-                        <h3 style={{ fontSize: '1.1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <h3 className="text-[1.1rem] font-bold flex items-center gap-2">
                             <Globe size={18} color="var(--accent-primary)" /> Geographic Connection Forensics
                         </h3>
-                        <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        <p className="text-[0.85rem] text-text-muted mt-1">
                             {mapFilter === "active" && "Showing live tunnels that are currently established."}
                             {mapFilter === "failed" && "Aggregated failure maps displaying connection attempt frequencies by IP."}
                             {mapFilter === "failed-valid" && "Targeted failure vectors matching valid active directory account patterns."}
@@ -667,34 +644,34 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
                         </p>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '20px' }}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Total Vectors: {mapPoints.length}</span>
+                    <div className="flex gap-5">
+                        <span className="text-[0.85rem] font-semibold">Total Vectors: {mapPoints.length}</span>
                     </div>
                 </div>
 
                 {/* Map Panel Wrap */}
-                <div style={{ display: 'flex', gap: '20px', flex: 1, minHeight: '520px' }}>
+                <div className="flex gap-5 flex-1 min-h-[520px]">
                     
-                    <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#090a0f', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
+                    <div className="flex-1 relative overflow-hidden bg-[#090a0f] rounded-lg border border-border-color flex flex-col">
                         {/* Viewport Controls with Focus US Option inside the map canvas area */}
-                        <div style={{ position: 'absolute', right: '16px', top: '16px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 20 }}>
-                            <button onClick={() => setZoom(prev => Math.min(prev + 0.3, 6))} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div className="absolute right-4 top-4 flex flex-col gap-2 z-20">
+                            <button onClick={() => setZoom(prev => Math.min(prev + 0.3, 6))} className="btn-primary p-2 rounded-md border border-border-color cursor-pointer flex items-center justify-center">
                                 <ZoomIn size={16} />
                             </button>
-                            <button onClick={() => setZoom(prev => Math.max(prev - 0.3, 0.8))} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <button onClick={() => setZoom(prev => Math.max(prev - 0.3, 0.8))} className="btn-primary p-2 rounded-md border border-border-color cursor-pointer flex items-center justify-center">
                                 <ZoomOut size={16} />
                             </button>
-                            <button onClick={handleFocusUS} className="btn-primary" style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}>
+                            <button onClick={handleFocusUS} className="btn-primary px-3 py-2 rounded-md border border-border-color cursor-pointer text-xs font-bold">
                                 Focus US
                             </button>
-                            <button onClick={handleReset} className="btn-primary" style={{ padding: '8px', borderRadius: '6px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <button onClick={handleReset} className="btn-primary p-2 rounded-md border border-border-color cursor-pointer flex items-center justify-center">
                                 <RotateCcw size={16} />
                             </button>
                         </div>
                         {loadingMap ? (
-                            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', color: 'var(--text-muted)' }}>
-                                <div style={{ width: '24px', height: '24px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--accent-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                                <span style={{ fontSize: '0.85rem' }}>LOADING CARTOGRAPHY...</span>
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-text-muted">
+                                <div className="w-6 h-6 border-2 border-white/10 border-t-accent-primary rounded-full animate-spin"></div>
+                                <span className="text-[0.85rem]">LOADING CARTOGRAPHY...</span>
                             </div>
                         ) : (
                             <svg

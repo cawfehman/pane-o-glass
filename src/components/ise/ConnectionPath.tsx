@@ -118,19 +118,19 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
     const nodeWidth = 100 / nodes.length;
 
     return (
-        <div className="connection-path-container" style={{ margin: '24px 0', padding: '24px', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        <div className="connection-path-container my-6 p-6 bg-black/20 rounded-xl border border-border-color">
+            <div className="flex justify-between items-center mb-6">
+                <h4 className="text-[0.8rem] text-text-muted uppercase tracking-widest">
                     Authentication Path Visualizer
                 </h4>
                 {isWireless && (
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div className="flex gap-2">
                         {session.rssi && session.rssi !== "N/A" && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '4px 10px', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                                <span style={{ fontWeight: 'bold' }}>{session.rssi} dBm</span>
+                            <div className="flex items-center gap-1.5 text-[0.7rem] text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-xl border border-emerald-500/20">
+                                <span className="font-bold">{session.rssi} dBm</span>
                             </div>
                         )}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: 'var(--accent-primary)', background: 'rgba(59, 130, 246, 0.1)', padding: '4px 10px', borderRadius: '12px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
+                        <div className="flex items-center gap-1.5 text-[0.7rem] text-accent-primary bg-blue-500/10 px-2.5 py-1 rounded-xl border border-blue-500/20">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
                             <span>WIRELESS ({session.wlan_ssid})</span>
                         </div>
@@ -138,13 +138,11 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
                 )}
             </div>
             
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
+            <div className="flex items-center justify-between relative">
                 {/* Connecting Line Segments */}
-                <div style={{ position: 'absolute', top: '35%', left: `${nodeWidth/2}%`, right: `${nodeWidth/2}%`, height: '2px', zIndex: 0, display: 'flex' }}>
+                <div className="absolute top-[35%] h-[2px] z-0 flex" style={{ left: `${nodeWidth/2}%`, right: `${nodeWidth/2}%` }}>
                     {nodes.slice(0, -1).map((_, i) => (
-                        <div key={i} style={{ 
-                            flex: 1, 
-                            height: '2px', 
+                        <div key={i} className="flex-1 h-[2px]" style={{ 
                             background: i === 0 && isWireless ? 'none' : 'var(--border-color)',
                             borderTop: i === 0 && isWireless ? '2px dashed var(--accent-primary)' : 'none',
                             opacity: i === 0 && isWireless ? 0.8 : 0.4
@@ -157,16 +155,15 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
                     const statusBg = node.status === 'success' ? 'rgba(16, 185, 129, 0.1)' : (node.status === 'warning' ? 'rgba(245, 158, 11, 0.1)' : (node.status === 'danger' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(255,255,255,0.05)'));
 
                     return (
-                        <div key={node.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1, width: `${nodeWidth}%` }}>
-                            <div style={{ 
-                                width: '48px', height: '48px', borderRadius: '12px', background: statusBg, border: `2px solid ${statusColor}`, color: statusColor,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '12px', transition: 'all 0.3s ease',
+                        <div key={node.id} className="flex flex-col items-center z-10" style={{ width: `${nodeWidth}%` }}>
+                            <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-3 transition-all duration-300 ease-in-out" style={{ 
+                                background: statusBg, border: `2px solid ${statusColor}`, color: statusColor,
                                 boxShadow: node.status === 'danger' ? '0 0 15px rgba(239, 68, 68, 0.2)' : 'none'
                             }}>
                                 {node.icon}
                             </div>
-                            <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{node.label}</span>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span className="text-[0.9rem] font-bold text-text-primary">{node.label}</span>
+                            <span className="text-xs text-text-muted text-center max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap">
                                 {node.sub}
                             </span>
                         </div>
@@ -175,9 +172,9 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
             </div>
             
             {!isPass && (
-                <div style={{ marginTop: '24px', padding: '12px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div className="mt-6 p-3 bg-red-500/10 rounded-lg border border-red-500/20 flex items-center gap-3">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                    <span style={{ fontSize: '0.875rem', color: '#ef4444' }}>
+                    <span className="text-[0.875rem] text-red-500">
                         Break detected at <strong>{nodes[2].label}</strong>: {session.authorization_rule || "Unknown Policy Failure"}
                     </span>
                 </div>
