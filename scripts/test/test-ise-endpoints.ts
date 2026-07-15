@@ -1,0 +1,34 @@
+import axios from 'axios';
+import https from 'https';
+import dotenv from 'dotenv';
+dotenv.config();
+
+async function discovery() {
+    const url = process.env.ISE_PAN_URL!;
+    const user = process.env.ISE_API_USER!;
+    const pass = process.env.ISE_API_PASSWORD!;
+    const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
+    const agent = new https.Agent({ rejectUnauthorized: false });
+
+    const eps = [
+        "/admin/API/mnt/FailureStatus/All/3600/10/All",
+        "/admin/API/mnt/authStatus/All/3600/10/All",
+        "/admin/API/mnt/authstatus/All/3600/10/All",
+        "/admin/API/mnt/Session/ActiveList"
+    ];
+
+    for (const ep of eps) {
+        try {
+            console.log(`Testing ${ep}...`);
+            const res = await axios.get(`${url}${ep}`, {
+                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
+                httpsAgent: agent,
+                timeout: 10000
+            });
+            console.log(`  [SUCCESS] ${res.status}`);
+        } catch (e: any) {
+            console.log(`  [FAILED] ${e.response?.status || e.message}`);
+        }
+    }
+}
+discovery();

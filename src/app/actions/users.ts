@@ -44,7 +44,7 @@ export async function createUser(formData: FormData) {
         }
     });
 
-    await logAudit("USER_CREATE", `Created new user: ${username} (${firstName || ''} ${lastName || ''}) with role ${role}, isExternal: ${isExternal}`, session.user.id);
+    await logAudit("USER_CREATE", `Created new user: ${username} (${firstName || ''} ${lastName || ''}) with role ${role}, isExternal: ${isExternal}`, session.user?.id || 'system');
 
     revalidatePath("/users");
     return newUser;
@@ -68,7 +68,7 @@ export async function deleteUser(id: string) {
         where: { id }
     });
 
-    await logAudit("USER_DELETE", `Deleted user: ${userToDelete?.username}`, session.user.id);
+    await logAudit("USER_DELETE", `Deleted user: ${userToDelete?.username}`, session.user?.id || 'system');
 
     revalidatePath("/users");
 }

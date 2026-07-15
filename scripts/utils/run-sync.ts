@@ -1,5 +1,5 @@
-import { syncFromGraylog } from "../src/app/api/vpn/events/route";
-import { prisma } from "../src/lib/prisma";
+import { syncFromGraylog } from "@/app/api/vpn/events/route";
+import { prisma } from "@/lib/prisma";
 
 async function main() {
     console.log("Triggering 24h sync to populate SQLite database...");

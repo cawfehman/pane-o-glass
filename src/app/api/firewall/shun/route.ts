@@ -72,7 +72,7 @@ export async function POST(req: Request) {
                 readyTimeout: 10000
             });
 
-            return new Promise((resolve, reject) => {
+            return new Promise<NextResponse>((resolve, reject) => {
                 ssh.requestShell().then((stream) => {
                     let output = "";
                     let errorOutput = "";

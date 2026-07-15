@@ -89,8 +89,8 @@ export async function GET(req: Request) {
         // Targeted Filtering: If a site is specified, filter the bulk list BEFORE surgical probing
         if (targetSite) {
             console.log(`[ISE TRIAGE] Filtering bulk telemetry for site: ${targetSite}`);
-            activeMatches = activeMatchesRaw.filter(xml => xml.includes(targetSite));
-            failureMatches = failureMatchesRaw.filter(xml => xml.includes(targetSite));
+            activeMatches = activeMatchesRaw.filter((xml: string) => xml.includes(targetSite));
+            failureMatches = failureMatchesRaw.filter((xml: string) => xml.includes(targetSite));
             
             // If we found the site, we can afford a deeper sample of just that site
             activeMatches = activeMatches.slice(0, 50);
@@ -102,8 +102,8 @@ export async function GET(req: Request) {
         }
 
         const allProbes = [
-            ...activeMatches.map(xml => ({ xml, status: 'success' })),
-            ...failureMatches.map(xml => ({ xml, status: 'failure' }))
+            ...activeMatches.map((xml: string) => ({ xml, status: 'success' })),
+            ...failureMatches.map((xml: string) => ({ xml, status: 'failure' }))
         ];
 
         console.log(`[ISE TRIAGE] Probing ${allProbes.length} sessions (Successes: ${activeMatches.length}, Failures: ${failureMatches.length})`);

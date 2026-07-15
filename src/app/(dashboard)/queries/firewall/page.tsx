@@ -604,7 +604,7 @@ export default function CiscoFirewallPage() {
                                             </td>
                                             <td style={{ padding: '12px 8px' }}>
                                                 <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                                    {(event.reason || "NONE").split(',').map((r) => (
+                                                    {(event.reason || "NONE").split(',').map((r: string) => (
                                                         <span key={r} style={{
                                                             padding: '4px 8px',
                                                             borderRadius: '4px',

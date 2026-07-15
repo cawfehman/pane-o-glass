@@ -3,8 +3,10 @@ import { auth } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
 import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
-import { fetchIseSession, getFailureInsight } from '@/lib/ise';
+import { fetchIseSession, getFailureInsight, parseCalledStationId } from '@/lib/ise';
 import { getUserDetails } from '@/lib/ldap';
+import https from 'https';
+import axios from 'axios';
 
 export async function GET(req: Request) {
     const session = await auth();

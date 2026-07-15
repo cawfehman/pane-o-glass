@@ -49,7 +49,7 @@ export default async function ProfilePage() {
                 
                 <div className="glass-card p-6 bg-bg-surface">
                     <h3 className="mb-4 text-text-primary">Security Settings</h3>
-                    <PasswordChangeForm user={session.user as any} />
+                    <PasswordChangeForm />
                 </div>
             </div>
         </div>
