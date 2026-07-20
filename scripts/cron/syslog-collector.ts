@@ -27,19 +27,12 @@ if (fs.existsSync(BUFFER_PATH)) {
     }
 }
 
+let dailyBuffer: string[] = [];
+
 // --- Daily Persistence Engine (v3.0.0) ---
 function saveToDailyLog(entry: any) {
-    const dateStr = new Date().toISOString().split('T')[0];
-    const dailyPath = path.join(LOG_DIR, `tacacs-${dateStr}.json`);
-    
-    // We append to a daily list. This is more efficient for analytics.
-    // However, appending to a JSON file is tricky. Better to append a line of JSON (JSONL).
     const line = JSON.stringify(entry) + '\n';
-    try {
-        fs.appendFileSync(dailyPath, line);
-    } catch (err: any) {
-        console.error(`[DAILY WRITE ERROR] ${err.message}`);
-    }
+    dailyBuffer.push(line);
 }
 
 let writeTimeout: any = null;
@@ -47,10 +40,26 @@ function scheduleBufferWrite() {
     if (writeTimeout) return;
     writeTimeout = setTimeout(() => {
         writeTimeout = null;
+        
+        // 1. Flush Daily Log Buffer
+        if (dailyBuffer.length > 0) {
+            const dateStr = new Date().toISOString().split('T')[0];
+            const dailyPath = path.join(LOG_DIR, `tacacs-${dateStr}.json`);
+            const chunk = dailyBuffer.join('');
+            dailyBuffer = []; // Clear immediately to capture incoming
+            fs.appendFile(dailyPath, chunk, (err: any) => {
+                if (err) console.error(`[DAILY WRITE ERROR] ${err.message}`);
+            });
+        }
+        
+        // 2. Flush Active Buffer Async
         try {
             const dataString = JSON.stringify(activeBuffer, null, 2);
-            fs.writeFileSync(TEMP_BUFFER_PATH, dataString);
-            fs.renameSync(TEMP_BUFFER_PATH, BUFFER_PATH);
+            fs.writeFile(TEMP_BUFFER_PATH, dataString, (err: any) => {
+                if (!err) {
+                    fs.rename(TEMP_BUFFER_PATH, BUFFER_PATH, () => {});
+                }
+            });
         } catch (err: any) {
             console.error(`\n[WRITE ERROR] ${err.message}`);
         }
