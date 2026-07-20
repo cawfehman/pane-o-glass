@@ -42,6 +42,21 @@ function saveToDailyLog(entry: any) {
     }
 }
 
+let writeTimeout: any = null;
+function scheduleBufferWrite() {
+    if (writeTimeout) return;
+    writeTimeout = setTimeout(() => {
+        writeTimeout = null;
+        try {
+            const dataString = JSON.stringify(activeBuffer, null, 2);
+            fs.writeFileSync(TEMP_BUFFER_PATH, dataString);
+            fs.renameSync(TEMP_BUFFER_PATH, BUFFER_PATH);
+        } catch (err: any) {
+            console.error(`\n[WRITE ERROR] ${err.message}`);
+        }
+    }, 1000);
+}
+
 server.on('listening', () => {
     const address = server.address();
     console.log(`\n--- ISE 3.3 TACACS ATOMIC COLLECTOR (v3.0.0) ---`);
@@ -70,14 +85,8 @@ server.on('message', (msg: any, rinfo: any) => {
         if (activeBuffer.length >= 1000) activeBuffer.shift();
         activeBuffer.push(entry);
 
-        // Atomic write for recent buffer
-        try {
-            const dataString = JSON.stringify(activeBuffer, null, 2);
-            fs.writeFileSync(TEMP_BUFFER_PATH, dataString);
-            fs.renameSync(TEMP_BUFFER_PATH, BUFFER_PATH);
-        } catch (err: any) {
-            console.error(`\n[WRITE ERROR] ${err.message}`);
-        }
+        // Atomic write for recent buffer (DEBOUNCED)
+        scheduleBufferWrite();
     } else {
         process.stdout.write('.');
     }
