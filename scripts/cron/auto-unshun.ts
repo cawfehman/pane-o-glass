@@ -122,6 +122,8 @@ async function getIpInfo(ip) {
 async function runAutoUnshun() {
     const args = process.argv.slice(2);
     let rangeSeconds = "240"; // 4 minutes default in seconds
+    let limitCount = "100";
+    
     const rangeIndex = args.indexOf("--range");
     if (rangeIndex !== -1 && args[rangeIndex + 1]) {
         const mins = parseInt(args[rangeIndex + 1], 10);
@@ -129,6 +131,15 @@ async function runAutoUnshun() {
             rangeSeconds = String(mins * 60);
         }
     }
+    
+    const limitIndex = args.indexOf("--limit");
+    if (limitIndex !== -1 && args[limitIndex + 1]) {
+        const lim = parseInt(args[limitIndex + 1], 10);
+        if (!isNaN(lim)) {
+            limitCount = String(lim);
+        }
+    }
+    
     const isRecoveryMode = rangeSeconds !== "240";
 
     const watchListStr = process.env.WATCH_IP_LIST || "";
@@ -361,7 +372,7 @@ async function runAutoUnshun() {
             const params = new URLSearchParams();
             params.append("query", "401002");
             params.append("range", rangeSeconds); // query window in seconds
-            params.append("limit", "100");
+            params.append("limit", limitCount);
             params.append("decorate", "false");
             if (streamId) {
                 params.append("filter", `streams:${streamId}`);
