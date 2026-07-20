@@ -19,7 +19,7 @@ async function cleanup() {
             update: { lastRun: new Date(), status: "SUCCESS", message: msg },
             create: { name: "Audit Log Cleanup", status: "SUCCESS", message: msg }
         });
-    } catch (e) {
+    } catch (e: any) {
         console.error(`[${new Date().toISOString()}] Audit Cleanup Failed:`, e);
         try {
             await prisma.backgroundJob.upsert({
@@ -27,7 +27,7 @@ async function cleanup() {
                 update: { lastRun: new Date(), status: "FAILURE", message: e.message },
                 create: { name: "Audit Log Cleanup", status: "FAILURE", message: e.message }
             });
-        } catch (dbErr) {}
+        } catch (dbErr: any) {}
     } finally {
         await prisma.$disconnect();
     }

@@ -4,9 +4,9 @@ import fetch from 'node-fetch';
 dotenv.config();
 
 async function debugTacacs() {
-    const url = process.env.ISE_PAN_URL;
-    const user = process.env.ISE_API_USER;
-    const pass = process.env.ISE_API_PASSWORD;
+    const url = process.env.ISE_PAN_URL!;
+    const user = process.env.ISE_API_USER!;
+    const pass = process.env.ISE_API_PASSWORD!;
 
     if (!url || !user || !pass) {
         console.error("ERROR: ISE Credentials not found in .env");

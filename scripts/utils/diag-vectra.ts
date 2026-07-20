@@ -5,9 +5,9 @@ import https from 'https';
 
 const agent = new https.Agent({ rejectUnauthorized: false });
 
-const VECTRA_CLIENT_ID = process.env.VECTRA_CLIENT_ID;
-const VECTRA_CLIENT_SECRET = process.env.VECTRA_CLIENT_SECRET;
-const VECTRA_URL = (process.env.VECTRA_URL || '').replace(/\/$/, '');
+const VECTRA_CLIENT_ID = process.env.VECTRA_CLIENT_ID!;
+const VECTRA_CLIENT_SECRET = process.env.VECTRA_CLIENT_SECRET!;
+const VECTRA_URL = (process.env.VECTRA_URL! || '').replace(/\/$/, '');
 
 async function test() {
     console.log('--- Vectra Diagnostic Start ---');

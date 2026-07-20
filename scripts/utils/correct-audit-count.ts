@@ -49,7 +49,7 @@ async function main() {
     // Create records dated 2 days ago to fall in weekly/monthly/allTime
     const adjustmentDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
     
-    const records = Array.from({ length: missingCount }).map((_, i) => ({
+    const records = Array.from({ length: missingCount }).map((_: any, i: any) => ({
         action: "IPLOCATE_API_QUERY",
         details: `Historical query count adjustment (Batch lookup ref #${i + 1})`,
         ipAddress: "127.0.0.1",

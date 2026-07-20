@@ -6,7 +6,7 @@ const walkSync = (dir, filelist = []) => {
     const dirFile = path.join(dir, file);
     try {
       filelist = fs.statSync(dirFile).isDirectory() ? walkSync(dirFile, filelist) : filelist.concat(dirFile);
-    } catch (err) {
+    } catch (err: any) {
       if (err.code === 'OENT' || err.code === 'EACCES' || err.code === 'EPERM') return;
     }
   });
@@ -60,7 +60,7 @@ files.forEach(file => {
 
     // A simpler approach: if a file has simple style objects, we'll try to convert them.
     // To do this safely, we will just replace the exact style tags that only contain exact matches.
-    content = content.replace(styleRegex, (match, inner) => {
+    content = content.replace(styleRegex, (match: any, inner: any) => {
         if (inner.includes('${') || inner.includes('?')) return match;
         
         let props = inner.split(',').map(s => s.trim()).filter(Boolean);

@@ -31,7 +31,7 @@ async function main() {
 }
 
 main()
-    .catch((e) => {
+    .catch((e: any) => {
         console.error('❌ Error creating user:', e.message)
         process.exit(1)
     })

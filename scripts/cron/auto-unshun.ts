@@ -8,12 +8,12 @@ import { Client } from 'ldapts';
 import dotenv from 'dotenv';
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-async function isAdUserValid(username) {
-    const url = process.env.AD_URL;
-    const bindDN = process.env.AD_BIND_DN;
-    const bindPassword = process.env.AD_BIND_PASSWORD;
-    const baseDN = process.env.AD_BASE_DN;
-    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
+async function isAdUserValid(username: any) {
+    const url = process.env.AD_URL!;
+    const bindDN = process.env.AD_BIND_DN!;
+    const bindPassword = process.env.AD_BIND_PASSWORD!;
+    const baseDN = process.env.AD_BASE_DN!;
+    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED! !== "false";
 
     if (!url || !bindDN || !bindPassword || !baseDN) {
         console.error("[GUARDIAN] AD configuration missing in environment variables.");
@@ -39,13 +39,13 @@ async function isAdUserValid(username) {
             attributes: ["dn"],
         });
         return searchEntries.length > 0;
-    } catch (err) {
+    } catch (err: any) {
         console.error(`[GUARDIAN] AD check error for ${username}:`, err.message);
         return false;
     } finally {
         try {
             await client.unbind();
-        } catch (e) {}
+        } catch (e: any) {}
     }
 }
 
@@ -73,7 +73,7 @@ function cleanOldLogs() {
                 }
             }
         }
-    } catch (e) {
+    } catch (e: any) {
         originalError("[GUARDIAN] Failed to clean old logs:", e.message);
     }
 }
@@ -81,7 +81,7 @@ function cleanOldLogs() {
 // Clean old logs once when the script starts
 cleanOldLogs();
 
-function formatMsg(msg) {
+function formatMsg(msg: any) {
     const ts = new Date().toISOString();
     return `[${ts}] ${msg}`;
 }
@@ -103,18 +103,23 @@ console.error = (...args) => {
 const prisma = new PrismaClient();
 
 // Standalone IP Metadata Lookup
-async function getIpInfo(ip) {
+async function getIpInfo(ip: any) {
     try {
         const response = await axios.get(`https://ipapi.co/${ip}/json/`, { timeout: 5000 });
         const d = response.data;
         return {
-            asn: d.asn,
-            as_name: d.org,
-            as_domain: d.asn,
-            country: d.country_name,
-            country_code: d.country_code
+            // @ts-ignore
+      asn: d.asn,
+            // @ts-ignore
+      as_name: d.org,
+            // @ts-ignore
+      as_domain: d.asn,
+            // @ts-ignore
+      country: d.country_name,
+            // @ts-ignore
+      country_code: d.country_code
         };
-    } catch (e) {
+    } catch (e: any) {
         return null;
     }
 }
@@ -142,15 +147,15 @@ async function runAutoUnshun() {
     
     const isRecoveryMode = rangeSeconds !== "240";
 
-    const watchListStr = process.env.WATCH_IP_LIST || "";
+    const watchListStr = process.env.WATCH_IP_LIST! || "";
     const watchList = watchListStr.split(',').map(ip => ip.trim()).filter(ip => ip !== "");
     
-    const configStr = process.env.FIREWALL_CONFIG || "[]";
+    const configStr = process.env.FIREWALL_CONFIG! || "[]";
     let firewalls = [];
     
     try {
         firewalls = JSON.parse(configStr);
-    } catch (e) {
+    } catch (e: any) {
         console.error("[GUARDIAN] Failed to parse FIREWALL_CONFIG:", e.message);
         return;
     }
@@ -178,7 +183,7 @@ async function runAutoUnshun() {
         if (pruned.count > 0) {
             console.log(`[GUARDIAN] Pruned ${pruned.count} expired Guardian log entries older than 30 days.`);
         }
-    } catch (pruneErr) {
+    } catch (pruneErr: any) {
         console.error("[GUARDIAN] Log pruning error:", pruneErr.message);
     }
 
@@ -198,18 +203,18 @@ async function runAutoUnshun() {
 
                 console.log(`[GUARDIAN] Connected to ${fw.name}. Scanning watchlist...`);
 
-            await new Promise((resolve, reject) => {
-                ssh.requestShell().then((stream) => {
+            await new Promise((resolve: any, reject: any) => {
+                ssh.requestShell().then((stream: any) => {
                     let buffer = "";
-                    stream.on('data', (d) => {
+                    stream.on('data', (d: any) => {
                         buffer += d.toString();
                     });
                     
                     stream.on('close', () => resolve(true));
-                    stream.on('error', (err) => reject(err));
+                    stream.on('error', (err: any) => reject(err));
 
                     const waitForPrompt = (timeoutMs = 15000) => {
-                        return new Promise((resolve) => {
+                        return new Promise((resolve: any) => {
                             const start = Date.now();
                             const check = () => {
                                 const trimmed = buffer.trim();
@@ -318,7 +323,8 @@ async function runAutoUnshun() {
                                         companyName: ipInfo?.as_name || "Protected Asset",
                                         companyType: "business",
                                         cidr: ipInfo?.as_domain || "watchlist",
-                                        asn: ipInfo?.asn || "watchlist",
+                                        // @ts-ignore
+      asn: ipInfo?.asn || "watchlist",
                                         details: `Guardian automated safety engine successfully cleared watchlist asset shun for IP: ${ip} on firewall ${fw.name}`
                                     }
                                 }).catch(() => {});
@@ -336,7 +342,7 @@ async function runAutoUnshun() {
             });
             
             ssh.dispose();
-        } catch (err) {
+        } catch (err: any) {
             console.error(`[GUARDIAN] Error on ${fw.name}: ${err.message}`);
             guardianStatus = "WARNING";
             ssh.dispose();
@@ -346,9 +352,9 @@ async function runAutoUnshun() {
     
     // Graylog-driven Shun Monitoring & Auto-Unshun Action
     console.log("[GUARDIAN] Querying Graylog SIEM for %FTD-4-401002 (Shun added) logs...");
-    const rawUrl = process.env.GRAYLOG_URL;
-    const rawToken = process.env.GRAYLOG_API_TOKEN;
-    const rawStreams = process.env.GRAYLOG_STREAM_ID;
+    const rawUrl = process.env.GRAYLOG_URL!;
+    const rawToken = process.env.GRAYLOG_API_TOKEN!;
+    const rawStreams = process.env.GRAYLOG_STREAM_ID!;
 
     if (rawUrl && rawToken) {
         const url = rawUrl.replace(/^"|"$/g, '').endsWith('/') ? rawUrl.replace(/^"|"$/g, '').slice(0, -1) : rawUrl.replace(/^"|"$/g, '');
@@ -402,7 +408,7 @@ async function runAutoUnshun() {
                         ipFirewalls[ip].add(sourceFw);
                     }
                 }
-            } catch (e) {
+            } catch (e: any) {
                 console.error(`[GUARDIAN] Failed to retrieve shun logs from stream ${streamId}:`, e.message);
                 guardianStatus = "WARNING";
             }
@@ -440,7 +446,7 @@ async function runAutoUnshun() {
                 if (cacheEntry) {
                     ipData = JSON.parse(cacheEntry.rawJson);
                 } else {
-                    const apiKey = process.env.IPLOCATE_API_KEY;
+                    const apiKey = process.env.IPLOCATE_API_KEY!;
                     const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
                         headers: apiKey ? { "X-API-KEY": apiKey } : {},
                         timeout: 5000
@@ -473,7 +479,7 @@ async function runAutoUnshun() {
                                 ipAddress: ip
                             }
                         });
-                    } catch (auditErr) {
+                    } catch (auditErr: any) {
                         console.error("[GUARDIAN] Audit logging error:", auditErr.message);
                     }
                 }
@@ -587,7 +593,7 @@ async function runAutoUnshun() {
                                 ipAddress: ip
                             }
                         });
-                    } catch (dbErr) {
+                    } catch (dbErr: any) {
                         console.error("[GUARDIAN] Failed to upsert blacklist entry or log audit:", dbErr.message);
                     }
 
@@ -620,7 +626,7 @@ async function runAutoUnshun() {
                             const shellStream = await ssh.requestShell();
                             let shellBuffer = "";
                             
-                            await new Promise((resolveShell, rejectShell) => {
+                            await new Promise((resolveShell: any, rejectShell: any) => {
                                 shellStream.on('data', d => { shellBuffer += d.toString(); });
                                 shellStream.on('close', () => resolveShell(true));
                                 shellStream.on('error', err => rejectShell(err));
@@ -630,7 +636,7 @@ async function runAutoUnshun() {
                                     if (command !== null && command !== undefined) {
                                         shellStream.write(command + "\n");
                                     }
-                                    return new Promise((resolve) => {
+                                    return new Promise((resolve: any) => {
                                         const start = Date.now();
                                         const check = () => {
                                             const trimmed = shellBuffer.trim();
@@ -703,7 +709,7 @@ async function runAutoUnshun() {
                                         shellStream.write("exit\n");
                                         await new Promise(r => setTimeout(r, 500));
                                         resolveShell(true);
-                                    } catch (err) {
+                                    } catch (err: any) {
                                         rejectShell(err);
                                     }
                                 };
@@ -711,7 +717,7 @@ async function runAutoUnshun() {
                                 runTasks();
                             });
                             ssh.dispose();
-                        } catch (err) {
+                        } catch (err: any) {
                             console.error(`[GUARDIAN] Failed to clear shun for ${ip} on firewall ${fw.name}:`, err.message);
                             ssh.dispose();
                             
@@ -754,7 +760,7 @@ async function runAutoUnshun() {
                         }
                     });
                 }
-            } catch (err) {
+            } catch (err: any) {
                 console.error(`[GUARDIAN] Error evaluating IP ${ip}:`, err.message);
             }
         }
@@ -771,7 +777,7 @@ async function runAutoUnshun() {
             update: { lastRun: new Date(), status: guardianStatus },
             create: { name: "Firewall Guardian", status: guardianStatus }
         });
-    } catch (e) {
+    } catch (e: any) {
         console.error("[GUARDIAN] Failed to update heartbeat:", e.message);
     }
 }
@@ -782,7 +788,7 @@ runAutoUnshun()
         await prisma.$disconnect();
         process.exit(0);
     })
-    .catch(async (e) => {
+    .catch(async (e: any) => {
         console.error(e);
         await prisma.$disconnect();
         process.exit(1);

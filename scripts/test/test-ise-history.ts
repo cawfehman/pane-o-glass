@@ -36,7 +36,7 @@ async function testHistory() {
 
         const data = await parseStringPromise(response.data, { 
             explicitArray: false,
-            tagNameProcessors: [ (name) => name.split(':').pop() || name ]
+            tagNameProcessors: [ (name: any) => name.split(':').pop() || name ]
         });
 
         const rawNodes = data.authStatusOutputList?.authStatusList || data.authStatusList || data.authStatus;
@@ -49,7 +49,7 @@ async function testHistory() {
         const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
         console.log(`\nFound ${nodesArray.length} records.`);
         
-        nodesArray.forEach((n, i) => {
+        nodesArray.forEach((n: any, i: any) => {
             console.log(`Record ${i+1}:`);
             console.log(`  - Timestamp: ${n.acs_timestamp || n.acsTimestamp}`);
             console.log(`  - User: ${n.user_name || n.userName}`);

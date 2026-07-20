@@ -11,7 +11,7 @@ const prisma = new PrismaClient();
 const originalLog = console.log;
 const originalError = console.error;
 
-function log(msg) {
+function log(msg: any) {
     const timestamp = new Date().toISOString();
     originalLog(`[VPN-SYNC][${timestamp}] ${msg}`);
 }
@@ -22,8 +22,8 @@ function errorLog(msg, err) {
 }
 
 // IP Utility functions
-function ipToLong(ip) {
-    return ip.split('.').reduce((long, octet) => (long << 8) + parseInt(octet, 10), 0) >>> 0;
+function ip2long(ip: any) {
+    return ip.split('.').reduce((long: any, octet: any) => (long << 8) + parseInt(octet, 10), 0) >>> 0;
 }
 
 const NON_PUBLIC_RANGES = [
@@ -42,42 +42,42 @@ const NON_PUBLIC_RANGES = [
     { start: "240.0.0.0", end: "255.255.255.255" }
 ];
 
-function isPrivateIp(ip) {
+function isPrivateIp(ip: any) {
     try {
         const ipLong = ipToLong(ip);
         return NON_PUBLIC_RANGES.some(range => {
             return ipLong >= ipToLong(range.start) && ipLong <= ipToLong(range.end);
         });
-    } catch (e) {
+    } catch (e: any) {
         return true; // Treat invalid format as private/skip
     }
 }
 
 // IPinfo Fetcher
-function getIpInfo(ip) {
-    return new Promise((resolve) => {
+function getIpInfo(ip: any) {
+    return new Promise((resolve: any) => {
         if (isPrivateIp(ip)) {
             return resolve(null);
         }
 
-        const token = process.env.IPINFO_TOKEN;
+        const token = process.env.IPINFO_TOKEN!;
         if (!token) {
             return resolve(null);
         }
 
         const url = `https://api.ipinfo.io/lite/${ip}?token=${token}`;
-        https.get(url, (res) => {
+        https.get(url, (res: any) => {
             if (res.statusCode !== 200) {
                 return resolve(null);
             }
 
             let rawData = '';
-            res.on('data', (chunk) => { rawData += chunk; });
+            res.on('data', (chunk: any) => { rawData += chunk; });
             res.on('end', () => {
                 try {
                     const parsedData = JSON.parse(rawData);
                     resolve(parsedData);
-                } catch (e) {
+                } catch (e: any) {
                     resolve(null);
                 }
             });
@@ -88,7 +88,7 @@ function getIpInfo(ip) {
 }
 
 // Helper to parse duration string (e.g. 0h:05m:30s or 1d 0h:05m:30s) to seconds
-function parseDuration(durationStr) {
+function parseDuration(durationStr: any) {
     if (!durationStr) return null;
     
     let days = 0;
@@ -108,9 +108,9 @@ function parseDuration(durationStr) {
 
 // Main sync logic
 async function runSync() {
-    const rawUrl = process.env.GRAYLOG_URL;
-    const rawToken = process.env.GRAYLOG_API_TOKEN;
-    const rawStreams = process.env.GRAYLOG_STREAM_ID;
+    const rawUrl = process.env.GRAYLOG_URL!;
+    const rawToken = process.env.GRAYLOG_API_TOKEN!;
+    const rawStreams = process.env.GRAYLOG_STREAM_ID!;
 
     if (!rawUrl || !rawToken) {
         log("Sync skipped: Graylog configuration (GRAYLOG_URL, GRAYLOG_API_TOKEN) is not configured in .env");
@@ -167,7 +167,7 @@ async function runSync() {
         }
 
         // Sort merged messages chronologically (newest first)
-        messages.sort((a, b) => {
+        messages.sort((a: any, b: any) => {
             const tA = new Date(a.message?.timestamp || 0).getTime();
             const tB = new Date(b.message?.timestamp || 0).getTime();
             return tB - tA;
@@ -411,7 +411,7 @@ async function runSync() {
             }
         });
 
-    } catch (err) {
+    } catch (err: any) {
         errorLog("Error during background sync:", err);
         try {
             await prisma.backgroundJob.upsert({
@@ -427,7 +427,7 @@ async function runSync() {
                     message: `Automated run error init: ${err.message}`
                 }
             });
-        } catch (e) {
+        } catch (e: any) {
             errorLog("Failed to write failure log to database:", e);
         }
     }

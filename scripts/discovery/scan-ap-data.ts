@@ -3,9 +3,9 @@ import https from 'https';
 import 'dotenv/config';
 
 async function scanApData() {
-    const url = (process.env.ISE_PAN_URL || '').replace(/^"|"$/g, '');
-    const user = (process.env.ISE_API_USER || '').replace(/^"|"$/g, '');
-    const pass = (process.env.ISE_API_PASSWORD || '').replace(/^"|"$/g, '');
+    const url = (process.env.ISE_PAN_URL! || '').replace(/^"|"$/g, '');
+    const user = (process.env.ISE_API_USER! || '').replace(/^"|"$/g, '');
+    const pass = (process.env.ISE_API_PASSWORD! || '').replace(/^"|"$/g, '');
     const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
     const agent = new https.Agent({ rejectUnauthorized: false });
 

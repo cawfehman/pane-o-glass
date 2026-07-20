@@ -60,7 +60,7 @@ async function fetchMap() {
                 });
                 console.log("MNT Base Directory exists. Listing contents:");
                 console.log(res2.data.substring(0, 500));
-            } catch (e2) {
+            } catch (e2: any) {
                 console.log("Base directory also inaccessible.");
             }
         }

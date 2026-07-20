@@ -3,9 +3,9 @@ import https from 'https';
 import 'dotenv/config';
 
 async function probeId() {
-    const url = process.argv[2] || process.env.ISE_PAN_URL;
-    const user = process.env.ISE_API_USER;
-    const pass = process.env.ISE_API_PASSWORD;
+    const url = process.argv[2] || process.env.ISE_PAN_URL!;
+    const user = process.env.ISE_API_USER!;
+    const pass = process.env.ISE_API_PASSWORD!;
 
     const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
     const agent = new https.Agent({ rejectUnauthorized: false });

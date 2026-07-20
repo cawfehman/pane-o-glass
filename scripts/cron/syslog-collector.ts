@@ -20,15 +20,15 @@ if (fs.existsSync(BUFFER_PATH)) {
         const data = fs.readFileSync(BUFFER_PATH, 'utf8');
         activeBuffer = JSON.parse(data);
         console.log(`[BOOT] Loaded ${activeBuffer.length} existing logs.`);
-    } catch (err) {
+    } catch (err: any) {
         console.log(`[RECOVERY] Buffer corrupted. Initializing fresh dataset.`);
         activeBuffer = [];
-        try { fs.unlinkSync(BUFFER_PATH); } catch(e) {}
+        try { fs.unlinkSync(BUFFER_PATH); } catch (e: any) {}
     }
 }
 
 // --- Daily Persistence Engine (v3.0.0) ---
-function saveToDailyLog(entry) {
+function saveToDailyLog(entry: any) {
     const dateStr = new Date().toISOString().split('T')[0];
     const dailyPath = path.join(LOG_DIR, `tacacs-${dateStr}.json`);
     
@@ -37,7 +37,7 @@ function saveToDailyLog(entry) {
     const line = JSON.stringify(entry) + '\n';
     try {
         fs.appendFileSync(dailyPath, line);
-    } catch (err) {
+    } catch (err: any) {
         console.error(`[DAILY WRITE ERROR] ${err.message}`);
     }
 }
@@ -51,7 +51,7 @@ server.on('listening', () => {
     console.log(`--------------------------------------------------------\n`);
 });
 
-server.on('message', (msg, rinfo) => {
+server.on('message', (msg: any, rinfo: any) => {
     const raw = msg.toString();
     
     if (raw.includes('TACACS')) {
@@ -75,7 +75,7 @@ server.on('message', (msg, rinfo) => {
             const dataString = JSON.stringify(activeBuffer, null, 2);
             fs.writeFileSync(TEMP_BUFFER_PATH, dataString);
             fs.renameSync(TEMP_BUFFER_PATH, BUFFER_PATH);
-        } catch (err) {
+        } catch (err: any) {
             console.error(`\n[WRITE ERROR] ${err.message}`);
         }
     } else {
@@ -83,7 +83,7 @@ server.on('message', (msg, rinfo) => {
     }
 });
 
-server.on('error', (err) => {
+server.on('error', (err: any) => {
     console.error(`[SERVER ERROR] ${err.stack}`);
     server.close();
 });

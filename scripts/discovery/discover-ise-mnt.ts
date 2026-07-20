@@ -3,9 +3,9 @@ import https from 'https';
 import 'dotenv/config';
 
 async function discoverMnt() {
-    const url = process.env.ISE_PAN_URL;
-    const user = process.env.ISE_API_USER;
-    const pass = process.env.ISE_API_PASSWORD;
+    const url = process.env.ISE_PAN_URL!;
+    const user = process.env.ISE_API_USER!;
+    const pass = process.env.ISE_API_PASSWORD!;
 
     if (!url || !user || !pass) {
         console.error("ISE Credentials not configured");

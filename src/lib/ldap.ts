@@ -23,11 +23,11 @@ export async function authenticateWithAD(username: string, password: string): Pr
         ? username.slice(0, -17)
         : username;
 
-    const url = process.env.AD_URL;
-    const bindDN = process.env.AD_BIND_DN;
-    const bindPassword = process.env.AD_BIND_PASSWORD;
-    const baseDN = process.env.AD_BASE_DN;
-    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
+    const url = process.env.AD_URL!;
+    const bindDN = process.env.AD_BIND_DN!;
+    const bindPassword = process.env.AD_BIND_PASSWORD!;
+    const baseDN = process.env.AD_BASE_DN!;
+    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED! !== "false";
 
     if (!url || !bindDN || !bindPassword || !baseDN) {
         logger.error("LDAP configuration missing in environment variables.");
@@ -97,7 +97,7 @@ export async function authenticateWithAD(username: string, password: string): Pr
     } finally {
         try {
             await client.unbind();
-        } catch (e) {
+        } catch (e: any) {
             // Ignore unbind errors if already destroyed
         }
     }
@@ -107,11 +107,11 @@ export async function authenticateWithAD(username: string, password: string): Pr
  * Does NOT perform user authentication, uses service account bind only.
  */
 export async function getUserDetails(username: string) {
-    const url = process.env.AD_URL;
-    const bindDN = process.env.AD_BIND_DN;
-    const bindPassword = process.env.AD_BIND_PASSWORD;
-    const baseDN = process.env.AD_BASE_DN;
-    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
+    const url = process.env.AD_URL!;
+    const bindDN = process.env.AD_BIND_DN!;
+    const bindPassword = process.env.AD_BIND_PASSWORD!;
+    const baseDN = process.env.AD_BASE_DN!;
+    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED! !== "false";
 
     if (!url || !bindDN || !bindPassword || !baseDN) {
         return null;
@@ -165,18 +165,18 @@ export async function getUserDetails(username: string) {
         logger.error("LDAP Enrichment Error:", err.message);
         return null;
     } finally {
-        try { await client.unbind(); } catch (e) { }
+        try { await client.unbind(); } catch (e: any) { }
     }
 }
 /**
  * Fetches details for multiple users in batches to optimize LDAP performance.
  */
 export async function getBulkUserDetails(emails: string[]) {
-    const url = process.env.AD_URL;
-    const bindDN = process.env.AD_BIND_DN;
-    const bindPassword = process.env.AD_BIND_PASSWORD;
-    const baseDN = process.env.AD_BASE_DN;
-    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
+    const url = process.env.AD_URL!;
+    const bindDN = process.env.AD_BIND_DN!;
+    const bindPassword = process.env.AD_BIND_PASSWORD!;
+    const baseDN = process.env.AD_BASE_DN!;
+    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED! !== "false";
 
     if (!url || !bindDN || !bindPassword || !baseDN || emails.length === 0) {
         return {};
@@ -235,7 +235,7 @@ export async function getBulkUserDetails(emails: string[]) {
     } catch (err: any) {
         logger.error("LDAP Bulk Enrichment Error:", err.message);
     } finally {
-        try { await client.unbind(); } catch (e) { }
+        try { await client.unbind(); } catch (e: any) { }
     }
 
     return results;

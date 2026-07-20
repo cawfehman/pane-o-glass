@@ -3,10 +3,10 @@ import https from 'https';
 import dotenv from 'dotenv';
 dotenv.config();
 
-async function debugMac(mac) {
-    const url = process.env.ISE_PAN_URL.replace(/^"|"$/g, '');
-    const user = process.env.ISE_API_USER.replace(/^"|"$/g, '');
-    const pass = process.env.ISE_API_PASSWORD.replace(/^"|"$/g, '');
+async function debugMac(mac: any) {
+    const url = process.env.ISE_PAN_URL!.replace(/^"|"$/g, '');
+    const user = process.env.ISE_API_USER!.replace(/^"|"$/g, '');
+    const pass = process.env.ISE_API_PASSWORD!.replace(/^"|"$/g, '');
     const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
     const agent = new https.Agent({ rejectUnauthorized: false });
 
@@ -33,7 +33,7 @@ async function debugMac(mac) {
             if (ep.includes('ActiveList') && res.data.includes(mac)) {
                 console.log(`FOUND in ActiveList XML!`);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.log(`Failed: ${e.message}`);
         }
     }

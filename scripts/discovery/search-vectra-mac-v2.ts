@@ -6,9 +6,9 @@ import https from 'https';
 import 'dotenv/config';
 
 async function searchVectra(mac: string) {
-    const VECTRA_CLIENT_ID = process.env.VECTRA_CLIENT_ID || '';
-    const VECTRA_CLIENT_SECRET = process.env.VECTRA_CLIENT_SECRET || '';
-    const VECTRA_URL = (process.env.VECTRA_URL || '').replace(/\/$/, '');
+    const VECTRA_CLIENT_ID = process.env.VECTRA_CLIENT_ID! || '';
+    const VECTRA_CLIENT_SECRET = process.env.VECTRA_CLIENT_SECRET! || '';
+    const VECTRA_URL = (process.env.VECTRA_URL! || '').replace(/\/$/, '');
 
     console.log(`Searching Vectra for MAC: ${mac} at ${VECTRA_URL}...`);
     

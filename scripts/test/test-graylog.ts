@@ -6,9 +6,9 @@ dotenv.config();
 
 async function main() {
     console.log("Checking Graylog for 401002 (Shun) logs...");
-    const rawUrl = process.env.GRAYLOG_URL;
-    const rawToken = process.env.GRAYLOG_API_TOKEN;
-    const rawStreams = process.env.GRAYLOG_STREAM_ID;
+    const rawUrl = process.env.GRAYLOG_URL!;
+    const rawToken = process.env.GRAYLOG_API_TOKEN!;
+    const rawStreams = process.env.GRAYLOG_STREAM_ID!;
 
     if (!rawUrl || !rawToken) {
         console.error("Missing credentials.");

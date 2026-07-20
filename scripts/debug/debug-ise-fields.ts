@@ -5,9 +5,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 async function debugIseFields() {
-    const url = process.env.ISE_PAN_URL;
-    const user = process.env.ISE_API_USER;
-    const pass = process.env.ISE_API_PASSWORD;
+    const url = process.env.ISE_PAN_URL!;
+    const user = process.env.ISE_API_USER!;
+    const pass = process.env.ISE_API_PASSWORD!;
     const query = process.argv[2] || "00:00:00:00:00:00";
 
     if (!url || !user || !pass) {
@@ -44,7 +44,7 @@ async function debugIseFields() {
         } else {
             console.log("No active session found (showing only auth history).");
         }
-    } catch (e) {
+    } catch (e: any) {
         console.log(`Session lookup failed: ${e.message}`);
     }
 
@@ -68,7 +68,7 @@ async function debugIseFields() {
                 console.log(`Auth_${key}: ${val}`);
             });
         }
-    } catch (e) {
+    } catch (e: any) {
         console.error("Auth History Error:", e.message);
     }
 }

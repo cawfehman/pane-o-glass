@@ -6,7 +6,7 @@ export async function GET() {
     console.log("Seed API triggered...");
     
     // Security Guard: Only allow seeding in development mode
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV! === 'production') {
         console.warn("Seeding attempt blocked in production environment.");
         return new NextResponse("Not Found", { status: 404 });
     }
@@ -52,7 +52,7 @@ export async function GET() {
         return NextResponse.json({ 
             error: error.message, 
             stack: error.stack,
-            env: process.env.DATABASE_URL
+            env: process.env.DATABASE_URL!
         }, { status: 500 });
     }
 }

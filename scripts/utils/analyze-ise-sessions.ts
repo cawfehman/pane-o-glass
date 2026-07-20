@@ -22,16 +22,15 @@ async function analyzeSessions() {
 
         const xml = response.data;
         
-        const sessions = sessionsXml.map((m: any) => {      
         // Count total sessions
         const sessionCount = (xml.match(/<activeSession>/g) || []).length;
         console.log(`Total Active Sessions found: ${sessionCount}`);
 
         // Sample a few to see what the 'server' and 'protocol' look like
-        const psns = {};
+        const psns: Record<string, number> = {};
         const psnMatches = xml.match(/<server>(.*?)<\/server>/g);
         if (psnMatches) {
-            psnMatches.forEach(m => {
+            psnMatches.forEach((m: string) => {
                 const name = m.replace(/<\/?server>/g, '');
                 psns[name] = (psns[name] || 0) + 1;
             });
@@ -46,7 +45,7 @@ async function analyzeSessions() {
         let newest = 0;
         let oldest = Infinity;
 
-        allIds.forEach(m => {
+        allIds.forEach((m: string) => {
             const hex = m.replace('<audit_session_id>', '').substring(8, 16);
             const time = parseInt(hex, 16);
             if (time > newest) newest = time;

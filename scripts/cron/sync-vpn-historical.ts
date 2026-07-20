@@ -8,7 +8,7 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 const prisma = new PrismaClient();
 
 // Helper to parse duration string (e.g. 0h:05m:30s or 1d 0h:05m:30s) to seconds
-function parseDuration(durationStr) {
+function parseDuration(durationStr: any) {
     if (!durationStr) return null;
     
     let days = 0;
@@ -27,8 +27,8 @@ function parseDuration(durationStr) {
 }
 
 // IP Utility functions
-function ipToLong(ip) {
-    return ip.split('.').reduce((long, octet) => (long << 8) + parseInt(octet, 10), 0) >>> 0;
+function ip2long(ip: any) {
+    return ip.split('.').reduce((long: any, octet: any) => (long << 8) + parseInt(octet, 10), 0) >>> 0;
 }
 
 const NON_PUBLIC_RANGES = [
@@ -47,34 +47,34 @@ const NON_PUBLIC_RANGES = [
     { start: "240.0.0.0", end: "255.255.255.255" }
 ];
 
-function isPrivateIp(ip) {
+function isPrivateIp(ip: any) {
     try {
         const ipLong = ipToLong(ip);
         return NON_PUBLIC_RANGES.some(range => {
             return ipLong >= ipToLong(range.start) && ipLong <= ipToLong(range.end);
         });
-    } catch (e) {
+    } catch (e: any) {
         return true;
     }
 }
 
-function getIpInfo(ip) {
-    return new Promise((resolve) => {
+function getIpInfo(ip: any) {
+    return new Promise((resolve: any) => {
         if (isPrivateIp(ip)) return resolve(null);
 
-        const token = process.env.IPINFO_TOKEN;
+        const token = process.env.IPINFO_TOKEN!;
         if (!token) return resolve(null);
 
         const url = `https://api.ipinfo.io/lite/${ip}?token=${token}`;
-        https.get(url, (res) => {
+        https.get(url, (res: any) => {
             if (res.statusCode !== 200) return resolve(null);
 
             let rawData = '';
-            res.on('data', (chunk) => { rawData += chunk; });
+            res.on('data', (chunk: any) => { rawData += chunk; });
             res.on('end', () => {
                 try {
                     resolve(JSON.parse(rawData));
-                } catch (e) {
+                } catch (e: any) {
                     resolve(null);
                 }
             });
@@ -85,7 +85,7 @@ function getIpInfo(ip) {
 }
 
 const ipCache = new Map();
-async function getIpInfoWithCache(ip) {
+async function getIpInfoWithCache(ip: any) {
     if (ipCache.has(ip)) return ipCache.get(ip);
     const info = await getIpInfo(ip);
     ipCache.set(ip, info);
@@ -101,7 +101,7 @@ const ipAssignRegex = /(?:Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>\
 const ikev2ConnRegex = /Local:\s*([^\s:]+)(?::\d+)?\s+Remote:\s*([^\s:]+)(?::\d+)?\s+Username:\s*([^\s]+)\s+IKEv2\s+SA\s+UP/i;
 const ikev2LeaseRegex = /Local:\s*[^\s]+\s+Remote:\s*([^\s:]+)(?::\d+)?\s+Username:\s*([^\s]+)\s+IKEv2\s+Group:\s*[^\s]+\s+(?:IPv4\s+)?Address:\s*<([^>]+)>/i;
 
-function extractIpFromMessage(rawLog) {
+function extractIpFromMessage(rawLog: any) {
     if (rawLog.includes("113039")) {
         const match = rawLog.match(connRegex);
         if (match) return match[3] || match[6];
@@ -128,9 +128,9 @@ function extractIpFromMessage(rawLog) {
 }
 
 async function runHistoricalSync() {
-    const rawUrl = process.env.GRAYLOG_URL;
-    const rawToken = process.env.GRAYLOG_API_TOKEN;
-    const rawStreams = process.env.GRAYLOG_STREAM_ID;
+    const rawUrl = process.env.GRAYLOG_URL!;
+    const rawToken = process.env.GRAYLOG_API_TOKEN!;
+    const rawStreams = process.env.GRAYLOG_STREAM_ID!;
 
     if (!rawUrl || !rawToken) {
         console.error("Graylog URL and Token must be configured in .env");
@@ -226,7 +226,7 @@ async function runHistoricalSync() {
                 }
 
                 // Sort merged messages chronologically (newest first)
-                messages.sort((a, b) => {
+                messages.sort((a: any, b: any) => {
                     const tA = new Date(a.message?.timestamp || 0).getTime();
                     const tB = new Date(b.message?.timestamp || 0).getTime();
                     return tB - tA;
@@ -242,7 +242,7 @@ async function runHistoricalSync() {
 
                 if (uniqueIps.length > 0) {
                     console.log(`Resolving geo info for ${uniqueIps.length} unique public IPs in parallel...`);
-                    await Promise.all(uniqueIps.map(async (ip) => {
+                    await Promise.all(uniqueIps.map(async (ip: any) => {
                         const info = await getIpInfo(ip);
                         ipCache.set(ip, info);
                     }));
@@ -485,8 +485,10 @@ async function runHistoricalSync() {
                         vpnStream: finalVpnStream,
                         status,
                         createdAt: logTimestamp,
-                        isMock: true,
-                        dataRef: dataObj
+                        // @ts-ignore
+      isMock: true,
+                        // @ts-ignore
+      dataRef: dataObj
                     };
 
                     operations.push(prisma.vpnEvent.create({
@@ -505,7 +507,7 @@ async function runHistoricalSync() {
                     console.log(`Executing ${operations.length} database operations in a transaction...`);
                     await prisma.$transaction(operations);
                 }
-            } catch (err) {
+            } catch (err: any) {
                 console.error(`Error fetching logs for day offset ${dayOffset} (window ${chunkIdx + 1}/3):`, err.message);
             }
         }

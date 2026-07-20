@@ -2,8 +2,8 @@ import axios from 'axios';
 import 'dotenv/config';
 
 async function searchVectra(mac: string) {
-    const url = (process.env.VECTRA_URL || '').replace(/^"|"$/g, '');
-    const token = (process.env.VECTRA_API_TOKEN || '').replace(/^"|"$/g, '');
+    const url = (process.env.VECTRA_URL! || '').replace(/^"|"$/g, '');
+    const token = (process.env.VECTRA_API_TOKEN! || '').replace(/^"|"$/g, '');
 
     console.log(`Searching Vectra for MAC: ${mac}...`);
     try {

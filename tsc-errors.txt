@@ -1,0 +1,213 @@
+﻿scripts/cron/auto-unshun.ts(341,33): error TS1005: ',' expected.
+scripts/cron/sync-vpn-historical.ts(30,12): error TS1005: '(' expected.
+scripts/cron/sync-vpn-historical.ts(30,23): error TS1144: '{' or ';' expected.
+scripts/cron/sync-vpn-historical.ts(30,28): error TS1005: '=>' expected.
+scripts/cron/sync-vpn-logs.ts(25,12): error TS1005: '(' expected.
+scripts/cron/sync-vpn-logs.ts(25,23): error TS1144: '{' or ';' expected.
+scripts/cron/sync-vpn-logs.ts(25,28): error TS1005: '=>' expected.
+scripts/test/test-failure-endpoint.ts(7,40): error TS1005: ',' expected.
+scripts/test/test-failure-endpoint.ts(7,42): error TS1005: ',' expected.
+scripts/test/test-failure-endpoint.ts(7,50): error TS1005: ',' expected.
+scripts/test/test-failure-endpoint.ts(8,42): error TS1005: ',' expected.
+scripts/test/test-failure-endpoint.ts(8,44): error TS1005: ',' expected.
+scripts/test/test-failure-endpoint.ts(8,52): error TS1005: ',' expected.
+scripts/test/test-failure-endpoint.ts(9,46): error TS1005: ',' expected.
+scripts/test/test-failure-endpoint.ts(9,48): error TS1005: ',' expected.
+scripts/test/test-failure-endpoint.ts(9,56): error TS1005: ',' expected.
+scripts/test/test-ise-endpoints.ts(7,40): error TS1005: ',' expected.
+scripts/test/test-ise-endpoints.ts(8,42): error TS1005: ',' expected.
+scripts/test/test-ise-endpoints.ts(9,46): error TS1005: ',' expected.
+scripts/test/test-ise-history.ts(8,40): error TS1005: ',' expected.
+scripts/test/test-ise-history.ts(8,42): error TS1005: ',' expected.
+scripts/test/test-ise-history.ts(8,50): error TS1005: ',' expected.
+scripts/test/test-ise-history.ts(9,42): error TS1005: ',' expected.
+scripts/test/test-ise-history.ts(9,44): error TS1005: ',' expected.
+scripts/test/test-ise-history.ts(9,52): error TS1005: ',' expected.
+scripts/test/test-ise-history.ts(10,46): error TS1005: ',' expected.
+scripts/test/test-ise-history.ts(10,48): error TS1005: ',' expected.
+scripts/test/test-ise-history.ts(10,56): error TS1005: ',' expected.
+scripts/test/test-ise-triage.ts(7,40): error TS1005: ',' expected.
+scripts/test/test-ise-triage.ts(8,42): error TS1005: ',' expected.
+scripts/test/test-ise-triage.ts(9,46): error TS1005: ',' expected.
+scripts/test/test-psn-query.ts(8,42): error TS1005: ',' expected.
+scripts/test/test-psn-query.ts(9,46): error TS1005: ',' expected.
+scripts/test/test-psn-status.ts(7,40): error TS1005: ',' expected.
+scripts/test/test-psn-status.ts(8,42): error TS1005: ',' expected.
+scripts/test/test-psn-status.ts(9,46): error TS1005: ',' expected.
+scripts/test/test-real-mac.ts(7,40): error TS1005: ',' expected.
+scripts/test/test-real-mac.ts(8,42): error TS1005: ',' expected.
+scripts/test/test-real-mac.ts(9,46): error TS1005: ',' expected.
+scripts/test/test-specific-mac.ts(6,40): error TS1005: ',' expected.
+scripts/test/test-specific-mac.ts(7,42): error TS1005: ',' expected.
+scripts/test/test-specific-mac.ts(8,46): error TS1005: ',' expected.
+scripts/utils/analyze-auth-history.ts(7,40): error TS1005: ',' expected.
+scripts/utils/analyze-auth-history.ts(7,42): error TS1005: ',' expected.
+scripts/utils/analyze-auth-history.ts(7,50): error TS1005: ',' expected.
+scripts/utils/analyze-auth-history.ts(8,42): error TS1005: ',' expected.
+scripts/utils/analyze-auth-history.ts(8,44): error TS1005: ',' expected.
+scripts/utils/analyze-auth-history.ts(8,52): error TS1005: ',' expected.
+scripts/utils/analyze-auth-history.ts(9,46): error TS1005: ',' expected.
+scripts/utils/analyze-auth-history.ts(9,48): error TS1005: ',' expected.
+scripts/utils/analyze-auth-history.ts(9,56): error TS1005: ',' expected.
+scripts/utils/analyze-ise-sessions.ts(7,59): error TS1005: ',' expected.
+scripts/utils/analyze-ise-sessions.ts(8,42): error TS1005: ',' expected.
+scripts/utils/analyze-ise-sessions.ts(9,46): error TS1005: ',' expected.
+scripts/utils/brute-force-ise.ts(7,40): error TS1005: ',' expected.
+scripts/utils/brute-force-ise.ts(8,42): error TS1005: ',' expected.
+scripts/utils/brute-force-ise.ts(9,46): error TS1005: ',' expected.
+scripts/utils/check-ers-mac.ts(7,43): error TS1005: ',' expected.
+scripts/utils/check-ers-mac.ts(7,45): error TS1005: ',' expected.
+scripts/utils/check-ers-mac.ts(7,53): error TS1005: ',' expected.
+scripts/utils/check-ers-mac.ts(9,42): error TS1005: ',' expected.
+scripts/utils/check-ers-mac.ts(9,44): error TS1005: ',' expected.
+scripts/utils/check-ers-mac.ts(9,52): error TS1005: ',' expected.
+scripts/utils/check-ers-mac.ts(10,46): error TS1005: ',' expected.
+scripts/utils/check-ers-mac.ts(10,48): error TS1005: ',' expected.
+scripts/utils/check-ers-mac.ts(10,56): error TS1005: ',' expected.
+scripts/utils/check-ers-profiling.ts(7,44): error TS1005: ')' expected.
+scripts/utils/check-ers-profiling.ts(7,47): error TS1005: ',' expected.
+scripts/utils/check-ers-profiling.ts(7,52): error TS1005: ';' expected.
+scripts/utils/check-ers-profiling.ts(7,53): error TS1128: Declaration or statement expected.
+scripts/utils/check-ers-profiling.ts(9,43): error TS1005: ')' expected.
+scripts/utils/check-ers-profiling.ts(9,46): error TS1005: ',' expected.
+scripts/utils/check-ers-profiling.ts(9,51): error TS1005: ';' expected.
+scripts/utils/check-ers-profiling.ts(9,52): error TS1128: Declaration or statement expected.
+scripts/utils/check-ers-profiling.ts(10,47): error TS1005: ')' expected.
+scripts/utils/check-ers-profiling.ts(10,50): error TS1005: ',' expected.
+scripts/utils/check-ers-profiling.ts(10,55): error TS1005: ';' expected.
+scripts/utils/check-ers-profiling.ts(10,56): error TS1128: Declaration or statement expected.
+scripts/utils/check-iphone-profile.ts(7,41): error TS1005: ')' expected.
+scripts/utils/check-iphone-profile.ts(7,44): error TS1005: ',' expected.
+scripts/utils/check-iphone-profile.ts(7,49): error TS1005: ';' expected.
+scripts/utils/check-iphone-profile.ts(7,50): error TS1128: Declaration or statement expected.
+scripts/utils/check-iphone-profile.ts(8,43): error TS1005: ')' expected.
+scripts/utils/check-iphone-profile.ts(8,46): error TS1005: ',' expected.
+scripts/utils/check-iphone-profile.ts(8,51): error TS1005: ';' expected.
+scripts/utils/check-iphone-profile.ts(8,52): error TS1128: Declaration or statement expected.
+scripts/utils/check-iphone-profile.ts(9,47): error TS1005: ')' expected.
+scripts/utils/check-iphone-profile.ts(9,50): error TS1005: ',' expected.
+scripts/utils/check-iphone-profile.ts(9,55): error TS1005: ';' expected.
+scripts/utils/check-iphone-profile.ts(9,56): error TS1128: Declaration or statement expected.
+scripts/utils/check-recent-failures.ts(7,41): error TS1005: ')' expected.
+scripts/utils/check-recent-failures.ts(7,44): error TS1005: ',' expected.
+scripts/utils/check-recent-failures.ts(7,49): error TS1005: ';' expected.
+scripts/utils/check-recent-failures.ts(7,50): error TS1128: Declaration or statement expected.
+scripts/utils/check-recent-failures.ts(8,43): error TS1005: ')' expected.
+scripts/utils/check-recent-failures.ts(8,46): error TS1005: ',' expected.
+scripts/utils/check-recent-failures.ts(8,51): error TS1005: ';' expected.
+scripts/utils/check-recent-failures.ts(8,52): error TS1128: Declaration or statement expected.
+scripts/utils/check-recent-failures.ts(9,47): error TS1005: ')' expected.
+scripts/utils/check-recent-failures.ts(9,50): error TS1005: ',' expected.
+scripts/utils/check-recent-failures.ts(9,55): error TS1005: ';' expected.
+scripts/utils/check-recent-failures.ts(9,56): error TS1128: Declaration or statement expected.
+scripts/utils/deep-telemetry-discovery.ts(7,40): error TS1005: ',' expected.
+scripts/utils/deep-telemetry-discovery.ts(8,42): error TS1005: ',' expected.
+scripts/utils/deep-telemetry-discovery.ts(9,46): error TS1005: ',' expected.
+scripts/utils/deep-telemetry-scan.ts(7,41): error TS1005: ')' expected.
+scripts/utils/deep-telemetry-scan.ts(7,44): error TS1005: ',' expected.
+scripts/utils/deep-telemetry-scan.ts(7,49): error TS1005: ';' expected.
+scripts/utils/deep-telemetry-scan.ts(7,50): error TS1128: Declaration or statement expected.
+scripts/utils/deep-telemetry-scan.ts(8,43): error TS1005: ')' expected.
+scripts/utils/deep-telemetry-scan.ts(8,46): error TS1005: ',' expected.
+scripts/utils/deep-telemetry-scan.ts(8,51): error TS1005: ';' expected.
+scripts/utils/deep-telemetry-scan.ts(8,52): error TS1128: Declaration or statement expected.
+scripts/utils/deep-telemetry-scan.ts(9,47): error TS1005: ')' expected.
+scripts/utils/deep-telemetry-scan.ts(9,50): error TS1005: ',' expected.
+scripts/utils/deep-telemetry-scan.ts(9,55): error TS1005: ';' expected.
+scripts/utils/deep-telemetry-scan.ts(9,56): error TS1128: Declaration or statement expected.
+scripts/utils/dump-active-session.ts(7,41): error TS1005: ')' expected.
+scripts/utils/dump-active-session.ts(7,44): error TS1005: ',' expected.
+scripts/utils/dump-active-session.ts(7,49): error TS1005: ';' expected.
+scripts/utils/dump-active-session.ts(7,50): error TS1128: Declaration or statement expected.
+scripts/utils/dump-active-session.ts(8,43): error TS1005: ')' expected.
+scripts/utils/dump-active-session.ts(8,46): error TS1005: ',' expected.
+scripts/utils/dump-active-session.ts(8,51): error TS1005: ';' expected.
+scripts/utils/dump-active-session.ts(8,52): error TS1128: Declaration or statement expected.
+scripts/utils/dump-active-session.ts(9,47): error TS1005: ')' expected.
+scripts/utils/dump-active-session.ts(9,50): error TS1005: ',' expected.
+scripts/utils/dump-active-session.ts(9,55): error TS1005: ';' expected.
+scripts/utils/dump-active-session.ts(9,56): error TS1128: Declaration or statement expected.
+scripts/utils/dump-wireless-attrs.ts(7,41): error TS1005: ')' expected.
+scripts/utils/dump-wireless-attrs.ts(7,44): error TS1005: ',' expected.
+scripts/utils/dump-wireless-attrs.ts(7,49): error TS1005: ';' expected.
+scripts/utils/dump-wireless-attrs.ts(7,50): error TS1128: Declaration or statement expected.
+scripts/utils/dump-wireless-attrs.ts(8,43): error TS1005: ')' expected.
+scripts/utils/dump-wireless-attrs.ts(8,46): error TS1005: ',' expected.
+scripts/utils/dump-wireless-attrs.ts(8,51): error TS1005: ';' expected.
+scripts/utils/dump-wireless-attrs.ts(8,52): error TS1128: Declaration or statement expected.
+scripts/utils/dump-wireless-attrs.ts(9,47): error TS1005: ')' expected.
+scripts/utils/dump-wireless-attrs.ts(9,50): error TS1005: ',' expected.
+scripts/utils/dump-wireless-attrs.ts(9,55): error TS1005: ';' expected.
+scripts/utils/dump-wireless-attrs.ts(9,56): error TS1128: Declaration or statement expected.
+scripts/utils/fetch-ise-map.ts(7,40): error TS1005: ',' expected.
+scripts/utils/fetch-ise-map.ts(8,42): error TS1005: ',' expected.
+scripts/utils/fetch-ise-map.ts(9,46): error TS1005: ',' expected.
+scripts/utils/find-profiles.ts(7,41): error TS1005: ')' expected.
+scripts/utils/find-profiles.ts(7,44): error TS1005: ',' expected.
+scripts/utils/find-profiles.ts(7,49): error TS1005: ';' expected.
+scripts/utils/find-profiles.ts(7,50): error TS1128: Declaration or statement expected.
+scripts/utils/find-profiles.ts(8,43): error TS1005: ')' expected.
+scripts/utils/find-profiles.ts(8,46): error TS1005: ',' expected.
+scripts/utils/find-profiles.ts(8,51): error TS1005: ';' expected.
+scripts/utils/find-profiles.ts(8,52): error TS1128: Declaration or statement expected.
+scripts/utils/find-profiles.ts(9,47): error TS1005: ')' expected.
+scripts/utils/find-profiles.ts(9,50): error TS1005: ',' expected.
+scripts/utils/find-profiles.ts(9,55): error TS1005: ';' expected.
+scripts/utils/find-profiles.ts(9,56): error TS1128: Declaration or statement expected.
+scripts/utils/fuzzy-ise-discovery.ts(7,40): error TS1005: ',' expected.
+scripts/utils/fuzzy-ise-discovery.ts(8,42): error TS1005: ',' expected.
+scripts/utils/fuzzy-ise-discovery.ts(9,46): error TS1005: ',' expected.
+scripts/utils/get-mac-details.ts(7,41): error TS1005: ')' expected.
+scripts/utils/get-mac-details.ts(7,44): error TS1005: ',' expected.
+scripts/utils/get-mac-details.ts(7,49): error TS1005: ';' expected.
+scripts/utils/get-mac-details.ts(7,50): error TS1128: Declaration or statement expected.
+scripts/utils/get-mac-details.ts(8,43): error TS1005: ')' expected.
+scripts/utils/get-mac-details.ts(8,46): error TS1005: ',' expected.
+scripts/utils/get-mac-details.ts(8,51): error TS1005: ';' expected.
+scripts/utils/get-mac-details.ts(8,52): error TS1128: Declaration or statement expected.
+scripts/utils/get-mac-details.ts(9,47): error TS1005: ')' expected.
+scripts/utils/get-mac-details.ts(9,50): error TS1005: ',' expected.
+scripts/utils/get-mac-details.ts(9,55): error TS1005: ';' expected.
+scripts/utils/get-mac-details.ts(9,56): error TS1128: Declaration or statement expected.
+scripts/utils/ise-3.3-brute-force.ts(8,40): error TS1005: ',' expected.
+scripts/utils/ise-3.3-brute-force.ts(9,42): error TS1005: ',' expected.
+scripts/utils/ise-3.3-brute-force.ts(10,46): error TS1005: ',' expected.
+scripts/utils/ise-3.3-lastn-discovery.ts(7,40): error TS1005: ',' expected.
+scripts/utils/ise-3.3-lastn-discovery.ts(8,42): error TS1005: ',' expected.
+scripts/utils/ise-3.3-lastn-discovery.ts(9,46): error TS1005: ',' expected.
+scripts/utils/ise-directory-scan.ts(7,59): error TS1005: ',' expected.
+scripts/utils/ise-directory-scan.ts(8,42): error TS1005: ',' expected.
+scripts/utils/ise-directory-scan.ts(9,46): error TS1005: ',' expected.
+scripts/utils/ise-master-discovery.ts(7,40): error TS1005: ',' expected.
+scripts/utils/ise-master-discovery.ts(8,42): error TS1005: ',' expected.
+scripts/utils/ise-master-discovery.ts(9,46): error TS1005: ',' expected.
+scripts/utils/list-all-fields.ts(7,41): error TS1005: ')' expected.
+scripts/utils/list-all-fields.ts(7,44): error TS1005: ',' expected.
+scripts/utils/list-all-fields.ts(7,49): error TS1005: ';' expected.
+scripts/utils/list-all-fields.ts(7,50): error TS1128: Declaration or statement expected.
+scripts/utils/list-all-fields.ts(8,43): error TS1005: ')' expected.
+scripts/utils/list-all-fields.ts(8,46): error TS1005: ',' expected.
+scripts/utils/list-all-fields.ts(8,51): error TS1005: ';' expected.
+scripts/utils/list-all-fields.ts(8,52): error TS1128: Declaration or statement expected.
+scripts/utils/list-all-fields.ts(9,47): error TS1005: ')' expected.
+scripts/utils/list-all-fields.ts(9,50): error TS1005: ',' expected.
+scripts/utils/list-all-fields.ts(9,55): error TS1005: ';' expected.
+scripts/utils/list-all-fields.ts(9,56): error TS1128: Declaration or statement expected.
+scripts/utils/list-mac-tags.ts(8,41): error TS1005: ')' expected.
+scripts/utils/list-mac-tags.ts(8,44): error TS1005: ',' expected.
+scripts/utils/list-mac-tags.ts(8,49): error TS1005: ';' expected.
+scripts/utils/list-mac-tags.ts(8,50): error TS1128: Declaration or statement expected.
+scripts/utils/list-mac-tags.ts(9,43): error TS1005: ')' expected.
+scripts/utils/list-mac-tags.ts(9,46): error TS1005: ',' expected.
+scripts/utils/list-mac-tags.ts(9,51): error TS1005: ';' expected.
+scripts/utils/list-mac-tags.ts(9,52): error TS1128: Declaration or statement expected.
+scripts/utils/list-mac-tags.ts(10,47): error TS1005: ')' expected.
+scripts/utils/list-mac-tags.ts(10,50): error TS1005: ',' expected.
+scripts/utils/list-mac-tags.ts(10,55): error TS1005: ';' expected.
+scripts/utils/list-mac-tags.ts(10,56): error TS1128: Declaration or statement expected.
+scripts/utils/surgical-ise-discovery.ts(7,40): error TS1005: ',' expected.
+scripts/utils/surgical-ise-discovery.ts(8,42): error TS1005: ',' expected.
+scripts/utils/surgical-ise-discovery.ts(9,46): error TS1005: ',' expected.
+scripts/utils/verify-discovered-ep.ts(8,59): error TS1005: ',' expected.
+scripts/utils/verify-discovered-ep.ts(10,42): error TS1005: ',' expected.
+scripts/utils/verify-discovered-ep.ts(11,46): error TS1005: ',' expected.
