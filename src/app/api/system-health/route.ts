@@ -131,9 +131,8 @@ export async function GET() {
                 const { stdout: psMemOut } = await execAsync('ps -eo pid,ppid,cmd,%mem,%cpu --sort=-%mem | head -n 11');
                 metrics.processesMem = parsePsOutput(psMemOut);
 
-                // CPU Usage (approximate from load averages or simple ping)
-                const cpus = os.cpus();
-                metrics.cpuUsage = Math.round((os.loadavg()[0] / cpus.length) * 100);
+                // True CPU Usage (delta over 150ms)
+                metrics.cpuUsage = await getCpuUsagePercent();
             } catch (cmdErr) {
                 console.error("Failed to run Linux specific commands:", cmdErr);
             }
@@ -196,4 +195,25 @@ function parsePsOutput(output: string) {
             cpu: cpu
         };
     }).filter(Boolean);
+}
+
+function getCpuUsagePercent(): Promise<number> {
+    return new Promise((resolve) => {
+        const startCpus = os.cpus();
+        setTimeout(() => {
+            const endCpus = os.cpus();
+            let idleDiff = 0;
+            let totalDiff = 0;
+            for (let i = 0; i < startCpus.length; i++) {
+                const s = startCpus[i].times;
+                const e = endCpus[i].times;
+                const startTotal = s.user + s.nice + s.sys + s.idle + s.irq;
+                const endTotal = e.user + e.nice + e.sys + e.idle + e.irq;
+                idleDiff += e.idle - s.idle;
+                totalDiff += endTotal - startTotal;
+            }
+            const percent = totalDiff === 0 ? 0 : 100 - (100 * idleDiff / totalDiff);
+            resolve(Math.round(percent));
+        }, 150); // 150ms snapshot delta
+    });
 }
