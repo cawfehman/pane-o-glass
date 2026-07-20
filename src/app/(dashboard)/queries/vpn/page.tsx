@@ -1228,7 +1228,7 @@ export default function VpnTroubleshootingPage() {
                                 <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '24px' }}>No successful connections recorded yet.</p>
                             ) : (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto', paddingRight: '6px' }}>
-                                    {successfulIps.map((evt) => {
+                                    {successfulIps.slice(0, 10).map((evt) => {
                                         const nonUs = isNonUs(evt);
                                         return (
                                             <div key={evt.id} style={{ 
