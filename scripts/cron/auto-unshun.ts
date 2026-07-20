@@ -627,7 +627,7 @@ async function runAutoUnshun() {
 
                                 const executeCommand = (command, timeoutMs = 15000) => {
                                     shellBuffer = ""; // Reset buffer
-                                    if (command) {
+                                    if (command !== null && command !== undefined) {
                                         shellStream.write(command + "\n");
                                     }
                                     return new Promise((resolve) => {
