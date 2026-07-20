@@ -437,7 +437,10 @@ async function runSync() {
 if (process.argv.includes('--once')) {
     log("Running sync once (Cron mode)...");
     runSync()
-        .then(() => prisma.$disconnect())
+        .then(() => {
+            prisma.$disconnect();
+            process.exit(0);
+        })
         .catch(err => {
             errorLog("Cron run failed:", err);
             prisma.$disconnect();
