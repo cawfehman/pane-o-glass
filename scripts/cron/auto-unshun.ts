@@ -780,6 +780,7 @@ async function runAutoUnshun() {
 runAutoUnshun()
     .then(async () => {
         await prisma.$disconnect();
+        process.exit(0);
     })
     .catch(async (e) => {
         console.error(e);
