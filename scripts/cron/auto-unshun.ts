@@ -6,7 +6,7 @@ import fs from 'fs';
 import https from 'https';
 import { Client } from 'ldapts';
 import dotenv from 'dotenv';
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 async function isAdUserValid(username: any) {
     const url = process.env.AD_URL!;

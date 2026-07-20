@@ -3,7 +3,7 @@ import path from 'path';
 import https from 'https';
 import axios from 'axios';
 import dotenv from 'dotenv';
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const prisma = new PrismaClient();
 
