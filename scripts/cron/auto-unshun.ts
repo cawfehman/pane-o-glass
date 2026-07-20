@@ -27,6 +27,8 @@ async function isAdUserValid(username) {
     const client = new Client({
         url,
         tlsOptions: url.startsWith("ldaps") ? { rejectUnauthorized } : undefined,
+        timeout: 5000,
+        connectTimeout: 5000,
     });
 
     try {
@@ -103,7 +105,7 @@ const prisma = new PrismaClient();
 // Standalone IP Metadata Lookup
 async function getIpInfo(ip) {
     try {
-        const response = await axios.get(`https://ipapi.co/${ip}/json/`);
+        const response = await axios.get(`https://ipapi.co/${ip}/json/`, { timeout: 5000 });
         const d = response.data;
         return {
             asn: d.asn,

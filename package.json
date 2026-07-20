@@ -10,7 +10,10 @@
     "deploy": "git push origin main --follow-tags && git push production main --follow-tags",
     "deploy:patch": "npm version patch && npm run deploy",
     "deploy:minor": "npm version minor && npm run deploy",
-    "deploy:major": "npm version major && npm run deploy"
+    "deploy:major": "npm version major && npm run deploy",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:setup": "ts-node tests/setup/seed-test-users.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -36,7 +39,8 @@
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^20.19.43",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/xml2js": "^0.4.14",
