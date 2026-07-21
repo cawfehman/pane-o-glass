@@ -116,6 +116,10 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                     <MessageSquare size={20} />
                                     User Feedback
                                 </Link>
+                                <Link href="/admin/vectra" className={`nav-link ${pathname === "/admin/vectra" ? "active" : ""}`}>
+                                    <Network size={20} />
+                                    Vectra Time Machine
+                                </Link>
                             </>
                         )}
                     </>

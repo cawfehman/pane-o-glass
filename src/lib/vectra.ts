@@ -178,3 +178,28 @@ export async function searchVectraMetadata(query: string, limit: number = 100) {
         return { results: [] };
     }
 }
+
+/**
+ * Vectra Investigate API Metadata Search
+ * https://docs.vectra.ai/operations/investigate/investigate-api-metadata-schema-reference
+ */
+export async function queryVectraMetadata(queryString: string, timeRange: string = "24h", limit: number = 500) {
+    const token = await getVectraToken();
+    try {
+        // The Investigate API generally uses /api/v3.3/metadata/search or similar.
+        // We use the unified search endpoint for metadata.
+        const response = await axios.get(`${VECTRA_URL}/api/v3.3/search/metadata`, {
+            httpsAgent,
+            headers: { Authorization: `Bearer ${token}` },
+            params: {
+                query_string: queryString,
+                time_range: timeRange,
+                limit: limit
+            }
+        });
+        return response.data;
+    } catch (error: any) {
+        console.error("Error querying Vectra Investigate API:", error.response?.data || error.message);
+        return { events: [], error: error.message };
+    }
+}
