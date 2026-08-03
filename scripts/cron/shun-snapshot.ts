@@ -1,33 +1,34 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { prisma } from '../../src/lib/prisma';
 import { NodeSSH } from 'node-ssh';
-import { enrichIpsBatch } from '@/lib/iplocate';
+import { enrichIpsBatch } from '../../src/lib/iplocate';
+import * as dotenv from 'dotenv';
+import path from 'path';
 
-export const maxDuration = 300; // 5 minutes max on Vercel/NextJS
+// Load environment variables for standalone script execution
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
-export async function GET(request: Request) {
+async function run() {
+    console.log(`[${new Date().toISOString()}] Starting daily Shun Snapshot & Enrichment Cron...`);
     try {
-        const authHeader = request.headers.get('authorization');
-        if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
         const configStr = process.env.FIREWALL_CONFIG || "[]";
         let firewalls = [];
         try {
             firewalls = JSON.parse(configStr);
         } catch (e) {
-            return NextResponse.json({ error: 'Invalid FIREWALL_CONFIG' }, { status: 500 });
+            console.error("Invalid FIREWALL_CONFIG JSON");
+            process.exit(1);
         }
 
         if (firewalls.length === 0) {
-            return NextResponse.json({ message: 'No firewalls configured.' });
+            console.log("No firewalls configured. Exiting.");
+            process.exit(0);
         }
 
         const todayDate = new Date();
         const todayString = todayDate.toISOString().split('T')[0];
 
         // 1. Set all current Firewall stats to inactive
+        console.log("Setting previous active shuns to inactive...");
         await prisma.firewallShunStats.updateMany({
             where: { isActive: true },
             data: { isActive: false }
@@ -39,6 +40,7 @@ export async function GET(request: Request) {
         for (const fw of firewalls) {
             if (!fw.ip || !fw.user || !fw.pass) continue;
             const fwName = fw.name || fw.id;
+            console.log(`Connecting to firewall: ${fwName} (${fw.ip})...`);
 
             const ssh = new NodeSSH();
             try {
@@ -76,6 +78,7 @@ export async function GET(request: Request) {
                 }
 
                 ssh.dispose();
+                console.log(`Found ${fwIps.size} shuns on ${fwName}. Updating database...`);
 
                 // 3. Upsert into DB for this firewall
                 for (const ip of Array.from(fwIps)) {
@@ -132,6 +135,7 @@ export async function GET(request: Request) {
         }
 
         // 4. IPLocate Quota Engine
+        console.log("Checking IPLocate enrichment queue...");
         const startOfUtcDay = new Date();
         startOfUtcDay.setUTCHours(0, 0, 0, 0);
 
@@ -141,6 +145,7 @@ export async function GET(request: Request) {
 
         const dailyQuota = 1000;
         const remainingQuota = Math.max(0, dailyQuota - queriesUsedToday);
+        console.log(`IPLocate daily limit: ${dailyQuota}. Used today: ${queriesUsedToday}. Remaining quota: ${remainingQuota}.`);
 
         let enrichedCount = 0;
         
@@ -153,9 +158,10 @@ export async function GET(request: Request) {
             });
 
             if (pendingIps.length > 0) {
+                console.log(`Found ${pendingIps.length} pending IPs for enrichment. Processing batches...`);
                 const ipList = pendingIps.map(p => p.ip);
                 
-                // Process in batches of 100 inside the route
+                // Process in batches of 100
                 for (let i = 0; i < ipList.length; i += 100) {
                     const batch = ipList.slice(i, i + 100);
                     const results = await enrichIpsBatch(batch);
@@ -181,30 +187,30 @@ export async function GET(request: Request) {
                             enrichedCount++;
                         }
                     }
+                    console.log(`Processed batch ${i} to ${i + batch.length}...`);
                 }
+            } else {
+                console.log("No pending IPs require enrichment at this time.");
             }
         }
 
         // 5. Prune old snapshots (> 365 days)
+        console.log("Pruning historical snapshots older than 365 days...");
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - 365);
         
         const pruneResult = await prisma.firewallShunSnapshot.deleteMany({
             where: { snapshotDate: { lt: cutoffDate } }
         });
+        console.log(`Pruned ${pruneResult.count} old snapshots.`);
 
-        return NextResponse.json({
-            success: true,
-            message: 'Cron executed successfully',
-            stats: {
-                enrichedToday: enrichedCount,
-                quotaRemainingAfter: remainingQuota - enrichedCount,
-                prunedSnapshots: pruneResult.count
-            }
-        });
+        console.log(`[${new Date().toISOString()}] Cron executed successfully. Enriched ${enrichedCount} IPs today.`);
+        process.exit(0);
 
     } catch (error: any) {
-        console.error('[cron/shun-snapshot] Error:', error);
-        return NextResponse.json({ error: error.message || 'Internal error' }, { status: 500 });
+        console.error('[cron/shun-snapshot] Critical Error:', error);
+        process.exit(1);
     }
 }
+
+run();
