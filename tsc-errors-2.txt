@@ -1,0 +1,82 @@
+﻿scripts/cron/auto-unshun.ts(407,30): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type '{}'.
+scripts/cron/auto-unshun.ts(407,47): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type '{}'.
+scripts/cron/auto-unshun.ts(408,25): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type '{}'.
+scripts/cron/auto-unshun.ts(423,25): error TS2322: Type 'unknown' is not assignable to type 'string | StringFilter<"GuardianEvent"> | undefined'.
+scripts/cron/auto-unshun.ts(436,30): error TS2322: Type 'unknown' is not assignable to type 'string | undefined'.
+scripts/cron/auto-unshun.ts(444,83): error TS2322: Type 'unknown' is not assignable to type 'string | undefined'.
+scripts/cron/auto-unshun.ts(458,29): error TS2322: Type 'unknown' is not assignable to type 'string'.
+scripts/cron/auto-unshun.ts(479,33): error TS2322: Type 'unknown' is not assignable to type 'string | null | undefined'.
+scripts/cron/auto-unshun.ts(493,30): error TS2322: Type 'unknown' is not assignable to type 'string | StringFilter<"VpnEvent"> | undefined'.
+scripts/cron/auto-unshun.ts(519,29): error TS2322: Type 'unknown' is not assignable to type 'string | StringFilter<"VpnEvent"> | undefined'.
+scripts/cron/auto-unshun.ts(566,29): error TS2322: Type 'unknown' is not assignable to type 'string | StringFilter<"GuardianEvent"> | undefined'.
+scripts/cron/auto-unshun.ts(583,38): error TS2322: Type 'unknown' is not assignable to type 'string | undefined'.
+scripts/cron/auto-unshun.ts(585,39): error TS2322: Type 'unknown' is not assignable to type 'string'.
+scripts/cron/auto-unshun.ts(593,33): error TS2322: Type 'unknown' is not assignable to type 'string | null | undefined'.
+scripts/cron/auto-unshun.ts(602,29): error TS2322: Type 'unknown' is not assignable to type 'string'.
+scripts/cron/auto-unshun.ts(630,56): error TS7006: Parameter 'd' implicitly has an 'any' type.
+scripts/cron/auto-unshun.ts(632,57): error TS7006: Parameter 'err' implicitly has an 'any' type.
+scripts/cron/auto-unshun.ts(634,57): error TS7006: Parameter 'command' implicitly has an 'any' type.
+scripts/cron/auto-unshun.ts(662,55): error TS18046: 'showOutput' is of type 'unknown'.
+scripts/cron/auto-unshun.ts(662,82): error TS7006: Parameter 'l' implicitly has an 'any' type.
+scripts/cron/auto-unshun.ts(663,66): error TS7006: Parameter 'line' implicitly has an 'any' type.
+scripts/cron/auto-unshun.ts(665,59): error TS18046: 'ip' is of type 'unknown'.
+scripts/cron/auto-unshun.ts(679,53): error TS2322: Type 'unknown' is not assignable to type 'string'.
+scripts/cron/auto-unshun.ts(695,53): error TS2322: Type 'unknown' is not assignable to type 'string'.
+scripts/cron/auto-unshun.ts(726,37): error TS2322: Type 'unknown' is not assignable to type 'string'.
+scripts/cron/auto-unshun.ts(752,29): error TS2322: Type 'unknown' is not assignable to type 'string'.
+scripts/cron/sync-vpn-historical.ts(397,38): error TS2339: Property 'isMock' does not exist on type '{ id: string; username: string; sourceIp: string; assignedIp: string | null; status: string; duration: number | null; bytesSent: number | null; bytesReceived: number | null; bytesTotal: number | null; ... 8 more ...; createdAt: Date; }'.
+scripts/cron/sync-vpn-historical.ts(401,42): error TS2339: Property 'dataRef' does not exist on type '{ id: string; username: string; sourceIp: string; assignedIp: string | null; status: string; duration: number | null; bytesSent: number | null; bytesReceived: number | null; bytesTotal: number | null; ... 8 more ...; createdAt: Date; }'.
+scripts/cron/sync-vpn-historical.ts(404,71): error TS2339: Property 'dataRef' does not exist on type '{ id: string; username: string; sourceIp: string; assignedIp: string | null; status: string; duration: number | null; bytesSent: number | null; bytesReceived: number | null; bytesTotal: number | null; ... 8 more ...; createdAt: Date; }'.
+scripts/cron/sync-vpn-historical.ts(404,102): error TS2339: Property 'dataRef' does not exist on type '{ id: string; username: string; sourceIp: string; assignedIp: string | null; status: string; duration: number | null; bytesSent: number | null; bytesReceived: number | null; bytesTotal: number | null; ... 8 more ...; createdAt: Date; }'.
+scripts/cron/sync-vpn-historical.ts(405,42): error TS2339: Property 'dataRef' does not exist on type '{ id: string; username: string; sourceIp: string; assignedIp: string | null; status: string; duration: number | null; bytesSent: number | null; bytesReceived: number | null; bytesTotal: number | null; ... 8 more ...; createdAt: Date; }'.
+scripts/cron/sync-vpn-historical.ts(406,42): error TS2339: Property 'dataRef' does not exist on type '{ id: string; username: string; sourceIp: string; assignedIp: string | null; status: string; duration: number | null; bytesSent: number | null; bytesReceived: number | null; bytesTotal: number | null; ... 8 more ...; createdAt: Date; }'.
+scripts/cron/sync-vpn-historical.ts(407,42): error TS2339: Property 'dataRef' does not exist on type '{ id: string; username: string; sourceIp: string; assignedIp: string | null; status: string; duration: number | null; bytesSent: number | null; bytesReceived: number | null; bytesTotal: number | null; ... 8 more ...; createdAt: Date; }'.
+scripts/cron/sync-vpn-historical.ts(408,56): error TS2339: Property 'dataRef' does not exist on type '{ id: string; username: string; sourceIp: string; assignedIp: string | null; status: string; duration: number | null; bytesSent: number | null; bytesReceived: number | null; bytesTotal: number | null; ... 8 more ...; createdAt: Date; }'.
+scripts/cron/sync-vpn-historical.ts(498,41): error TS2345: Argument of type '{ username: string; sourceIp: string; assignedIp: any; vpnType: string; vpnStream: string | null; status: string; createdAt: Date; isMock: boolean; dataRef: { username: string; sourceIp: string; ... 14 more ...; createdAt: Date; }; }' is not assignable to parameter of type '{ id: string; username: string; sourceIp: string; assignedIp: string | null; status: string; duration: number | null; bytesSent: number | null; bytesReceived: number | null; bytesTotal: number | null; ... 8 more ...; createdAt: Date; }'.
+  Type '{ username: string; sourceIp: string; assignedIp: any; vpnType: string; vpnStream: string | null; status: string; createdAt: Date; isMock: boolean; dataRef: { username: string; sourceIp: string; ... 14 more ...; createdAt: Date; }; }' is missing the following properties from type '{ id: string; username: string; sourceIp: string; assignedIp: string | null; status: string; duration: number | null; bytesSent: number | null; bytesReceived: number | null; bytesTotal: number | null; ... 8 more ...; createdAt: Date; }': id, duration, bytesSent, bytesReceived, and 7 more.
+scripts/cron/sync-vpn-historical.ts(500,52): error TS2345: Argument of type '{ username: string; sourceIp: string; assignedIp: any; vpnType: string; vpnStream: string | null; status: string; createdAt: Date; isMock: boolean; dataRef: { username: string; sourceIp: string; ... 14 more ...; createdAt: Date; }; }' is not assignable to parameter of type '{ id: string; username: string; sourceIp: string; assignedIp: string | null; status: string; duration: number | null; bytesSent: number | null; bytesReceived: number | null; bytesTotal: number | null; ... 8 more ...; createdAt: Date; }'.
+  Type '{ username: string; sourceIp: string; assignedIp: any; vpnType: string; vpnStream: string | null; status: string; createdAt: Date; isMock: boolean; dataRef: { username: string; sourceIp: string; ... 14 more ...; createdAt: Date; }; }' is missing the following properties from type '{ id: string; username: string; sourceIp: string; assignedIp: string | null; status: string; duration: number | null; bytesSent: number | null; bytesReceived: number | null; bytesTotal: number | null; ... 8 more ...; createdAt: Date; }': id, duration, bytesSent, bytesReceived, and 7 more.
+scripts/cron/sync-vpn-logs.ts(385,36): error TS2339: Property 'asn' does not exist on type '{}'.
+scripts/cron/sync-vpn-logs.ts(386,39): error TS2339: Property 'as_name' does not exist on type '{}'.
+scripts/cron/sync-vpn-logs.ts(387,41): error TS2339: Property 'as_domain' does not exist on type '{}'.
+scripts/cron/sync-vpn-logs.ts(388,40): error TS2339: Property 'country' does not exist on type '{}'.
+scripts/cron/sync-vpn-logs.ts(389,44): error TS2339: Property 'country_code' does not exist on type '{}'.
+scripts/debug/debug-ise-fields.ts(25,15): error TS2531: Object is possibly 'null'.
+scripts/debug/debug-ise-tacacs.ts(2,19): error TS2307: Cannot find module 'node-fetch' or its corresponding type declarations.
+scripts/discovery/scan-ap-data.ts(34,43): error TS7006: Parameter 'pair' implicitly has an 'any' type.
+scripts/discovery/scan-ap-data.ts(66,55): error TS7006: Parameter 'pair' implicitly has an 'any' type.
+scripts/discovery/scan-by-wlc.ts(26,25): error TS7006: Parameter 'm' implicitly has an 'any' type.
+scripts/discovery/scan-by-wlc.ts(35,45): error TS7006: Parameter 'm' implicitly has an 'any' type.
+scripts/discovery/scan-concurrent.ts(47,51): error TS7006: Parameter 'pair' implicitly has an 'any' type.
+scripts/discovery/scan-concurrent.ts(81,59): error TS7006: Parameter 'pair' implicitly has an 'any' type.
+scripts/discovery/scan-failures.ts(51,51): error TS7006: Parameter 'pair' implicitly has an 'any' type.
+scripts/discovery/scan-targeted-sessions.ts(46,47): error TS7006: Parameter 'pair' implicitly has an 'any' type.
+scripts/discovery/scan-targeted-sessions.ts(69,55): error TS7006: Parameter 'pair' implicitly has an 'any' type.
+scripts/migrate.ts(4,19): error TS7006: Parameter 'dir' implicitly has an 'any' type.
+scripts/migrate.ts(5,31): error TS7006: Parameter 'file' implicitly has an 'any' type.
+scripts/migrate.ts(16,70): error TS2339: Property 'endsWith' does not exist on type 'never'.
+scripts/migrate.ts(66,42): error TS7006: Parameter 's' implicitly has an 'any' type.
+scripts/test/test-api.ts(1,21): error TS2307: Cannot find module '../src/app/api/vpn/events/route' or its corresponding type declarations.
+scripts/test/test-api.ts(3,24): error TS2307: Cannot find module '../src/lib/prisma' or its corresponding type declarations.
+scripts/test/test-enrich.ts(1,32): error TS2307: Cannot find module '../src/lib/iplocate' or its corresponding type declarations.
+scripts/test/test-enrich.ts(2,24): error TS2307: Cannot find module '../src/lib/prisma' or its corresponding type declarations.
+scripts/test/test-psn-status.ts(1,7): error TS2451: Cannot redeclare block-scoped variable 'axios'.
+scripts/test/test-psn-status.ts(2,7): error TS2451: Cannot redeclare block-scoped variable 'https'.
+scripts/test/test-psn-status.ts(3,9): error TS2451: Cannot redeclare block-scoped variable 'parseStringPromise'.
+scripts/test/test-psn-status.ts(6,16): error TS2393: Duplicate function implementation.
+scripts/test/test-real-mac.ts(1,7): error TS2451: Cannot redeclare block-scoped variable 'axios'.
+scripts/test/test-real-mac.ts(2,7): error TS2451: Cannot redeclare block-scoped variable 'https'.
+scripts/test/test-real-mac.ts(3,9): error TS2451: Cannot redeclare block-scoped variable 'parseStringPromise'.
+scripts/test/test-real-mac.ts(6,16): error TS2393: Duplicate function implementation.
+scripts/test/test-specific-mac.ts(1,7): error TS2451: Cannot redeclare block-scoped variable 'axios'.
+scripts/test/test-specific-mac.ts(2,7): error TS2451: Cannot redeclare block-scoped variable 'https'.
+scripts/utils/backfill-assigned-ips.ts(148,46): error TS2339: Property 'isMock' does not exist on type '{ id: string; status: string; username: string; createdAt: Date; sourceIp: string; assignedIp: string | null; duration: number | null; bytesSent: number | null; bytesReceived: number | null; ... 8 more ...; ipCountryCode: string | null; }'.
+scripts/utils/backfill-assigned-ips.ts(149,46): error TS2339: Property 'dataRef' does not exist on type '{ id: string; status: string; username: string; createdAt: Date; sourceIp: string; assignedIp: string | null; duration: number | null; bytesSent: number | null; bytesReceived: number | null; ... 8 more ...; ipCountryCode: string | null; }'.
+scripts/utils/backfill-assigned-ips.ts(151,47): error TS2339: Property 'isMock' does not exist on type '{ id: string; status: string; username: string; createdAt: Date; sourceIp: string; assignedIp: string | null; duration: number | null; bytesSent: number | null; bytesReceived: number | null; ... 8 more ...; ipCountryCode: string | null; }'.
+scripts/utils/backfill-assigned-ips.ts(172,48): error TS2339: Property 'asn' does not exist on type 'never'.
+scripts/utils/backfill-assigned-ips.ts(173,51): error TS2339: Property 'as_name' does not exist on type 'never'.
+scripts/utils/backfill-assigned-ips.ts(174,53): error TS2339: Property 'as_domain' does not exist on type 'never'.
+scripts/utils/backfill-assigned-ips.ts(175,52): error TS2339: Property 'country' does not exist on type 'never'.
+scripts/utils/backfill-assigned-ips.ts(176,56): error TS2339: Property 'country_code' does not exist on type 'never'.
+scripts/utils/backfill-assigned-ips.ts(196,49): error TS2345: Argument of type '{ username: string; sourceIp: string; assignedIp: string; status: string; vpnType: string; createdAt: Date; isMock: boolean; dataRef: { username: string; sourceIp: string; assignedIp: string; ... 7 more ...; createdAt: Date; }; }' is not assignable to parameter of type '{ id: string; status: string; username: string; createdAt: Date; sourceIp: string; assignedIp: string | null; duration: number | null; bytesSent: number | null; bytesReceived: number | null; ... 8 more ...; ipCountryCode: string | null; }'.
+  Type '{ username: string; sourceIp: string; assignedIp: string; status: string; vpnType: string; createdAt: Date; isMock: boolean; dataRef: { username: string; sourceIp: string; assignedIp: string; ... 7 more ...; createdAt: Date; }; }' is missing the following properties from type '{ id: string; status: string; username: string; createdAt: Date; sourceIp: string; assignedIp: string | null; duration: number | null; bytesSent: number | null; bytesReceived: number | null; ... 8 more ...; ipCountryCode: string | null; }': id, duration, bytesSent, bytesReceived, and 8 more.

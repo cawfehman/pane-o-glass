@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import { Shield } from "lucide-react";
+import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
 
 export default function CiscoFirewallPage() {
-    const [activeTab, setActiveTab] = useState<"manual" | "guardian" | "blacklist">("manual");
+    const [activeTab, setActiveTab] = useState<"manual" | "guardian" | "blacklist" | "database">("manual");
     const [ipAddress, setIpAddress] = useState("");
     const [availableHosts, setAvailableHosts] = useState<{ id: string, name: string }[]>([]);
     const [targetHost, setTargetHost] = useState("");
@@ -259,6 +260,17 @@ export default function CiscoFirewallPage() {
                         }}
                     >
                         Guardian Blacklist
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("database")}
+                        className="px-4 py-2 border-none font-semibold cursor-pointer"
+                        style={{
+                            background: activeTab === "database" ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                            borderBottom: activeTab === "database" ? '2px solid var(--accent-primary)' : '2px solid transparent',
+                            color: activeTab === "database" ? 'var(--text-primary)' : 'var(--text-secondary)',
+                        }}
+                    >
+                        Shun Database
                     </button>
                 </div>
 
@@ -629,7 +641,7 @@ export default function CiscoFirewallPage() {
                     )}
                 </div>
             </div>
-        ) : (
+        ) : activeTab === "blacklist" ? (
             <div className="flex-1 min-h-0 flex flex-col gap-6">
                 <div className="glass-card flex-1 flex flex-col min-h-0" style={{ minHeight: '400px' }}>
                     <div className="mb-4">
@@ -688,7 +700,9 @@ export default function CiscoFirewallPage() {
                     )}
                 </div>
             </div>
-        )}
+        ) : activeTab === "database" ? (
+            <ShunDatabaseTab />
+        ) : null}
             </div>
     </div>
     );

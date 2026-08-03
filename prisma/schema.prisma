@@ -155,3 +155,48 @@ model GuardianBlacklist {
   reason    String
   createdAt DateTime @default(now())
 }
+
+model ShunDatabaseIp {
+  ip            String    @id
+  
+  ipAsn         String?
+  org           String?
+  ipCountry     String?
+  ipCountryCode String?
+  city          String?
+  continent     String?
+  
+  enrichedAt    DateTime? 
+  
+  firewallStats FirewallShunStats[]
+  snapshots     FirewallShunSnapshot[]
+}
+
+model FirewallShunStats {
+  id            String   @id @default(cuid())
+  ip            String
+  firewall      String
+  
+  firstSeen     DateTime @default(now()) 
+  lastSeen      DateTime @default(now()) 
+  daysShunned   Int      @default(1)     
+  isActive      Boolean  @default(true)  
+  
+  shunIp        ShunDatabaseIp @relation(fields: [ip], references: [ip], onDelete: Cascade)
+
+  @@unique([ip, firewall])
+  @@index([ip])
+  @@index([firewall])
+}
+
+model FirewallShunSnapshot {
+  id            String   @id @default(cuid())
+  ip            String
+  firewall      String
+  snapshotDate  DateTime 
+  
+  shunIp        ShunDatabaseIp @relation(fields: [ip], references: [ip], onDelete: Cascade)
+
+  @@index([ip])
+  @@index([snapshotDate])
+}
