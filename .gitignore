@@ -53,4 +53,3 @@ test-results/
 
 # Debug artifacts
 dist.css
-src/app/compiled-tailwind.css
