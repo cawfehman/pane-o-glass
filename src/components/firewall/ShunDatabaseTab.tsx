@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Search, Server, Filter, ShieldAlert, Clock } from "lucide-react";
+import { Search, Server, Filter, ShieldAlert, Clock, ShieldCheck, SearchX } from "lucide-react";
 
 export function ShunDatabaseTab() {
     const [records, setRecords] = useState<any[]>([]);
@@ -70,8 +70,8 @@ export function ShunDatabaseTab() {
                             <Search className="absolute left-3 top-2.5 h-4 w-4 text-[var(--text-secondary)]" />
                             <input
                                 type="text"
-                                placeholder="Search IP..."
-                                className="pl-9 w-full rounded border border-[var(--border-color)] bg-[var(--bg-default)] px-3 py-2 text-sm focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-primary)]"
+                                placeholder="Search IP (e.g. 150.25*.*)..."
+                                className="pl-9 w-full rounded border border-[var(--border-color)] bg-[var(--bg-default)] px-3 py-2 text-sm focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
@@ -85,7 +85,7 @@ export function ShunDatabaseTab() {
                             <input
                                 type="text"
                                 placeholder="e.g. AS15169"
-                                className="pl-9 w-full rounded border border-[var(--border-color)] bg-[var(--bg-default)] px-3 py-2 text-sm focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-primary)]"
+                                className="pl-9 w-full rounded border border-[var(--border-color)] bg-[var(--bg-default)] px-3 py-2 text-sm focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200"
                                 value={asn}
                                 onChange={(e) => setAsn(e.target.value)}
                             />
@@ -99,7 +99,7 @@ export function ShunDatabaseTab() {
                             <input
                                 type="text"
                                 placeholder="e.g. FW-East"
-                                className="pl-9 w-full rounded border border-[var(--border-color)] bg-[var(--bg-default)] px-3 py-2 text-sm focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-primary)]"
+                                className="pl-9 w-full rounded border border-[var(--border-color)] bg-[var(--bg-default)] px-3 py-2 text-sm focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200"
                                 value={firewall}
                                 onChange={(e) => setFirewall(e.target.value)}
                             />
@@ -107,7 +107,7 @@ export function ShunDatabaseTab() {
                     </div>
 
                     <div className="flex gap-2">
-                        <button type="submit" className="px-4 py-2 bg-[var(--accent-primary)] text-white text-sm font-medium rounded hover:opacity-90 transition-opacity whitespace-nowrap">
+                        <button type="submit" className="px-4 py-2 bg-[var(--accent-primary)] text-white text-sm font-medium rounded shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-[var(--accent-primary)]/40 hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap">
                             Search
                         </button>
                         <button type="button" onClick={clearFilters} className="px-4 py-2 bg-[var(--bg-surface-hover)] text-[var(--text-primary)] text-sm font-medium rounded border border-[var(--border-color)] hover:bg-[var(--bg-default)] transition-colors whitespace-nowrap">
@@ -136,25 +136,53 @@ export function ShunDatabaseTab() {
                         </thead>
                         <tbody className="divide-y divide-[var(--border-color)]">
                             {loading ? (
-                                <tr>
-                                    <td colSpan={6} className="px-4 py-8 text-center text-[var(--text-secondary)]">Loading directory...</td>
-                                </tr>
+                                Array.from({ length: 5 }).map((_, i) => (
+                                    <tr key={i} className="animate-pulse">
+                                        <td className="px-4 py-4"><div className="h-5 w-16 bg-[var(--border-color)] rounded-full"></div></td>
+                                        <td className="px-4 py-4"><div className="h-4 w-32 bg-[var(--border-color)] rounded"></div></td>
+                                        <td className="px-4 py-4">
+                                            <div className="flex flex-col gap-2">
+                                                <div className="h-3 w-16 bg-[var(--border-color)] rounded"></div>
+                                                <div className="h-2 w-24 bg-[var(--border-color)] rounded"></div>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-4"><div className="h-4 w-24 bg-[var(--border-color)] rounded"></div></td>
+                                        <td className="px-4 py-4">
+                                            <div className="flex flex-col gap-2">
+                                                <div className="h-3 w-20 bg-[var(--border-color)] rounded"></div>
+                                                <div className="h-2 w-32 bg-[var(--border-color)] rounded"></div>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-4"><div className="h-4 w-28 bg-[var(--border-color)] rounded"></div></td>
+                                    </tr>
+                                ))
                             ) : error ? (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-8 text-center text-red-400">{error}</td>
+                                    <td colSpan={6} className="px-4 py-16 text-center text-red-400">
+                                        <ShieldAlert className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                                        <p>{error}</p>
+                                    </td>
                                 </tr>
                             ) : records.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-8 text-center text-[var(--text-secondary)]">No IPs found matching the criteria.</td>
+                                    <td colSpan={6} className="px-4 py-20 text-center">
+                                        <SearchX className="w-16 h-16 mx-auto mb-4 text-[var(--text-muted)] opacity-50" />
+                                        <h3 className="text-lg font-medium text-[var(--text-primary)] mb-1">No IPs found</h3>
+                                        <p className="text-sm text-[var(--text-secondary)]">Try adjusting your filters or wildcard patterns.</p>
+                                    </td>
                                 </tr>
                             ) : (
                                 records.map((record) => (
-                                    <tr key={record.id} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
+                                    <tr key={record.id} className="hover:bg-[var(--bg-surface-hover)] hover:-translate-y-[1px] hover:shadow-[0_4px_12px_-2px_rgba(0,0,0,0.3)] transition-all duration-200">
                                         <td className="px-4 py-3 whitespace-nowrap">
                                             <div className="flex flex-col gap-1.5">
                                                 {record.isActive ? (
-                                                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 w-fit">
-                                                        <div className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></div> Active
+                                                    <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30 w-fit shadow-[0_0_10px_rgba(239,68,68,0.2)]">
+                                                        <span className="relative flex h-2 w-2">
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                                        </span>
+                                                        Active
                                                     </span>
                                                 ) : (
                                                     <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] border border-[var(--border-color)] w-fit">
@@ -162,7 +190,7 @@ export function ShunDatabaseTab() {
                                                     </span>
                                                 )}
                                                 {record.isBlacklisted && (
-                                                    <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 w-fit">
+                                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30 w-fit shadow-[0_0_10px_rgba(168,85,247,0.2)]">
                                                         <ShieldAlert className="w-3 h-3" /> Blacklisted
                                                     </span>
                                                 )}
