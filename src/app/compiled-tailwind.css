@@ -1456,9 +1456,6 @@
   .px-8 {
     padding-inline: calc(var(--spacing) * 8);
   }
-  .px-10 {
-    padding-inline: calc(var(--spacing) * 10);
-  }
   .py-0\.5 {
     padding-block: calc(var(--spacing) * 0.5);
   }
@@ -1563,9 +1560,6 @@
   }
   .pl-6 {
     padding-left: calc(var(--spacing) * 6);
-  }
-  .pl-14 {
-    padding-left: calc(var(--spacing) * 14);
   }
   .text-center {
     text-align: center;
