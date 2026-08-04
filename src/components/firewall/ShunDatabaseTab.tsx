@@ -128,30 +128,30 @@ export function ShunDatabaseTab() {
             <div className="bg-[var(--bg-surface)] p-4 border-b border-[var(--border-color)] shadow-sm shrink-0 flex flex-col gap-4">
                 <form 
                     onSubmit={(e) => { e.preventDefault(); setPage(1); fetchRecords(); }}
-                    className="flex flex-col xl:flex-row gap-4 justify-between xl:items-center"
+                    className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between w-full"
                 >
-                    <div className="flex flex-1 items-center gap-3 w-full xl:max-w-4xl">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[var(--accent-primary)] opacity-70 pointer-events-none" />
+                    <div className="flex w-full md:flex-1 max-w-4xl gap-3 relative items-center">
+                        <div className="relative flex-1 w-full">
+                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-[var(--accent-primary)] opacity-70 pointer-events-none" />
                             <input
                                 type="text"
-                                placeholder="Omnisearch: IP (e.g. 150.25*.*), ASN, Org, or Firewall..."
-                                className="pl-12 pr-4 w-full h-[46px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-default)] text-base focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200 shadow-inner"
+                                placeholder="Omnisearch: IP, ASN, Org, or Firewall..."
+                                className="pl-14 pr-6 w-full h-[48px] rounded-full border border-[var(--border-color)] bg-[var(--bg-default)] text-base focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200 shadow-inner"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
                         </div>
-                        <button type="submit" className="px-10 h-[46px] bg-[var(--accent-primary)] text-white text-base font-medium rounded-lg shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-[var(--accent-primary)]/40 hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap shrink-0">
+                        <button type="submit" className="px-10 h-[48px] bg-[var(--accent-primary)] text-white text-base font-medium rounded-full shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-[var(--accent-primary)]/40 hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap shrink-0">
                             Search
                         </button>
                     </div>
 
-                    <div className="flex flex-wrap gap-2 shrink-0 w-full xl:w-auto justify-end mt-2 xl:mt-0">
-                        <button type="button" onClick={clearFilters} className="px-4 py-2 bg-[var(--bg-surface-hover)] text-[var(--text-primary)] text-sm font-medium rounded border border-[var(--border-color)] hover:bg-[var(--bg-default)] transition-colors whitespace-nowrap">
+                    <div className="flex gap-2 shrink-0 w-full md:w-auto justify-end ml-auto">
+                        <button type="button" onClick={clearFilters} className="px-5 py-2.5 h-[48px] bg-[var(--bg-surface-hover)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] hover:bg-[var(--bg-default)] transition-colors whitespace-nowrap">
                             Clear
                         </button>
                         <div className="relative">
-                            <button type="button" onClick={() => setShowColumnMenu(!showColumnMenu)} className="px-3 py-2 bg-[var(--bg-surface-hover)] text-[var(--text-primary)] text-sm font-medium rounded border border-[var(--border-color)] hover:bg-[var(--bg-default)] transition-colors flex items-center gap-2">
+                            <button type="button" onClick={() => setShowColumnMenu(!showColumnMenu)} className="px-5 py-2.5 h-[48px] bg-[var(--bg-surface-hover)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] hover:bg-[var(--bg-default)] transition-colors flex items-center gap-2">
                                 <LayoutTemplate className="w-4 h-4" /> Columns
                             </button>
                             {showColumnMenu && (
@@ -183,7 +183,7 @@ export function ShunDatabaseTab() {
                                 </>
                             )}
                         </div>
-                        <button type="button" onClick={handleExport} disabled={isExporting} className="px-3 py-2 bg-[var(--bg-surface-hover)] text-[var(--text-primary)] text-sm font-medium rounded border border-[var(--border-color)] hover:bg-[var(--bg-default)] transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button type="button" onClick={handleExport} disabled={isExporting} className="px-5 py-2.5 h-[48px] bg-[var(--bg-surface-hover)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] hover:bg-[var(--bg-default)] transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                             <Download className="w-4 h-4" /> {isExporting ? "Exporting..." : "Export"}
                         </button>
                     </div>
