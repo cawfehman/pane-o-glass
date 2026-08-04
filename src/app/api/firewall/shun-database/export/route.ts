@@ -25,7 +25,28 @@ export async function GET(req: Request) {
             const isExact = search.startsWith('"') && search.endsWith('"') && search.length > 1;
             const searchTerm = isExact ? search.slice(1, -1) : search;
             
-            if (!isExact && searchTerm.includes('*')) {
+            if (isExact) {
+                // For exact match, we want it to be case-insensitive. Prisma's equals is case-sensitive in SQLite.
+                // SQLite's LIKE without wildcards performs a case-insensitive exact match.
+                const matchingRows = await prisma.$queryRaw<any[]>`
+                    SELECT DISTINCT ip FROM "ShunDatabaseIp"
+                    WHERE ip LIKE ${searchTerm}
+                       OR ipAsn LIKE ${searchTerm}
+                       OR org LIKE ${searchTerm}
+                       OR ipCountry LIKE ${searchTerm}
+                       OR EXISTS (
+                           SELECT 1 FROM "FirewallShunStats"
+                           WHERE "FirewallShunStats".ip = "ShunDatabaseIp".ip
+                             AND firewall LIKE ${searchTerm}
+                       )
+                `;
+                const ips = matchingRows.map(r => r.ip);
+                if (ips.length > 0) {
+                    orClauses.push({ ip: { in: ips } });
+                } else {
+                    orClauses.push({ ip: 'NO_MATCH_WILDCARD' });
+                }
+            } else if (searchTerm.includes('*')) {
                 const likeString = searchTerm.replace(/\*/g, '%');
                 const matchingRows = await prisma.$queryRaw<any[]>`SELECT ip FROM "ShunDatabaseIp" WHERE ip LIKE ${likeString}`;
                 const ips = matchingRows.map(r => r.ip);
@@ -35,12 +56,12 @@ export async function GET(req: Request) {
                     orClauses.push({ ip: 'NO_MATCH_WILDCARD' });
                 }
             } else {
-                orClauses.push({ ip: isExact ? searchTerm : { contains: searchTerm } });
+                orClauses.push({ ip: { contains: searchTerm } });
+                orClauses.push({ firewall: { contains: searchTerm } });
+                orClauses.push({ shunIp: { ipAsn: { contains: searchTerm } } });
+                orClauses.push({ shunIp: { org: { contains: searchTerm } } });
+                orClauses.push({ shunIp: { ipCountry: { contains: searchTerm } } });
             }
-            orClauses.push({ firewall: isExact ? searchTerm : { contains: searchTerm } });
-            orClauses.push({ shunIp: { ipAsn: isExact ? searchTerm : { contains: searchTerm } } });
-            orClauses.push({ shunIp: { org: isExact ? searchTerm : { contains: searchTerm } } });
-            orClauses.push({ shunIp: { ipCountry: isExact ? searchTerm : { contains: searchTerm } } });
             
             where.OR = orClauses;
         }
