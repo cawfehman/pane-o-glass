@@ -136,22 +136,23 @@ export function ShunDbTab() {
                             <input
                                 type="text"
                                 placeholder="Omnisearch: IP, ASN, Org, or Firewall..."
-                                className="shun-search-input pr-6 w-full h-[48px] rounded-full border border-[var(--border-color)] bg-[var(--bg-default)] text-base focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200 shadow-inner"
+                                className="w-full h-[48px] rounded-full border border-[var(--border-color)] bg-[var(--bg-default)] text-base focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200 shadow-inner"
+                                style={{ paddingLeft: '3.5rem', paddingRight: '1.5rem' }}
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
                         </div>
-                        <button type="submit" className="shun-search-btn h-[48px] bg-[var(--accent-primary)] text-white text-base font-medium rounded-full shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-[var(--accent-primary)]/40 hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap shrink-0">
+                        <button type="submit" className="h-[48px] bg-[var(--accent-primary)] text-white text-base font-medium rounded-full shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-[var(--accent-primary)]/40 hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap shrink-0" style={{ paddingLeft: '2.5rem', paddingRight: '2.5rem' }}>
                             Search
                         </button>
                     </div>
 
                     <div className="flex gap-2 shrink-0 w-full md:w-auto justify-end ml-auto">
-                        <button type="button" onClick={clearFilters} className="shun-action-btn py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-medium rounded-full transition-all duration-200 border border-red-500/20 whitespace-nowrap">
+                        <button type="button" onClick={clearFilters} className="py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-default)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] transition-colors whitespace-nowrap" style={{ paddingLeft: '1.25rem', paddingRight: '1.25rem' }}>
                             Clear
                         </button>
                         <div className="relative">
-                            <button type="button" onClick={() => setShowColumnMenu(!showColumnMenu)} className="shun-action-btn py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--accent-glow)] text-[var(--text-secondary)] hover:text-[var(--accent-primary)] font-medium rounded-full transition-all duration-200 border border-[var(--border-color)] hover:border-[var(--accent-primary)] flex items-center gap-2 whitespace-nowrap">
+                            <button type="button" onClick={() => setShowColumnMenu(!showColumnMenu)} className="py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-default)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] transition-colors flex items-center gap-2 whitespace-nowrap" style={{ paddingLeft: '1.25rem', paddingRight: '1.25rem' }}>
                                 <LayoutTemplate className="w-4 h-4" /> Columns
                             </button>
                             {showColumnMenu && (
@@ -183,7 +184,7 @@ export function ShunDbTab() {
                                 </>
                             )}
                         </div>
-                        <button type="button" onClick={handleExport} disabled={isExporting} className="shun-action-btn py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--accent-glow)] text-[var(--text-secondary)] hover:text-[var(--accent-primary)] font-medium rounded-full transition-all duration-200 border border-[var(--border-color)] hover:border-[var(--accent-primary)] disabled:opacity-50 flex items-center gap-2 whitespace-nowrap">
+                        <button type="button" onClick={handleExport} disabled={isExporting} className="py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-default)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap" style={{ paddingLeft: '1.25rem', paddingRight: '1.25rem' }}>
                             <Download className="w-4 h-4" /> {isExporting ? "Exporting..." : "Export"}
                         </button>
                     </div>
