@@ -1,11 +1,13 @@
-import { prisma } from '../../src/lib/prisma';
+import { PrismaClient } from '@prisma/client';
 import { NodeSSH } from 'node-ssh';
-import { enrichIpsBatch } from '../../src/lib/iplocate';
 import * as dotenv from 'dotenv';
 import path from 'path';
+import axios from 'axios';
 
 // Load environment variables for standalone script execution
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+const prisma = new PrismaClient();
 
 async function run() {
     console.log(`[${new Date().toISOString()}] Starting daily Shun Snapshot & Enrichment Cron...`);
@@ -164,7 +166,28 @@ async function run() {
                 // Process in batches of 100
                 for (let i = 0; i < ipList.length; i += 100) {
                     const batch = ipList.slice(i, i + 100);
-                    const results = await enrichIpsBatch(batch);
+                    const results: any = {};
+                    const apiKey = process.env.IPLOCATE_API_KEY!;
+                    for (const batchIp of batch) {
+                        try {
+                            const res = await axios.get(`https://www.iplocate.io/api/lookup/${batchIp}`, {
+                                headers: apiKey ? { "X-API-KEY": apiKey } : {},
+                                timeout: 5000
+                            });
+                            results[batchIp] = res.data;
+                            
+                            // Log the usage to AuditLog for dashboard usage tracking
+                            await prisma.auditLog.create({
+                                data: {
+                                    action: "IPLOCATE_API_QUERY",
+                                    details: `Executed lookup for IP: ${batchIp} via Shun Database Cron.`,
+                                    ipAddress: batchIp
+                                }
+                            });
+                        } catch (e: any) {
+                            console.error(`Failed to enrich IP ${batchIp}:`, e.message);
+                        }
+                    }
                     
                     for (const ip of batch) {
                         const data = results[ip];
