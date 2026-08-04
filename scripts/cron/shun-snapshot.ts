@@ -88,9 +88,6 @@ async function run() {
                             // Wait for initial login prompt
                             await executeCommand("", 10000);
 
-                            // Disable pager
-                            await executeCommand("terminal pager 0", 5000);
-
                             // Run show shun
                             const showOutput = await executeCommand("show shun", 120000);
                             

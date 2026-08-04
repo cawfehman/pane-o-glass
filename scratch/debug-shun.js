@@ -26,52 +26,27 @@ async function run() {
         const shell = await ssh.requestShell();
         let output = '';
         
-        await new Promise((resolve, reject) => {
-            shell.on('data', (data) => { output += data.toString('utf8'); });
-            shell.on('error', reject);
-            
-            const waitForPrompt = (timeoutMs = 60000) => {
-                return new Promise((res) => {
-                    const start = Date.now();
-                    const check = () => {
-                        const trimmed = output.trim();
-                        if (trimmed.endsWith('>') || trimmed.endsWith('#')) {
-                            res();
-                        } else if (Date.now() - start > timeoutMs) {
-                            res();
-                        } else {
-                            setTimeout(check, 250);
-                        }
-                    };
-                    check();
-                });
-            };
-
-            const executeSequence = async () => {
-                try {
-                    // Wait for initial login prompt
-                    await waitForPrompt(10000);
-                    
-                    output = '';
-                    shell.write('terminal pager 0\n');
-                    await waitForPrompt(5000);
-
-                    output = '';
-                    shell.write('show shun\n');
-                    await waitForPrompt(120000);
-
-                    fs.writeFileSync('scratch/debug-shun.txt', output);
-                    console.log("Shell output length:", output.length);
-
-                    shell.write('exit\n');
-                    setTimeout(resolve, 1000);
-                } catch (e) {
-                    reject(e);
-                }
-            };
-
-            executeSequence();
+        shell.on('data', (data) => {
+            output += data.toString('utf8');
         });
+
+        // Just wait for prompt
+        await new Promise(r => setTimeout(r, 5000));
+
+        output = ''; // clear initial login banner
+        shell.write('show shun\r\n');
+        
+        console.log("Waiting 30 seconds for output...");
+        await new Promise(r => setTimeout(r, 30000));
+
+        fs.writeFileSync('scratch/debug-shun.txt', output);
+        console.log("Shell output length:", output.length);
+        
+        shell.write('exit\r\n');
+        setTimeout(() => {
+            ssh.dispose();
+            process.exit(0);
+        }, 1000);
         console.log("Shell output length:", output.length);
         ssh.dispose();
     } catch (err) {
