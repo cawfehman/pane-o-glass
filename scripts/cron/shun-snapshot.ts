@@ -174,11 +174,15 @@ async function run() {
         const startOfUtcDay = new Date();
         startOfUtcDay.setUTCHours(0, 0, 0, 0);
 
-        const queriesUsedToday = await prisma.ipLookupCache.count({
-            where: { updatedAt: { gte: startOfUtcDay } }
+        const queriesUsedToday = await prisma.auditLog.count({
+            where: { 
+                action: "IPLOCATE_API_QUERY",
+                createdAt: { gte: startOfUtcDay }
+            }
         });
 
-        const dailyQuota = 1000;
+        // Default to 1000, but allow override for initial seed runs with large credit balances
+        const dailyQuota = parseInt(process.env.IPLOCATE_DAILY_QUOTA || "1000", 10);
         const remainingQuota = Math.max(0, dailyQuota - queriesUsedToday);
         console.log(`IPLocate daily limit: ${dailyQuota}. Used today: ${queriesUsedToday}. Remaining quota: ${remainingQuota}.`);
 
