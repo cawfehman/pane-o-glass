@@ -53,18 +53,52 @@ async function run() {
                     readyTimeout: 10000
                 });
 
-                // Request shell stream to bypass pager issues on ASA
                 const shell = await ssh.requestShell();
                 let output = '';
-                shell.on('data', (data) => { output += data.toString('utf8'); });
+                
+                await new Promise<void>((resolve, reject) => {
+                    shell.on('data', (data) => { output += data.toString('utf8'); });
+                    shell.on('error', reject);
+                    
+                    const waitForPrompt = (timeoutMs = 60000) => {
+                        return new Promise<void>((res) => {
+                            const start = Date.now();
+                            const check = () => {
+                                const trimmed = output.trim();
+                                if (trimmed.endsWith('>') || trimmed.endsWith('#')) {
+                                    res();
+                                } else if (Date.now() - start > timeoutMs) {
+                                    res();
+                                } else {
+                                    setTimeout(check, 250);
+                                }
+                            };
+                            check();
+                        });
+                    };
 
-                shell.write('terminal pager 0\n');
-                shell.write('show shun\n');
-                shell.write('exit\n');
+                    const executeSequence = async () => {
+                        try {
+                            // Wait for initial login prompt
+                            await waitForPrompt(10000);
+                            
+                            output = '';
+                            shell.write('terminal pager 0\n');
+                            await waitForPrompt(5000);
 
-                await new Promise((resolve) => {
-                    shell.on('close', resolve);
-                    setTimeout(resolve, 15000); // 15s timeout
+                            output = '';
+                            shell.write('show shun\n');
+                            // Allow up to 2 minutes for massive shun lists
+                            await waitForPrompt(120000);
+
+                            shell.write('exit\n');
+                            setTimeout(resolve, 1000); // Allow time to close cleanly
+                        } catch (e) {
+                            reject(e);
+                        }
+                    };
+
+                    executeSequence();
                 });
                 
                 const lines = output.split('\n');
