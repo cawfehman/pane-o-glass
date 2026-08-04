@@ -23,7 +23,15 @@ export async function GET(req: Request) {
         const where: any = {};
 
         if (search) {
-            where.ip = { contains: search };
+            if (search.includes('*')) {
+                const likeString = search.replace(/\*/g, '%');
+                // Use queryRaw to perform a native SQL LIKE search to support multiple wildcards
+                const matchingRows = await prisma.$queryRaw<any[]>`SELECT ip FROM "ShunDatabaseIp" WHERE ip LIKE ${likeString}`;
+                const ips = matchingRows.map(r => r.ip);
+                where.ip = { in: ips };
+            } else {
+                where.ip = { contains: search };
+            }
         }
         if (asn) {
             where.shunIp = { ipAsn: { contains: asn } };
