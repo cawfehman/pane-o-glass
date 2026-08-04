@@ -128,23 +128,25 @@ export function ShunDatabaseTab() {
             <div className="bg-[var(--bg-surface)] p-4 border-b border-[var(--border-color)] shadow-sm shrink-0 flex flex-col gap-4">
                 <form 
                     onSubmit={(e) => { e.preventDefault(); setPage(1); fetchRecords(); }}
-                    className="flex flex-col md:flex-row gap-4 justify-between md:items-center"
+                    className="flex flex-col xl:flex-row gap-4 justify-between xl:items-center"
                 >
-                    <div className="relative flex-1 max-w-3xl">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[var(--accent-primary)] opacity-70" />
-                        <input
-                            type="text"
-                            placeholder="Omnisearch: IP (e.g. 150.25*.*), ASN, Org, or Firewall..."
-                            className="pl-12 w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-default)] px-4 py-3 text-sm focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200 shadow-inner"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                        />
-                    </div>
-
-                    <div className="flex gap-2 shrink-0">
-                        <button type="submit" className="px-4 py-2 bg-[var(--accent-primary)] text-white text-sm font-medium rounded shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-[var(--accent-primary)]/40 hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap">
+                    <div className="flex flex-1 items-center gap-3 w-full xl:max-w-4xl">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[var(--accent-primary)] opacity-70 pointer-events-none" />
+                            <input
+                                type="text"
+                                placeholder="Omnisearch: IP (e.g. 150.25*.*), ASN, Org, or Firewall..."
+                                className="pl-12 w-full h-[46px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-default)] px-4 text-base focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200 shadow-inner"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                            />
+                        </div>
+                        <button type="submit" className="px-6 h-[46px] bg-[var(--accent-primary)] text-white text-base font-medium rounded-lg shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-[var(--accent-primary)]/40 hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap shrink-0">
                             Search
                         </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 shrink-0">
                         <button type="button" onClick={clearFilters} className="px-4 py-2 bg-[var(--bg-surface-hover)] text-[var(--text-primary)] text-sm font-medium rounded border border-[var(--border-color)] hover:bg-[var(--bg-default)] transition-colors whitespace-nowrap">
                             Clear
                         </button>
