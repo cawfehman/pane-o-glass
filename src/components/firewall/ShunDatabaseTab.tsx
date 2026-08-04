@@ -133,29 +133,25 @@ export function ShunDatabaseTab() {
                     <div className="flex w-full md:flex-1 max-w-4xl gap-3 relative items-center">
                         <div className="relative flex-1 w-full">
                             <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-[var(--accent-primary)] opacity-70 pointer-events-none" />
-                            {/* Note: padding uses inline style instead of Tailwind (pl-14 pr-6) due to
-                                Next.js Turbopack + Tailwind v4 PostCSS compatibility issue where certain
-                                utility classes are not compiled into the production CSS bundle. */}
                             <input
                                 type="text"
                                 placeholder="Omnisearch: IP, ASN, Org, or Firewall..."
-                                className="w-full h-[48px] rounded-full border border-[var(--border-color)] bg-[var(--bg-default)] text-base focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200 shadow-inner"
-                                style={{ paddingLeft: '3.5rem', paddingRight: '1.5rem' }}
+                                className="pl-14 pr-6 w-full h-[48px] rounded-full border border-[var(--border-color)] bg-[var(--bg-default)] text-base focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200 shadow-inner"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
                         </div>
-                        <button type="submit" className="h-[48px] bg-[var(--accent-primary)] text-white text-base font-medium rounded-full shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-[var(--accent-primary)]/40 hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap shrink-0" style={{ paddingLeft: '2.5rem', paddingRight: '2.5rem' }}>
+                        <button type="submit" className="px-10 h-[48px] bg-[var(--accent-primary)] text-white text-base font-medium rounded-full shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-[var(--accent-primary)]/40 hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap shrink-0">
                             Search
                         </button>
                     </div>
 
                     <div className="flex gap-2 shrink-0 w-full md:w-auto justify-end ml-auto">
-                        <button type="button" onClick={clearFilters} className="py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-default)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] transition-colors whitespace-nowrap" style={{ paddingLeft: '1.25rem', paddingRight: '1.25rem' }}>
+                        <button type="button" onClick={clearFilters} className="px-5 py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-default)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] transition-colors whitespace-nowrap">
                             Clear
                         </button>
                         <div className="relative">
-                            <button type="button" onClick={() => setShowColumnMenu(!showColumnMenu)} className="py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-default)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] transition-colors flex items-center gap-2 whitespace-nowrap" style={{ paddingLeft: '1.25rem', paddingRight: '1.25rem' }}>
+                            <button type="button" onClick={() => setShowColumnMenu(!showColumnMenu)} className="px-5 py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-default)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] transition-colors flex items-center gap-2 whitespace-nowrap">
                                 <LayoutTemplate className="w-4 h-4" /> Columns
                             </button>
                             {showColumnMenu && (
@@ -187,7 +183,7 @@ export function ShunDatabaseTab() {
                                 </>
                             )}
                         </div>
-                        <button type="button" onClick={handleExport} disabled={isExporting} className="py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-default)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap" style={{ paddingLeft: '1.25rem', paddingRight: '1.25rem' }}>
+                        <button type="button" onClick={handleExport} disabled={isExporting} className="px-5 py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-default)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap">
                             <Download className="w-4 h-4" /> {isExporting ? "Exporting..." : "Export"}
                         </button>
                     </div>

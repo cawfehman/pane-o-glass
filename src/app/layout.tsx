@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import "./globals.css";
+import "./compiled-tailwind.css";
 import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {

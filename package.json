@@ -5,8 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "clean": "rimraf .next",
-    "build": "npm run clean && npm run build:scripts && next build",
+    "build:css": "npx @tailwindcss/cli -i src/app/globals.css -o src/app/compiled-tailwind.css",
     "build:scripts": "npx esbuild scripts/cron/*.ts scripts/utils/*.ts --outdir=dist-scripts --platform=node --format=cjs",
+    "build": "npm run clean && npm run build:css && npm run build:scripts && next build",
     "start": "next start",
     "lint": "next lint",
     "deploy": "git push origin main --follow-tags && git push production main --follow-tags",
