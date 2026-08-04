@@ -614,6 +614,24 @@ thead.sticky-header th {
 .tracking-tight { letter-spacing: -0.025em; }
 .tracking-widest { letter-spacing: 0.1em; }
 
+/* Injected Utilities for Search Bar due to Tailwind cache freeze */
+.justify-end { justify-content: flex-end; }
+.items-start { align-items: flex-start; }
+.ml-auto { margin-left: auto; }
+.pl-14 { padding-left: 3.5rem; }
+.pr-6 { padding-right: 1.5rem; }
+.px-10 { padding-left: 2.5rem; padding-right: 2.5rem; }
+.px-5 { padding-left: 1.25rem; padding-right: 1.25rem; }
+.py-2\.5 { padding-top: 0.625rem; padding-bottom: 0.625rem; }
+.h-\[48px\] { height: 48px; }
+
+@media (min-width: 768px) {
+  .md\:flex-row { flex-direction: row; }
+  .md\:items-center { align-items: center; }
+  .md\:flex-1 { flex: 1 1 0%; }
+  .md\:w-auto { width: auto; }
+}
+
 .text-primary { color: var(--text-primary); }
 .text-secondary { color: var(--text-secondary); }
 .text-muted { color: var(--text-muted); }
