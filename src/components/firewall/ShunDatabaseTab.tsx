@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { Search, Server, Filter, ShieldAlert, Clock, ShieldCheck, SearchX, LayoutTemplate, Check } from "lucide-react";
+import { Search, Server, Filter, ShieldAlert, Clock, ShieldCheck, SearchX, LayoutTemplate, Check, Download, Info } from "lucide-react";
+import { EnrichmentDetailsModal } from "./EnrichmentDetailsModal";
 
 export function ShunDatabaseTab() {
     const [records, setRecords] = useState<any[]>([]);
@@ -13,6 +14,9 @@ export function ShunDatabaseTab() {
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalRecords, setTotalRecords] = useState(0);
+
+    const [selectedIp, setSelectedIp] = useState<string | null>(null);
+    const [isExporting, setIsExporting] = useState(false);
 
     const [visibleColumns, setVisibleColumns] = useState({
         status: true,
@@ -35,6 +39,26 @@ export function ShunDatabaseTab() {
         const updated = { ...visibleColumns, [col]: !visibleColumns[col] };
         setVisibleColumns(updated);
         localStorage.setItem("pane-o-glass.shun-columns", JSON.stringify(updated));
+    };
+
+    const handleExport = async () => {
+        try {
+            setIsExporting(true);
+            const query = new URLSearchParams();
+            if (search) query.append("search", search);
+            if (asn) query.append("asn", asn);
+            if (firewall) query.append("firewall", firewall);
+            
+            // Trigger browser download by setting location href
+            window.location.href = `/api/firewall/shun-database/export?${query.toString()}`;
+            
+            // Allow time for navigation to initiate before re-enabling button
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (err) {
+            console.error("Export failed", err);
+        } finally {
+            setIsExporting(false);
+        }
     };
 
     const fetchRecords = useCallback(async () => {
@@ -169,6 +193,9 @@ export function ShunDatabaseTab() {
                                 </>
                             )}
                         </div>
+                        <button type="button" onClick={handleExport} disabled={isExporting} className="px-3 py-2 bg-[var(--bg-surface-hover)] text-[var(--text-primary)] text-sm font-medium rounded border border-[var(--border-color)] hover:bg-[var(--bg-default)] transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <Download className="w-4 h-4" /> {isExporting ? "Exporting..." : "Export"}
+                        </button>
                     </div>
                 </form>
             </div>
@@ -256,7 +283,16 @@ export function ShunDatabaseTab() {
                                         )}
                                         {visibleColumns.ip && (
                                             <td className="px-4 py-3 font-mono text-[var(--accent-primary)] whitespace-nowrap align-top">
-                                                {record.ip}
+                                                <div className="flex items-center gap-2">
+                                                    {record.ip}
+                                                    <button 
+                                                        onClick={() => setSelectedIp(record.ip)}
+                                                        className="p-1 rounded bg-[var(--bg-default)] border border-[var(--border-color)] hover:bg-[var(--accent-primary)] hover:text-white hover:border-[var(--accent-primary)] text-[var(--text-secondary)] transition-colors shadow-sm"
+                                                        title="View Raw Enrichment JSON"
+                                                    >
+                                                        <Info className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
                                             </td>
                                         )}
                                         {visibleColumns.lifecycle && (
@@ -359,6 +395,13 @@ export function ShunDatabaseTab() {
                     </div>
                 )}
             </div>
+
+            {selectedIp && (
+                <EnrichmentDetailsModal 
+                    ip={selectedIp} 
+                    onClose={() => setSelectedIp(null)} 
+                />
+            )}
         </div>
     );
 }
