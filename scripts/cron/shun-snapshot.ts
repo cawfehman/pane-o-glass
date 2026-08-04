@@ -53,65 +53,67 @@ async function run() {
                     readyTimeout: 10000
                 });
 
-                const shell = await ssh.requestShell();
-                let output = '';
+                const shellStream = await ssh.requestShell();
+                let shellBuffer = "";
                 
-                await new Promise<void>((resolve, reject) => {
-                    shell.on('data', (data) => { output += data.toString('utf8'); });
-                    shell.on('error', reject);
-                    
-                    const waitForPrompt = (timeoutMs = 60000) => {
-                        return new Promise<void>((res) => {
+                const fwIps = new Set<string>();
+                
+                await new Promise<void>((resolveShell, rejectShell) => {
+                    shellStream.on('data', d => { shellBuffer += d.toString(); });
+                    shellStream.on('error', err => rejectShell(err));
+
+                    const executeCommand = (command: string, timeoutMs = 15000): Promise<string> => {
+                        shellBuffer = ""; // Reset buffer
+                        if (command !== null && command !== undefined) {
+                            shellStream.write(command + "\n");
+                        }
+                        return new Promise((res) => {
                             const start = Date.now();
                             const check = () => {
-                                const trimmed = output.trim();
+                                const trimmed = shellBuffer.trim();
                                 if (trimmed.endsWith('>') || trimmed.endsWith('#')) {
-                                    res();
+                                    res(shellBuffer);
                                 } else if (Date.now() - start > timeoutMs) {
-                                    res();
+                                    res(shellBuffer);
                                 } else {
-                                    setTimeout(check, 250);
+                                    setTimeout(check, 100);
                                 }
                             };
                             check();
                         });
                     };
 
-                    const executeSequence = async () => {
+                    const runTasks = async () => {
                         try {
                             // Wait for initial login prompt
-                            await waitForPrompt(10000);
+                            await executeCommand("", 10000);
+
+                            // Disable pager
+                            await executeCommand("terminal pager 0", 5000);
+
+                            // Run show shun
+                            const showOutput = await executeCommand("show shun", 120000);
                             
-                            output = '';
-                            shell.write('terminal pager 0\n');
-                            await waitForPrompt(5000);
+                            // Process output
+                            const lines = showOutput.split('\n');
+                            for (const line of lines) {
+                                if (line.includes('shun ') || line.includes('Shun ') || line.includes('SRC_IP=')) {
+                                    const match = line.match(ipRegex);
+                                    if (match && match.length > 0) {
+                                        fwIps.add(match[0]);
+                                    }
+                                }
+                            }
 
-                            output = '';
-                            shell.write('show shun\n');
-                            // Allow up to 2 minutes for massive shun lists
-                            await waitForPrompt(120000);
-
-                            shell.write('exit\n');
-                            setTimeout(resolve, 1000); // Allow time to close cleanly
-                        } catch (e) {
-                            reject(e);
+                            shellStream.write("exit\n");
+                            setTimeout(() => resolveShell(), 500);
+                        } catch (err) {
+                            rejectShell(err);
                         }
                     };
 
-                    executeSequence();
+                    runTasks();
                 });
-                
-                const lines = output.split('\n');
-                const fwIps = new Set<string>();
-
-                for (const line of lines) {
-                    if (line.includes('shun ') || line.includes('Shun ')) {
-                        const match = line.match(ipRegex);
-                        if (match && match.length > 0) {
-                            fwIps.add(match[0]);
-                        }
-                    }
-                }
 
                 ssh.dispose();
                 console.log(`Found ${fwIps.size} shuns on ${fwName}. Updating database...`);

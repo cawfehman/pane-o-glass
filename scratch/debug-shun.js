@@ -23,25 +23,55 @@ async function run() {
             readyTimeout: 10000
         });
 
-        // Try using shell stream instead of execCommand
         const shell = await ssh.requestShell();
-        
         let output = '';
-        shell.on('data', (data) => {
-            output += data.toString('utf8');
+        
+        await new Promise((resolve, reject) => {
+            shell.on('data', (data) => { output += data.toString('utf8'); });
+            shell.on('error', reject);
+            
+            const waitForPrompt = (timeoutMs = 60000) => {
+                return new Promise((res) => {
+                    const start = Date.now();
+                    const check = () => {
+                        const trimmed = output.trim();
+                        if (trimmed.endsWith('>') || trimmed.endsWith('#')) {
+                            res();
+                        } else if (Date.now() - start > timeoutMs) {
+                            res();
+                        } else {
+                            setTimeout(check, 250);
+                        }
+                    };
+                    check();
+                });
+            };
+
+            const executeSequence = async () => {
+                try {
+                    // Wait for initial login prompt
+                    await waitForPrompt(10000);
+                    
+                    output = '';
+                    shell.write('terminal pager 0\n');
+                    await waitForPrompt(5000);
+
+                    output = '';
+                    shell.write('show shun\n');
+                    await waitForPrompt(120000);
+
+                    fs.writeFileSync('scratch/debug-shun.txt', output);
+                    console.log("Shell output length:", output.length);
+
+                    shell.write('exit\n');
+                    setTimeout(resolve, 1000);
+                } catch (e) {
+                    reject(e);
+                }
+            };
+
+            executeSequence();
         });
-
-        // Send commands
-        shell.write('terminal pager 0\n');
-        shell.write('show shun\n');
-        shell.write('exit\n');
-
-        // wait for close
-        await new Promise((resolve) => {
-            shell.on('close', resolve);
-        });
-
-        fs.writeFileSync('scratch/debug-shun.txt', output);
         console.log("Shell output length:", output.length);
         ssh.dispose();
     } catch (err) {
