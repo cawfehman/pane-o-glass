@@ -136,17 +136,17 @@ export function ShunDatabaseTab() {
                             <input
                                 type="text"
                                 placeholder="Omnisearch: IP (e.g. 150.25*.*), ASN, Org, or Firewall..."
-                                className="pl-12 w-full h-[46px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-default)] px-4 text-base focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200 shadow-inner"
+                                className="pl-12 pr-4 w-full h-[46px] rounded-lg border border-[var(--border-color)] bg-[var(--bg-default)] text-base focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200 shadow-inner"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
                         </div>
-                        <button type="submit" className="px-6 h-[46px] bg-[var(--accent-primary)] text-white text-base font-medium rounded-lg shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-[var(--accent-primary)]/40 hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap shrink-0">
+                        <button type="submit" className="px-10 h-[46px] bg-[var(--accent-primary)] text-white text-base font-medium rounded-lg shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-[var(--accent-primary)]/40 hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap shrink-0">
                             Search
                         </button>
                     </div>
 
-                    <div className="flex flex-wrap gap-2 shrink-0">
+                    <div className="flex flex-wrap gap-2 shrink-0 w-full xl:w-auto justify-end mt-2 xl:mt-0">
                         <button type="button" onClick={clearFilters} className="px-4 py-2 bg-[var(--bg-surface-hover)] text-[var(--text-primary)] text-sm font-medium rounded border border-[var(--border-color)] hover:bg-[var(--bg-default)] transition-colors whitespace-nowrap">
                             Clear
                         </button>
