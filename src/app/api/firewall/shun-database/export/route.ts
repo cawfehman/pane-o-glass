@@ -21,8 +21,12 @@ export async function GET(req: Request) {
 
         if (search) {
             const orClauses = [];
-            if (search.includes('*')) {
-                const likeString = search.replace(/\*/g, '%');
+            
+            const isExact = search.startsWith('"') && search.endsWith('"') && search.length > 1;
+            const searchTerm = isExact ? search.slice(1, -1) : search;
+            
+            if (!isExact && searchTerm.includes('*')) {
+                const likeString = searchTerm.replace(/\*/g, '%');
                 const matchingRows = await prisma.$queryRaw<any[]>`SELECT ip FROM "ShunDatabaseIp" WHERE ip LIKE ${likeString}`;
                 const ips = matchingRows.map(r => r.ip);
                 if (ips.length > 0) {
@@ -31,12 +35,12 @@ export async function GET(req: Request) {
                     orClauses.push({ ip: 'NO_MATCH_WILDCARD' });
                 }
             } else {
-                orClauses.push({ ip: { contains: search } });
+                orClauses.push({ ip: isExact ? searchTerm : { contains: searchTerm } });
             }
-            orClauses.push({ firewall: { contains: search } });
-            orClauses.push({ shunIp: { ipAsn: { contains: search } } });
-            orClauses.push({ shunIp: { org: { contains: search } } });
-            orClauses.push({ shunIp: { ipCountry: { contains: search } } });
+            orClauses.push({ firewall: isExact ? searchTerm : { contains: searchTerm } });
+            orClauses.push({ shunIp: { ipAsn: isExact ? searchTerm : { contains: searchTerm } } });
+            orClauses.push({ shunIp: { org: isExact ? searchTerm : { contains: searchTerm } } });
+            orClauses.push({ shunIp: { ipCountry: isExact ? searchTerm : { contains: searchTerm } } });
             
             where.OR = orClauses;
         }
