@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import { Shield } from "lucide-react";
-import { ShunDbTab } from "@/components/firewall/ShunDbTab";
+import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
 
 export default function CiscoFirewallPage() {
     const [activeTab, setActiveTab] = useState<"manual" | "guardian" | "blacklist" | "database">("manual");
@@ -701,7 +701,7 @@ export default function CiscoFirewallPage() {
                 </div>
             </div>
         ) : activeTab === "database" ? (
-            <ShunDbTab />
+            <ShunDatabaseTab />
         ) : null}
             </div>
     </div>

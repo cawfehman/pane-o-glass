@@ -2,7 +2,6 @@
 @import "tailwindcss";
 @source "../components";
 
-/* Force CSS recompilation (Cache Buster 1) */
 
 @theme {
   --color-bg-dark: var(--bg-dark);
