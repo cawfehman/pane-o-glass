@@ -8,12 +8,14 @@ export function ShunDatabaseTab() {
     const [error, setError] = useState("");
     
     const [search, setSearch] = useState("");
-    const [asn, setAsn] = useState("");
-    const [firewall, setFirewall] = useState("");
     
     const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(50);
     const [totalPages, setTotalPages] = useState(1);
     const [totalRecords, setTotalRecords] = useState(0);
+
+    const [sortField, setSortField] = useState("isActive");
+    const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
     const [selectedIp, setSelectedIp] = useState<string | null>(null);
     const [isExporting, setIsExporting] = useState(false);
@@ -29,11 +31,31 @@ export function ShunDatabaseTab() {
     const [showColumnMenu, setShowColumnMenu] = useState(false);
 
     useEffect(() => {
-        const saved = localStorage.getItem("pane-o-glass.shun-columns");
-        if (saved) {
-            try { setVisibleColumns(JSON.parse(saved)); } catch (e) {}
+        const savedCols = localStorage.getItem("pane-o-glass.shun-columns");
+        if (savedCols) {
+            try { setVisibleColumns(JSON.parse(savedCols)); } catch (e) {}
+        }
+        const savedLimit = localStorage.getItem("pane-o-glass.shun-limit");
+        if (savedLimit) {
+            try { setLimit(parseInt(savedLimit, 10)); } catch (e) {}
         }
     }, []);
+
+    const handleLimitChange = (newLimit: number) => {
+        setLimit(newLimit);
+        setPage(1);
+        localStorage.setItem("pane-o-glass.shun-limit", newLimit.toString());
+    };
+
+    const handleSort = (field: string) => {
+        if (sortField === field) {
+            setSortDir(sortDir === "asc" ? "desc" : "asc");
+        } else {
+            setSortField(field);
+            setSortDir("desc");
+        }
+        setPage(1);
+    };
 
     const toggleColumn = (col: keyof typeof visibleColumns) => {
         const updated = { ...visibleColumns, [col]: !visibleColumns[col] };
@@ -46,8 +68,8 @@ export function ShunDatabaseTab() {
             setIsExporting(true);
             const query = new URLSearchParams();
             if (search) query.append("search", search);
-            if (asn) query.append("asn", asn);
-            if (firewall) query.append("firewall", firewall);
+            query.append("sortField", sortField);
+            query.append("sortDir", sortDir);
             
             // Trigger browser download by setting location href
             window.location.href = `/api/firewall/shun-database/export?${query.toString()}`;
@@ -65,14 +87,15 @@ export function ShunDatabaseTab() {
         setLoading(true);
         setError("");
         try {
-            const params = new URLSearchParams();
-            if (search) params.append("search", search);
-            if (asn) params.append("asn", asn);
-            if (firewall) params.append("firewall", firewall);
-            params.append("page", page.toString());
-            params.append("limit", "50");
+            const query = new URLSearchParams({ 
+                page: page.toString(), 
+                limit: limit.toString(),
+                sortField,
+                sortDir 
+            });
+            if (search) query.append("search", search);
 
-            const res = await fetch(`/api/firewall/shun-database?${params.toString()}`);
+            const res = await fetch(`/api/firewall/shun-database?${query.toString()}`);
             if (res.ok) {
                 const data = await res.json();
                 setRecords(data.records);
@@ -82,78 +105,43 @@ export function ShunDatabaseTab() {
                 const err = await res.text();
                 setError(err || "Failed to fetch records.");
             }
-        } catch (e: any) {
-            setError(e.message || "Failed to fetch records.");
+        } catch (err) {
+            setError("Failed to load shun records.");
         } finally {
             setLoading(false);
         }
-    }, [search, asn, firewall, page]);
+    }, [page, limit, search, sortField, sortDir]);
 
     useEffect(() => {
         fetchRecords();
-    }, [page, fetchRecords]);
-
-    const handleSearch = (e: React.FormEvent) => {
-        e.preventDefault();
-        setPage(1);
-        fetchRecords();
-    };
+    }, [fetchRecords]);
 
     const clearFilters = () => {
         setSearch("");
-        setAsn("");
-        setFirewall("");
         setPage(1);
-        setTimeout(() => fetchRecords(), 0);
+        setSortField("isActive");
+        setSortDir("desc");
     };
 
     return (
-        <div className="flex flex-col gap-6">
-            <div className="glass-card p-5 rounded-lg border border-[var(--border-color)]">
-                <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-4 md:items-end">
-                    <div className="flex-1 space-y-1">
-                        <label className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider block">IP Address (Wildcard)</label>
-                        <div className="relative">
-                            <Search className="absolute left-3 top-2.5 h-4 w-4 text-[var(--text-secondary)]" />
-                            <input
-                                type="text"
-                                placeholder="Search IP (e.g. 150.25*.*)..."
-                                className="pl-9 w-full rounded border border-[var(--border-color)] bg-[var(--bg-default)] px-3 py-2 text-sm focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200"
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                    
-                    <div className="w-full md:w-48 space-y-1">
-                        <label className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider block">ASN</label>
-                        <div className="relative">
-                            <Filter className="absolute left-3 top-2.5 h-4 w-4 text-[var(--text-secondary)]" />
-                            <input
-                                type="text"
-                                placeholder="e.g. AS15169"
-                                className="pl-9 w-full rounded border border-[var(--border-color)] bg-[var(--bg-default)] px-3 py-2 text-sm focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200"
-                                value={asn}
-                                onChange={(e) => setAsn(e.target.value)}
-                            />
-                        </div>
+        <div className="flex flex-col gap-0 h-full overflow-hidden">
+            <div className="bg-[var(--bg-surface)] p-4 border-b border-[var(--border-color)] shadow-sm shrink-0 flex flex-col gap-4">
+                <form 
+                    onSubmit={(e) => { e.preventDefault(); setPage(1); fetchRecords(); }}
+                    className="flex flex-col md:flex-row gap-4 justify-between md:items-center"
+                >
+                    <div className="relative flex-1 max-w-3xl">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[var(--accent-primary)] opacity-70" />
+                        <input
+                            type="text"
+                            placeholder="Omnisearch: IP (e.g. 150.25*.*), ASN, Org, or Firewall..."
+                            className="pl-12 w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-default)] px-4 py-3 text-sm focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200 shadow-inner"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                        />
                     </div>
 
-                    <div className="w-full md:w-48 space-y-1">
-                        <label className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider block">Firewall Name</label>
-                        <div className="relative">
-                            <Server className="absolute left-3 top-2.5 h-4 w-4 text-[var(--text-secondary)]" />
-                            <input
-                                type="text"
-                                placeholder="e.g. FW-East"
-                                className="pl-9 w-full rounded border border-[var(--border-color)] bg-[var(--bg-default)] px-3 py-2 text-sm focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200"
-                                value={firewall}
-                                onChange={(e) => setFirewall(e.target.value)}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 shrink-0">
                         <button type="submit" className="px-4 py-2 bg-[var(--accent-primary)] text-white text-sm font-medium rounded shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-[var(--accent-primary)]/40 hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap">
                             Search
                         </button>
@@ -198,23 +186,66 @@ export function ShunDatabaseTab() {
                         </button>
                     </div>
                 </form>
-            </div>
-
-            <div className="glass-card rounded-lg border border-[var(--border-color)] overflow-hidden flex flex-col flex-1 min-h-[400px]">
-                <div className="px-5 py-3 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--bg-surface)]">
-                    <h3 className="font-semibold text-[var(--text-primary)] m-0">Master Shun Directory <span className="text-xs text-[var(--text-secondary)] font-normal ml-2">({totalRecords} found)</span></h3>
-                </div>
                 
-                <div className="overflow-x-auto flex-1">
+                <div className="flex justify-between items-center text-sm text-[var(--text-secondary)] pt-2 border-t border-[var(--border-color)]">
+                    <div className="flex items-center gap-4">
+                        <span>Showing <span className="font-medium text-[var(--text-primary)]">{totalRecords > 0 ? (page - 1) * limit + 1 : 0}</span> to <span className="font-medium text-[var(--text-primary)]">{Math.min(page * limit, totalRecords)}</span> of <span className="font-medium text-[var(--text-primary)]">{totalRecords}</span> entries</span>
+                        <div className="flex items-center gap-2">
+                            <span>Rows:</span>
+                            <select 
+                                value={limit} 
+                                onChange={(e) => handleLimitChange(Number(e.target.value))}
+                                className="bg-[var(--bg-default)] border border-[var(--border-color)] rounded px-2 py-1 text-xs focus:outline-none focus:border-[var(--accent-primary)]"
+                            >
+                                {[25, 50, 100, 250].map(val => (
+                                    <option key={val} value={val}>{val}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2 py-1 rounded hover:bg-[var(--bg-default)] disabled:opacity-50">Prev</button>
+                        <span className="px-2 font-medium">Page {page} of {totalPages || 1}</span>
+                        <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages || totalPages === 0} className="px-2 py-1 rounded hover:bg-[var(--bg-default)] disabled:opacity-50">Next</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div className="flex-1 overflow-auto bg-[var(--bg-default)] relative">
+                <div className="min-w-max h-full">
                     <table className="w-full text-sm text-left border-collapse">
                         <thead className="bg-[var(--bg-surface)] text-[var(--text-secondary)] text-xs uppercase sticky top-0 z-10 shadow-sm border-b border-[var(--border-color)]">
                             <tr>
-                                {visibleColumns.status && <th className="px-4 py-3 font-semibold">Status</th>}
-                                {visibleColumns.ip && <th className="px-4 py-3 font-semibold">IP Address</th>}
-                                {visibleColumns.lifecycle && <th className="px-4 py-3 font-semibold">Lifecycle</th>}
-                                {visibleColumns.firewall && <th className="px-4 py-3 font-semibold">Firewall</th>}
-                                {visibleColumns.network && <th className="px-4 py-3 font-semibold">Network Intelligence</th>}
-                                {visibleColumns.location && <th className="px-4 py-3 font-semibold">Location</th>}
+                                {visibleColumns.status && (
+                                    <th className="px-4 py-3 font-semibold cursor-pointer hover:bg-[var(--bg-surface-hover)] select-none group" onClick={() => handleSort('isActive')}>
+                                        <div className="flex items-center gap-1">Status <span className={sortField==='isActive'?'text-[var(--accent-primary)]':'text-transparent group-hover:text-[var(--text-muted)]'}>{sortField==='isActive'&&sortDir==='asc'?'▲':'▼'}</span></div>
+                                    </th>
+                                )}
+                                {visibleColumns.ip && (
+                                    <th className="px-4 py-3 font-semibold cursor-pointer hover:bg-[var(--bg-surface-hover)] select-none group" onClick={() => handleSort('ip')}>
+                                        <div className="flex items-center gap-1">IP Address <span className={sortField==='ip'?'text-[var(--accent-primary)]':'text-transparent group-hover:text-[var(--text-muted)]'}>{sortField==='ip'&&sortDir==='asc'?'▲':'▼'}</span></div>
+                                    </th>
+                                )}
+                                {visibleColumns.lifecycle && (
+                                    <th className="px-4 py-3 font-semibold cursor-pointer hover:bg-[var(--bg-surface-hover)] select-none group" onClick={() => handleSort('daysShunned')}>
+                                        <div className="flex items-center gap-1">Lifecycle <span className={sortField==='daysShunned'?'text-[var(--accent-primary)]':'text-transparent group-hover:text-[var(--text-muted)]'}>{sortField==='daysShunned'&&sortDir==='asc'?'▲':'▼'}</span></div>
+                                    </th>
+                                )}
+                                {visibleColumns.firewall && (
+                                    <th className="px-4 py-3 font-semibold cursor-pointer hover:bg-[var(--bg-surface-hover)] select-none group" onClick={() => handleSort('firewall')}>
+                                        <div className="flex items-center gap-1">Firewall <span className={sortField==='firewall'?'text-[var(--accent-primary)]':'text-transparent group-hover:text-[var(--text-muted)]'}>{sortField==='firewall'&&sortDir==='asc'?'▲':'▼'}</span></div>
+                                    </th>
+                                )}
+                                {visibleColumns.network && (
+                                    <th className="px-4 py-3 font-semibold cursor-pointer hover:bg-[var(--bg-surface-hover)] select-none group" onClick={() => handleSort('ipAsn')}>
+                                        <div className="flex items-center gap-1">Network Intel <span className={sortField==='ipAsn'?'text-[var(--accent-primary)]':'text-transparent group-hover:text-[var(--text-muted)]'}>{sortField==='ipAsn'&&sortDir==='asc'?'▲':'▼'}</span></div>
+                                    </th>
+                                )}
+                                {visibleColumns.location && (
+                                    <th className="px-4 py-3 font-semibold cursor-pointer hover:bg-[var(--bg-surface-hover)] select-none group" onClick={() => handleSort('ipCountry')}>
+                                        <div className="flex items-center gap-1">Location <span className={sortField==='ipCountry'?'text-[var(--accent-primary)]':'text-transparent group-hover:text-[var(--text-muted)]'}>{sortField==='ipCountry'&&sortDir==='asc'?'▲':'▼'}</span></div>
+                                    </th>
+                                )}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--border-color)]">
@@ -256,7 +287,7 @@ export function ShunDatabaseTab() {
                                 </tr>
                             ) : (
                                 records.map((record) => (
-                                    <tr key={record.id} className="hover:bg-[var(--bg-surface-hover)] hover:-translate-y-[1px] hover:shadow-[0_4px_12px_-2px_rgba(0,0,0,0.3)] transition-all duration-200">
+                                    <tr key={record.id} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
                                         {visibleColumns.status && (
                                             <td className="px-4 py-3 whitespace-nowrap">
                                                 <div className="flex flex-col gap-1.5">
@@ -370,30 +401,15 @@ export function ShunDatabaseTab() {
                         </tbody>
                     </table>
                 </div>
-                
-                {totalPages > 1 && (
-                    <div className="px-5 py-3 border-t border-[var(--border-color)] flex items-center justify-between bg-[var(--bg-surface)]">
-                        <span className="text-sm text-[var(--text-secondary)]">
-                            Showing page {page} of {totalPages}
-                        </span>
-                        <div className="flex gap-1">
-                            <button 
-                                onClick={() => setPage(p => Math.max(1, p - 1))}
-                                disabled={page === 1 || loading}
-                                className="px-3 py-1 text-sm bg-[var(--bg-default)] border border-[var(--border-color)] rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[var(--bg-surface-hover)] transition-colors"
-                            >
-                                Previous
-                            </button>
-                            <button 
-                                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                                disabled={page === totalPages || loading}
-                                className="px-3 py-1 text-sm bg-[var(--bg-default)] border border-[var(--border-color)] rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[var(--bg-surface-hover)] transition-colors"
-                            >
-                                Next
-                            </button>
-                        </div>
+                {/* Bottom Pagination */}
+                <div className="sticky bottom-0 bg-[var(--bg-surface)] p-3 border-t border-[var(--border-color)] flex justify-between items-center text-sm shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+                    <span className="text-[var(--text-secondary)]">Showing {totalRecords > 0 ? (page - 1) * limit + 1 : 0} to {Math.min(page * limit, totalRecords)} of {totalRecords} entries</span>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1.5 rounded border border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-50 transition-colors bg-[var(--bg-default)] text-[var(--text-primary)]">Previous</button>
+                        <span className="px-3 font-medium text-[var(--accent-primary)]">Page {page} of {totalPages || 1}</span>
+                        <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages || totalPages === 0} className="px-3 py-1.5 rounded border border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-50 transition-colors bg-[var(--bg-default)] text-[var(--text-primary)]">Next</button>
                     </div>
-                )}
+                </div>
             </div>
 
             {selectedIp && (

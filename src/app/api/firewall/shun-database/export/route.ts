@@ -14,35 +14,48 @@ export async function GET(req: Request) {
 
         const url = new URL(req.url);
         const search = url.searchParams.get("search") || "";
-        const asn = url.searchParams.get("asn") || "";
-        const firewall = url.searchParams.get("firewall") || "";
+        const sortField = url.searchParams.get("sortField") || "isActive";
+        const sortDir = url.searchParams.get("sortDir") === "asc" ? "asc" : "desc";
 
         const where: any = {};
 
         if (search) {
+            const orClauses = [];
             if (search.includes('*')) {
                 const likeString = search.replace(/\*/g, '%');
                 const matchingRows = await prisma.$queryRaw<any[]>`SELECT ip FROM "ShunDatabaseIp" WHERE ip LIKE ${likeString}`;
                 const ips = matchingRows.map(r => r.ip);
-                where.ip = { in: ips };
+                if (ips.length > 0) {
+                    orClauses.push({ ip: { in: ips } });
+                } else {
+                    orClauses.push({ ip: 'NO_MATCH_WILDCARD' });
+                }
             } else {
-                where.ip = { contains: search };
+                orClauses.push({ ip: { contains: search } });
             }
+            orClauses.push({ firewall: { contains: search } });
+            orClauses.push({ shunIp: { ipAsn: { contains: search } } });
+            orClauses.push({ shunIp: { org: { contains: search } } });
+            orClauses.push({ shunIp: { ipCountry: { contains: search } } });
+            
+            where.OR = orClauses;
         }
-        if (asn) {
-            where.shunIp = { ipAsn: { contains: asn } };
+
+        let orderBy: any = [];
+        if (sortField === 'ipAsn' || sortField === 'org' || sortField === 'ipCountry' || sortField === 'city') {
+            orderBy.push({ shunIp: { [sortField]: sortDir } });
+        } else {
+            orderBy.push({ [sortField]: sortDir });
         }
-        if (firewall) {
-            where.firewall = { contains: firewall };
+        
+        if (sortField !== 'lastSeen') {
+            orderBy.push({ lastSeen: 'desc' });
         }
 
         const stats = await prisma.firewallShunStats.findMany({
             where,
             include: { shunIp: true },
-            orderBy: [
-                { isActive: 'desc' },
-                { lastSeen: 'desc' }
-            ]
+            orderBy
         });
 
         const ipList = stats.map(s => s.ip);

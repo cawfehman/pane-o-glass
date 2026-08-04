@@ -14,40 +14,56 @@ export async function GET(req: Request) {
 
         const url = new URL(req.url);
         const search = url.searchParams.get("search") || "";
-        const asn = url.searchParams.get("asn") || "";
-        const firewall = url.searchParams.get("firewall") || "";
         const page = parseInt(url.searchParams.get("page") || "1", 10);
         const limit = parseInt(url.searchParams.get("limit") || "50", 10);
+        
+        const sortField = url.searchParams.get("sortField") || "isActive";
+        const sortDir = url.searchParams.get("sortDir") === "asc" ? "asc" : "desc";
 
-        // We will query FirewallShunStats to give the per-firewall view
         const where: any = {};
 
         if (search) {
+            const orClauses = [];
+            
             if (search.includes('*')) {
                 const likeString = search.replace(/\*/g, '%');
-                // Use queryRaw to perform a native SQL LIKE search to support multiple wildcards
                 const matchingRows = await prisma.$queryRaw<any[]>`SELECT ip FROM "ShunDatabaseIp" WHERE ip LIKE ${likeString}`;
                 const ips = matchingRows.map(r => r.ip);
-                where.ip = { in: ips };
+                // If the wildcard matches nothing, we don't want to crash or return everything, so we push an impossible match if empty.
+                if (ips.length > 0) {
+                    orClauses.push({ ip: { in: ips } });
+                } else {
+                    orClauses.push({ ip: 'NO_MATCH_WILDCARD' });
+                }
             } else {
-                where.ip = { contains: search };
+                orClauses.push({ ip: { contains: search } });
             }
+            
+            orClauses.push({ firewall: { contains: search } });
+            orClauses.push({ shunIp: { ipAsn: { contains: search } } });
+            orClauses.push({ shunIp: { org: { contains: search } } });
+            orClauses.push({ shunIp: { ipCountry: { contains: search } } });
+            
+            where.OR = orClauses;
         }
-        if (asn) {
-            where.shunIp = { ipAsn: { contains: asn } };
+
+        let orderBy: any = [];
+        if (sortField === 'ipAsn' || sortField === 'org' || sortField === 'ipCountry' || sortField === 'city') {
+            orderBy.push({ shunIp: { [sortField]: sortDir } });
+        } else {
+            orderBy.push({ [sortField]: sortDir });
         }
-        if (firewall) {
-            where.firewall = { contains: firewall };
+        
+        // Ensure consistent tie-breaking
+        if (sortField !== 'lastSeen') {
+            orderBy.push({ lastSeen: 'desc' });
         }
 
         const total = await prisma.firewallShunStats.count({ where });
         const stats = await prisma.firewallShunStats.findMany({
             where,
             include: { shunIp: true },
-            orderBy: [
-                { isActive: 'desc' },
-                { lastSeen: 'desc' }
-            ],
+            orderBy,
             skip: (page - 1) * limit,
             take: limit
         });
