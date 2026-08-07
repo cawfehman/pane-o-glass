@@ -49,8 +49,8 @@ export class OgGraylogClient {
     }
 
     /**
-     * Executes a histogram query against Graylog to get counts over time.
-     * Uses non-overlapping absolute search windows for fallbacks to avoid cumulative duplication.
+     * Executes a histogram query against Graylog to get counts over time based on email syslog timestamps.
+     * Bucket timestamps are quantized to clean clock boundaries to prevent series misalignment.
      */
     async getHistogram(
         query: string, 
@@ -115,20 +115,20 @@ export class OgGraylogClient {
                 return { total, series };
             }
         } catch (error) {
-            // Histogram endpoint unavailable or failed - proceed to non-overlapping absolute fallback below
+            // Histogram endpoint unavailable or failed - proceed to clock-aligned absolute fallback below
         }
 
-        // --- FALLBACK: Multi-Bucket Non-Overlapping Absolute Querying ---
+        // --- FALLBACK: Multi-Bucket Clock-Aligned Absolute Querying ---
         const bucketDurationMs = Math.floor((rangeSeconds * 1000) / bucketCount);
-        const nowMs = Date.now();
+        const endAnchorMs = Math.floor(Date.now() / bucketDurationMs) * bucketDurationMs + bucketDurationMs;
         const series: GraylogHistogramData[] = [];
         let total = 0;
 
         const bucketPromises = [];
 
         for (let i = bucketCount - 1; i >= 0; i--) {
-            const fromMs = nowMs - (i + 1) * bucketDurationMs;
-            const toMs = nowMs - i * bucketDurationMs;
+            const fromMs = endAnchorMs - (i + 1) * bucketDurationMs;
+            const toMs = endAnchorMs - i * bucketDurationMs;
 
             const fromIso = new Date(fromMs).toISOString();
             const toIso = new Date(toMs).toISOString();
@@ -153,10 +153,10 @@ export class OgGraylogClient {
                     },
                     timeout: 8000
                 }).then(res => ({
-                    timestamp: toMs,
+                    timestamp: fromMs,
                     count: res.data.total_results || 0
                 })).catch(() => ({
-                    timestamp: toMs,
+                    timestamp: fromMs,
                     count: 0
                 }))
             );
@@ -225,7 +225,7 @@ export class OgGraylogClient {
     }
 
     /**
-     * Fetches all stats required for the IronPort dashboard, including content categories.
+     * Fetches all stats required for the IronPort dashboard, using email syslog timestamps.
      */
     async getDashboardStats(rangeSeconds: number = 86400, volumeQuery: string = 'message:"inbound table"'): Promise<GraylogStats> {
         const [

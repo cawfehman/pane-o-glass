@@ -165,55 +165,78 @@ export default function IronportDashboardClient() {
         }
     };
 
-    // Construct merged multi-series data for Threats & Delays graph
+    // Construct merged multi-series data for Threats & Delays graph with timestamp quantization
     const getThreatsAndDelaysChartData = () => {
         if (!stats) return [];
         
         const mapByTime: Record<number, { timestamp: number; timeLabel: string; delayed: number; malware: number }> = {};
 
+        // Determine bucket size based on timeframe to align series perfectly
+        const bucketSizeMs = timeframe <= 3600 ? 300000 : (timeframe <= 21600 ? 1800000 : 3600000);
+
         const getOrCreate = (pt: any) => {
-            if (!mapByTime[pt.timestamp]) {
-                mapByTime[pt.timestamp] = {
-                    timestamp: pt.timestamp,
-                    timeLabel: pt.timeLabel,
+            const bucketTs = Math.floor(pt.timestamp / bucketSizeMs) * bucketSizeMs;
+
+            if (!mapByTime[bucketTs]) {
+                const date = new Date(bucketTs);
+                const timeLabel = date.toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    ...(timeframe > 86400 ? { month: 'numeric', day: 'numeric' } : {}) 
+                });
+
+                mapByTime[bucketTs] = {
+                    timestamp: bucketTs,
+                    timeLabel: timeLabel,
                     delayed: 0,
                     malware: 0
                 };
             }
-            return mapByTime[pt.timestamp];
+            return mapByTime[bucketTs];
         };
 
-        (stats.delayedMessagesChart || []).forEach(pt => { getOrCreate(pt).delayed = pt.count; });
-        (stats.malwareAlertsChart || []).forEach(pt => { getOrCreate(pt).malware = pt.count; });
+        (stats.delayedMessagesChart || []).forEach(pt => { getOrCreate(pt).delayed += pt.count; });
+        (stats.malwareAlertsChart || []).forEach(pt => { getOrCreate(pt).malware += pt.count; });
 
         return Object.values(mapByTime).sort((a, b) => a.timestamp - b.timestamp);
     };
 
-    // Construct multi-line data for Inbound Clean Mail Flow Trend (Total + Marketing)
+    // Construct multi-line data for Inbound Clean Mail Flow Trend with timestamp quantization
     const getInboundMultiLineChartData = () => {
         if (!stats) return [];
 
         const mapByTime: Record<number, { timestamp: number; timeLabel: string; total: number; marketing: number }> = {};
 
+        // Quantize timestamps into identical bucket boundaries to eliminate false zero points
+        const bucketSizeMs = timeframe <= 3600 ? 300000 : (timeframe <= 21600 ? 1800000 : 3600000);
+
         const getOrCreate = (pt: any) => {
-            if (!mapByTime[pt.timestamp]) {
-                mapByTime[pt.timestamp] = {
-                    timestamp: pt.timestamp,
-                    timeLabel: pt.timeLabel,
+            const bucketTs = Math.floor(pt.timestamp / bucketSizeMs) * bucketSizeMs;
+
+            if (!mapByTime[bucketTs]) {
+                const date = new Date(bucketTs);
+                const timeLabel = date.toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    ...(timeframe > 86400 ? { month: 'numeric', day: 'numeric' } : {}) 
+                });
+
+                mapByTime[bucketTs] = {
+                    timestamp: bucketTs,
+                    timeLabel: timeLabel,
                     total: 0,
                     marketing: 0
                 };
             }
-            return mapByTime[pt.timestamp];
+            return mapByTime[bucketTs];
         };
 
-        (stats.totalVolumeChart || []).forEach(pt => { getOrCreate(pt).total = pt.count; });
+        (stats.totalVolumeChart || []).forEach(pt => { getOrCreate(pt).total += pt.count; });
 
         const marketingCat = (stats.inboundCategories || []).find(c => c.name.includes("Marketing"));
         if (marketingCat?.chart) {
             marketingCat.chart.forEach(pt => {
-                const item = getOrCreate(pt);
-                item.marketing = pt.count;
+                getOrCreate(pt).marketing += pt.count;
             });
         }
 
@@ -488,7 +511,7 @@ export default function IronportDashboardClient() {
 
                     {/* Main Time-Series Charts */}
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                        {/* Streamlined Multi-Line Inbound Mail Flow Trend Chart */}
+                        {/* Quantized Multi-Line Inbound Mail Flow Trend Chart */}
                         <div className="glass-card">
                             <div className="flex justify-between items-start mb-4">
                                 <div>
@@ -517,7 +540,7 @@ export default function IronportDashboardClient() {
                             </div>
                         </div>
 
-                        {/* Threats & Delays Chart */}
+                        {/* Quantized Threats & Delays Chart */}
                         <div className="glass-card">
                             <div className="flex justify-between items-start mb-4">
                                 <div>
