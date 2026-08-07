@@ -165,11 +165,11 @@ export default function IronportDashboardClient() {
         }
     };
 
-    // Construct merged multi-series data for Threats & Delays graph to ensure proper alignment and rendering
+    // Construct merged multi-series data for Threats & Delays graph (focused strictly on Delays and Malware Threats)
     const getThreatsAndDelaysChartData = () => {
         if (!stats) return [];
         
-        const mapByTime: Record<number, { timestamp: number; timeLabel: string; delayed: number; urlRewrites: number; malware: number }> = {};
+        const mapByTime: Record<number, { timestamp: number; timeLabel: string; delayed: number; malware: number }> = {};
 
         const getOrCreate = (pt: any) => {
             if (!mapByTime[pt.timestamp]) {
@@ -177,7 +177,6 @@ export default function IronportDashboardClient() {
                     timestamp: pt.timestamp,
                     timeLabel: pt.timeLabel,
                     delayed: 0,
-                    urlRewrites: 0,
                     malware: 0
                 };
             }
@@ -185,7 +184,6 @@ export default function IronportDashboardClient() {
         };
 
         (stats.delayedMessagesChart || []).forEach(pt => { getOrCreate(pt).delayed = pt.count; });
-        (stats.urlRewritesChart || []).forEach(pt => { getOrCreate(pt).urlRewrites = pt.count; });
         (stats.malwareAlertsChart || []).forEach(pt => { getOrCreate(pt).malware = pt.count; });
 
         return Object.values(mapByTime).sort((a, b) => a.timestamp - b.timestamp);
@@ -474,9 +472,8 @@ export default function IronportDashboardClient() {
                                     <p className="text-xs text-[var(--text-secondary)] mt-0.5">Comparative incident frequency ({getTimeframeLabel(timeframe)})</p>
                                 </div>
                                 <div className="flex gap-2">
-                                    <span className="text-xs px-2 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded font-semibold">Delayed</span>
-                                    <span className="text-xs px-2 py-0.5 bg-orange-500/10 text-orange-500 border border-orange-500/20 rounded font-semibold">URL Rewrites</span>
-                                    <span className="text-xs px-2 py-0.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded font-semibold">Malware</span>
+                                    <span className="text-xs px-2 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded font-semibold">Delayed Messages</span>
+                                    <span className="text-xs px-2 py-0.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded font-semibold">Malware Verdicts</span>
                                 </div>
                             </div>
                             <div className="h-[280px] w-full">
@@ -490,7 +487,6 @@ export default function IronportDashboardClient() {
                                             labelStyle={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}
                                         />
                                         <Line type="monotone" dataKey="delayed" name="Delayed Messages" stroke="#f59e0b" strokeWidth={2} dot={false} />
-                                        <Line type="monotone" dataKey="urlRewrites" name="URL Rewrites" stroke="#f97316" strokeWidth={2} dot={false} />
                                         <Line type="monotone" dataKey="malware" name="Malware Verdicts" stroke="#ef4444" strokeWidth={2} dot={false} />
                                     </LineChart>
                                 </ResponsiveContainer>
