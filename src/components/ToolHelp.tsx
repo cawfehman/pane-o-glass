@@ -120,6 +120,24 @@ export const helpData: Record<string, TooltipDetails> = {
             { name: "Red (Malicious)", meaning: "High-severity threat indicators, active ransomware, or flagged C2/malware categories (risk index 70-100).", rgb: "#ef4444" },
             { name: "Blue (Internal)", meaning: "Private RFC 1918 IP address. Bypasses external reputation checks.", rgb: "#3b82f6" }
         ]
+    },
+    ironport: {
+        title: "Cisco IronPort Email Security Telemetry",
+        version: "1.0.0",
+        capabilities: [
+            "Monitor aggregate inbound email volume, delays, phishing rewrites, and antivirus verdicts in real time.",
+            "Filter telemetry by configurable timeframes (Last 1h, 6h, 24h, 7 days).",
+            "Perform ad-hoc Lucene searches across raw Cisco IronPort ESA syslog streams.",
+            "Parse delay reasons (e.g. 4.3.1 Insufficient system resources / PrivateBytes) automatically with warning highlights.",
+            "Track complete email thread lifecycles by clicking any Message ID (MID)."
+        ],
+        colors: [
+            { name: "Blue (Volume)", meaning: "Inbound email messages originating from external senders.", rgb: "#3b82f6" },
+            { name: "Amber (Delayed)", meaning: "Mail delivery queue delays or system resource congestion (e.g. PrivateBytes limits).", rgb: "#f59e0b" },
+            { name: "Orange (Phishing)", meaning: "URLs rewritten or redirected through Cisco Security Proxy.", rgb: "#f97316" },
+            { name: "Red (Malware)", meaning: "Non-clean antivirus (McAfee/Sophos) or Cisco AMP malware verdicts.", rgb: "#ef4444" }
+        ],
+        backgroundJobs: ["Graylog Stream 5d7ff82fb209026ab43e167b: Universal relative telemetry API ingestion."]
     }
 };
 

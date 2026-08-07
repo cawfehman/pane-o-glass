@@ -59,6 +59,7 @@ model HealthProbe {
   userAgent String?
   createdAt DateTime @default(now())
 }
+
 model ToolPermission {
   id        String   @id @default(cuid())
   toolId    String   // e.g. "firewall", "ise", "ise-failures", "hibp-account", "hibp-domain"
@@ -199,4 +200,18 @@ model FirewallShunSnapshot {
 
   @@index([ip])
   @@index([snapshotDate])
+}
+
+model IronportHourlyStat {
+  id              String   @id @default(cuid())
+  timestamp       DateTime @unique
+  inboundVolume   Int      @default(0)
+  outboundVolume  Int      @default(0)
+  delayedCount    Int      @default(0)
+  phishingCount   Int      @default(0)
+  malwareCount    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([timestamp])
 }

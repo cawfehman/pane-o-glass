@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getPermissionsForRole } from "@/app/actions/permissions";
-import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe, Shield, Server, Network } from "lucide-react";
+import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe, Shield, Server, Network, Mail } from "lucide-react";
 import QueriesPageClient from "./QueriesPageClient";
 
 export default async function QueriesPage() {
@@ -62,6 +62,13 @@ export default async function QueriesPage() {
             href: "/queries/threat-intel",
             description: "Query IP reputation, DNS zones, and file signatures correlated with Cisco Umbrella categorization.",
             icon: <Globe size={24} />
+        },
+        {
+            id: 'ironport',
+            title: "IronPort Telemetry",
+            href: "/queries/ironport",
+            description: "Monitor Cisco IronPort logs from Old Graylog for health, mail delays, and threat metrics.",
+            icon: <Mail size={24} />
         }
     ];
 

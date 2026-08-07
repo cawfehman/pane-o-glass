@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Wrench, Shield, Server, Network, Lock, ShieldAlert, ShieldCheck, Globe, Map, Users, Key, ClipboardList, Activity, MessageSquare } from "lucide-react";
+import { LayoutDashboard, Wrench, Shield, Server, Network, Lock, ShieldAlert, ShieldCheck, Globe, Map, Users, Key, ClipboardList, Activity, MessageSquare, Mail } from "lucide-react";
 import packageJson from "../../package.json";
 import FeedbackModal from "./FeedbackModal";
 import Clock from "./Clock";
@@ -80,6 +80,12 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                             <Link href="/queries/threat-intel" className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/threat-intel") ? "active" : ""}`}>
                                 <Globe size={18} />
                                 Threat Intelligence
+                            </Link>
+                        )}
+                        {hasPermission('ironport') && (
+                            <Link href="/queries/ironport" className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/ironport") ? "active" : ""}`}>
+                                <Mail size={18} />
+                                IronPort Telemetry
                             </Link>
                         )}
                     </div>
