@@ -21,7 +21,6 @@ export async function GET(req: Request) {
         const volumeQuery = volumeQueryParam || 'message:"inbound table"';
 
         const client = new OgGraylogClient();
-
         const cutoffDate = new Date(Date.now() - rangeSeconds * 1000);
 
         // Check if database has hourly metrics cached
@@ -32,7 +31,7 @@ export async function GET(req: Request) {
             orderBy: { timestamp: "asc" }
         });
 
-        // If we have DB records and user requested standard inbound/outbound query, return from DB cache + fetch live categories!
+        // If we have DB records and user requested standard inbound/outbound query, validate DB cache
         if (dbStats && dbStats.length >= 3 && (volumeQuery.includes("inbound") || volumeQuery.includes("outbound"))) {
             const isOutbound = volumeQuery.includes("outbound");
             
@@ -61,49 +60,56 @@ export async function GET(req: Request) {
                 malwareAlertsChart.push({ timestamp: ts, count: row.malwareCount });
             });
 
-            // Fetch live whitelisted category histogram to populate the content trend graph seamlessly
-            let whitelistedSeries: any[] = [];
-            let whitelistedTotal = 0;
+            // SAFETY GUARD: If DB cache total volume is unrealistically inflated (> 300,000 for 24h), automatically purge stale DB cache on production and query live Graylog!
+            if (totalVolume > 300000 && rangeSeconds <= 86400) {
+                console.warn(`[IronPort API] Detected corrupted DB cache totalVolume (${totalVolume}). Self-healing: purging ironportHourlyStat table...`);
+                await (prisma as any).ironportHourlyStat.deleteMany({});
+                // Fall through to live Graylog query below
+            } else {
+                // Fetch live whitelisted category histogram to populate the content trend graph seamlessly
+                let whitelistedSeries: any[] = [];
+                let whitelistedTotal = 0;
 
-            try {
-                const wHist = await client.getHistogram('message:"Whitelisted Addresses"', rangeSeconds);
-                whitelistedSeries = wHist.series;
-                whitelistedTotal = wHist.total;
-            } catch (e) {
-                // Fallback to empty series
-            }
-
-            const inboundCategories = [
-                {
-                    name: "Standard Inbound Policy",
-                    value: Math.max(0, totalVolume - whitelistedTotal),
-                    color: "#3b82f6",
-                    query: 'message:"per-recipient policy DEFAULT"',
-                    chart: totalVolumeChart
-                },
-                {
-                    name: "Whitelisted Senders",
-                    value: whitelistedTotal,
-                    color: "#a855f7",
-                    query: 'message:"Whitelisted Addresses"',
-                    chart: whitelistedSeries
+                try {
+                    const wHist = await client.getHistogram('message:"Whitelisted Addresses"', rangeSeconds);
+                    whitelistedSeries = wHist.series;
+                    whitelistedTotal = wHist.total;
+                } catch (e) {
+                    // Fallback to empty series
                 }
-            ];
 
-            return NextResponse.json({
-                rangeSeconds,
-                volumeQuery,
-                totalVolume,
-                totalVolumeChart,
-                delayedMessages,
-                delayedMessagesChart,
-                urlRewrites,
-                urlRewritesChart,
-                malwareAlerts,
-                malwareAlertsChart,
-                inboundCategories,
-                fromCache: true
-            });
+                const inboundCategories = [
+                    {
+                        name: "Standard Inbound Policy",
+                        value: Math.max(0, totalVolume - whitelistedTotal),
+                        color: "#3b82f6",
+                        query: 'message:"per-recipient policy DEFAULT"',
+                        chart: totalVolumeChart
+                    },
+                    {
+                        name: "Whitelisted Senders",
+                        value: whitelistedTotal,
+                        color: "#a855f7",
+                        query: 'message:"Whitelisted Addresses"',
+                        chart: whitelistedSeries
+                    }
+                ];
+
+                return NextResponse.json({
+                    rangeSeconds,
+                    volumeQuery,
+                    totalVolume,
+                    totalVolumeChart,
+                    delayedMessages,
+                    delayedMessagesChart,
+                    urlRewrites,
+                    urlRewritesChart,
+                    malwareAlerts,
+                    malwareAlertsChart,
+                    inboundCategories,
+                    fromCache: true
+                });
+            }
         }
 
         // Live Graylog Fallback
