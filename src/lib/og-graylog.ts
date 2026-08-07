@@ -225,7 +225,7 @@ export class OgGraylogClient {
     }
 
     /**
-     * Fetches all stats required for the IronPort dashboard, using email syslog timestamps.
+     * Fetches all stats required for the IronPort dashboard, targeting real ESA policy streams.
      */
     async getDashboardStats(rangeSeconds: number = 86400, volumeQuery: string = 'message:"inbound table"'): Promise<GraylogStats> {
         const [
@@ -233,32 +233,32 @@ export class OgGraylogClient {
             delayedData,
             urlRewritesData,
             malwareData,
-            marketingData
+            whitelistedData
         ] = await Promise.all([
             this.getHistogram(volumeQuery, rangeSeconds),
             this.getHistogram('message:"Info: Delayed:"', rangeSeconds),
             this.getHistogram('message:"Action: URL redirected to Cisco Security proxy"', rangeSeconds),
             this.getHistogram('message:"interim AV verdict using" AND NOT message:"CLEAN"', rangeSeconds),
-            this.getHistogram('message:"inbound table" AND (message:"Marketing" OR message:"Bulk" OR message:"Newsletter")', rangeSeconds)
+            this.getHistogram('message:"Whitelisted Addresses"', rangeSeconds)
         ]);
 
-        const marketingTotal = marketingData.total;
-        const corporateTotal = Math.max(0, volumeData.total - marketingTotal);
+        const whitelistedTotal = whitelistedData.total;
+        const defaultTotal = Math.max(0, volumeData.total - whitelistedTotal);
 
         const inboundCategories: GraylogCategoryBreakdown[] = [
             {
-                name: "Corporate Transactional",
-                value: corporateTotal,
+                name: "Standard Inbound Policy",
+                value: defaultTotal,
                 color: "#3b82f6", // Blue
-                query: 'message:"inbound table" AND NOT message:"Marketing" AND NOT message:"Bulk"',
+                query: 'message:"per-recipient policy DEFAULT"',
                 chart: volumeData.series
             },
             {
-                name: "Marketing & Newsletter",
-                value: marketingTotal,
+                name: "Whitelisted Senders",
+                value: whitelistedTotal,
                 color: "#a855f7", // Purple
-                query: 'message:"inbound table" AND (message:"Marketing" OR message:"Bulk" OR message:"Newsletter")',
-                chart: marketingData.series
+                query: 'message:"Whitelisted Addresses"',
+                chart: whitelistedData.series
             }
         ];
 

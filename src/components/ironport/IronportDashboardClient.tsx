@@ -171,7 +171,6 @@ export default function IronportDashboardClient() {
         
         const mapByTime: Record<number, { timestamp: number; timeLabel: string; delayed: number; malware: number }> = {};
 
-        // Determine bucket size based on timeframe to align series perfectly
         const bucketSizeMs = timeframe <= 3600 ? 300000 : (timeframe <= 21600 ? 1800000 : 3600000);
 
         const getOrCreate = (pt: any) => {
@@ -205,9 +204,8 @@ export default function IronportDashboardClient() {
     const getInboundMultiLineChartData = () => {
         if (!stats) return [];
 
-        const mapByTime: Record<number, { timestamp: number; timeLabel: string; total: number; marketing: number }> = {};
+        const mapByTime: Record<number, { timestamp: number; timeLabel: string; total: number; whitelisted: number }> = {};
 
-        // Quantize timestamps into identical bucket boundaries to eliminate false zero points
         const bucketSizeMs = timeframe <= 3600 ? 300000 : (timeframe <= 21600 ? 1800000 : 3600000);
 
         const getOrCreate = (pt: any) => {
@@ -225,7 +223,7 @@ export default function IronportDashboardClient() {
                     timestamp: bucketTs,
                     timeLabel: timeLabel,
                     total: 0,
-                    marketing: 0
+                    whitelisted: 0
                 };
             }
             return mapByTime[bucketTs];
@@ -233,10 +231,10 @@ export default function IronportDashboardClient() {
 
         (stats.totalVolumeChart || []).forEach(pt => { getOrCreate(pt).total += pt.count; });
 
-        const marketingCat = (stats.inboundCategories || []).find(c => c.name.includes("Marketing"));
-        if (marketingCat?.chart) {
-            marketingCat.chart.forEach(pt => {
-                getOrCreate(pt).marketing += pt.count;
+        const whiteCat = (stats.inboundCategories || []).find(c => c.name.includes("Whitelisted"));
+        if (whiteCat?.chart && whiteCat.chart.length > 0) {
+            whiteCat.chart.forEach(pt => {
+                getOrCreate(pt).whitelisted += pt.count;
             });
         }
 
@@ -486,6 +484,13 @@ export default function IronportDashboardClient() {
                                 All Inbound Mail
                             </button>
                             <button 
+                                onClick={() => handleSearch('message:"Whitelisted Addresses"')}
+                                className="px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-500 border border-purple-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
+                            >
+                                <Inbox className="w-3.5 h-3.5" />
+                                Whitelisted Senders (8,560+)
+                            </button>
+                            <button 
                                 onClick={() => handleSearch('message:"Info: Delayed:"')}
                                 className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
                             >
@@ -511,16 +516,16 @@ export default function IronportDashboardClient() {
 
                     {/* Main Time-Series Charts */}
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                        {/* Quantized Multi-Line Inbound Mail Flow Trend Chart */}
+                        {/* Multi-Line Inbound Mail Flow Trend Chart */}
                         <div className="glass-card">
                             <div className="flex justify-between items-start mb-4">
                                 <div>
-                                    <h3 className="text-base font-bold text-[var(--text-primary)]">Inbound Mail Flow & Content Trend</h3>
-                                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">Category trend comparison ({getTimeframeLabel(timeframe)})</p>
+                                    <h3 className="text-base font-bold text-[var(--text-primary)]">Inbound Mail Flow & Policy Trend</h3>
+                                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">Policy trend comparison ({getTimeframeLabel(timeframe)})</p>
                                 </div>
                                 <div className="flex gap-2 flex-wrap justify-end">
                                     <span className="text-[11px] px-2 py-0.5 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded font-semibold">Total Inbound</span>
-                                    <span className="text-[11px] px-2 py-0.5 bg-purple-500/10 text-purple-500 border border-purple-500/20 rounded font-semibold">Marketing/Bulk</span>
+                                    <span className="text-[11px] px-2 py-0.5 bg-purple-500/10 text-purple-500 border border-purple-500/20 rounded font-semibold">Whitelisted Senders</span>
                                 </div>
                             </div>
                             <div className="h-[280px] w-full">
@@ -534,13 +539,13 @@ export default function IronportDashboardClient() {
                                             labelStyle={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}
                                         />
                                         <Line type="monotone" dataKey="total" name="Total Inbound Mail" stroke="#3b82f6" strokeWidth={2.5} dot={false} activeDot={{ r: 6 }} />
-                                        <Line type="monotone" dataKey="marketing" name="Marketing & Bulk" stroke="#a855f7" strokeWidth={2} dot={false} />
+                                        <Line type="monotone" dataKey="whitelisted" name="Whitelisted Senders" stroke="#a855f7" strokeWidth={2} dot={false} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
                         </div>
 
-                        {/* Quantized Threats & Delays Chart */}
+                        {/* Threats & Delays Chart */}
                         <div className="glass-card">
                             <div className="flex justify-between items-start mb-4">
                                 <div>

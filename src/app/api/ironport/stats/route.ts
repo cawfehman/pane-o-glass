@@ -20,6 +20,8 @@ export async function GET(req: Request) {
         const rangeSeconds = rangeParam ? parseInt(rangeParam, 10) : 86400;
         const volumeQuery = volumeQueryParam || 'message:"inbound table"';
 
+        const client = new OgGraylogClient();
+
         const cutoffDate = new Date(Date.now() - rangeSeconds * 1000);
 
         // Check if database has hourly metrics cached
@@ -30,7 +32,7 @@ export async function GET(req: Request) {
             orderBy: { timestamp: "asc" }
         });
 
-        // If we have DB records and user requested standard inbound/outbound query, return from DB!
+        // If we have DB records and user requested standard inbound/outbound query, return from DB cache + fetch live categories!
         if (dbStats && dbStats.length >= 3 && (volumeQuery.includes("inbound") || volumeQuery.includes("outbound"))) {
             const isOutbound = volumeQuery.includes("outbound");
             
@@ -50,7 +52,7 @@ export async function GET(req: Request) {
 
                 totalVolume += vol;
                 delayedMessages += row.delayedCount;
-                urlRewrites += row.phishingCount; // Store/retrieve from phishingCount column
+                urlRewrites += row.phishingCount;
                 malwareAlerts += row.malwareCount;
 
                 totalVolumeChart.push({ timestamp: ts, count: vol });
@@ -58,6 +60,35 @@ export async function GET(req: Request) {
                 urlRewritesChart.push({ timestamp: ts, count: row.phishingCount });
                 malwareAlertsChart.push({ timestamp: ts, count: row.malwareCount });
             });
+
+            // Fetch live whitelisted category histogram to populate the content trend graph seamlessly
+            let whitelistedSeries: any[] = [];
+            let whitelistedTotal = 0;
+
+            try {
+                const wHist = await client.getHistogram('message:"Whitelisted Addresses"', rangeSeconds);
+                whitelistedSeries = wHist.series;
+                whitelistedTotal = wHist.total;
+            } catch (e) {
+                // Fallback to empty series
+            }
+
+            const inboundCategories = [
+                {
+                    name: "Standard Inbound Policy",
+                    value: Math.max(0, totalVolume - whitelistedTotal),
+                    color: "#3b82f6",
+                    query: 'message:"per-recipient policy DEFAULT"',
+                    chart: totalVolumeChart
+                },
+                {
+                    name: "Whitelisted Senders",
+                    value: whitelistedTotal,
+                    color: "#a855f7",
+                    query: 'message:"Whitelisted Addresses"',
+                    chart: whitelistedSeries
+                }
+            ];
 
             return NextResponse.json({
                 rangeSeconds,
@@ -70,14 +101,13 @@ export async function GET(req: Request) {
                 urlRewritesChart,
                 malwareAlerts,
                 malwareAlertsChart,
+                inboundCategories,
                 fromCache: true
             });
         }
 
-        // Live Graylog Fallback (and seeds cache for first time)
-        const client = new OgGraylogClient();
+        // Live Graylog Fallback
         const stats = await client.getDashboardStats(rangeSeconds, volumeQuery);
-
         return NextResponse.json(stats);
     } catch (error: any) {
         console.error("IronPort Stats API Error:", error);
