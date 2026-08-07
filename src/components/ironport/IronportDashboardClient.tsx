@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox } from "lucide-react";
+import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import type { GraylogStats } from "@/lib/og-graylog";
 
@@ -10,7 +10,7 @@ export default function IronportDashboardClient() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Timeframe range state (seconds): 3600 = 1h, 21600 = 6h, 86400 = 24h, 604800 = 7d
+    // Timeframe range state (seconds): 3600=1h, 21600=6h, 43200=12h, 86400=24h, 259200=3d, 604800=7d
     const [timeframe, setTimeframe] = useState<number>(86400);
 
     // Tab state: "inbound" | "outbound" | "investigate"
@@ -53,7 +53,7 @@ export default function IronportDashboardClient() {
                 ...data,
                 totalVolumeChart: formatSeries(data.totalVolumeChart),
                 delayedMessagesChart: formatSeries(data.delayedMessagesChart),
-                phishingAlertsChart: formatSeries(data.phishingAlertsChart),
+                urlRewritesChart: formatSeries(data.urlRewritesChart || data.phishingAlertsChart),
                 malwareAlertsChart: formatSeries(data.malwareAlertsChart)
             });
         } catch (e: any) {
@@ -157,10 +157,38 @@ export default function IronportDashboardClient() {
         switch(seconds) {
             case 3600: return "Last 1 Hour";
             case 21600: return "Last 6 Hours";
+            case 43200: return "Last 12 Hours";
             case 86400: return "Last 24 Hours";
+            case 259200: return "Last 3 Days";
             case 604800: return "Last 7 Days";
             default: return "Selected Timeframe";
         }
+    };
+
+    // Construct merged multi-series data for Threats & Delays graph to ensure proper alignment and rendering
+    const getThreatsAndDelaysChartData = () => {
+        if (!stats) return [];
+        
+        const mapByTime: Record<number, { timestamp: number; timeLabel: string; delayed: number; urlRewrites: number; malware: number }> = {};
+
+        const getOrCreate = (pt: any) => {
+            if (!mapByTime[pt.timestamp]) {
+                mapByTime[pt.timestamp] = {
+                    timestamp: pt.timestamp,
+                    timeLabel: pt.timeLabel,
+                    delayed: 0,
+                    urlRewrites: 0,
+                    malware: 0
+                };
+            }
+            return mapByTime[pt.timestamp];
+        };
+
+        (stats.delayedMessagesChart || []).forEach(pt => { getOrCreate(pt).delayed = pt.count; });
+        (stats.urlRewritesChart || []).forEach(pt => { getOrCreate(pt).urlRewrites = pt.count; });
+        (stats.malwareAlertsChart || []).forEach(pt => { getOrCreate(pt).malware = pt.count; });
+
+        return Object.values(mapByTime).sort((a, b) => a.timestamp - b.timestamp);
     };
 
     if (loading && !stats) {
@@ -189,6 +217,8 @@ export default function IronportDashboardClient() {
     }
 
     if (!stats) return null;
+
+    const mergedThreatData = getThreatsAndDelaysChartData();
 
     const renderMetricCard = (
         title: string, 
@@ -261,8 +291,8 @@ export default function IronportDashboardClient() {
 
     return (
         <div className="flex flex-col gap-6">
-            {/* Top Navigation Tabs & Controls */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[var(--border-color)] pb-3">
+            {/* Top Navigation Tabs & Scalable Timeframe Controls */}
+            <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 border-b border-[var(--border-color)] pb-3">
                 {/* 3 Main Tabs: Inbound Telemetry | Outbound Telemetry | Investigate & Logs */}
                 <div className="flex gap-2">
                     <button 
@@ -288,14 +318,16 @@ export default function IronportDashboardClient() {
                     </button>
                 </div>
 
-                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                    {/* Timeframe Selector */}
+                <div className="flex items-center gap-3 w-full xl:w-auto justify-between xl:justify-end">
+                    {/* Scalable Timeframe Selector: 1h, 6h, 12h, 24h, 3d, 7d */}
                     <div className="flex items-center bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg p-1">
                         <Clock className="w-4 h-4 text-[var(--text-muted)] ml-2 mr-1" />
                         {[
                             { label: "1h", range: 3600 },
                             { label: "6h", range: 21600 },
+                            { label: "12h", range: 43200 },
                             { label: "24h", range: 86400 },
+                            { label: "3d", range: 259200 },
                             { label: "7d", range: 604800 },
                         ].map((item) => (
                             <button
@@ -344,12 +376,12 @@ export default function IronportDashboardClient() {
                         )}
 
                         {renderMetricCard(
-                            "Phishing URLs Rewritten", 
-                            stats.phishingAlerts, 
-                            <ShieldAlert className="w-5 h-5" />, 
+                            "URL Rewrites", 
+                            stats.urlRewrites || (stats as any).phishingAlerts || 0, 
+                            <Link2 className="w-5 h-5" />, 
                             "text-orange-500", 
-                            stats.phishingAlertsChart,
-                            'Counts URLs matched by reputation rules and redirected through Cisco Security Proxy. Click to investigate.',
+                            stats.urlRewritesChart || (stats as any).phishingAlertsChart || [],
+                            'Counts URLs matched by reputation rules and redirected through Cisco Security Proxy (message:"Action: URL redirected to Cisco Security proxy"). Click to investigate.',
                             () => handleSearch('message:"Action: URL redirected to Cisco Security proxy"')
                         )}
 
@@ -394,8 +426,8 @@ export default function IronportDashboardClient() {
                                 onClick={() => handleSearch('message:"Action: URL redirected to Cisco Security proxy"')}
                                 className="px-3 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 border border-orange-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
                             >
-                                <ShieldAlert className="w-3.5 h-3.5" />
-                                Phishing ({stats.phishingAlerts.toLocaleString()})
+                                <Link2 className="w-3.5 h-3.5" />
+                                URL Rewrites ({(stats.urlRewrites || (stats as any).phishingAlerts || 0).toLocaleString()})
                             </button>
                             <button 
                                 onClick={() => handleSearch('message:"interim AV verdict using" AND NOT message:"CLEAN"')}
@@ -438,28 +470,28 @@ export default function IronportDashboardClient() {
                         <div className="glass-card">
                             <div className="flex justify-between items-start mb-4">
                                 <div>
-                                    <h3 className="text-base font-bold text-[var(--text-primary)]">Inbound Threats & Delays</h3>
+                                    <h3 className="text-base font-bold text-[var(--text-primary)]">Threats & Delivery Delays</h3>
                                     <p className="text-xs text-[var(--text-secondary)] mt-0.5">Comparative incident frequency ({getTimeframeLabel(timeframe)})</p>
                                 </div>
                                 <div className="flex gap-2">
                                     <span className="text-xs px-2 py-0.5 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded font-semibold">Delayed</span>
-                                    <span className="text-xs px-2 py-0.5 bg-orange-500/10 text-orange-500 border border-orange-500/20 rounded font-semibold">Phishing</span>
+                                    <span className="text-xs px-2 py-0.5 bg-orange-500/10 text-orange-500 border border-orange-500/20 rounded font-semibold">URL Rewrites</span>
                                     <span className="text-xs px-2 py-0.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded font-semibold">Malware</span>
                                 </div>
                             </div>
                             <div className="h-[280px] w-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart margin={{ top: 10, right: 20, left: -20, bottom: 5 }}>
+                                    <LineChart data={mergedThreatData} margin={{ top: 10, right: 20, left: -20, bottom: 5 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                                        <XAxis dataKey="timeLabel" stroke="var(--text-muted)" fontSize={11} tickMargin={8} allowDuplicatedCategory={false} />
+                                        <XAxis dataKey="timeLabel" stroke="var(--text-muted)" fontSize={11} tickMargin={8} />
                                         <YAxis stroke="var(--text-muted)" fontSize={11} />
                                         <Tooltip 
                                             contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px' }}
                                             labelStyle={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}
                                         />
-                                        <Line data={stats.delayedMessagesChart} type="monotone" dataKey="count" name="Delayed Messages" stroke="#f59e0b" strokeWidth={2} dot={false} />
-                                        <Line data={stats.phishingAlertsChart} type="monotone" dataKey="count" name="Phishing Rewrites" stroke="#f97316" strokeWidth={2} dot={false} />
-                                        <Line data={stats.malwareAlertsChart} type="monotone" dataKey="count" name="Malware Verdicts" stroke="#ef4444" strokeWidth={2} dot={false} />
+                                        <Line type="monotone" dataKey="delayed" name="Delayed Messages" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                                        <Line type="monotone" dataKey="urlRewrites" name="URL Rewrites" stroke="#f97316" strokeWidth={2} dot={false} />
+                                        <Line type="monotone" dataKey="malware" name="Malware Verdicts" stroke="#ef4444" strokeWidth={2} dot={false} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
@@ -492,11 +524,11 @@ export default function IronportDashboardClient() {
                         )}
 
                         {renderMetricCard(
-                            "Outbound Phishing Rewrites", 
-                            stats.phishingAlerts, 
-                            <ShieldAlert className="w-5 h-5" />, 
+                            "Outbound URL Rewrites", 
+                            stats.urlRewrites || (stats as any).phishingAlerts || 0, 
+                            <Link2 className="w-5 h-5" />, 
                             "text-orange-500", 
-                            stats.phishingAlertsChart,
+                            stats.urlRewritesChart || (stats as any).phishingAlertsChart || [],
                             'Counts URL rewrites triggered on outbound messages.',
                             () => handleSearch('message:"Action: URL redirected to Cisco Security proxy"')
                         )}
@@ -581,15 +613,15 @@ export default function IronportDashboardClient() {
                             </div>
                             <div className="h-[280px] w-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart margin={{ top: 10, right: 20, left: -20, bottom: 5 }}>
+                                    <LineChart data={mergedThreatData} margin={{ top: 10, right: 20, left: -20, bottom: 5 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                                        <XAxis dataKey="timeLabel" stroke="var(--text-muted)" fontSize={11} tickMargin={8} allowDuplicatedCategory={false} />
+                                        <XAxis dataKey="timeLabel" stroke="var(--text-muted)" fontSize={11} tickMargin={8} />
                                         <YAxis stroke="var(--text-muted)" fontSize={11} />
                                         <Tooltip 
                                             contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px' }}
                                             labelStyle={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}
                                         />
-                                        <Line data={stats.delayedMessagesChart} type="monotone" dataKey="count" name="Delayed Messages" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                                        <Line type="monotone" dataKey="delayed" name="Delayed Messages" stroke="#f59e0b" strokeWidth={2} dot={false} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
@@ -630,7 +662,7 @@ export default function IronportDashboardClient() {
                             <button onClick={() => handleSearch('message:"inbound table"')} className="px-3 py-1 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 border border-blue-500/30 rounded-md text-xs font-semibold transition-colors flex items-center gap-1"><Inbox className="w-3 h-3" /> Inbound Mail</button>
                             <button onClick={() => handleSearch('message:"outbound table"')} className="px-3 py-1 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 border border-blue-500/30 rounded-md text-xs font-semibold transition-colors flex items-center gap-1"><Send className="w-3 h-3" /> Outbound Mail</button>
                             <button onClick={() => handleSearch('message:"Info: Delayed:"')} className="px-3 py-1 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 border border-amber-500/30 rounded-md text-xs font-semibold transition-colors">Delayed Messages</button>
-                            <button onClick={() => handleSearch('message:"Action: URL redirected to Cisco Security proxy"')} className="px-3 py-1 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 border border-orange-500/30 rounded-md text-xs font-semibold transition-colors">Phishing Rewrites</button>
+                            <button onClick={() => handleSearch('message:"Action: URL redirected to Cisco Security proxy"')} className="px-3 py-1 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 border border-orange-500/30 rounded-md text-xs font-semibold transition-colors">URL Rewrites</button>
                             <button onClick={() => handleSearch('message:"interim AV verdict using" AND NOT message:"CLEAN"')} className="px-3 py-1 bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/30 rounded-md text-xs font-semibold transition-colors">Malware Verdicts</button>
                         </div>
                     </div>

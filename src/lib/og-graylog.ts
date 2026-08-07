@@ -17,8 +17,8 @@ export interface GraylogStats {
     totalVolumeChart: GraylogHistogramData[];
     delayedMessages: number;
     delayedMessagesChart: GraylogHistogramData[];
-    phishingAlerts: number;
-    phishingAlertsChart: GraylogHistogramData[];
+    urlRewrites: number;
+    urlRewritesChart: GraylogHistogramData[];
     malwareAlerts: number;
     malwareAlertsChart: GraylogHistogramData[];
 }
@@ -41,13 +41,36 @@ export class OgGraylogClient {
 
     /**
      * Executes a histogram query against Graylog to get counts over time.
-     * Falls back to bucketed relative queries if the legacy histogram endpoint is unavailable.
+     * Scales bucket intervals dynamically based on timeframe range.
      */
     async getHistogram(
         query: string, 
-        rangeSeconds: number = 86400, 
-        interval: "minute" | "hour" | "day" = "hour"
+        rangeSeconds: number = 86400
     ): Promise<{ total: number, series: GraylogHistogramData[] }> {
+        // Determine optimal interval for Graylog API based on range
+        let interval: "minute" | "hour" | "day" = "hour";
+        let bucketCount = 12;
+
+        if (rangeSeconds <= 3600) {
+            interval = "minute";
+            bucketCount = 12; // 5-minute buckets
+        } else if (rangeSeconds <= 21600) {
+            interval = "minute";
+            bucketCount = 12; // 30-minute buckets
+        } else if (rangeSeconds <= 43200) {
+            interval = "hour";
+            bucketCount = 12; // 1-hour buckets
+        } else if (rangeSeconds <= 86400) {
+            interval = "hour";
+            bucketCount = 12; // 2-hour buckets
+        } else if (rangeSeconds <= 259200) {
+            interval = "hour";
+            bucketCount = 12; // 6-hour buckets
+        } else {
+            interval = "day";
+            bucketCount = 14; // 12-hour buckets for 7d
+        }
+
         const params = new URLSearchParams({
             query: query,
             range: rangeSeconds.toString(),
@@ -87,7 +110,6 @@ export class OgGraylogClient {
         }
 
         // --- FALLBACK: Multi-Bucket Relative Querying ---
-        const bucketCount = 12;
         const bucketDuration = Math.floor(rangeSeconds / bucketCount);
         const nowMs = Date.now();
         const series: GraylogHistogramData[] = [];
@@ -192,13 +214,13 @@ export class OgGraylogClient {
 
     /**
      * Fetches all stats required for the IronPort dashboard.
-     * Default volume query: 'message:"inbound table"' specifically targets inbound policy evaluations (matches ESA GUI Inbound Clean Messages).
+     * Renamed phishingAlerts -> urlRewrites for clarity and accurate nomenclature.
      */
     async getDashboardStats(rangeSeconds: number = 86400, volumeQuery: string = 'message:"inbound table"'): Promise<GraylogStats> {
         const [
             volumeData,
             delayedData,
-            phishingData,
+            urlRewritesData,
             malwareData
         ] = await Promise.all([
             this.getHistogram(volumeQuery, rangeSeconds),
@@ -214,8 +236,8 @@ export class OgGraylogClient {
             totalVolumeChart: volumeData.series,
             delayedMessages: delayedData.total,
             delayedMessagesChart: delayedData.series,
-            phishingAlerts: phishingData.total,
-            phishingAlertsChart: phishingData.series,
+            urlRewrites: urlRewritesData.total,
+            urlRewritesChart: urlRewritesData.series,
             malwareAlerts: malwareData.total,
             malwareAlertsChart: malwareData.series
         };

@@ -36,12 +36,12 @@ export async function GET(req: Request) {
             
             let totalVolume = 0;
             let delayedMessages = 0;
-            let phishingAlerts = 0;
+            let urlRewrites = 0;
             let malwareAlerts = 0;
 
             const totalVolumeChart: any[] = [];
             const delayedMessagesChart: any[] = [];
-            const phishingAlertsChart: any[] = [];
+            const urlRewritesChart: any[] = [];
             const malwareAlertsChart: any[] = [];
 
             dbStats.forEach((row: any) => {
@@ -50,12 +50,12 @@ export async function GET(req: Request) {
 
                 totalVolume += vol;
                 delayedMessages += row.delayedCount;
-                phishingAlerts += row.phishingCount;
+                urlRewrites += row.phishingCount; // Store/retrieve from phishingCount column
                 malwareAlerts += row.malwareCount;
 
                 totalVolumeChart.push({ timestamp: ts, count: vol });
                 delayedMessagesChart.push({ timestamp: ts, count: row.delayedCount });
-                phishingAlertsChart.push({ timestamp: ts, count: row.phishingCount });
+                urlRewritesChart.push({ timestamp: ts, count: row.phishingCount });
                 malwareAlertsChart.push({ timestamp: ts, count: row.malwareCount });
             });
 
@@ -66,8 +66,8 @@ export async function GET(req: Request) {
                 totalVolumeChart,
                 delayedMessages,
                 delayedMessagesChart,
-                phishingAlerts,
-                phishingAlertsChart,
+                urlRewrites,
+                urlRewritesChart,
                 malwareAlerts,
                 malwareAlertsChart,
                 fromCache: true
