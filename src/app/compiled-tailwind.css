@@ -21,9 +21,11 @@
     --color-green-500: oklch(72.3% 0.219 149.579);
     --color-emerald-400: oklch(76.5% 0.177 163.223);
     --color-emerald-500: oklch(69.6% 0.17 162.48);
+    --color-cyan-500: oklch(71.5% 0.143 215.221);
     --color-sky-400: oklch(74.6% 0.16 232.661);
     --color-blue-500: oklch(62.3% 0.214 259.815);
     --color-blue-600: oklch(54.6% 0.245 262.881);
+    --color-indigo-500: oklch(58.5% 0.233 277.117);
     --color-purple-400: oklch(71.4% 0.203 305.504);
     --color-purple-500: oklch(62.7% 0.265 303.9);
     --color-rose-500: oklch(64.5% 0.246 16.439);
@@ -1087,6 +1089,12 @@
   .border-border-color {
     border-color: var(--color-border-color);
   }
+  .border-cyan-500\/30 {
+    border-color: color-mix(in srgb, oklch(71.5% 0.143 215.221) 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-cyan-500) 30%, transparent);
+    }
+  }
   .border-emerald-500 {
     border-color: var(--color-emerald-500);
   }
@@ -1109,6 +1117,12 @@
     border-color: color-mix(in srgb, oklch(72.3% 0.219 149.579) 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-green-500) 20%, transparent);
+    }
+  }
+  .border-indigo-500\/30 {
+    border-color: color-mix(in srgb, oklch(58.5% 0.233 277.117) 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-indigo-500) 30%, transparent);
     }
   }
   .border-orange-500\/30 {
@@ -1378,6 +1392,15 @@
   .bg-blue-600 {
     background-color: var(--color-blue-600);
   }
+  .bg-cyan-500 {
+    background-color: var(--color-cyan-500);
+  }
+  .bg-cyan-500\/10 {
+    background-color: color-mix(in srgb, oklch(71.5% 0.143 215.221) 10%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-cyan-500) 10%, transparent);
+    }
+  }
   .bg-emerald-500\/10 {
     background-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 10%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1394,6 +1417,15 @@
     background-color: color-mix(in srgb, oklch(72.3% 0.219 149.579) 10%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-green-500) 10%, transparent);
+    }
+  }
+  .bg-indigo-500 {
+    background-color: var(--color-indigo-500);
+  }
+  .bg-indigo-500\/10 {
+    background-color: color-mix(in srgb, oklch(58.5% 0.233 277.117) 10%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-indigo-500) 10%, transparent);
     }
   }
   .bg-neutral-950 {
@@ -1611,6 +1643,9 @@
   }
   .py-\[20px\] {
     padding-block: 20px;
+  }
+  .pt-1 {
+    padding-top: var(--spacing);
   }
   .pt-2 {
     padding-top: calc(var(--spacing) * 2);
@@ -1914,6 +1949,9 @@
   .text-blue-500 {
     color: var(--color-blue-500);
   }
+  .text-cyan-500 {
+    color: var(--color-cyan-500);
+  }
   .text-emerald-400 {
     color: var(--color-emerald-400);
   }
@@ -1928,6 +1966,9 @@
   }
   .text-green-500 {
     color: var(--color-green-500);
+  }
+  .text-indigo-500 {
+    color: var(--color-indigo-500);
   }
   .text-inherit {
     color: inherit;
@@ -2245,6 +2286,22 @@
     }
     .hover\:bg-blue-600:hover {
       background-color: var(--color-blue-600);
+    }
+    .hover\:bg-cyan-500\/20:hover {
+      background-color: color-mix(in srgb, oklch(71.5% 0.143 215.221) 20%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-cyan-500\/20:hover {
+        background-color: color-mix(in oklab, var(--color-cyan-500) 20%, transparent);
+      }
+    }
+    .hover\:bg-indigo-500\/20:hover {
+      background-color: color-mix(in srgb, oklch(58.5% 0.233 277.117) 20%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-indigo-500\/20:hover {
+        background-color: color-mix(in oklab, var(--color-indigo-500) 20%, transparent);
+      }
     }
     .hover\:bg-orange-500\/20:hover {
       background-color: color-mix(in srgb, oklch(70.5% 0.213 47.604) 20%, transparent);

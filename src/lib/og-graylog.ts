@@ -18,6 +18,13 @@ export interface GraylogCategoryBreakdown {
     chart: GraylogHistogramData[];
 }
 
+export interface GraylogEsaBreakdown {
+    esa01Volume: number;
+    esa02Volume: number;
+    esa01Delays: number;
+    esa02Delays: number;
+}
+
 export interface GraylogStats {
     rangeSeconds: number;
     volumeQuery: string;
@@ -30,6 +37,7 @@ export interface GraylogStats {
     malwareAlerts: number;
     malwareAlertsChart: GraylogHistogramData[];
     inboundCategories: GraylogCategoryBreakdown[];
+    esaBreakdown?: GraylogEsaBreakdown;
 }
 
 export class OgGraylogClient {
@@ -72,7 +80,6 @@ export class OgGraylogClient {
         }
 
         const bucketDurationMs = Math.floor((rangeSeconds * 1000) / bucketCount);
-        // Lock end of timeline to nearest clean clock boundary
         const endAnchorMs = Math.floor(Date.now() / bucketDurationMs) * bucketDurationMs;
         const series: GraylogHistogramData[] = [];
         let total = 0;
@@ -178,7 +185,31 @@ export class OgGraylogClient {
     }
 
     /**
-     * Fetches all stats required for the IronPort dashboard.
+     * Fetches per-appliance counts for ESA01 and ESA02.
+     */
+    async getEsaApplianceBreakdown(rangeSeconds: number = 86400, volumeQuery: string = 'message:"inbound table"'): Promise<GraylogEsaBreakdown> {
+        const [
+            esa01VolData,
+            esa02VolData,
+            esa01DelayData,
+            esa02DelayData
+        ] = await Promise.all([
+            this.getHistogram(`${volumeQuery} AND (source:esa01* OR message:esa01*)`, rangeSeconds),
+            this.getHistogram(`${volumeQuery} AND (source:esa02* OR message:esa02*)`, rangeSeconds),
+            this.getHistogram('message:"Info: Delayed:" AND (source:esa01* OR message:esa01*)', rangeSeconds),
+            this.getHistogram('message:"Info: Delayed:" AND (source:esa02* OR message:esa02*)', rangeSeconds)
+        ]);
+
+        return {
+            esa01Volume: esa01VolData.total,
+            esa02Volume: esa02VolData.total,
+            esa01Delays: esa01DelayData.total,
+            esa02Delays: esa02DelayData.total
+        };
+    }
+
+    /**
+     * Fetches all stats required for the IronPort dashboard, targeting real ESA policy streams and per-appliance breakdowns.
      */
     async getDashboardStats(rangeSeconds: number = 86400, volumeQuery: string = 'message:"inbound table"'): Promise<GraylogStats> {
         const [
@@ -186,13 +217,15 @@ export class OgGraylogClient {
             delayedData,
             urlRewritesData,
             malwareData,
-            whitelistedData
+            whitelistedData,
+            esaBreakdown
         ] = await Promise.all([
             this.getHistogram(volumeQuery, rangeSeconds),
             this.getHistogram('message:"Info: Delayed:"', rangeSeconds),
             this.getHistogram('message:"Action: URL redirected to Cisco Security proxy"', rangeSeconds),
             this.getHistogram('message:"interim AV verdict using" AND NOT message:"CLEAN"', rangeSeconds),
-            this.getHistogram('message:"Whitelisted Addresses"', rangeSeconds)
+            this.getHistogram('message:"Whitelisted Addresses"', rangeSeconds),
+            this.getEsaApplianceBreakdown(rangeSeconds, volumeQuery)
         ]);
 
         const whitelistedTotal = whitelistedData.total;
@@ -226,7 +259,8 @@ export class OgGraylogClient {
             urlRewritesChart: urlRewritesData.series,
             malwareAlerts: malwareData.total,
             malwareAlertsChart: malwareData.series,
-            inboundCategories
+            inboundCategories,
+            esaBreakdown
         };
     }
 }

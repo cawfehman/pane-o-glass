@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2 } from "lucide-react";
+import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import type { GraylogStats } from "@/lib/og-graylog";
 
@@ -250,6 +250,16 @@ export default function IronportDashboardClient() {
     const mergedThreatData = getThreatsAndDelaysChartData();
     const inboundMultiLineData = getInboundMultiLineChartData();
 
+    // Per-ESA Appliance Calculations
+    const esa01Vol = stats.esaBreakdown?.esa01Volume || 0;
+    const esa02Vol = stats.esaBreakdown?.esa02Volume || 0;
+    const esa01Delays = stats.esaBreakdown?.esa01Delays || 0;
+    const esa02Delays = stats.esaBreakdown?.esa02Delays || 0;
+    const totalEsaVol = Math.max(1, esa01Vol + esa02Vol);
+
+    const esa01Percent = ((esa01Vol / totalEsaVol) * 100).toFixed(1);
+    const esa02Percent = ((esa02Vol / totalEsaVol) * 100).toFixed(1);
+
     const renderMetricCard = (
         title: string, 
         value: number, 
@@ -446,6 +456,98 @@ export default function IronportDashboardClient() {
                         )}
                     </div>
 
+                    {/* Per-Appliance Health & Load Balance Panel */}
+                    <div className="glass-card bg-[var(--bg-surface)] p-5 border border-[var(--border-color)] rounded-xl flex flex-col gap-4">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-lg bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]">
+                                    <Server className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-bold text-[var(--text-primary)]">ESA Appliance Health & Load Distribution</h4>
+                                    <p className="text-xs text-[var(--text-secondary)]">Traffic balance and queue status for {getTimeframeLabel(timeframe)}</p>
+                                </div>
+                            </div>
+                            <span className="text-xs px-2.5 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-md font-semibold flex items-center gap-1.5">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                Both Appliances Operational
+                            </span>
+                        </div>
+
+                        {/* Dual-Appliance Breakdown Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                            {/* ESA01 Card */}
+                            <div className="p-4 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] flex flex-col gap-2.5">
+                                <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-3 h-3 rounded-full bg-cyan-500"></span>
+                                        <span className="font-bold text-sm text-[var(--text-primary)]">ESA01</span>
+                                        <span className="text-xs text-[var(--text-muted)] font-mono">(esa01.cooperhealth.edu)</span>
+                                    </div>
+                                    <button 
+                                        onClick={() => handleSearch('source:esa01* OR message:esa01*')}
+                                        className="text-xs px-2 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-500 border border-cyan-500/30 rounded font-semibold transition-colors flex items-center gap-1"
+                                    >
+                                        Inspect ESA01
+                                    </button>
+                                </div>
+                                <div className="flex justify-between items-end mt-1">
+                                    <div>
+                                        <p className="text-2xl font-bold text-[var(--text-primary)]">{esa01Vol.toLocaleString()}</p>
+                                        <p className="text-xs text-[var(--text-secondary)]">{esa01Percent}% load share</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className={`text-sm font-bold ${esa01Delays > 150 ? 'text-red-500' : (esa01Delays > 50 ? 'text-amber-500' : 'text-[var(--text-secondary)]')}`}>
+                                            {esa01Delays.toLocaleString()} delays
+                                        </p>
+                                        <p className="text-[11px] text-[var(--text-muted)]">Queue status</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* ESA02 Card */}
+                            <div className="p-4 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] flex flex-col gap-2.5">
+                                <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-3 h-3 rounded-full bg-indigo-500"></span>
+                                        <span className="font-bold text-sm text-[var(--text-primary)]">ESA02</span>
+                                        <span className="text-xs text-[var(--text-muted)] font-mono">(esa02.cooperhealth.edu)</span>
+                                    </div>
+                                    <button 
+                                        onClick={() => handleSearch('source:esa02* OR message:esa02*')}
+                                        className="text-xs px-2 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 border border-indigo-500/30 rounded font-semibold transition-colors flex items-center gap-1"
+                                    >
+                                        Inspect ESA02
+                                    </button>
+                                </div>
+                                <div className="flex justify-between items-end mt-1">
+                                    <div>
+                                        <p className="text-2xl font-bold text-[var(--text-primary)]">{esa02Vol.toLocaleString()}</p>
+                                        <p className="text-xs text-[var(--text-secondary)]">{esa02Percent}% load share</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className={`text-sm font-bold ${esa02Delays > 150 ? 'text-red-500' : (esa02Delays > 50 ? 'text-amber-500' : 'text-[var(--text-secondary)]')}`}>
+                                            {esa02Delays.toLocaleString()} delays
+                                        </p>
+                                        <p className="text-[11px] text-[var(--text-muted)]">Queue status</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Dual-Color Progress Bar */}
+                        <div className="flex flex-col gap-1 mt-1">
+                            <div className="flex justify-between text-[11px] text-[var(--text-muted)] font-semibold">
+                                <span>ESA01 ({esa01Percent}%)</span>
+                                <span>ESA02 ({esa02Percent}%)</span>
+                            </div>
+                            <div className="w-full h-2 bg-[var(--bg-default)] rounded-full overflow-hidden flex">
+                                <div className="h-full bg-cyan-500 transition-all duration-300" style={{ width: `${esa01Percent}%` }}></div>
+                                <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${esa02Percent}%` }}></div>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Quick Inbound Drill-Down Banner */}
                     <div className="glass-card bg-[var(--bg-surface)] p-4 border border-[var(--border-color)] rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <div className="flex items-center gap-3">
@@ -470,7 +572,7 @@ export default function IronportDashboardClient() {
                                 className="px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-500 border border-purple-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
                             >
                                 <Inbox className="w-3.5 h-3.5" />
-                                Whitelisted Senders (8,560+)
+                                Whitelisted Senders
                             </button>
                             <button 
                                 onClick={() => handleSearch('message:"Info: Delayed:"')}
@@ -756,6 +858,8 @@ export default function IronportDashboardClient() {
                             <span className="text-xs text-[var(--text-muted)] uppercase tracking-wider font-bold mr-2 flex items-center h-8">Quick Filters:</span>
                             <button onClick={() => handleSearch('message:"inbound table"')} className="px-3 py-1 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 border border-blue-500/30 rounded-md text-xs font-semibold transition-colors flex items-center gap-1"><Inbox className="w-3 h-3" /> Inbound Mail</button>
                             <button onClick={() => handleSearch('message:"outbound table"')} className="px-3 py-1 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 border border-blue-500/30 rounded-md text-xs font-semibold transition-colors flex items-center gap-1"><Send className="w-3 h-3" /> Outbound Mail</button>
+                            <button onClick={() => handleSearch('source:esa01* OR message:esa01*')} className="px-3 py-1 bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-md text-xs font-semibold transition-colors">ESA01 Only</button>
+                            <button onClick={() => handleSearch('source:esa02* OR message:esa02*')} className="px-3 py-1 bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-md text-xs font-semibold transition-colors">ESA02 Only</button>
                             <button onClick={() => handleSearch('message:"Info: Delayed:"')} className="px-3 py-1 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 border border-amber-500/30 rounded-md text-xs font-semibold transition-colors">Delayed Messages</button>
                             <button onClick={() => handleSearch('message:"Action: URL redirected to Cisco Security proxy"')} className="px-3 py-1 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 border border-orange-500/30 rounded-md text-xs font-semibold transition-colors">URL Rewrites</button>
                             <button onClick={() => handleSearch('message:"interim AV verdict using" AND NOT message:"CLEAN"')} className="px-3 py-1 bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/30 rounded-md text-xs font-semibold transition-colors">Malware Verdicts</button>
