@@ -1024,6 +1024,12 @@
   .border-\[var\(--border-color\)\] {
     border-color: var(--border-color);
   }
+  .border-\[var\(--border-color\)\]\/80 {
+    border-color: var(--border-color);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--border-color) 80%, transparent);
+    }
+  }
   .border-accent-primary {
     border-color: var(--color-accent-primary);
   }
@@ -1242,6 +1248,12 @@
   }
   .bg-\[var\(--bg-surface-hover\)\] {
     background-color: var(--bg-surface-hover);
+  }
+  .bg-\[var\(--bg-surface-hover\)\]\/80 {
+    background-color: var(--bg-surface-hover);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--bg-surface-hover) 80%, transparent);
+    }
   }
   .bg-\[var\(--border-color\)\] {
     background-color: var(--border-color);
@@ -1644,6 +1656,9 @@
   }
   .pl-0 {
     padding-left: 0px;
+  }
+  .pl-0\.5 {
+    padding-left: calc(var(--spacing) * 0.5);
   }
   .pl-3 {
     padding-left: calc(var(--spacing) * 3);
