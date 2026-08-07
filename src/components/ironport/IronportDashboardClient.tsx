@@ -235,16 +235,18 @@ export default function IronportDashboardClient() {
         >
             <div className="flex justify-between items-start z-10 relative">
                 <div>
-                    <div className="flex items-center gap-1.5">
-                        <h3 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">{title}</h3>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-wider px-2 py-0.5 bg-[var(--bg-surface-hover)]/80 border border-[var(--border-color)]/80 rounded-md inline-block">
+                            {title}
+                        </span>
                         <div className="group/tooltip relative inline-block">
-                            <Info className="w-3.5 h-3.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]" />
+                            <Info className="w-3.5 h-3.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-help" />
                             <div className="absolute left-0 bottom-full mb-2 hidden group-hover/tooltip:block w-64 p-2.5 bg-[var(--bg-surface)] border border-[var(--border-color)] text-xs text-[var(--text-secondary)] rounded-md shadow-xl z-50 pointer-events-none leading-relaxed">
                                 {tooltipText}
                             </div>
                         </div>
                     </div>
-                    <p className={`text-3xl font-bold mt-1 ${colorClass}`}>{value.toLocaleString()}</p>
+                    <p className={`text-3xl font-bold mt-2 pl-0.5 ${colorClass}`}>{value.toLocaleString()}</p>
                 </div>
                 <div className={`p-2.5 rounded-xl bg-[var(--bg-surface-hover)] ${colorClass}`}>
                     {icon}
