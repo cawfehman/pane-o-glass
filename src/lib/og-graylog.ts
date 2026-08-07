@@ -210,8 +210,11 @@ export class OgGraylogClient {
 
     /**
      * Fetches all stats required for the IronPort dashboard, targeting real ESA policy streams and per-appliance breakdowns.
+     * Direct ESA receiver delay query filters out central SMA management logs so ESA01 + ESA02 delays add up 100% to the top card total!
      */
     async getDashboardStats(rangeSeconds: number = 86400, volumeQuery: string = 'message:"inbound table"'): Promise<GraylogStats> {
+        const esaDelayQuery = 'message:"Info: Delayed:" AND (source:esa* OR message:esa*)';
+
         const [
             volumeData,
             delayedData,
@@ -221,7 +224,7 @@ export class OgGraylogClient {
             esaBreakdown
         ] = await Promise.all([
             this.getHistogram(volumeQuery, rangeSeconds),
-            this.getHistogram('message:"Info: Delayed:"', rangeSeconds),
+            this.getHistogram(esaDelayQuery, rangeSeconds),
             this.getHistogram('message:"Action: URL redirected to Cisco Security proxy"', rangeSeconds),
             this.getHistogram('message:"interim AV verdict using" AND NOT message:"CLEAN"', rangeSeconds),
             this.getHistogram('message:"Whitelisted Addresses"', rangeSeconds),
