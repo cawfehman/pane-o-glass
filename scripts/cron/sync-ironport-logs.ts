@@ -30,82 +30,22 @@ class OgGraylogClient {
         return "Basic " + Buffer.from(this.apiToken + ":token").toString("base64");
     }
 
-    async getHistogram(
+    /**
+     * Executes non-overlapping 1-hour clock-aligned queries against Graylog to build hourly DB metrics.
+     */
+    async getHourlyBuckets(
         query: string, 
-        rangeSeconds: number = 86400
-    ): Promise<{ total: number, series: GraylogHistogramData[] }> {
-        let interval: "minute" | "hour" | "day" = "hour";
-        let bucketCount = 12;
-
-        if (rangeSeconds <= 3600) {
-            interval = "minute";
-            bucketCount = 12;
-        } else if (rangeSeconds <= 21600) {
-            interval = "minute";
-            bucketCount = 12;
-        } else if (rangeSeconds <= 43200) {
-            interval = "hour";
-            bucketCount = 12;
-        } else if (rangeSeconds <= 86400) {
-            interval = "hour";
-            bucketCount = 12;
-        } else if (rangeSeconds <= 259200) {
-            interval = "hour";
-            bucketCount = 12;
-        } else {
-            interval = "day";
-            bucketCount = 14;
-        }
-
-        const params = new URLSearchParams({
-            query: query,
-            range: rangeSeconds.toString(),
-            interval: interval,
-            filter: `streams:${this.streamId}`
-        });
-
-        const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative/histogram?${params.toString()}`;
-        
-        try {
-            const res = await axios.get(url, {
-                httpsAgent,
-                headers: {
-                    "Authorization": this.authHeader,
-                    "Accept": "application/json",
-                    "X-Requested-By": "cli"
-                },
-                timeout: 10000
-            });
-
-            const data = res.data;
-            let total = 0;
-            const series: GraylogHistogramData[] = [];
-            
-            if (data.results && Object.keys(data.results).length > 0) {
-                for (const [timestampStr, count] of Object.entries(data.results)) {
-                    const ts = parseInt(timestampStr, 10) * 1000;
-                    const c = count as number;
-                    total += c;
-                    series.push({ timestamp: ts, count: c });
-                }
-                series.sort((a, b) => a.timestamp - b.timestamp);
-                return { total, series };
-            }
-        } catch (error) {
-            // Fallback below
-        }
-
-        // --- FALLBACK: Multi-Bucket Non-Overlapping Absolute Querying ---
-        const bucketDurationMs = Math.floor((rangeSeconds * 1000) / bucketCount);
-        const nowMs = Date.now();
+        hoursCount: number = 24
+    ): Promise<GraylogHistogramData[]> {
+        const hourMs = 3600000;
+        const endAnchorMs = Math.floor(Date.now() / hourMs) * hourMs;
         const series: GraylogHistogramData[] = [];
-        let total = 0;
 
         const bucketPromises = [];
 
-        for (let i = bucketCount - 1; i >= 0; i--) {
-            const fromMs = nowMs - (i + 1) * bucketDurationMs;
-            const toMs = nowMs - i * bucketDurationMs;
+        for (let i = hoursCount - 1; i >= 0; i--) {
+            const fromMs = endAnchorMs - i * hourMs;
+            const toMs = endAnchorMs - (i - 1) * hourMs;
 
             const fromIso = new Date(fromMs).toISOString();
             const toIso = new Date(toMs).toISOString();
@@ -130,75 +70,18 @@ class OgGraylogClient {
                     },
                     timeout: 8000
                 }).then(res => ({
-                    timestamp: toMs,
+                    timestamp: fromMs,
                     count: res.data.total_results || 0
                 })).catch(() => ({
-                    timestamp: toMs,
+                    timestamp: fromMs,
                     count: 0
                 }))
             );
         }
 
-        const bucketResults = await Promise.all(bucketPromises);
-        bucketResults.forEach(item => {
-            series.push(item);
-            total += item.count;
-        });
-
-        // Also fetch total for full range to ensure card total is exact
-        try {
-            const fullParams = new URLSearchParams({
-                query: query,
-                range: rangeSeconds.toString(),
-                filter: `streams:${this.streamId}`,
-                limit: "1"
-            });
-            const fullUrl = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${fullParams.toString()}`;
-            const fullRes = await axios.get(fullUrl, {
-                httpsAgent,
-                headers: {
-                    "Authorization": this.authHeader,
-                    "Accept": "application/json",
-                    "X-Requested-By": "cli"
-                },
-                timeout: 8000
-            });
-            if (fullRes.data?.total_results !== undefined) {
-                total = fullRes.data.total_results;
-            }
-        } catch (e) {
-            // Keep cumulative total
-        }
-
-        series.sort((a, b) => a.timestamp - b.timestamp);
-        return { total, series };
-    }
-
-    async getDashboardStats(rangeSeconds: number = 86400, volumeQuery: string = 'message:"inbound table"') {
-        const [
-            volumeData,
-            delayedData,
-            urlRewritesData,
-            malwareData
-        ] = await Promise.all([
-            this.getHistogram(volumeQuery, rangeSeconds),
-            this.getHistogram('message:"Info: Delayed:"', rangeSeconds),
-            this.getHistogram('message:"Action: URL redirected to Cisco Security proxy"', rangeSeconds),
-            this.getHistogram('message:"interim AV verdict using" AND NOT message:"CLEAN"', rangeSeconds)
-        ]);
-
-        return {
-            rangeSeconds,
-            volumeQuery,
-            totalVolume: volumeData.total,
-            totalVolumeChart: volumeData.series,
-            delayedMessages: delayedData.total,
-            delayedMessagesChart: delayedData.series,
-            urlRewrites: urlRewritesData.total,
-            urlRewritesChart: urlRewritesData.series,
-            malwareAlerts: malwareData.total,
-            malwareAlertsChart: malwareData.series
-        };
+        const results = await Promise.all(bucketPromises);
+        results.sort((a, b) => a.timestamp - b.timestamp);
+        return results;
     }
 }
 
@@ -207,53 +90,44 @@ async function syncIronportLogs() {
     
     // Parse command line arguments
     const args = process.argv.slice(2);
-    let days = 1; // Default to last 1 day (lightweight for recurring cron)
+    let hoursCount = 24; // Default to last 24 hours
 
     const daysArg = args.find(a => a.startsWith('--days='));
     if (daysArg) {
-        days = parseInt(daysArg.split('=')[1], 10) || 7;
+        hoursCount = (parseInt(daysArg.split('=')[1], 10) || 7) * 24;
     } else if (args.includes('--historical') || args.includes('--full')) {
-        days = 7;
+        hoursCount = 7 * 24;
     }
 
-    const rangeSeconds = Math.max(days * 86400, 21600); // At least 6 hours (21600s), up to N days
-    console.log(`Ingesting Graylog metrics for range: ${days} day(s) (${rangeSeconds} seconds)...`);
+    console.log(`Ingesting Graylog hourly metrics for range: ${hoursCount} hour(s)...`);
 
     const client = new OgGraylogClient();
 
     try {
-        const stats = await client.getDashboardStats(rangeSeconds, 'message:"inbound table"');
-        const outboundStats = await client.getHistogram('message:"outbound table"', rangeSeconds);
+        const [inboundData, outboundData, delayedData, phishingData, malwareData] = await Promise.all([
+            client.getHourlyBuckets('message:"inbound table"', hoursCount),
+            client.getHourlyBuckets('message:"outbound table"', hoursCount),
+            client.getHourlyBuckets('message:"Info: Delayed:"', hoursCount),
+            client.getHourlyBuckets('message:"Action: URL redirected to Cisco Security proxy"', hoursCount),
+            client.getHourlyBuckets('message:"interim AV verdict using" AND NOT message:"CLEAN"', hoursCount)
+        ]);
 
-        // Map timestamps to hourly buckets
         const mapByTime: Record<number, { inbound: number; outbound: number; delayed: number; phishing: number; malware: number }> = {};
 
         const ensureBucket = (ts: number) => {
-            if (!mapByTime[ts]) {
-                mapByTime[ts] = { inbound: 0, outbound: 0, delayed: 0, phishing: 0, malware: 0 };
+            // Lock timestamp to exact top-of-hour boundary
+            const hourTs = Math.floor(ts / 3600000) * 3600000;
+            if (!mapByTime[hourTs]) {
+                mapByTime[hourTs] = { inbound: 0, outbound: 0, delayed: 0, phishing: 0, malware: 0 };
             }
-            return mapByTime[ts];
+            return mapByTime[hourTs];
         };
 
-        (stats.totalVolumeChart || []).forEach(pt => {
-            ensureBucket(pt.timestamp).inbound = pt.count;
-        });
-
-        (outboundStats.series || []).forEach(pt => {
-            ensureBucket(pt.timestamp).outbound = pt.count;
-        });
-
-        (stats.delayedMessagesChart || []).forEach(pt => {
-            ensureBucket(pt.timestamp).delayed = pt.count;
-        });
-
-        (stats.urlRewritesChart || []).forEach(pt => {
-            ensureBucket(pt.timestamp).phishing = pt.count;
-        });
-
-        (stats.malwareAlertsChart || []).forEach(pt => {
-            ensureBucket(pt.timestamp).malware = pt.count;
-        });
+        inboundData.forEach(pt => { ensureBucket(pt.timestamp).inbound = pt.count; });
+        outboundData.forEach(pt => { ensureBucket(pt.timestamp).outbound = pt.count; });
+        delayedData.forEach(pt => { ensureBucket(pt.timestamp).delayed = pt.count; });
+        phishingData.forEach(pt => { ensureBucket(pt.timestamp).phishing = pt.count; });
+        malwareData.forEach(pt => { ensureBucket(pt.timestamp).malware = pt.count; });
 
         let savedCount = 0;
         for (const [tsStr, counts] of Object.entries(mapByTime)) {
@@ -280,7 +154,7 @@ async function syncIronportLogs() {
             savedCount++;
         }
 
-        console.log(`[${new Date().toISOString()}] Successfully synced ${savedCount} hourly IronPort buckets to database.`);
+        console.log(`[${new Date().toISOString()}] Successfully synced ${savedCount} top-of-hour IronPort records to database.`);
 
         // Record successful run in BackgroundJob table
         await prisma.backgroundJob.upsert({
@@ -288,13 +162,13 @@ async function syncIronportLogs() {
             update: {
                 lastRun: new Date(),
                 status: "SUCCESS",
-                message: `Synced ${savedCount} hourly metrics from Graylog (${days}d range).`
+                message: `Synced ${savedCount} top-of-hour metrics from Graylog (${hoursCount}h range).`
             },
             create: {
                 name: "IronPort Graylog Sync",
                 lastRun: new Date(),
                 status: "SUCCESS",
-                message: `Synced ${savedCount} hourly metrics from Graylog (${days}d range).`
+                message: `Synced ${savedCount} top-of-hour metrics from Graylog (${hoursCount}h range).`
             }
         });
 
