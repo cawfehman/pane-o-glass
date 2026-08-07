@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, PieChart as PieIcon, Layers, Lock } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, PieChart, Pie, Cell } from "recharts";
+import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2 } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import type { GraylogStats } from "@/lib/og-graylog";
 
 export default function IronportDashboardClient() {
@@ -189,6 +189,48 @@ export default function IronportDashboardClient() {
         return Object.values(mapByTime).sort((a, b) => a.timestamp - b.timestamp);
     };
 
+    // Construct multi-line data for Inbound Clean Mail Flow Trend (Total + Content Categories)
+    const getInboundMultiLineChartData = () => {
+        if (!stats) return [];
+
+        const mapByTime: Record<number, { timestamp: number; timeLabel: string; total: number; marketing: number; tls: number }> = {};
+
+        const getOrCreate = (pt: any) => {
+            if (!mapByTime[pt.timestamp]) {
+                mapByTime[pt.timestamp] = {
+                    timestamp: pt.timestamp,
+                    timeLabel: pt.timeLabel,
+                    total: 0,
+                    marketing: 0,
+                    tls: 0
+                };
+            }
+            return mapByTime[pt.timestamp];
+        };
+
+        (stats.totalVolumeChart || []).forEach(pt => { getOrCreate(pt).total = pt.count; });
+
+        // Category series from stats
+        const marketingCat = (stats.inboundCategories || []).find(c => c.name.includes("Marketing"));
+        const tlsCat = (stats.inboundCategories || []).find(c => c.name.includes("TLS"));
+
+        if (marketingCat?.chart) {
+            marketingCat.chart.forEach(pt => {
+                const item = getOrCreate(pt);
+                item.marketing = pt.count;
+            });
+        }
+
+        if (tlsCat?.chart) {
+            tlsCat.chart.forEach(pt => {
+                const item = getOrCreate(pt);
+                item.tls = pt.count;
+            });
+        }
+
+        return Object.values(mapByTime).sort((a, b) => a.timestamp - b.timestamp);
+    };
+
     if (loading && !stats) {
         return (
             <div className="flex flex-col items-center justify-center h-64 text-[var(--text-muted)]">
@@ -217,13 +259,7 @@ export default function IronportDashboardClient() {
     if (!stats) return null;
 
     const mergedThreatData = getThreatsAndDelaysChartData();
-
-    // Data for content category Donut chart
-    const categoryPieData = stats.inboundCategories || [
-        { name: "Corporate Transactional", value: Math.max(0, stats.totalVolume - 50), color: "#3b82f6", query: 'message:"inbound table"' },
-        { name: "Marketing & Bulk", value: Math.min(50, stats.totalVolume), color: "#a855f7", query: 'message:"Marketing"' },
-        { name: "Encrypted TLS Transport", value: Math.round(stats.totalVolume * 0.95), color: "#10b981", query: 'message:"TLS"' }
-    ];
+    const inboundMultiLineData = getInboundMultiLineChartData();
 
     const renderMetricCard = (
         title: string, 
@@ -418,68 +454,6 @@ export default function IronportDashboardClient() {
                         )}
                     </div>
 
-                    {/* Clean Inbound Content & Policy Categories Breakdown */}
-                    <div className="glass-card bg-[var(--bg-surface)] p-5 border border-[var(--border-color)] rounded-xl flex flex-col xl:flex-row gap-6 items-center">
-                        <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                                <PieIcon className="w-5 h-5 text-[var(--accent-primary)]" />
-                                <h3 className="text-base font-bold text-[var(--text-primary)]">Inbound Mail Content & Policy Breakdown</h3>
-                            </div>
-                            <p className="text-xs text-[var(--text-secondary)]">Distribution of clean inbound mail by policy evaluation, bulk classification, and encryption ({getTimeframeLabel(timeframe)})</p>
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
-                                {categoryPieData.map((cat, idx) => {
-                                    const pct = stats.totalVolume > 0 ? ((cat.value / stats.totalVolume) * 100).toFixed(1) : "0.0";
-                                    return (
-                                        <div 
-                                            key={idx} 
-                                            onClick={() => handleSearch(cat.query)}
-                                            className="p-3 rounded-lg bg-[var(--bg-surface-hover)] border border-[var(--border-color)] flex flex-col gap-1 cursor-pointer hover:border-[var(--accent-primary)] transition-all"
-                                        >
-                                            <div className="flex items-center justify-between">
-                                                <span className="text-xs font-semibold text-[var(--text-secondary)]">{cat.name}</span>
-                                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cat.color }} />
-                                            </div>
-                                            <div className="flex items-baseline gap-2 mt-1">
-                                                <span className="text-xl font-bold text-[var(--text-primary)]">{cat.value.toLocaleString()}</span>
-                                                <span className="text-xs font-semibold" style={{ color: cat.color }}>{pct}%</span>
-                                            </div>
-                                            <span className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center gap-1">
-                                                <span>Click to filter Graylog</span>
-                                                <ExternalLink className="w-2.5 h-2.5" />
-                                            </span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Donut Chart */}
-                        <div className="w-full xl:w-64 h-48 flex items-center justify-center shrink-0">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={categoryPieData}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={45}
-                                        outerRadius={70}
-                                        paddingAngle={4}
-                                        dataKey="value"
-                                    >
-                                        {categoryPieData.map((entry, index) => (
-                                            <Cell key={`cell-${index}`} fill={entry.color} stroke="var(--bg-surface)" strokeWidth={2} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip 
-                                        contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px' }}
-                                        formatter={(val: any) => [val.toLocaleString(), 'Messages']}
-                                    />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
-
                     {/* Quick Inbound Drill-Down Banner */}
                     <div className="glass-card bg-[var(--bg-surface)] p-4 border border-[var(--border-color)] rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <div className="flex items-center gap-3">
@@ -523,21 +497,24 @@ export default function IronportDashboardClient() {
                         </div>
                     </div>
 
-                    {/* Time-Series Charts */}
+                    {/* Main Time-Series Charts */}
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                        {/* Streamlined Multi-Line Inbound Mail Flow Trend Chart */}
                         <div className="glass-card">
                             <div className="flex justify-between items-start mb-4">
                                 <div>
-                                    <h3 className="text-base font-bold text-[var(--text-primary)]">Inbound Mail Flow Trend</h3>
-                                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">Aggregated inbound clean mail ({getTimeframeLabel(timeframe)})</p>
+                                    <h3 className="text-base font-bold text-[var(--text-primary)]">Inbound Mail Flow & Content Trend</h3>
+                                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">Category trend comparison ({getTimeframeLabel(timeframe)})</p>
                                 </div>
-                                <span className="text-xs px-2.5 py-1 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-md font-semibold">
-                                    Total: {stats.totalVolume.toLocaleString()}
-                                </span>
+                                <div className="flex gap-2 flex-wrap justify-end">
+                                    <span className="text-[11px] px-2 py-0.5 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded font-semibold">Total Inbound</span>
+                                    <span className="text-[11px] px-2 py-0.5 bg-purple-500/10 text-purple-500 border border-purple-500/20 rounded font-semibold">Marketing/Bulk</span>
+                                    <span className="text-[11px] px-2 py-0.5 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded font-semibold">TLS Transport</span>
+                                </div>
                             </div>
                             <div className="h-[280px] w-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={stats.totalVolumeChart} margin={{ top: 10, right: 20, left: -20, bottom: 5 }}>
+                                    <LineChart data={inboundMultiLineData} margin={{ top: 10, right: 20, left: -20, bottom: 5 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
                                         <XAxis dataKey="timeLabel" stroke="var(--text-muted)" fontSize={11} tickMargin={8} />
                                         <YAxis stroke="var(--text-muted)" fontSize={11} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(1)}k` : val} />
@@ -545,12 +522,15 @@ export default function IronportDashboardClient() {
                                             contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px' }}
                                             labelStyle={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}
                                         />
-                                        <Line type="monotone" dataKey="count" name="Inbound Mail" stroke="#3b82f6" strokeWidth={2.5} dot={false} activeDot={{ r: 6 }} />
+                                        <Line type="monotone" dataKey="total" name="Total Inbound Mail" stroke="#3b82f6" strokeWidth={2.5} dot={false} activeDot={{ r: 6 }} />
+                                        <Line type="monotone" dataKey="marketing" name="Marketing & Bulk" stroke="#a855f7" strokeWidth={2} dot={false} />
+                                        <Line type="monotone" dataKey="tls" name="TLS Encrypted" stroke="#10b981" strokeWidth={2} dot={false} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
                         </div>
 
+                        {/* Threats & Delays Chart */}
                         <div className="glass-card">
                             <div className="flex justify-between items-start mb-4">
                                 <div>
