@@ -32,9 +32,31 @@ class OgGraylogClient {
 
     async getHistogram(
         query: string, 
-        rangeSeconds: number = 86400, 
-        interval: "minute" | "hour" | "day" = "hour"
+        rangeSeconds: number = 86400
     ): Promise<{ total: number, series: GraylogHistogramData[] }> {
+        let interval: "minute" | "hour" | "day" = "hour";
+        let bucketCount = 12;
+
+        if (rangeSeconds <= 3600) {
+            interval = "minute";
+            bucketCount = 12;
+        } else if (rangeSeconds <= 21600) {
+            interval = "minute";
+            bucketCount = 12;
+        } else if (rangeSeconds <= 43200) {
+            interval = "hour";
+            bucketCount = 12;
+        } else if (rangeSeconds <= 86400) {
+            interval = "hour";
+            bucketCount = 12;
+        } else if (rangeSeconds <= 259200) {
+            interval = "hour";
+            bucketCount = 12;
+        } else {
+            interval = "day";
+            bucketCount = 14;
+        }
+
         const params = new URLSearchParams({
             query: query,
             range: rangeSeconds.toString(),
@@ -73,9 +95,8 @@ class OgGraylogClient {
             // Fallback below
         }
 
-        // --- FALLBACK: Multi-Bucket Relative Querying ---
-        const bucketCount = Math.min(Math.max(Math.floor(rangeSeconds / 3600), 12), 168);
-        const bucketDuration = Math.floor(rangeSeconds / bucketCount);
+        // --- FALLBACK: Multi-Bucket Non-Overlapping Absolute Querying ---
+        const bucketDurationMs = Math.floor((rangeSeconds * 1000) / bucketCount);
         const nowMs = Date.now();
         const series: GraylogHistogramData[] = [];
         let total = 0;
@@ -83,18 +104,21 @@ class OgGraylogClient {
         const bucketPromises = [];
 
         for (let i = bucketCount - 1; i >= 0; i--) {
-            const bucketEndOffset = i * bucketDuration;
-            const bucketStartOffset = (i + 1) * bucketDuration;
-            const timestamp = nowMs - bucketEndOffset * 1000;
+            const fromMs = nowMs - (i + 1) * bucketDurationMs;
+            const toMs = nowMs - i * bucketDurationMs;
+
+            const fromIso = new Date(fromMs).toISOString();
+            const toIso = new Date(toMs).toISOString();
 
             const bParams = new URLSearchParams({
                 query: query,
-                range: bucketStartOffset.toString(),
+                from: fromIso,
+                to: toIso,
                 filter: `streams:${this.streamId}`,
                 limit: "1"
             });
 
-            const bUrl = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${bParams.toString()}`;
+            const bUrl = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/absolute?${bParams.toString()}`;
 
             bucketPromises.push(
                 axios.get(bUrl, {
@@ -106,10 +130,10 @@ class OgGraylogClient {
                     },
                     timeout: 8000
                 }).then(res => ({
-                    timestamp,
+                    timestamp: toMs,
                     count: res.data.total_results || 0
                 })).catch(() => ({
-                    timestamp,
+                    timestamp: toMs,
                     count: 0
                 }))
             );
@@ -121,6 +145,31 @@ class OgGraylogClient {
             total += item.count;
         });
 
+        // Also fetch total for full range to ensure card total is exact
+        try {
+            const fullParams = new URLSearchParams({
+                query: query,
+                range: rangeSeconds.toString(),
+                filter: `streams:${this.streamId}`,
+                limit: "1"
+            });
+            const fullUrl = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${fullParams.toString()}`;
+            const fullRes = await axios.get(fullUrl, {
+                httpsAgent,
+                headers: {
+                    "Authorization": this.authHeader,
+                    "Accept": "application/json",
+                    "X-Requested-By": "cli"
+                },
+                timeout: 8000
+            });
+            if (fullRes.data?.total_results !== undefined) {
+                total = fullRes.data.total_results;
+            }
+        } catch (e) {
+            // Keep cumulative total
+        }
+
         series.sort((a, b) => a.timestamp - b.timestamp);
         return { total, series };
     }
@@ -129,7 +178,7 @@ class OgGraylogClient {
         const [
             volumeData,
             delayedData,
-            phishingData,
+            urlRewritesData,
             malwareData
         ] = await Promise.all([
             this.getHistogram(volumeQuery, rangeSeconds),
@@ -145,8 +194,8 @@ class OgGraylogClient {
             totalVolumeChart: volumeData.series,
             delayedMessages: delayedData.total,
             delayedMessagesChart: delayedData.series,
-            phishingAlerts: phishingData.total,
-            phishingAlertsChart: phishingData.series,
+            urlRewrites: urlRewritesData.total,
+            urlRewritesChart: urlRewritesData.series,
             malwareAlerts: malwareData.total,
             malwareAlertsChart: malwareData.series
         };
@@ -198,7 +247,7 @@ async function syncIronportLogs() {
             ensureBucket(pt.timestamp).delayed = pt.count;
         });
 
-        (stats.phishingAlertsChart || []).forEach(pt => {
+        (stats.urlRewritesChart || []).forEach(pt => {
             ensureBucket(pt.timestamp).phishing = pt.count;
         });
 

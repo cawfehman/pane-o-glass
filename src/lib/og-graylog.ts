@@ -41,13 +41,12 @@ export class OgGraylogClient {
 
     /**
      * Executes a histogram query against Graylog to get counts over time.
-     * Scales bucket intervals dynamically based on timeframe range.
+     * Uses non-overlapping absolute search windows for fallbacks to avoid cumulative duplication.
      */
     async getHistogram(
         query: string, 
         rangeSeconds: number = 86400
     ): Promise<{ total: number, series: GraylogHistogramData[] }> {
-        // Determine optimal interval for Graylog API based on range
         let interval: "minute" | "hour" | "day" = "hour";
         let bucketCount = 12;
 
@@ -71,6 +70,7 @@ export class OgGraylogClient {
             bucketCount = 14; // 12-hour buckets for 7d
         }
 
+        // Try Graylog legacy histogram endpoint first
         const params = new URLSearchParams({
             query: query,
             range: rangeSeconds.toString(),
@@ -106,11 +106,11 @@ export class OgGraylogClient {
                 return { total, series };
             }
         } catch (error) {
-            // Histogram endpoint unavailable or failed - proceed to fallback below
+            // Histogram endpoint unavailable or failed - proceed to non-overlapping absolute fallback below
         }
 
-        // --- FALLBACK: Multi-Bucket Relative Querying ---
-        const bucketDuration = Math.floor(rangeSeconds / bucketCount);
+        // --- FALLBACK: Multi-Bucket Non-Overlapping Absolute Querying ---
+        const bucketDurationMs = Math.floor((rangeSeconds * 1000) / bucketCount);
         const nowMs = Date.now();
         const series: GraylogHistogramData[] = [];
         let total = 0;
@@ -118,18 +118,21 @@ export class OgGraylogClient {
         const bucketPromises = [];
 
         for (let i = bucketCount - 1; i >= 0; i--) {
-            const bucketEndOffset = i * bucketDuration;
-            const bucketStartOffset = (i + 1) * bucketDuration;
-            const timestamp = nowMs - bucketEndOffset * 1000;
+            const fromMs = nowMs - (i + 1) * bucketDurationMs;
+            const toMs = nowMs - i * bucketDurationMs;
+
+            const fromIso = new Date(fromMs).toISOString();
+            const toIso = new Date(toMs).toISOString();
 
             const bParams = new URLSearchParams({
                 query: query,
-                range: bucketStartOffset.toString(),
+                from: fromIso,
+                to: toIso,
                 filter: `streams:${this.streamId}`,
                 limit: "1"
             });
 
-            const bUrl = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${bParams.toString()}`;
+            const bUrl = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/absolute?${bParams.toString()}`;
 
             bucketPromises.push(
                 axios.get(bUrl, {
@@ -141,10 +144,10 @@ export class OgGraylogClient {
                     },
                     timeout: 8000
                 }).then(res => ({
-                    timestamp,
+                    timestamp: toMs,
                     count: res.data.total_results || 0
                 })).catch(() => ({
-                    timestamp,
+                    timestamp: toMs,
                     count: 0
                 }))
             );
@@ -214,7 +217,6 @@ export class OgGraylogClient {
 
     /**
      * Fetches all stats required for the IronPort dashboard.
-     * Renamed phishingAlerts -> urlRewrites for clarity and accurate nomenclature.
      */
     async getDashboardStats(rangeSeconds: number = 86400, volumeQuery: string = 'message:"inbound table"'): Promise<GraylogStats> {
         const [
