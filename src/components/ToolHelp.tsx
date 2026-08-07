@@ -123,21 +123,28 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     ironport: {
         title: "Cisco IronPort Email Security Telemetry",
-        version: "1.0.0",
+        version: "1.2.0",
         capabilities: [
-            "Monitor aggregate inbound email volume, delays, phishing rewrites, and antivirus verdicts in real time.",
-            "Filter telemetry by configurable timeframes (Last 1h, 6h, 24h, 7 days).",
+            "Monitor real-time inbound/outbound clean mail volume, queue delays, URL rewrites, and antivirus/AMP verdicts.",
+            "Track ESA appliance health and load distribution across ESA01 (esa01.cooperhealth.edu) and ESA02 (esa02.cooperhealth.edu).",
+            "Filter telemetry dynamically across scalable timeframes (1h, 6h, 12h, 24h, 3d, 7d).",
+            "Render smooth continuous numeric time-series trends comparing Total Inbound Mail against Whitelisted Senders Policy.",
             "Perform ad-hoc Lucene searches across raw Cisco IronPort ESA syslog streams.",
-            "Parse delay reasons (e.g. 4.3.1 Insufficient system resources / PrivateBytes) automatically with warning highlights.",
-            "Track complete email thread lifecycles by clicking any Message ID (MID)."
+            "Parse delay reasons (e.g. 4.1.0 Too many recipients) automatically with warning highlights.",
+            "Trace complete email thread lifecycles by clicking any Message ID (MID) badge."
         ],
         colors: [
-            { name: "Blue (Volume)", meaning: "Inbound email messages originating from external senders.", rgb: "#3b82f6" },
-            { name: "Amber (Delayed)", meaning: "Mail delivery queue delays or system resource congestion (e.g. PrivateBytes limits).", rgb: "#f59e0b" },
-            { name: "Orange (Phishing)", meaning: "URLs rewritten or redirected through Cisco Security Proxy.", rgb: "#f97316" },
-            { name: "Red (Malware)", meaning: "Non-clean antivirus (McAfee/Sophos) or Cisco AMP malware verdicts.", rgb: "#ef4444" }
+            { name: "Blue (Volume)", meaning: "Clean inbound email messages evaluated and accepted by ESA policy.", rgb: "#3b82f6" },
+            { name: "Amber (Delayed)", meaning: "Mail delivery queue delays or system resource congestion on ESA receivers.", rgb: "#f59e0b" },
+            { name: "Orange (URL Rewrites)", meaning: "URLs matched by reputation rules and redirected through Cisco Security Proxy.", rgb: "#f97316" },
+            { name: "Red (Malware)", meaning: "Non-clean Antivirus (McAfee/Sophos) or Cisco AMP malware verdicts.", rgb: "#ef4444" },
+            { name: "Purple (Whitelisted)", meaning: "Inbound messages matching the Whitelisted Senders policy stream.", rgb: "#a855f7" },
+            { name: "Cyan (ESA01) / Indigo (ESA02)", meaning: "Per-appliance traffic share and queue status for ESA01 and ESA02.", rgb: "#06b6d4" }
         ],
-        backgroundJobs: ["Graylog Stream 5d7ff82fb209026ab43e167b: Universal relative telemetry API ingestion."]
+        backgroundJobs: [
+            "Graylog Stream 5d7ff82fb209026ab43e167b: Absolute non-overlapping time-series ingestion.",
+            "IronPort Graylog Sync: Hourly cron sync caching top-of-hour metrics into local database."
+        ]
     }
 };
 
