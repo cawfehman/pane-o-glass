@@ -38,24 +38,8 @@ export default function IronportDashboardClient() {
                 throw new Error(err.details || "Failed to fetch IronPort stats");
             }
             const data = await res.json();
-            
-            const formatSeries = (series: any[]) => 
-                (series || []).map(point => ({
-                    ...point,
-                    timeLabel: new Date(point.timestamp).toLocaleTimeString([], { 
-                        hour: '2-digit', 
-                        minute: '2-digit',
-                        ...(selectedRange > 86400 ? { month: 'numeric', day: 'numeric' } : {}) 
-                    })
-                }));
 
-            setStats({
-                ...data,
-                totalVolumeChart: formatSeries(data.totalVolumeChart),
-                delayedMessagesChart: formatSeries(data.delayedMessagesChart),
-                urlRewritesChart: formatSeries(data.urlRewritesChart || data.phishingAlertsChart),
-                malwareAlertsChart: formatSeries(data.malwareAlertsChart)
-            });
+            setStats(data);
         } catch (e: any) {
             setError(e.message || "An unexpected error occurred.");
         } finally {
@@ -117,7 +101,7 @@ export default function IronportDashboardClient() {
         return () => clearInterval(interval);
     }, [timeframe]);
 
-    // Helper to format ISO timestamp into local Date + Time (e.g. Aug 6, 2026, 5:45:10 PM)
+    // Format ISO timestamp into local Date + Time
     const formatDateTime = (isoString: string) => {
         if (!isoString) return "-";
         const date = new Date(isoString);
@@ -132,7 +116,18 @@ export default function IronportDashboardClient() {
         });
     };
 
-    // Helper to extract MID and delayed reasons specifically from IronPort syslog headers
+    // Format numeric timestamp into clean X-Axis tick label
+    const formatTimeLabel = (timestamp: number) => {
+        if (!timestamp || isNaN(timestamp)) return "";
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            ...(timeframe > 86400 ? { month: 'numeric', day: 'numeric' } : {}) 
+        });
+    };
+
+    // Extract MID and delayed reasons from IronPort syslog headers
     const parseMessage = (msg: string) => {
         let mid = null;
         const midMatch = msg.match(/MID (\d+)/);
@@ -165,28 +160,20 @@ export default function IronportDashboardClient() {
         }
     };
 
-    // Construct merged multi-series data for Threats & Delays graph with timestamp quantization
+    // Construct merged multi-series data for Threats & Delays graph with numeric timestamp alignment
     const getThreatsAndDelaysChartData = () => {
         if (!stats) return [];
         
-        const mapByTime: Record<number, { timestamp: number; timeLabel: string; delayed: number; malware: number }> = {};
+        const mapByTime: Record<number, { timestamp: number; delayed: number; malware: number }> = {};
 
-        const bucketSizeMs = timeframe <= 3600 ? 300000 : (timeframe <= 21600 ? 1800000 : 3600000);
+        const bucketSizeMs = timeframe <= 3600 ? 300000 : (timeframe <= 21600 ? 900000 : (timeframe <= 86400 ? 3600000 : 7200000));
 
         const getOrCreate = (pt: any) => {
             const bucketTs = Math.floor(pt.timestamp / bucketSizeMs) * bucketSizeMs;
 
             if (!mapByTime[bucketTs]) {
-                const date = new Date(bucketTs);
-                const timeLabel = date.toLocaleTimeString([], { 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    ...(timeframe > 86400 ? { month: 'numeric', day: 'numeric' } : {}) 
-                });
-
                 mapByTime[bucketTs] = {
                     timestamp: bucketTs,
-                    timeLabel: timeLabel,
                     delayed: 0,
                     malware: 0
                 };
@@ -200,28 +187,20 @@ export default function IronportDashboardClient() {
         return Object.values(mapByTime).sort((a, b) => a.timestamp - b.timestamp);
     };
 
-    // Construct multi-line data for Inbound Clean Mail Flow Trend with timestamp quantization
+    // Construct multi-line data for Inbound Clean Mail Flow Trend with numeric timestamp alignment
     const getInboundMultiLineChartData = () => {
         if (!stats) return [];
 
-        const mapByTime: Record<number, { timestamp: number; timeLabel: string; total: number; whitelisted: number }> = {};
+        const mapByTime: Record<number, { timestamp: number; total: number; whitelisted: number }> = {};
 
-        const bucketSizeMs = timeframe <= 3600 ? 300000 : (timeframe <= 21600 ? 1800000 : 3600000);
+        const bucketSizeMs = timeframe <= 3600 ? 300000 : (timeframe <= 21600 ? 900000 : (timeframe <= 86400 ? 3600000 : 7200000));
 
         const getOrCreate = (pt: any) => {
             const bucketTs = Math.floor(pt.timestamp / bucketSizeMs) * bucketSizeMs;
 
             if (!mapByTime[bucketTs]) {
-                const date = new Date(bucketTs);
-                const timeLabel = date.toLocaleTimeString([], { 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    ...(timeframe > 86400 ? { month: 'numeric', day: 'numeric' } : {}) 
-                });
-
                 mapByTime[bucketTs] = {
                     timestamp: bucketTs,
-                    timeLabel: timeLabel,
                     total: 0,
                     whitelisted: 0
                 };
@@ -313,7 +292,7 @@ export default function IronportDashboardClient() {
                 </div>
             )}
 
-            {/* Sparkline chart with visible X/Y Axis tick labels */}
+            {/* Numeric X-Axis sparkline chart */}
             <div className="h-28 w-full -mb-2 mt-1">
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={series} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
@@ -325,11 +304,13 @@ export default function IronportDashboardClient() {
                         </defs>
                         <CartesianGrid strokeDasharray="2 2" stroke="var(--border-color)" opacity={0.4} vertical={false} />
                         <XAxis 
-                            dataKey="timeLabel" 
+                            dataKey="timestamp" 
+                            type="number"
+                            domain={['dataMin', 'dataMax']}
                             stroke="var(--text-muted)" 
                             fontSize={9} 
                             tickLine={false}
-                            interval="preserveStartEnd"
+                            tickFormatter={formatTimeLabel}
                         />
                         <YAxis 
                             stroke="var(--text-muted)" 
@@ -342,6 +323,7 @@ export default function IronportDashboardClient() {
                             contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px', fontSize: '11px' }}
                             itemStyle={{ color: 'var(--text-primary)' }}
                             labelStyle={{ color: 'var(--text-secondary)', marginBottom: '2px', fontWeight: 'bold' }}
+                            labelFormatter={(ts) => formatTimeLabel(ts as number)}
                         />
                         <Area 
                             type="monotone" 
@@ -514,9 +496,9 @@ export default function IronportDashboardClient() {
                         </div>
                     </div>
 
-                    {/* Main Time-Series Charts */}
+                    {/* Main Time-Series Charts with numeric timeline scaling */}
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                        {/* Multi-Line Inbound Mail Flow Trend Chart */}
+                        {/* Numeric Timeline Multi-Line Inbound Mail Flow Trend Chart */}
                         <div className="glass-card">
                             <div className="flex justify-between items-start mb-4">
                                 <div>
@@ -532,11 +514,20 @@ export default function IronportDashboardClient() {
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={inboundMultiLineData} margin={{ top: 10, right: 20, left: -20, bottom: 5 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                                        <XAxis dataKey="timeLabel" stroke="var(--text-muted)" fontSize={11} tickMargin={8} />
+                                        <XAxis 
+                                            dataKey="timestamp" 
+                                            type="number"
+                                            domain={['dataMin', 'dataMax']}
+                                            stroke="var(--text-muted)" 
+                                            fontSize={11} 
+                                            tickMargin={8} 
+                                            tickFormatter={formatTimeLabel}
+                                        />
                                         <YAxis stroke="var(--text-muted)" fontSize={11} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(1)}k` : val} />
                                         <Tooltip 
                                             contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px' }}
                                             labelStyle={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}
+                                            labelFormatter={(ts) => formatTimeLabel(ts as number)}
                                         />
                                         <Line type="monotone" dataKey="total" name="Total Inbound Mail" stroke="#3b82f6" strokeWidth={2.5} dot={false} activeDot={{ r: 6 }} />
                                         <Line type="monotone" dataKey="whitelisted" name="Whitelisted Senders" stroke="#a855f7" strokeWidth={2} dot={false} />
@@ -545,7 +536,7 @@ export default function IronportDashboardClient() {
                             </div>
                         </div>
 
-                        {/* Threats & Delays Chart */}
+                        {/* Numeric Timeline Threats & Delays Chart */}
                         <div className="glass-card">
                             <div className="flex justify-between items-start mb-4">
                                 <div>
@@ -561,11 +552,20 @@ export default function IronportDashboardClient() {
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={mergedThreatData} margin={{ top: 10, right: 20, left: -20, bottom: 5 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                                        <XAxis dataKey="timeLabel" stroke="var(--text-muted)" fontSize={11} tickMargin={8} />
+                                        <XAxis 
+                                            dataKey="timestamp" 
+                                            type="number"
+                                            domain={['dataMin', 'dataMax']}
+                                            stroke="var(--text-muted)" 
+                                            fontSize={11} 
+                                            tickMargin={8} 
+                                            tickFormatter={formatTimeLabel}
+                                        />
                                         <YAxis stroke="var(--text-muted)" fontSize={11} />
                                         <Tooltip 
                                             contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px' }}
                                             labelStyle={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}
+                                            labelFormatter={(ts) => formatTimeLabel(ts as number)}
                                         />
                                         <Line type="monotone" dataKey="delayed" name="Delayed Messages" stroke="#f59e0b" strokeWidth={2} dot={false} />
                                         <Line type="monotone" dataKey="malware" name="Malware Verdicts" stroke="#ef4444" strokeWidth={2} dot={false} />
@@ -666,11 +666,20 @@ export default function IronportDashboardClient() {
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={stats.totalVolumeChart} margin={{ top: 10, right: 20, left: -20, bottom: 5 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                                        <XAxis dataKey="timeLabel" stroke="var(--text-muted)" fontSize={11} tickMargin={8} />
+                                        <XAxis 
+                                            dataKey="timestamp" 
+                                            type="number"
+                                            domain={['dataMin', 'dataMax']}
+                                            stroke="var(--text-muted)" 
+                                            fontSize={11} 
+                                            tickMargin={8} 
+                                            tickFormatter={formatTimeLabel}
+                                        />
                                         <YAxis stroke="var(--text-muted)" fontSize={11} tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(1)}k` : val} />
                                         <Tooltip 
                                             contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px' }}
                                             labelStyle={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}
+                                            labelFormatter={(ts) => formatTimeLabel(ts as number)}
                                         />
                                         <Line type="monotone" dataKey="count" name="Outbound Mail" stroke="#2563eb" strokeWidth={2.5} dot={false} activeDot={{ r: 6 }} />
                                     </LineChart>
@@ -692,11 +701,20 @@ export default function IronportDashboardClient() {
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={mergedThreatData} margin={{ top: 10, right: 20, left: -20, bottom: 5 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-                                        <XAxis dataKey="timeLabel" stroke="var(--text-muted)" fontSize={11} tickMargin={8} />
+                                        <XAxis 
+                                            dataKey="timestamp" 
+                                            type="number"
+                                            domain={['dataMin', 'dataMax']}
+                                            stroke="var(--text-muted)" 
+                                            fontSize={11} 
+                                            tickMargin={8} 
+                                            tickFormatter={formatTimeLabel}
+                                        />
                                         <YAxis stroke="var(--text-muted)" fontSize={11} />
                                         <Tooltip 
                                             contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px' }}
                                             labelStyle={{ color: 'var(--text-secondary)', fontWeight: 'bold' }}
+                                            labelFormatter={(ts) => formatTimeLabel(ts as number)}
                                         />
                                         <Line type="monotone" dataKey="delayed" name="Delayed Messages" stroke="#f59e0b" strokeWidth={2} dot={false} />
                                     </LineChart>

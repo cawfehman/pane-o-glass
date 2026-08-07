@@ -49,86 +49,39 @@ export class OgGraylogClient {
     }
 
     /**
-     * Executes a histogram query against Graylog to get counts over time based on email syslog timestamps.
-     * Bucket timestamps are quantized to clean clock boundaries to prevent series misalignment.
+     * Executes non-overlapping clock-aligned absolute search queries against Graylog to build smooth time series.
      */
     async getHistogram(
         query: string, 
         rangeSeconds: number = 86400
     ): Promise<{ total: number, series: GraylogHistogramData[] }> {
-        let interval: "minute" | "hour" | "day" = "hour";
-        let bucketCount = 12;
+        let bucketCount = 24;
 
         if (rangeSeconds <= 3600) {
-            interval = "minute";
-            bucketCount = 12; // 5-minute buckets
+            bucketCount = 12; // 5-minute resolution for 1h
         } else if (rangeSeconds <= 21600) {
-            interval = "minute";
-            bucketCount = 12; // 30-minute buckets
+            bucketCount = 24; // 15-minute resolution for 6h
         } else if (rangeSeconds <= 43200) {
-            interval = "hour";
-            bucketCount = 12; // 1-hour buckets
+            bucketCount = 24; // 30-minute resolution for 12h
         } else if (rangeSeconds <= 86400) {
-            interval = "hour";
-            bucketCount = 12; // 2-hour buckets
+            bucketCount = 24; // 1-hour resolution for 24h
         } else if (rangeSeconds <= 259200) {
-            interval = "hour";
-            bucketCount = 12; // 6-hour buckets
+            bucketCount = 36; // 2-hour resolution for 3d
         } else {
-            interval = "day";
-            bucketCount = 14; // 12-hour buckets for 7d
+            bucketCount = 28; // 6-hour resolution for 7d
         }
 
-        // Try Graylog legacy histogram endpoint first
-        const params = new URLSearchParams({
-            query: query,
-            range: rangeSeconds.toString(),
-            interval: interval,
-            filter: `streams:${this.streamId}`
-        });
-
-        const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative/histogram?${params.toString()}`;
-        
-        try {
-            const res = await axios.get(url, {
-                httpsAgent,
-                headers: {
-                    "Authorization": this.authHeader,
-                    "Accept": "application/json",
-                    "X-Requested-By": "cli"
-                },
-                timeout: 10000
-            });
-
-            const data = res.data;
-            let total = 0;
-            const series: GraylogHistogramData[] = [];
-            
-            if (data.results && Object.keys(data.results).length > 0) {
-                for (const [timestampStr, count] of Object.entries(data.results)) {
-                    const ts = parseInt(timestampStr, 10) * 1000;
-                    const c = count as number;
-                    total += c;
-                    series.push({ timestamp: ts, count: c });
-                }
-                series.sort((a, b) => a.timestamp - b.timestamp);
-                return { total, series };
-            }
-        } catch (error) {
-            // Histogram endpoint unavailable or failed - proceed to clock-aligned absolute fallback below
-        }
-
-        // --- FALLBACK: Multi-Bucket Clock-Aligned Absolute Querying ---
         const bucketDurationMs = Math.floor((rangeSeconds * 1000) / bucketCount);
-        const endAnchorMs = Math.floor(Date.now() / bucketDurationMs) * bucketDurationMs + bucketDurationMs;
+        // Lock end of timeline to nearest clean clock boundary
+        const endAnchorMs = Math.floor(Date.now() / bucketDurationMs) * bucketDurationMs;
         const series: GraylogHistogramData[] = [];
         let total = 0;
 
         const bucketPromises = [];
 
         for (let i = bucketCount - 1; i >= 0; i--) {
-            const fromMs = endAnchorMs - (i + 1) * bucketDurationMs;
-            const toMs = endAnchorMs - i * bucketDurationMs;
+            const fromMs = endAnchorMs - i * bucketDurationMs;
+            const toMs = endAnchorMs - (i - 1) * bucketDurationMs;
 
             const fromIso = new Date(fromMs).toISOString();
             const toIso = new Date(toMs).toISOString();
@@ -225,7 +178,7 @@ export class OgGraylogClient {
     }
 
     /**
-     * Fetches all stats required for the IronPort dashboard, targeting real ESA policy streams.
+     * Fetches all stats required for the IronPort dashboard.
      */
     async getDashboardStats(rangeSeconds: number = 86400, volumeQuery: string = 'message:"inbound table"'): Promise<GraylogStats> {
         const [
