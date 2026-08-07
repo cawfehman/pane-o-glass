@@ -1108,12 +1108,6 @@
       border-color: color-mix(in oklab, var(--color-green-500) 20%, transparent);
     }
   }
-  .border-orange-500\/20 {
-    border-color: color-mix(in srgb, oklch(70.5% 0.213 47.604) 20%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-orange-500) 20%, transparent);
-    }
-  }
   .border-orange-500\/30 {
     border-color: color-mix(in srgb, oklch(70.5% 0.213 47.604) 30%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -2333,20 +2327,6 @@
   .disabled\:opacity-50:disabled {
     opacity: 50%;
   }
-  @media (width >= 40rem) {
-    .sm\:w-auto {
-      width: auto;
-    }
-    .sm\:flex-row {
-      flex-direction: row;
-    }
-    .sm\:items-center {
-      align-items: center;
-    }
-    .sm\:justify-end {
-      justify-content: flex-end;
-    }
-  }
   @media (width >= 48rem) {
     .md\:inline {
       display: inline;
@@ -2373,11 +2353,23 @@
     }
   }
   @media (width >= 80rem) {
+    .xl\:w-auto {
+      width: auto;
+    }
     .xl\:grid-cols-2 {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .xl\:grid-cols-4 {
       grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .xl\:flex-row {
+      flex-direction: row;
+    }
+    .xl\:items-center {
+      align-items: center;
+    }
+    .xl\:justify-end {
+      justify-content: flex-end;
     }
   }
 }
