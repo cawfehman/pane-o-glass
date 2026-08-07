@@ -3,11 +3,24 @@ import { OgGraylogClient } from "../../src/lib/og-graylog";
 
 async function syncIronportLogs() {
     console.log(`[${new Date().toISOString()}] Starting IronPort Graylog Sync...`);
+    
+    // Parse command line arguments
+    const args = process.argv.slice(2);
+    let days = 1; // Default to last 1-2 days (lightweight for recurring cron)
+
+    const daysArg = args.find(a => a.startsWith('--days='));
+    if (daysArg) {
+        days = parseInt(daysArg.split('=')[1], 10) || 7;
+    } else if (args.includes('--historical') || args.includes('--full')) {
+        days = 7;
+    }
+
+    const rangeSeconds = Math.max(days * 86400, 21600); // At least 6 hours (21600s), up to N days
+    console.log(`Ingesting Graylog metrics for range: ${days} day(s) (${rangeSeconds} seconds)...`);
+
     const client = new OgGraylogClient();
 
     try {
-        // Query hourly rollups for the last 7 days (604,800s) to populate historical database buckets
-        const rangeSeconds = 604800; 
         const stats = await client.getDashboardStats(rangeSeconds, 'message:"inbound table"');
         const outboundStats = await client.getHistogram('message:"outbound table"', rangeSeconds);
 
@@ -74,13 +87,13 @@ async function syncIronportLogs() {
             update: {
                 lastRun: new Date(),
                 status: "SUCCESS",
-                message: `Synced ${savedCount} hourly metrics from Graylog.`
+                message: `Synced ${savedCount} hourly metrics from Graylog (${days}d range).`
             },
             create: {
                 name: "IronPort Graylog Sync",
                 lastRun: new Date(),
                 status: "SUCCESS",
-                message: `Synced ${savedCount} hourly metrics from Graylog.`
+                message: `Synced ${savedCount} hourly metrics from Graylog (${days}d range).`
             }
         });
 
