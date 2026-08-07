@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2 } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
+import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, PieChart as PieIcon, Layers, Lock } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, PieChart, Pie, Cell } from "recharts";
 import type { GraylogStats } from "@/lib/og-graylog";
 
 export default function IronportDashboardClient() {
@@ -165,7 +165,7 @@ export default function IronportDashboardClient() {
         }
     };
 
-    // Construct merged multi-series data for Threats & Delays graph (focused strictly on Delays and Malware Threats)
+    // Construct merged multi-series data for Threats & Delays graph
     const getThreatsAndDelaysChartData = () => {
         if (!stats) return [];
         
@@ -218,6 +218,13 @@ export default function IronportDashboardClient() {
 
     const mergedThreatData = getThreatsAndDelaysChartData();
 
+    // Data for content category Donut chart
+    const categoryPieData = stats.inboundCategories || [
+        { name: "Corporate Transactional", value: Math.max(0, stats.totalVolume - 50), color: "#3b82f6", query: 'message:"inbound table"' },
+        { name: "Marketing & Bulk", value: Math.min(50, stats.totalVolume), color: "#a855f7", query: 'message:"Marketing"' },
+        { name: "Encrypted TLS Transport", value: Math.round(stats.totalVolume * 0.95), color: "#10b981", query: 'message:"TLS"' }
+    ];
+
     const renderMetricCard = (
         title: string, 
         value: number, 
@@ -229,7 +236,7 @@ export default function IronportDashboardClient() {
         dataKey: string = "count"
     ) => (
         <div 
-            className={`glass-card flex flex-col gap-4 overflow-hidden relative group transition-all duration-200 ${onClickHandler ? 'cursor-pointer hover:border-[var(--accent-primary)] hover:shadow-lg' : ''}`}
+            className={`glass-card flex flex-col gap-3 overflow-hidden relative group transition-all duration-200 ${onClickHandler ? 'cursor-pointer hover:border-[var(--accent-primary)] hover:shadow-lg' : ''}`}
             onClick={onClickHandler}
             title={tooltipText}
         >
@@ -260,19 +267,35 @@ export default function IronportDashboardClient() {
                 </div>
             )}
 
-            <div className="h-20 w-full -mx-4 -mb-4 mt-1">
+            {/* Sparkline chart with visible X/Y Axis tick labels */}
+            <div className="h-28 w-full -mb-2 mt-1">
                 <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={series} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                    <AreaChart data={series} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
                         <defs>
                             <linearGradient id={`color-${title.replace(/\s+/g, '')}`} x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="currentColor" stopOpacity={0.3}/>
                                 <stop offset="95%" stopColor="currentColor" stopOpacity={0}/>
                             </linearGradient>
                         </defs>
+                        <CartesianGrid strokeDasharray="2 2" stroke="var(--border-color)" opacity={0.4} vertical={false} />
+                        <XAxis 
+                            dataKey="timeLabel" 
+                            stroke="var(--text-muted)" 
+                            fontSize={9} 
+                            tickLine={false}
+                            interval="preserveStartEnd"
+                        />
+                        <YAxis 
+                            stroke="var(--text-muted)" 
+                            fontSize={9} 
+                            tickLine={false} 
+                            axisLine={false}
+                            tickFormatter={(val) => val >= 1000 ? `${(val/1000).toFixed(0)}k` : val} 
+                        />
                         <Tooltip 
-                            contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px' }}
+                            contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px', fontSize: '11px' }}
                             itemStyle={{ color: 'var(--text-primary)' }}
-                            labelStyle={{ color: 'var(--text-secondary)', marginBottom: '4px' }}
+                            labelStyle={{ color: 'var(--text-secondary)', marginBottom: '2px', fontWeight: 'bold' }}
                         />
                         <Area 
                             type="monotone" 
@@ -281,7 +304,7 @@ export default function IronportDashboardClient() {
                             fillOpacity={1} 
                             fill={`url(#color-${title.replace(/\s+/g, '')})`} 
                             className={colorClass}
-                            strokeWidth={2}
+                            strokeWidth={1.5}
                         />
                     </AreaChart>
                 </ResponsiveContainer>
@@ -293,7 +316,7 @@ export default function IronportDashboardClient() {
         <div className="flex flex-col gap-6">
             {/* Top Navigation Tabs & Scalable Timeframe Controls */}
             <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 border-b border-[var(--border-color)] pb-3">
-                {/* 3 Main Tabs: Inbound Telemetry | Outbound Telemetry | Investigate & Logs */}
+                {/* 3 Main Tabs */}
                 <div className="flex gap-2">
                     <button 
                         className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors flex items-center gap-2 ${activeTab === 'inbound' ? 'bg-[var(--accent-primary)] text-white' : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]'}`}
@@ -319,7 +342,6 @@ export default function IronportDashboardClient() {
                 </div>
 
                 <div className="flex items-center gap-3 w-full xl:w-auto justify-between xl:justify-end">
-                    {/* Scalable Timeframe Selector: 1h, 6h, 12h, 24h, 3d, 7d */}
                     <div className="flex items-center bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg p-1">
                         <Clock className="w-4 h-4 text-[var(--text-muted)] ml-2 mr-1" />
                         {[
@@ -394,6 +416,68 @@ export default function IronportDashboardClient() {
                             'Counts non-clean Antivirus (McAfee/Sophos) or Cisco AMP verdicts. Click to investigate.',
                             () => handleSearch('message:"interim AV verdict using" AND NOT message:"CLEAN"')
                         )}
+                    </div>
+
+                    {/* Clean Inbound Content & Policy Categories Breakdown */}
+                    <div className="glass-card bg-[var(--bg-surface)] p-5 border border-[var(--border-color)] rounded-xl flex flex-col xl:flex-row gap-6 items-center">
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                                <PieIcon className="w-5 h-5 text-[var(--accent-primary)]" />
+                                <h3 className="text-base font-bold text-[var(--text-primary)]">Inbound Mail Content & Policy Breakdown</h3>
+                            </div>
+                            <p className="text-xs text-[var(--text-secondary)]">Distribution of clean inbound mail by policy evaluation, bulk classification, and encryption ({getTimeframeLabel(timeframe)})</p>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
+                                {categoryPieData.map((cat, idx) => {
+                                    const pct = stats.totalVolume > 0 ? ((cat.value / stats.totalVolume) * 100).toFixed(1) : "0.0";
+                                    return (
+                                        <div 
+                                            key={idx} 
+                                            onClick={() => handleSearch(cat.query)}
+                                            className="p-3 rounded-lg bg-[var(--bg-surface-hover)] border border-[var(--border-color)] flex flex-col gap-1 cursor-pointer hover:border-[var(--accent-primary)] transition-all"
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-semibold text-[var(--text-secondary)]">{cat.name}</span>
+                                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cat.color }} />
+                                            </div>
+                                            <div className="flex items-baseline gap-2 mt-1">
+                                                <span className="text-xl font-bold text-[var(--text-primary)]">{cat.value.toLocaleString()}</span>
+                                                <span className="text-xs font-semibold" style={{ color: cat.color }}>{pct}%</span>
+                                            </div>
+                                            <span className="text-[10px] text-[var(--text-muted)] mt-1 flex items-center gap-1">
+                                                <span>Click to filter Graylog</span>
+                                                <ExternalLink className="w-2.5 h-2.5" />
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Donut Chart */}
+                        <div className="w-full xl:w-64 h-48 flex items-center justify-center shrink-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={categoryPieData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={45}
+                                        outerRadius={70}
+                                        paddingAngle={4}
+                                        dataKey="value"
+                                    >
+                                        {categoryPieData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.color} stroke="var(--bg-surface)" strokeWidth={2} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip 
+                                        contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px' }}
+                                        formatter={(val: any) => [val.toLocaleString(), 'Messages']}
+                                    />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
                     </div>
 
                     {/* Quick Inbound Drill-Down Banner */}

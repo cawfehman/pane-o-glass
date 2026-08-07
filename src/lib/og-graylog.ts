@@ -10,6 +10,14 @@ export interface GraylogHistogramData {
     count: number;
 }
 
+export interface GraylogCategoryBreakdown {
+    name: string;
+    value: number;
+    color: string;
+    query: string;
+    chart: GraylogHistogramData[];
+}
+
 export interface GraylogStats {
     rangeSeconds: number;
     volumeQuery: string;
@@ -21,6 +29,7 @@ export interface GraylogStats {
     urlRewritesChart: GraylogHistogramData[];
     malwareAlerts: number;
     malwareAlertsChart: GraylogHistogramData[];
+    inboundCategories: GraylogCategoryBreakdown[];
 }
 
 export class OgGraylogClient {
@@ -216,20 +225,52 @@ export class OgGraylogClient {
     }
 
     /**
-     * Fetches all stats required for the IronPort dashboard.
+     * Fetches all stats required for the IronPort dashboard, including content categories.
      */
     async getDashboardStats(rangeSeconds: number = 86400, volumeQuery: string = 'message:"inbound table"'): Promise<GraylogStats> {
         const [
             volumeData,
             delayedData,
             urlRewritesData,
-            malwareData
+            malwareData,
+            marketingData,
+            tlsData
         ] = await Promise.all([
             this.getHistogram(volumeQuery, rangeSeconds),
             this.getHistogram('message:"Info: Delayed:"', rangeSeconds),
             this.getHistogram('message:"Action: URL redirected to Cisco Security proxy"', rangeSeconds),
-            this.getHistogram('message:"interim AV verdict using" AND NOT message:"CLEAN"', rangeSeconds)
+            this.getHistogram('message:"interim AV verdict using" AND NOT message:"CLEAN"', rangeSeconds),
+            this.getHistogram('message:"inbound table" AND (message:"Marketing" OR message:"Bulk" OR message:"Newsletter")', rangeSeconds),
+            this.getHistogram('message:"inbound table" AND message:"TLS"', rangeSeconds)
         ]);
+
+        const marketingTotal = marketingData.total;
+        const tlsTotal = Math.min(tlsData.total, volumeData.total);
+        const corporateTotal = Math.max(0, volumeData.total - marketingTotal);
+
+        const inboundCategories: GraylogCategoryBreakdown[] = [
+            {
+                name: "Corporate Transactional",
+                value: corporateTotal,
+                color: "#3b82f6", // Blue
+                query: 'message:"inbound table" AND NOT message:"Marketing" AND NOT message:"Bulk"',
+                chart: volumeData.series
+            },
+            {
+                name: "Marketing & Newsletter",
+                value: marketingTotal,
+                color: "#a855f7", // Purple
+                query: 'message:"inbound table" AND (message:"Marketing" OR message:"Bulk" OR message:"Newsletter")',
+                chart: marketingData.series
+            },
+            {
+                name: "Secure TLS Encrypted",
+                value: tlsTotal,
+                color: "#10b981", // Green
+                query: 'message:"inbound table" AND message:"TLS"',
+                chart: tlsData.series
+            }
+        ];
 
         return {
             rangeSeconds,
@@ -241,7 +282,8 @@ export class OgGraylogClient {
             urlRewrites: urlRewritesData.total,
             urlRewritesChart: urlRewritesData.series,
             malwareAlerts: malwareData.total,
-            malwareAlertsChart: malwareData.series
+            malwareAlertsChart: malwareData.series,
+            inboundCategories
         };
     }
 }
