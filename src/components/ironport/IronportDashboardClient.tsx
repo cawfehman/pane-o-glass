@@ -189,11 +189,11 @@ export default function IronportDashboardClient() {
         return Object.values(mapByTime).sort((a, b) => a.timestamp - b.timestamp);
     };
 
-    // Construct multi-line data for Inbound Clean Mail Flow Trend (Total + Content Categories)
+    // Construct multi-line data for Inbound Clean Mail Flow Trend (Total + Marketing)
     const getInboundMultiLineChartData = () => {
         if (!stats) return [];
 
-        const mapByTime: Record<number, { timestamp: number; timeLabel: string; total: number; marketing: number; tls: number }> = {};
+        const mapByTime: Record<number, { timestamp: number; timeLabel: string; total: number; marketing: number }> = {};
 
         const getOrCreate = (pt: any) => {
             if (!mapByTime[pt.timestamp]) {
@@ -201,8 +201,7 @@ export default function IronportDashboardClient() {
                     timestamp: pt.timestamp,
                     timeLabel: pt.timeLabel,
                     total: 0,
-                    marketing: 0,
-                    tls: 0
+                    marketing: 0
                 };
             }
             return mapByTime[pt.timestamp];
@@ -210,21 +209,11 @@ export default function IronportDashboardClient() {
 
         (stats.totalVolumeChart || []).forEach(pt => { getOrCreate(pt).total = pt.count; });
 
-        // Category series from stats
         const marketingCat = (stats.inboundCategories || []).find(c => c.name.includes("Marketing"));
-        const tlsCat = (stats.inboundCategories || []).find(c => c.name.includes("TLS"));
-
         if (marketingCat?.chart) {
             marketingCat.chart.forEach(pt => {
                 const item = getOrCreate(pt);
                 item.marketing = pt.count;
-            });
-        }
-
-        if (tlsCat?.chart) {
-            tlsCat.chart.forEach(pt => {
-                const item = getOrCreate(pt);
-                item.tls = pt.count;
             });
         }
 
@@ -509,7 +498,6 @@ export default function IronportDashboardClient() {
                                 <div className="flex gap-2 flex-wrap justify-end">
                                     <span className="text-[11px] px-2 py-0.5 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded font-semibold">Total Inbound</span>
                                     <span className="text-[11px] px-2 py-0.5 bg-purple-500/10 text-purple-500 border border-purple-500/20 rounded font-semibold">Marketing/Bulk</span>
-                                    <span className="text-[11px] px-2 py-0.5 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded font-semibold">TLS Transport</span>
                                 </div>
                             </div>
                             <div className="h-[280px] w-full">
@@ -524,7 +512,6 @@ export default function IronportDashboardClient() {
                                         />
                                         <Line type="monotone" dataKey="total" name="Total Inbound Mail" stroke="#3b82f6" strokeWidth={2.5} dot={false} activeDot={{ r: 6 }} />
                                         <Line type="monotone" dataKey="marketing" name="Marketing & Bulk" stroke="#a855f7" strokeWidth={2} dot={false} />
-                                        <Line type="monotone" dataKey="tls" name="TLS Encrypted" stroke="#10b981" strokeWidth={2} dot={false} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>

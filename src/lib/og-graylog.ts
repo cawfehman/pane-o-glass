@@ -233,19 +233,16 @@ export class OgGraylogClient {
             delayedData,
             urlRewritesData,
             malwareData,
-            marketingData,
-            tlsData
+            marketingData
         ] = await Promise.all([
             this.getHistogram(volumeQuery, rangeSeconds),
             this.getHistogram('message:"Info: Delayed:"', rangeSeconds),
             this.getHistogram('message:"Action: URL redirected to Cisco Security proxy"', rangeSeconds),
             this.getHistogram('message:"interim AV verdict using" AND NOT message:"CLEAN"', rangeSeconds),
-            this.getHistogram('message:"inbound table" AND (message:"Marketing" OR message:"Bulk" OR message:"Newsletter")', rangeSeconds),
-            this.getHistogram('message:"inbound table" AND message:"TLS"', rangeSeconds)
+            this.getHistogram('message:"inbound table" AND (message:"Marketing" OR message:"Bulk" OR message:"Newsletter")', rangeSeconds)
         ]);
 
         const marketingTotal = marketingData.total;
-        const tlsTotal = Math.min(tlsData.total, volumeData.total);
         const corporateTotal = Math.max(0, volumeData.total - marketingTotal);
 
         const inboundCategories: GraylogCategoryBreakdown[] = [
@@ -262,13 +259,6 @@ export class OgGraylogClient {
                 color: "#a855f7", // Purple
                 query: 'message:"inbound table" AND (message:"Marketing" OR message:"Bulk" OR message:"Newsletter")',
                 chart: marketingData.series
-            },
-            {
-                name: "Secure TLS Encrypted",
-                value: tlsTotal,
-                color: "#10b981", // Green
-                query: 'message:"inbound table" AND message:"TLS"',
-                chart: tlsData.series
             }
         ];
 
