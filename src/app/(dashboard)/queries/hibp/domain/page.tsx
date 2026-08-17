@@ -68,6 +68,9 @@ export default function DomainSecurityPage() {
     const [searchLoading, setSearchLoading] = useState(false);
     const [searchError, setSearchError] = useState("");
 
+    // Modal state for clicking on any breach tag
+    const [selectedBreachModal, setSelectedBreachModal] = useState<string | null>(null);
+
     // Fetch available domains on load
     useEffect(() => {
         const fetchDomains = async () => {
@@ -102,6 +105,17 @@ export default function DomainSecurityPage() {
         fetchDomains();
         fetchBreachesMeta();
     }, []);
+
+    // Close breach modal on Escape key
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setSelectedBreachModal(null);
+        };
+        if (selectedBreachModal) {
+            document.addEventListener("keydown", handleKeyDown);
+        }
+        return () => document.removeEventListener("keydown", handleKeyDown);
+    }, [selectedBreachModal]);
 
     const fetchDomainData = async () => {
         setDomainLoading(true);
@@ -156,6 +170,34 @@ export default function DomainSecurityPage() {
             }
         }
         return null;
+    };
+
+    const getBreachRiskIcons = (breach: any) => {
+        if (!breach || !Array.isArray(breach.DataClasses)) return [];
+        const icons: { key: string; icon: string; title: string; color: string }[] = [];
+        const dcs = breach.DataClasses.map((dc: string) => dc.toLowerCase());
+
+        // 1. Passwords / Credentials
+        if (dcs.some((dc: string) => dc.includes("password") || dc.includes("auth token") || dc.includes("pin") || dc.includes("encrypted key") || dc.includes("mnemonic"))) {
+            icons.push({ key: "passwords", icon: "⚠️", title: "Passwords / Credentials Exposed", color: "#f87171" });
+        }
+
+        // 2. Financial (Credit Cards / Bank Accounts)
+        if (dcs.some((dc: string) => dc.includes("credit card") || dc.includes("bank account") || dc.includes("cvv") || dc.includes("cryptocurrency"))) {
+            icons.push({ key: "financial", icon: "💳", title: "Financial Data (Credit Cards / Bank Accounts) Exposed", color: "#fbbf24" });
+        }
+
+        // 3. Government & Identity (SSNs / Passports)
+        if (dcs.some((dc: string) => dc.includes("social security") || dc.includes("passport") || dc.includes("driver's license") || dc.includes("government issued"))) {
+            icons.push({ key: "identity", icon: "🪪", title: "Identity Data (SSNs / Passports / Govt IDs) Exposed", color: "#c084fc" });
+        }
+
+        // 4. Health & Biometrics
+        if (dcs.some((dc: string) => dc.includes("health") || dc.includes("medical") || dc.includes("biometric"))) {
+            icons.push({ key: "health", icon: "🩺", title: "Health / Biometric Records Exposed", color: "#f472b6" });
+        }
+
+        return icons;
     };
 
     const allDataClasses = useMemo(() => {
@@ -606,6 +648,44 @@ export default function DomainSecurityPage() {
             return exp;
         }, [breachList]);
 
+        // Helper to render interactive, descriptive breach pills with all risk category icons
+        const renderBreachPill = (breachName: string, isLarge = false) => {
+            const meta = allBreachesMeta[breachName];
+            const riskIcons = getBreachRiskIcons(meta);
+            const hasPwd = riskIcons.some(r => r.key === "passwords");
+            const categoriesList = meta?.DataClasses ? meta.DataClasses.join(", ") : "Unknown";
+            const breachDate = meta?.BreachDate || "Unknown";
+            const tooltipText = `${meta?.Title || breachName} • Breached: ${breachDate} • Exposed: ${categoriesList}`;
+
+            return (
+                <button
+                    key={breachName}
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedBreachModal(breachName);
+                    }}
+                    title={`${tooltipText} — Click to view full breach summary`}
+                    className={`inline-flex items-center gap-1.5 rounded-lg cursor-pointer transition-all hover:scale-105 shadow-sm text-left ${
+                        isLarge ? 'px-3 py-1.5 text-xs font-semibold' : 'px-2.5 py-1 text-[0.75rem] font-medium'
+                    }`}
+                    style={{
+                        background: hasPwd ? 'rgba(239, 68, 68, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                        border: hasPwd ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid var(--border-color)',
+                        color: 'var(--text-primary)',
+                    }}
+                >
+                    {/* Display all high-risk category icons that this breach leaked */}
+                    {riskIcons.map(r => (
+                        <span key={r.key} title={r.title} className="text-xs shrink-0 select-none">
+                            {r.icon}
+                        </span>
+                    ))}
+                    <span>{meta?.Title || breachName}</span>
+                </button>
+            );
+        };
+
         return (
             <div 
                 onClick={() => setExpandedAlias(isExpanded ? null : alias)}
@@ -672,32 +752,7 @@ export default function DomainSecurityPage() {
 
                 {!isExpanded && (
                     <div style={{ fontSize: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '10px' }}>
-                        {breachList.map((breachName: string) => {
-                            const meta = allBreachesMeta[breachName];
-                            const hasPwd = meta && breachHasPassword(meta);
-                            const highRisk = meta ? breachHasHighRisk(meta) : null;
-
-                            return (
-                                <span 
-                                    key={breachName} 
-                                    style={{ 
-                                        background: hasPwd ? 'rgba(239,68,68,0.2)' : (highRisk ? highRisk.badge : 'rgba(255,255,255,0.05)'), 
-                                        border: hasPwd ? '1px solid rgba(239,68,68,0.4)' : (highRisk ? `1px solid ${highRisk.border}` : '1px solid transparent'),
-                                        padding: '2px 8px', 
-                                        borderRadius: '4px', 
-                                        color: hasPwd ? '#fca5a5' : 'var(--text-secondary)',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                        fontWeight: hasPwd || highRisk ? 600 : 400
-                                    }}
-                                >
-                                    {hasPwd && <AlertTriangle size={11} className="text-rose-400" />}
-                                    {!hasPwd && highRisk && <span>{highRisk.icon}</span>}
-                                    {breachName}
-                                </span>
-                            );
-                        })}
+                        {breachList.map((breachName: string) => renderBreachPill(breachName, false))}
                     </div>
                 )}
 
@@ -720,32 +775,11 @@ export default function DomainSecurityPage() {
                             <p style={{ margin: '4px 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{ad?.description || "No description provided."}</p>
                         </div>
                         <div style={{ gridColumn: '1 / -1' }}>
-                            <h5 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Breach History</h5>
+                            <h5 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>
+                                Breach History (Click any to view details)
+                            </h5>
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                {breachList.map((breachName: string) => {
-                                    const meta = allBreachesMeta[breachName];
-                                    const hasPwd = meta && breachHasPassword(meta);
-                                    return (
-                                        <span 
-                                            key={breachName} 
-                                            style={{ 
-                                                background: hasPwd ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)', 
-                                                border: hasPwd ? '1px solid rgba(239,68,68,0.4)' : '1px solid transparent',
-                                                padding: '4px 10px', 
-                                                borderRadius: '12px', 
-                                                color: hasPwd ? '#fca5a5' : 'var(--text-secondary)',
-                                                fontSize: '0.75rem',
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '4px',
-                                                fontWeight: hasPwd ? 700 : 500
-                                            }}
-                                        >
-                                            {hasPwd && <AlertTriangle size={12} className="text-rose-400" />}
-                                            <span>{breachName}</span>
-                                        </span>
-                                    );
-                                })}
+                                {breachList.map((breachName: string) => renderBreachPill(breachName, true))}
                             </div>
                         </div>
                     </div>
@@ -965,50 +999,30 @@ export default function DomainSecurityPage() {
                                                             <tbody>
                                                                 {getBreachCounts().map((b) => {
                                                                     const meta = allBreachesMeta[b.name];
-                                                                    const hasPwd = meta && breachHasPassword(meta);
-                                                                    const highRisk = meta ? breachHasHighRisk(meta) : null;
+                                                                    const riskIcons = getBreachRiskIcons(meta);
 
                                                                     return (
                                                                         <tr key={b.name} style={{ borderBottom: '1px solid var(--border-color)' }}>
                                                                             <td style={{ padding: '12px 16px', fontWeight: 500, color: 'var(--accent-primary)' }}>
                                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                                    <span>{b.name}</span>
-                                                                                    {hasPwd && (
-                                                                                        <span 
-                                                                                            title="Critical Warning: This breach exposed user passwords or authentication credentials"
-                                                                                            style={{
-                                                                                                display: 'inline-flex',
-                                                                                                alignItems: 'center',
-                                                                                                justifyContent: 'center',
-                                                                                                padding: '2px 5px',
-                                                                                                borderRadius: '4px',
-                                                                                                background: 'rgba(239, 68, 68, 0.15)',
-                                                                                                border: '1px solid rgba(239, 68, 68, 0.4)',
-                                                                                                color: '#f87171',
-                                                                                                cursor: 'help'
-                                                                                            }}
-                                                                                        >
-                                                                                            <AlertTriangle size={11} className="text-rose-400 fill-rose-500/20" />
-                                                                                        </span>
-                                                                                    )}
-                                                                                    {!hasPwd && highRisk && (
-                                                                                        <span 
-                                                                                            title={`High-Risk Exposure: ${highRisk.label}`}
-                                                                                            style={{
-                                                                                                display: 'inline-flex',
-                                                                                                alignItems: 'center',
-                                                                                                justifyContent: 'center',
-                                                                                                padding: '2px 5px',
-                                                                                                borderRadius: '4px',
-                                                                                                background: highRisk.badge,
-                                                                                                border: `1px solid ${highRisk.border}`,
-                                                                                                fontSize: '0.75rem',
-                                                                                                cursor: 'help'
-                                                                                            }}
-                                                                                        >
-                                                                                            <span>{highRisk.icon}</span>
-                                                                                        </span>
-                                                                                    )}
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => setSelectedBreachModal(b.name)}
+                                                                                        className="text-left font-semibold text-accent-primary hover:underline bg-transparent border-none p-0 cursor-pointer"
+                                                                                    >
+                                                                                        {b.name}
+                                                                                    </button>
+                                                                                    <div className="flex items-center gap-1">
+                                                                                        {riskIcons.map(r => (
+                                                                                            <span 
+                                                                                                key={r.key}
+                                                                                                title={r.title}
+                                                                                                className="cursor-help text-xs select-none"
+                                                                                            >
+                                                                                                {r.icon}
+                                                                                            </span>
+                                                                                        ))}
+                                                                                    </div>
                                                                                 </div>
                                                                             </td>
                                                                             <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{b.date}</td>
@@ -1040,18 +1054,26 @@ export default function DomainSecurityPage() {
                                                         <div className="grid gap-2">
                                                             {getBreachCounts().slice(0, 10).map((b, idx) => {
                                                                 const meta = allBreachesMeta[b.name];
-                                                                const hasPwd = meta && breachHasPassword(meta);
+                                                                const riskIcons = getBreachRiskIcons(meta);
                                                                 return (
                                                                     <div key={b.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-dark)', padding: '8px 16px', borderRadius: 'var(--radius-sm)' }}>
                                                                         <span className="text-text-secondary flex items-center gap-2">
                                                                             <span style={{ color: 'var(--text-muted)', marginRight: '4px' }}>#{idx + 1}</span>
-                                                                            <span>{b.name}</span> 
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setSelectedBreachModal(b.name)}
+                                                                                className="text-left font-semibold text-text-primary hover:text-accent-primary bg-transparent border-none p-0 cursor-pointer"
+                                                                            >
+                                                                                {b.name}
+                                                                            </button>
                                                                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({b.date})</span>
-                                                                            {hasPwd && (
-                                                                                <span title="Exposed Passwords">
-                                                                                    <AlertTriangle size={13} className="text-rose-400 fill-rose-500/20 ml-1" />
-                                                                                </span>
-                                                                            )}
+                                                                            <div className="flex items-center gap-1 ml-1">
+                                                                                {riskIcons.map(r => (
+                                                                                    <span key={r.key} title={r.title} className="text-xs select-none cursor-help">
+                                                                                        {r.icon}
+                                                                                    </span>
+                                                                                ))}
+                                                                            </div>
                                                                         </span>
                                                                         <span style={{ fontWeight: 600, color: '#fca5a5' }}>{b.count} org accounts</span>
                                                                     </div>
@@ -1476,34 +1498,30 @@ export default function DomainSecurityPage() {
                                             </thead>
                                             <tbody>
                                                 {getFilteredBreaches.map((b: any) => {
-                                                    const hasPwd = breachHasPassword(b);
-                                                    const highRisk = breachHasHighRisk(b);
+                                                    const riskIcons = getBreachRiskIcons(b);
 
                                                     return (
                                                         <tr key={b.Name} style={{ borderBottom: '1px solid var(--border-color)' }}>
                                                             <td style={{ padding: '12px 16px', fontWeight: 500, color: 'var(--accent-primary)' }}>
                                                                 <div className="flex items-center gap-2">
-                                                                    <span>{b.Title || b.Name}</span>
-                                                                    {hasPwd && (
-                                                                        <span 
-                                                                            title="⚠️ This breach exposed user passwords!"
-                                                                            style={{
-                                                                                display: 'inline-flex',
-                                                                                alignItems: 'center',
-                                                                                gap: '4px',
-                                                                                padding: '2px 6px',
-                                                                                borderRadius: '4px',
-                                                                                background: 'rgba(239, 68, 68, 0.15)',
-                                                                                border: '1px solid rgba(239, 68, 68, 0.4)',
-                                                                                color: '#f87171',
-                                                                                fontSize: '0.7rem',
-                                                                                fontWeight: 700
-                                                                            }}
-                                                                        >
-                                                                            <AlertTriangle size={11} className="text-rose-400 fill-rose-500/20" />
-                                                                            <span>Passwords</span>
-                                                                        </span>
-                                                                    )}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setSelectedBreachModal(b.Name)}
+                                                                        className="text-left font-semibold text-accent-primary hover:underline bg-transparent border-none p-0 cursor-pointer"
+                                                                    >
+                                                                        {b.Title || b.Name}
+                                                                    </button>
+                                                                    <div className="flex items-center gap-1">
+                                                                        {riskIcons.map(r => (
+                                                                            <span 
+                                                                                key={r.key}
+                                                                                title={r.title}
+                                                                                className="cursor-help text-xs select-none"
+                                                                            >
+                                                                                {r.icon}
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
                                                                 </div>
                                                             </td>
                                                             <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{b.BreachDate}</td>
@@ -1539,11 +1557,11 @@ export default function DomainSecurityPage() {
                                                                 <div className="flex items-center justify-end gap-2">
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => triggerSearchAction("details", b.Name)}
+                                                                        onClick={() => setSelectedBreachModal(b.Name)}
                                                                         className="btn-secondary"
                                                                         style={{ padding: '4px 8px', fontSize: '0.7rem' }}
                                                                     >
-                                                                        Details
+                                                                        Summary
                                                                     </button>
                                                                     <button
                                                                         type="button"
@@ -1637,6 +1655,143 @@ export default function DomainSecurityPage() {
                     </div>
                 )}
             </div>
+
+            {/* --- BREACH INFORMATION MODAL (TRIGGERED ON CLICK OF ANY BREACH PILL OR NAME) --- */}
+            {selectedBreachModal && allBreachesMeta[selectedBreachModal] && (
+                <div 
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+                    onClick={() => setSelectedBreachModal(null)}
+                >
+                    <div 
+                        className="glass-card max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl border border-border-color rounded-2xl"
+                        style={{ background: 'var(--bg-surface)' }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {(() => {
+                            const breach = allBreachesMeta[selectedBreachModal];
+                            const hasPassword = breachHasPassword(breach);
+                            const highRisk = breachHasHighRisk(breach);
+
+                            return (
+                                <>
+                                    {/* Modal Header */}
+                                    <div className="p-5 border-b border-border-color flex justify-between items-start gap-4">
+                                        <div>
+                                            <div className="flex items-center gap-2.5 flex-wrap">
+                                                <h3 className="text-xl font-bold text-accent-primary m-0">
+                                                    {breach.Title || breach.Name}
+                                                </h3>
+                                                {hasPassword && (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/50 text-xs font-bold shadow-sm">
+                                                        <AlertTriangle size={13} className="text-rose-400 fill-rose-500/20" />
+                                                        <span>Passwords Exposed</span>
+                                                    </span>
+                                                )}
+                                                {!hasPassword && highRisk && (
+                                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold shadow-sm" style={{ background: highRisk.badge, border: `1px solid ${highRisk.border}` }}>
+                                                        <span>{highRisk.icon} {highRisk.label} Exposed</span>
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="flex items-center gap-3 text-xs text-text-muted mt-1.5">
+                                                <span>Breach Date: <strong className="text-text-secondary">{breach.BreachDate}</strong></span>
+                                                <span>•</span>
+                                                <span>Pwned Accounts Globally: <strong className="text-rose-300 font-mono">{breach.PwnCount.toLocaleString()}</strong></span>
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedBreachModal(null)}
+                                            className="p-1.5 rounded-lg bg-bg-surface-hover hover:bg-bg-dark text-text-muted hover:text-text-primary border border-border-color cursor-pointer transition-colors"
+                                            title="Close modal"
+                                        >
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+
+                                    {/* Modal Body */}
+                                    <div className="p-5 overflow-y-auto flex flex-col gap-4">
+                                        <div>
+                                            <h5 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
+                                                Breach Summary
+                                            </h5>
+                                            <div 
+                                                className="text-sm text-text-secondary leading-relaxed p-4 bg-bg-dark rounded-xl border border-border-color/60"
+                                                dangerouslySetInnerHTML={{ __html: breach.Description }}
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <h5 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2">
+                                                Compromised Data Categories ({breach.DataClasses.length})
+                                            </h5>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {breach.DataClasses.map((dc: string) => {
+                                                    const risk = HIGH_RISK_DATA_CLASSES[dc];
+                                                    const isPwd = dc.toLowerCase().includes("password");
+                                                    return (
+                                                        <span 
+                                                            key={dc} 
+                                                            style={{ 
+                                                                background: isPwd ? 'rgba(239, 68, 68, 0.25)' : (risk ? risk.badge : 'var(--bg-surface-hover)'), 
+                                                                border: isPwd ? '1px solid rgba(239, 68, 68, 0.6)' : (risk ? `1px solid ${risk.border}` : '1px solid var(--border-color)'),
+                                                                color: isPwd ? '#fca5a5' : 'var(--text-primary)', 
+                                                                fontWeight: (isPwd || risk) ? 700 : 500,
+                                                                padding: '4px 10px', 
+                                                                borderRadius: '12px', 
+                                                                fontSize: '0.75rem',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px',
+                                                                boxShadow: isPwd ? '0 0 10px rgba(239, 68, 68, 0.25)' : 'none'
+                                                            }}
+                                                        >
+                                                            {isPwd && <AlertTriangle size={12} className="text-rose-400" />}
+                                                            {!isPwd && risk && <span>{risk.icon}</span>}
+                                                            <span>{dc}</span>
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Modal Footer */}
+                                    <div className="p-4 border-t border-border-color flex items-center justify-between gap-3 bg-bg-dark/40">
+                                        <span className="text-xs text-text-muted">
+                                            Press <kbd className="px-1.5 py-0.5 rounded bg-bg-surface border border-border-color text-[0.7rem]">Esc</kbd> to close
+                                        </span>
+
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const bName = selectedBreachModal;
+                                                    setSelectedBreachModal(null);
+                                                    setActiveTab("breach");
+                                                    setBreachSearchQuery(bName);
+                                                    triggerSearchAction("impacted", bName);
+                                                }}
+                                                className="btn-primary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold"
+                                            >
+                                                <span>Check Domain Impact</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedBreachModal(null)}
+                                                className="btn-secondary px-3 py-1.5 text-xs font-semibold"
+                                            >
+                                                Close
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
+                            );
+                        })()}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

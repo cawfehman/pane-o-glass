@@ -1455,6 +1455,12 @@
   .bg-bg-dark {
     background-color: var(--color-bg-dark);
   }
+  .bg-bg-dark\/40 {
+    background-color: var(--color-bg-dark);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-bg-dark) 40%, transparent);
+    }
+  }
   .bg-bg-dark\/60 {
     background-color: var(--color-bg-dark);
     @supports (color: color-mix(in lab, red, red)) {
@@ -2596,6 +2602,12 @@
       --tw-translate-y: calc(var(--spacing) * -0.5);
       translate: var(--tw-translate-x) var(--tw-translate-y);
     }
+    .hover\:scale-105:hover {
+      --tw-scale-x: 105%;
+      --tw-scale-y: 105%;
+      --tw-scale-z: 105%;
+      scale: var(--tw-scale-x) var(--tw-scale-y);
+    }
     .hover\:scale-110:hover {
       --tw-scale-x: 110%;
       --tw-scale-y: 110%;
@@ -2673,6 +2685,9 @@
     }
     .hover\:bg-amber-600:hover {
       background-color: var(--color-amber-600);
+    }
+    .hover\:bg-bg-dark:hover {
+      background-color: var(--color-bg-dark);
     }
     .hover\:bg-bg-surface-hover:hover {
       background-color: var(--color-bg-surface-hover);
