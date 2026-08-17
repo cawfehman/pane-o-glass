@@ -56,6 +56,7 @@ export async function POST(req: Request) {
             templateId,
             sourceType = "HIBP_DOMAIN",
             sourceQuery,
+            status: statusOverride, // Only allowed for STALLED → DRAFT reset
             recipients = [] // Array of { email, name, adName, accountStatus, breachName, breachDate, breachDetails, variablesJson }
         } = body;
 
@@ -71,6 +72,26 @@ export async function POST(req: Request) {
             const existing = await prisma.notificationCampaign.findUnique({ where: { id } });
             if (!existing) {
                 return new NextResponse("Campaign not found", { status: 404 });
+            }
+
+            // Special path: reset STALLED → DRAFT so failed recipients can be retried
+            if (statusOverride === "DRAFT" && existing.status === "STALLED") {
+                await prisma.notificationCampaign.update({
+                    where: { id },
+                    data: { status: "DRAFT" }
+                });
+                // Reset FAILED recipients back to PENDING so dispatch can retry them
+                await prisma.campaignRecipient.updateMany({
+                    where: { campaignId: id, status: "FAILED" },
+                    data: { status: "PENDING", errorMessage: null }
+                });
+                await logAudit(
+                    "CAMPAIGN_RESET",
+                    `Reset STALLED campaign "${name}" to DRAFT for retry by ${username}`,
+                    (session.user as any)?.id || username
+                );
+                const reset = await prisma.notificationCampaign.findUnique({ where: { id }, include: { template: true } });
+                return NextResponse.json(reset);
             }
 
             // Update basic info

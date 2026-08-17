@@ -51,6 +51,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         });
 
         // Background batch dispatcher execution
+        // NOTE: Next.js serverless functions typically time out after 30–60s.
+        // For large campaigns (>500 recipients at 40ms/each = ~20s), this should
+        // complete in time. For very large campaigns, consider a dedicated queue.
         (async () => {
             let sent = 0;
             let failed = 0;
@@ -122,8 +125,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             });
 
             await logAudit("CAMPAIGN_DISPATCHED", `Completed dispatch for campaign "${campaign.name}": ${sent} sent, ${failed} failed.`, (session.user as any)?.id);
-        })().catch(err => {
+        })().catch(async (err) => {
             console.error("Async campaign dispatch crashed:", err);
+            // Mark the campaign as STALLED so operators know it needs attention
+            await prisma.notificationCampaign.update({
+                where: { id },
+                data: { status: "STALLED" }
+            }).catch(() => {}); // Don't throw if this also fails
+            await logAudit(
+                "CAMPAIGN_DISPATCH_CRASHED",
+                `Campaign "${campaign.name}" dispatch crashed mid-run: ${err?.message || "Unknown error"}. Campaign marked STALLED — retry failed recipients or contact an administrator.`,
+                (session.user as any)?.id
+            ).catch(() => {});
         });
 
         return NextResponse.json({

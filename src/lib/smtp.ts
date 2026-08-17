@@ -51,10 +51,20 @@ export async function sendNotificationMail(options: MailOptions): Promise<{ succ
     };
 
     if (!transporter) {
-        console.warn("[SMTP Mock] SMTP_HOST not configured in .env. Simulating email dispatch to:", options.to);
+        // Only allow silent mock dispatch if SMTP_MOCK=true is explicitly set in .env
+        if (process.env.SMTP_MOCK === "true") {
+            console.warn("[SMTP Mock] SMTP_MOCK=true — simulating email dispatch to:", options.to);
+            return {
+                success: true,
+                messageId: `mock-smtp-${Date.now()}`,
+            };
+        }
+        // Otherwise fail loudly so real campaigns are never silently dropped
+        const errMsg = "SMTP is not configured. Set SMTP_HOST in your .env file to enable email delivery, or set SMTP_MOCK=true for local testing only.";
+        console.error("[SMTP Error]", errMsg);
         return {
-            success: true,
-            messageId: `simulated-smtp-${Date.now()}`,
+            success: false,
+            error: errMsg,
         };
     }
 

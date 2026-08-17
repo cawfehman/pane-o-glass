@@ -332,11 +332,29 @@ export default function NotificationCenterPage() {
         }
     };
 
+    const handleResetStalledCampaign = async (campaign: any) => {
+        if (!confirm(`Reset "${campaign.name}" from STALLED back to DRAFT so it can be retried? Previously sent recipients will not be re-sent.`)) {
+            return;
+        }
+        try {
+            const res = await fetch(`/api/notifications/campaigns`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ id: campaign.id, name: campaign.name, status: "DRAFT" }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            setActionNotice({ type: "success", message: `Campaign reset to DRAFT. Failed recipients can now be retried.` });
+            fetchCampaigns();
+        } catch (err: any) {
+            setActionNotice({ type: "error", message: err.message || "Failed to reset campaign." });
+        }
+    };
+
     // Filter campaigns based on view
     const filteredCampaigns = campaigns.filter(c => {
         if (campaignFilter === "ALL") return true;
         if (campaignFilter === "DRAFTS") return c.status === "DRAFT" || c.status === "TEST_SENT";
-        if (campaignFilter === "ACTIVE") return c.status === "SENDING" || c.status === "APPROVED";
+        if (campaignFilter === "ACTIVE") return c.status === "SENDING" || c.status === "APPROVED" || c.status === "STALLED";
         if (campaignFilter === "COMPLETED") return c.status.startsWith("COMPLETED");
         return true;
     });
@@ -501,12 +519,13 @@ export default function NotificationCenterPage() {
                                 const isDraft = c.status === "DRAFT" || c.status === "TEST_SENT";
                                 const isSending = c.status === "SENDING";
                                 const isCompleted = c.status.startsWith("COMPLETED");
+                                const isStalled = c.status === "STALLED";
                                 const breachLabel = c.breachName || c.sourceQuery || "Data Breach Incident";
 
                                 return (
                                     <div 
                                         key={c.id}
-                                        className="bg-bg-surface rounded-xl border border-border-color p-5 flex flex-col justify-between gap-4 transition-all hover:border-border-color-hover shadow-sm"
+                                        className={`bg-bg-surface rounded-xl border p-5 flex flex-col justify-between gap-4 transition-all hover:border-border-color-hover shadow-sm ${isStalled ? "border-orange-500/50" : "border-border-color"}`}
                                     >
                                         <div>
                                             {/* Status and Date */}
@@ -515,9 +534,11 @@ export default function NotificationCenterPage() {
                                                     c.status === "DRAFT" ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
                                                     c.status === "TEST_SENT" ? "bg-purple-500/15 text-purple-400 border-purple-500/30" :
                                                     c.status === "SENDING" ? "bg-blue-500/15 text-blue-400 border-blue-500/30 animate-pulse" :
+                                                    c.status === "STALLED" ? "bg-orange-500/15 text-orange-400 border-orange-500/40 animate-pulse" :
+                                                    c.status === "COMPLETED_WITH_ERRORS" ? "bg-amber-500/15 text-amber-300 border-amber-500/30" :
                                                     "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
                                                 }`}>
-                                                    {c.status.replace("_", " ")}
+                                                    {c.status.replace(/_/g, " ")}
                                                 </span>
                                                 <span className="text-[0.75rem] text-text-muted">
                                                     {new Date(c.createdAt).toLocaleDateString()}
@@ -564,7 +585,13 @@ export default function NotificationCenterPage() {
                                         </div>
 
                                         {/* Actions */}
-                                        <div className="flex items-center justify-between gap-2 pt-3 border-t border-border-color flex-wrap">
+                                        <div className="flex flex-col gap-2 pt-3 border-t border-border-color">
+                                            {isStalled && (
+                                                <div className="text-[0.7rem] text-orange-300 bg-orange-500/10 p-2 rounded border border-orange-500/30 flex items-center gap-2">
+                                                    ⚠️ <span>Dispatch crashed mid-run. Check audit log for details.</span>
+                                                </div>
+                                            )}
+                                            <div className="flex items-center justify-between gap-2 flex-wrap">
                                             {isDraft ? (
                                                 <>
                                                     <button
@@ -608,6 +635,33 @@ export default function NotificationCenterPage() {
                                                         <span>Approve & Send</span>
                                                     </button>
                                                 </>
+                                            ) : isStalled ? (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOpenDeliveryLog(c)}
+                                                        className="btn-secondary px-2.5 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
+                                                    >
+                                                        <Users size={13} />
+                                                        <span>View Log</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleResetStalledCampaign(c)}
+                                                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-orange-500/20 text-orange-300 border border-orange-500/40 hover:bg-orange-500/30 cursor-pointer inline-flex items-center gap-1.5 ml-auto"
+                                                        title="Reset campaign to DRAFT so failed recipients can be retried"
+                                                    >
+                                                        <span>↺ Reset & Retry</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteCampaign(c.id)}
+                                                        className="p-1.5 text-text-muted hover:text-rose-400 cursor-pointer"
+                                                        title="Delete campaign"
+                                                    >
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                </>
                                             ) : (
                                                 <>
                                                     <button
@@ -629,6 +683,7 @@ export default function NotificationCenterPage() {
                                                     </button>
                                                 </>
                                             )}
+                                            </div>
                                         </div>
                                     </div>
                                 );
