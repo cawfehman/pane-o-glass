@@ -1154,9 +1154,8 @@ export default function NotificationCenterPage() {
                                     Total Staged: <strong>{viewingRecipientsCampaign.totalCount || viewingRecipientsCampaign.recipients?.length || 0}</strong> | Sent: <strong className="text-emerald-400">{viewingRecipientsCampaign.sentCount || 0}</strong> | Failed: <strong className="text-rose-400">{viewingRecipientsCampaign.failedCount || 0}</strong>
                                 </p>
                             </div>
-                            <button 
-                                <div className="flex items-center gap-2">
-                                    <button
+                            <div className="flex items-center gap-2">
+                                <button
                                         type="button"
                                         title="Export delivery log as CSV"
                                         onClick={() => {
