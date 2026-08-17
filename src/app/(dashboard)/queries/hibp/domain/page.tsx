@@ -614,8 +614,8 @@ export default function DomainSecurityPage() {
         let borderStyle = '1px solid var(--border-color)';
         let bgStyle = 'var(--bg-dark)';
         if (ad) {
-            borderStyle = ad.enabled ? '1px solid rgba(234, 179, 8, 0.5)' : '1px solid rgba(239, 68, 68, 0.5)';
-            bgStyle = ad.enabled ? 'rgba(234, 179, 8, 0.05)' : 'rgba(239, 68, 68, 0.05)';
+            borderStyle = ad.enabled ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(239, 68, 68, 0.35)';
+            bgStyle = ad.enabled ? 'rgba(16, 185, 129, 0.03)' : 'rgba(239, 68, 68, 0.03)';
         }
 
         // Aggregate all high-risk exposures across this user's compromised breaches
@@ -670,8 +670,8 @@ export default function DomainSecurityPage() {
                         isLarge ? 'px-3 py-1.5 text-xs font-semibold' : 'px-2.5 py-1 text-[0.75rem] font-medium'
                     }`}
                     style={{
-                        background: hasPwd ? 'rgba(239, 68, 68, 0.12)' : 'rgba(255, 255, 255, 0.05)',
-                        border: hasPwd ? '1px solid rgba(239, 68, 68, 0.35)' : '1px solid var(--border-color)',
+                        background: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid var(--border-color)',
                         color: 'var(--text-primary)',
                     }}
                 >
@@ -701,10 +701,14 @@ export default function DomainSecurityPage() {
             >
                 <div className="flex justify-between items-center">
                     <div className="flex items-center gap-2 flex-wrap">
-                        <strong style={{ fontSize: '1.1rem', color: ad ? (ad.enabled ? '#eab308' : '#f87171') : 'var(--text-primary)' }}>
+                        <strong style={{ fontSize: '1.05rem', color: 'var(--text-primary)' }}>
                             {alias}@{domainStr}
                             {ad && (
-                                <span style={{ fontSize: '0.7rem', marginLeft: '10px', padding: '2px 8px', borderRadius: '4px', background: ad.enabled ? 'rgba(234,179,8,0.2)' : 'rgba(239,68,68,0.2)', color: ad.enabled ? '#fde047' : '#fca5a5', textTransform: 'uppercase', verticalAlign: 'middle' }}>
+                                <span className={`text-[0.7rem] ml-2.5 px-2 py-0.5 rounded font-bold uppercase tracking-wider align-middle inline-flex items-center gap-1 ${
+                                    ad.enabled 
+                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" 
+                                        : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                                }`}>
                                     {ad.enabled ? 'Active' : 'Disabled'} {ad.locked ? '(Locked)' : ''}
                                 </span>
                             )}
@@ -798,11 +802,11 @@ export default function DomainSecurityPage() {
                 actions={
                     <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                         <span className="flex items-center gap-2">
-                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#eab308', boxShadow: '0 0 10px rgba(234, 179, 8, 0.4)' }}></span> 
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)' }}></span> 
                             Active Account
                         </span>
                         <span className="flex items-center gap-2">
-                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#f87171', boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)' }}></span> 
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 10px rgba(239, 68, 68, 0.4)' }}></span> 
                             Disabled Account
                         </span>
                     </div>
@@ -1096,17 +1100,23 @@ export default function DomainSecurityPage() {
                                                                 const ad = domainResults.adEnrichment[email];
                                                                 
                                                                 let bg = 'var(--bg-surface-hover)';
-                                                                let color = 'var(--text-primary)';
                                                                 if (ad) {
-                                                                    bg = ad.enabled ? 'rgba(234, 179, 8, 0.1)' : 'rgba(239, 68, 68, 0.1)';
-                                                                    color = ad.enabled ? '#eab308' : '#f87171';
+                                                                    bg = ad.enabled ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)';
                                                                 }
 
                                                                 return (
-                                                                    <div key={aliasObj.alias} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: bg, padding: '8px 16px', borderRadius: 'var(--radius-sm)' }}>
-                                                                        <span style={{ color: color, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                    <div key={aliasObj.alias} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: bg, padding: '8px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+                                                                        <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center' }}>
                                                                             {aliasObj.alias}@{domainStr}
-                                                                            {ad && <span style={{ fontSize: '0.65rem', marginLeft: '8px', opacity: 0.8 }}>({ad.enabled ? 'Active' : 'Disabled'})</span>}
+                                                                            {ad && (
+                                                                                <span className={`text-[0.65rem] ml-2 px-1.5 py-0.2 rounded font-bold uppercase ${
+                                                                                    ad.enabled 
+                                                                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" 
+                                                                                        : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                                                                                }`}>
+                                                                                    {ad.enabled ? 'Active' : 'Disabled'}
+                                                                                </span>
+                                                                            )}
                                                                         </span>
                                                                         <span style={{ background: 'var(--bg-dark)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.8rem', color: '#fca5a5', whiteSpace: 'nowrap' }}>
                                                                             In {aliasObj.count} breaches
@@ -1759,28 +1769,28 @@ export default function DomainSecurityPage() {
 
                                     {/* Modal Footer */}
                                     <div className="p-4 border-t border-border-color flex items-center justify-between gap-3 bg-bg-dark/40">
-                                        <span className="text-xs text-text-muted">
-                                            Press <kbd className="px-1.5 py-0.5 rounded bg-bg-surface border border-border-color text-[0.7rem]">Esc</kbd> to close
-                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const bName = selectedBreachModal;
+                                                setSelectedBreachModal(null);
+                                                setActiveTab("breach");
+                                                setBreachSearchQuery(bName);
+                                                triggerSearchAction("impacted", bName);
+                                            }}
+                                            className="btn-primary inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold cursor-pointer shadow-sm"
+                                        >
+                                            <span>Check Domain Impact</span>
+                                        </button>
 
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    const bName = selectedBreachModal;
-                                                    setSelectedBreachModal(null);
-                                                    setActiveTab("breach");
-                                                    setBreachSearchQuery(bName);
-                                                    triggerSearchAction("impacted", bName);
-                                                }}
-                                                className="btn-primary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold"
-                                            >
-                                                <span>Check Domain Impact</span>
-                                            </button>
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-xs text-text-muted">
+                                                Press <kbd className="px-1.5 py-0.5 rounded bg-bg-surface border border-border-color text-[0.7rem]">Esc</kbd> to close
+                                            </span>
                                             <button
                                                 type="button"
                                                 onClick={() => setSelectedBreachModal(null)}
-                                                className="btn-secondary px-3 py-1.5 text-xs font-semibold"
+                                                className="btn-secondary px-3.5 py-1.5 text-xs font-semibold cursor-pointer"
                                             >
                                                 Close
                                             </button>
