@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { MessageSquare, X } from "lucide-react";
 
 export default function FeedbackModal() {
     const [isOpen, setIsOpen] = useState(false);
@@ -55,12 +56,11 @@ export default function FeedbackModal() {
         <>
             <button 
                 onClick={() => setIsOpen(true)}
-                className="nav-link w-full border-none bg-transparent text-left text-text-secondary mt-4 cursor-pointer"
+                className="nav-link w-full border-none bg-transparent text-left text-text-secondary cursor-pointer"
+                title="Send Feedback"
             >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                </svg>
-                Send Feedback
+                <MessageSquare size={20} className="shrink-0" />
+                <span className="nav-text">Send Feedback</span>
             </button>
 
             {isOpen && (

@@ -232,9 +232,12 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                 </nav>
 
                 {/* Feedback & Version Footer */}
-                <div className="mt-auto pt-4 flex flex-col gap-4">
+                <div className="mt-auto pt-4 flex flex-col gap-3">
                     <FeedbackModal />
-                    <div className="text-center text-xs text-text-muted version-text">
+                    <div 
+                        className="text-center text-xs text-text-muted version-text select-none"
+                        title={`InfoSec Tools v${packageJson.version}`}
+                    >
                         v{packageJson.version}
                     </div>
                 </div>

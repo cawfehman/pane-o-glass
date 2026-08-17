@@ -2995,8 +2995,15 @@ body {
   width: 72px;
   padding: 1.5rem 0.5rem;
 }
-.sidebar.collapsed .brand-text, .sidebar.collapsed .nav-section, .sidebar.collapsed .nav-text, .sidebar.collapsed .clock-container, .sidebar.collapsed .version-text {
+.sidebar.collapsed .brand-text, .sidebar.collapsed .nav-section, .sidebar.collapsed .nav-text, .sidebar.collapsed .clock-container {
   display: none;
+}
+.sidebar.collapsed .version-text {
+  font-size: 0.65rem;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .sidebar.collapsed .brand {
   justify-content: center;
