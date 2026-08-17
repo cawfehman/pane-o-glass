@@ -14,11 +14,11 @@ export interface TemplateVariables {
 }
 
 export const DEFAULT_PLACEHOLDERS = [
-    { key: "{{Name}}", label: "Recipient Name", example: "John Doe" },
+    { key: "{{Name}}", label: "Recipient Name", example: "Jane Doe" },
     { key: "{{Email}}", label: "Recipient Email", example: "jdoe@cooperhealth.edu" },
     { key: "{{BreachName}}", label: "Breach Name", example: "LinkedIn" },
     { key: "{{BreachDate}}", label: "Breach Date", example: "May 18, 2016" },
-    { key: "{{BreachDetails}}", label: "Breach Description / Details", example: "In May 2016, LinkedIn experienced a major credential spill exposing passwords..." },
+    { key: "{{BreachDetails}}", label: "Breach Description / Details", example: "In May 2016, an external service experienced a credential spill..." },
     { key: "{{ExposedCategories}}", label: "Exposed Data Categories", example: "Passwords, Email addresses" },
     { key: "{{AccountStatus}}", label: "AD Account Status", example: "Active" },
     { key: "{{CurrentDate}}", label: "Current Date", example: new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) },
@@ -28,17 +28,30 @@ export function renderMergedText(template: string, variables: TemplateVariables)
     if (!template) return "";
     let rendered = template;
     
-    // Replace all known variables
-    Object.entries(variables).forEach(([key, value]) => {
-        const regex = new RegExp(`\\{\\{${key}\\}\\}`, "gi");
-        rendered = rendered.replace(regex, value || "");
+    // 1. Process conditional blocks: {{#if Key}}content{{else}}alt{{/if}} or {{#if Key}}content{{/if}}
+    rendered = rendered.replace(/\{\{#if\s+([a-zA-Z0-9_]+)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\}\}/gi, (_match, key, ifBlock, elseBlock) => {
+        const val = variables[key] || variables[key.toLowerCase()] || variables[key.toUpperCase()];
+        const hasVal = val && String(val).trim().length > 0 && val !== "N/A" && val !== "Unknown";
+        if (hasVal) {
+            return ifBlock;
+        }
+        return elseBlock || "";
     });
 
-    // Provide default fallback for CurrentDate if not supplied
+    // 2. Provide default fallback for CurrentDate if not supplied
     if (!variables.CurrentDate) {
         const todayStr = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
         rendered = rendered.replace(/\{\{CurrentDate\}\}/gi, todayStr);
     }
+
+    // 3. Replace all known variables
+    Object.entries(variables).forEach(([key, value]) => {
+        const regex = new RegExp(`\\{\\{${key}\\}\\}`, "gi");
+        rendered = rendered.replace(regex, value !== undefined && value !== null ? value : "");
+    });
+
+    // 4. Clean up any leftover orphan conditional tags if any existed
+    rendered = rendered.replace(/\{\{#[^}]+\}\}/gi, "").replace(/\{\{\/[^}]+\}\}/gi, "");
 
     return rendered;
 }

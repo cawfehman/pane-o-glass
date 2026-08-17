@@ -33,6 +33,7 @@
     --color-cyan-400: oklch(78.9% 0.154 211.53);
     --color-cyan-500: oklch(71.5% 0.143 215.221);
     --color-sky-400: oklch(74.6% 0.16 232.661);
+    --color-blue-100: oklch(93.2% 0.032 255.585);
     --color-blue-400: oklch(70.7% 0.165 254.624);
     --color-blue-500: oklch(62.3% 0.214 259.815);
     --color-blue-600: oklch(54.6% 0.245 262.881);
@@ -415,6 +416,9 @@
   .m-8 {
     margin: calc(var(--spacing) * 8);
   }
+  .mx-1 {
+    margin-inline: var(--spacing);
+  }
   .mx-auto {
     margin-inline: auto;
   }
@@ -616,8 +620,8 @@
   .h-\[280px\] {
     height: 280px;
   }
-  .h-\[580px\] {
-    height: 580px;
+  .h-\[600px\] {
+    height: 600px;
   }
   .h-auto {
     height: auto;
@@ -657,6 +661,9 @@
   }
   .min-h-\[520px\] {
     min-height: 520px;
+  }
+  .min-h-full {
+    min-height: 100%;
   }
   .min-h-screen {
     min-height: 100vh;
@@ -723,6 +730,9 @@
   }
   .w-72 {
     width: calc(var(--spacing) * 72);
+  }
+  .w-\[1px\] {
+    width: 1px;
   }
   .w-\[18px\] {
     width: 18px;
@@ -1549,6 +1559,12 @@
       background-color: color-mix(in oklab, var(--color-bg-dark) 60%, transparent);
     }
   }
+  .bg-bg-dark\/80 {
+    background-color: var(--color-bg-dark);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-bg-dark) 80%, transparent);
+    }
+  }
   .bg-bg-surface {
     background-color: var(--color-bg-surface);
   }
@@ -1656,6 +1672,9 @@
   }
   .bg-blue-600 {
     background-color: var(--color-blue-600);
+  }
+  .bg-border-color {
+    background-color: var(--color-border-color);
   }
   .bg-cyan-500 {
     background-color: var(--color-cyan-500);
@@ -2280,8 +2299,8 @@
   .whitespace-pre-wrap {
     white-space: pre-wrap;
   }
-  .text-\[\#000000\] {
-    color: #000000;
+  .text-\[\#1e293b\] {
+    color: #1e293b;
   }
   .text-\[var\(--accent-primary\)\] {
     color: var(--accent-primary);
@@ -2746,6 +2765,12 @@
   }
   .first-letter\:uppercase::first-letter {
     text-transform: uppercase;
+  }
+  .selection\:bg-blue-100 ::selection {
+    background-color: var(--color-blue-100);
+  }
+  .selection\:bg-blue-100::selection {
+    background-color: var(--color-blue-100);
   }
   .placeholder\:text-white\/20::placeholder {
     color: color-mix(in srgb, #fff 20%, transparent);

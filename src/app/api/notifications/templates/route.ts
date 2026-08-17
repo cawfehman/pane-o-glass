@@ -15,9 +15,9 @@ const PRIMARY_COOPER_TEMPLATE = {
         <p style="color: #94a3b8; margin: 4px 0 0 0; font-size: 13px;">Information Security Advisory</p>
     </div>
     <div style="padding: 28px;">
-        <p style="margin-top: 0; font-size: 15px;">Hello{{#if Name}} {{Name}}{{/if}},</p>
+        <p style="margin-top: 0; font-size: 15px;">Hello {{Name}},</p>
         
-        <p style="font-size: 14px;">We are reaching out to inform you that Cooper University Health Care has received notification from a trusted third-party source indicating that your email address (<strong>{{Email}}</strong>) was identified among information exposed in a data breach involving an external organization or service{{#if BreachName}} (<strong>{{BreachName}}</strong>){{/if}}.</p>
+        <p style="font-size: 14px;">We are reaching out to inform you that Cooper University Health Care has received notification from a trusted third-party source indicating that your email address (<strong>{{Email}}</strong>) was identified among information exposed in a data breach involving an external organization or service (<strong>{{BreachName}}</strong>).</p>
 
         <div style="background-color: #f8fafc; border-left: 4px solid #0284c7; padding: 14px 18px; margin: 20px 0; border-radius: 0 6px 6px 0; font-size: 13px;">
             <p style="margin: 0 0 4px 0;"><strong>Incident Source:</strong> {{BreachName}}</p>
@@ -51,7 +51,7 @@ const PRIMARY_COOPER_TEMPLATE = {
         This is an official communication from Cooper University Health Care Information Security.
     </div>
 </div>`,
-    bodyText: `Hello,
+    bodyText: `Hello {{Name}},
 
 We are reaching out to inform you that Cooper University Health Care has received notification from a trusted third-party source indicating that your email address ({{Email}}) was identified among information exposed in a data breach involving an external organization or service ({{BreachName}}).
 
@@ -111,35 +111,22 @@ export async function GET(req: Request) {
         const { searchParams } = new URL(req.url);
         const activeOnly = searchParams.get("activeOnly") === "true";
 
-        const username = session.user.name || (session.user as any)?.username || "System";
-
-        // Check if primary template exists; if not, create it
-        const existingPrimary = await prisma.notificationTemplate.findUnique({
-            where: { name: PRIMARY_COOPER_TEMPLATE.name }
+        // Upsert primary Cooper template
+        await prisma.notificationTemplate.upsert({
+            where: { name: PRIMARY_COOPER_TEMPLATE.name },
+            update: {
+                description: PRIMARY_COOPER_TEMPLATE.description,
+                category: PRIMARY_COOPER_TEMPLATE.category,
+                subject: PRIMARY_COOPER_TEMPLATE.subject,
+                bodyHtml: PRIMARY_COOPER_TEMPLATE.bodyHtml,
+                bodyText: PRIMARY_COOPER_TEMPLATE.bodyText,
+                isEnabled: true,
+            },
+            create: {
+                ...PRIMARY_COOPER_TEMPLATE,
+                createdBy: "Information Security",
+            }
         });
-
-        if (!existingPrimary) {
-            await prisma.notificationTemplate.create({
-                data: {
-                    ...PRIMARY_COOPER_TEMPLATE,
-                    createdBy: "Information Security",
-                }
-            });
-
-            // Disable legacy seed templates if they exist in DB
-            await prisma.notificationTemplate.updateMany({
-                where: {
-                    name: {
-                        in: [
-                            "Standard Credential Breach Notice",
-                            "Urgent Password Reset Directive",
-                            "Financial & Identity Compromise Notice"
-                        ]
-                    }
-                },
-                data: { isEnabled: false }
-            });
-        }
 
         const where: any = {};
         if (activeOnly) {
