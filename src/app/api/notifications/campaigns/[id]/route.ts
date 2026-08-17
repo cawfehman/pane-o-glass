@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/app/actions/permissions";
+import { logAudit } from "@/lib/audit";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
@@ -18,7 +19,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             include: {
                 template: true,
                 recipients: {
-                    take: 200, // Limit preview for speed, full export can stream
                     orderBy: { email: "asc" }
                 },
                 _count: {
@@ -48,9 +48,26 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
         const { id } = await params;
 
+        const campaign = await prisma.notificationCampaign.findUnique({
+            where: { id },
+            select: { name: true, breachName: true, sourceQuery: true, totalCount: true, status: true }
+        });
+
+        if (!campaign) {
+            return new NextResponse("Campaign not found", { status: 404 });
+        }
+
         await prisma.notificationCampaign.delete({
             where: { id }
         });
+
+        const userId = (session.user as any)?.id || session.user.name || "User";
+        const breachLabel = campaign.breachName || campaign.sourceQuery || "Incident";
+        await logAudit(
+            "CAMPAIGN_DELETED",
+            `Deleted notification campaign "${campaign.name}" (Breach: ${breachLabel}, ${campaign.totalCount} recipients, Status: ${campaign.status})`,
+            userId
+        );
 
         return NextResponse.json({ success: true });
     } catch (err: any) {

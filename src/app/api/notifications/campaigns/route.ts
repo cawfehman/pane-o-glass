@@ -110,6 +110,12 @@ export async function POST(req: Request) {
                 include: { template: true }
             });
 
+            await logAudit(
+                "CAMPAIGN_UPDATED",
+                `Updated notification campaign "${name}" (Breach: ${resolvedBreachName}, ${recipients.length > 0 ? recipients.length : existing.totalCount} recipients)`,
+                (session.user as any)?.id || username
+            );
+
             return NextResponse.json(updated);
         }
 

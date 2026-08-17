@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/app/actions/permissions";
+import { logAudit } from "@/lib/audit";
 
 const PRIMARY_COOPER_TEMPLATE = {
     name: "Corporate Email Exposure Advisory",
@@ -192,6 +193,8 @@ export async function POST(req: Request) {
             }
         });
 
+        await logAudit("TEMPLATE_CREATED", `Created notification template "${template.name}" (${template.category})`, (session.user as any)?.id || username);
+
         return NextResponse.json(template);
     } catch (err: any) {
         console.error("Failed to create template:", err);
@@ -250,6 +253,8 @@ export async function PUT(req: Request) {
             }
         });
 
+        await logAudit("TEMPLATE_UPDATED", `Updated notification template "${updated.name}" (${updated.category}, Status: ${updated.isEnabled ? 'Active' : 'Disabled'})`, (session.user as any)?.id || currentUsername);
+
         return NextResponse.json(updated);
     } catch (err: any) {
         console.error("Failed to update template:", err);
@@ -285,7 +290,7 @@ export async function DELETE(req: Request) {
         const creator = String(existing.createdBy || "").toLowerCase();
 
         const isAdmin = role === "ADMIN";
-        const isOwner = creator === currentUsername || creator === currentName || creator === "user";
+        const isOwner = creator === currentUsername || creator === currentName || creator === "user" || creator === "information security" || creator === "system";
 
         if (!isAdmin && !isOwner) {
             return new NextResponse(
@@ -297,6 +302,8 @@ export async function DELETE(req: Request) {
         await prisma.notificationTemplate.delete({
             where: { id }
         });
+
+        await logAudit("TEMPLATE_DELETED", `Deleted notification template "${existing.name}" (${existing.category})`, (session.user as any)?.id || currentUsername);
 
         return NextResponse.json({ success: true });
     } catch (err: any) {
