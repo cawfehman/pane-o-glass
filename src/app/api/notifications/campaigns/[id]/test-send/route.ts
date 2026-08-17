@@ -51,6 +51,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // Determine destination admin email
         const userObj: any = session.user;
         let adminEmail = targetAdminEmail;
+
+        // Security: only allow test sends to internal Cooper addresses
+        if (adminEmail && !adminEmail.toLowerCase().endsWith("@cooperhealth.edu")) {
+            return NextResponse.json({ error: "Test emails may only be sent to @cooperhealth.edu addresses." }, { status: 400 });
+        }
+
         if (!adminEmail) {
             adminEmail = userObj.email || (userObj.username ? `${userObj.username}@cooperhealth.edu` : "");
         }
