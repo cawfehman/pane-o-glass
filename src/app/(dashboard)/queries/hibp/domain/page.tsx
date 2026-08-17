@@ -576,10 +576,35 @@ export default function DomainSecurityPage() {
             bgStyle = ad.enabled ? 'rgba(234, 179, 8, 0.05)' : 'rgba(239, 68, 68, 0.05)';
         }
 
-        const hasAnyPasswordBreach = breachList.some((bName: string) => {
-            const meta = allBreachesMeta[bName];
-            return meta && breachHasPassword(meta);
-        });
+        // Aggregate all high-risk exposures across this user's compromised breaches
+        const exposures = useMemo(() => {
+            const exp = {
+                passwords: false,
+                financial: false,
+                identity: false,
+                health: false,
+            };
+            breachList.forEach((bName: string) => {
+                const meta = allBreachesMeta[bName];
+                if (!meta || !Array.isArray(meta.DataClasses)) return;
+                meta.DataClasses.forEach((dc: string) => {
+                    const low = dc.toLowerCase();
+                    if (low.includes("password") || low.includes("auth token") || low.includes("pin") || low.includes("encrypted key")) {
+                        exp.passwords = true;
+                    }
+                    if (low.includes("credit card") || low.includes("bank account") || low.includes("cvv") || low.includes("cryptocurrency")) {
+                        exp.financial = true;
+                    }
+                    if (low.includes("social security") || low.includes("passport") || low.includes("driver's license") || low.includes("government issued")) {
+                        exp.identity = true;
+                    }
+                    if (low.includes("health") || low.includes("medical") || low.includes("biometric")) {
+                        exp.health = true;
+                    }
+                });
+            });
+            return exp;
+        }, [breachList]);
 
         return (
             <div 
@@ -604,13 +629,41 @@ export default function DomainSecurityPage() {
                                 </span>
                             )}
                         </strong>
-                        {hasAnyPasswordBreach && (
+
+                        {/* High-Risk Category Exposure Badges (Icon-Only with Hover Tooltips) */}
+                        {exposures.passwords && (
                             <span 
-                                title="This user has accounts exposed in breaches containing passwords!"
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[0.7rem] font-bold"
+                                title="Critical Warning: Exposed in breaches containing Passwords or Authentication Credentials"
+                                className="inline-flex items-center justify-center p-1 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 cursor-help transition-transform hover:scale-110"
                             >
-                                <AlertTriangle size={12} className="text-rose-400 fill-rose-500/20" />
-                                <span>Password Exposed</span>
+                                <AlertTriangle size={13} className="text-rose-400 fill-rose-500/20" />
+                            </span>
+                        )}
+
+                        {exposures.financial && (
+                            <span 
+                                title="Financial Alert: Exposed in breaches leaking Financial Data (Credit Cards / Bank Accounts)"
+                                className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs cursor-help transition-transform hover:scale-110"
+                            >
+                                <span>💳</span>
+                            </span>
+                        )}
+
+                        {exposures.identity && (
+                            <span 
+                                title="Identity Alert: Exposed in breaches leaking Government IDs (SSNs / Passports / Driver's Licenses)"
+                                className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/40 text-xs cursor-help transition-transform hover:scale-110"
+                            >
+                                <span>🪪</span>
+                            </span>
+                        )}
+
+                        {exposures.health && (
+                            <span 
+                                title="Health Alert: Exposed in breaches leaking Health, Medical, or Biometric Records"
+                                className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md bg-pink-500/20 text-pink-300 border border-pink-500/40 text-xs cursor-help transition-transform hover:scale-110"
+                            >
+                                <span>🩺</span>
                             </span>
                         )}
                     </div>
@@ -622,22 +675,25 @@ export default function DomainSecurityPage() {
                         {breachList.map((breachName: string) => {
                             const meta = allBreachesMeta[breachName];
                             const hasPwd = meta && breachHasPassword(meta);
+                            const highRisk = meta ? breachHasHighRisk(meta) : null;
+
                             return (
                                 <span 
                                     key={breachName} 
                                     style={{ 
-                                        background: hasPwd ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)', 
-                                        border: hasPwd ? '1px solid rgba(239,68,68,0.4)' : '1px solid transparent',
+                                        background: hasPwd ? 'rgba(239,68,68,0.2)' : (highRisk ? highRisk.badge : 'rgba(255,255,255,0.05)'), 
+                                        border: hasPwd ? '1px solid rgba(239,68,68,0.4)' : (highRisk ? `1px solid ${highRisk.border}` : '1px solid transparent'),
                                         padding: '2px 8px', 
                                         borderRadius: '4px', 
                                         color: hasPwd ? '#fca5a5' : 'var(--text-secondary)',
                                         display: 'inline-flex',
                                         alignItems: 'center',
                                         gap: '4px',
-                                        fontWeight: hasPwd ? 600 : 400
+                                        fontWeight: hasPwd || highRisk ? 600 : 400
                                     }}
                                 >
                                     {hasPwd && <AlertTriangle size={11} className="text-rose-400" />}
+                                    {!hasPwd && highRisk && <span>{highRisk.icon}</span>}
                                     {breachName}
                                 </span>
                             );
@@ -919,41 +975,38 @@ export default function DomainSecurityPage() {
                                                                                     <span>{b.name}</span>
                                                                                     {hasPwd && (
                                                                                         <span 
-                                                                                            title="⚠️ Critical: This breach exposed user passwords!"
+                                                                                            title="Critical Warning: This breach exposed user passwords or authentication credentials"
                                                                                             style={{
                                                                                                 display: 'inline-flex',
                                                                                                 alignItems: 'center',
-                                                                                                gap: '4px',
-                                                                                                padding: '2px 6px',
+                                                                                                justifyContent: 'center',
+                                                                                                padding: '2px 5px',
                                                                                                 borderRadius: '4px',
                                                                                                 background: 'rgba(239, 68, 68, 0.15)',
                                                                                                 border: '1px solid rgba(239, 68, 68, 0.4)',
                                                                                                 color: '#f87171',
-                                                                                                fontSize: '0.7rem',
-                                                                                                fontWeight: 700
+                                                                                                cursor: 'help'
                                                                                             }}
                                                                                         >
                                                                                             <AlertTriangle size={11} className="text-rose-400 fill-rose-500/20" />
-                                                                                            <span>Passwords</span>
                                                                                         </span>
                                                                                     )}
                                                                                     {!hasPwd && highRisk && (
                                                                                         <span 
-                                                                                            title={`Exposes high-risk data: ${highRisk.label}`}
+                                                                                            title={`High-Risk Exposure: ${highRisk.label}`}
                                                                                             style={{
                                                                                                 display: 'inline-flex',
                                                                                                 alignItems: 'center',
-                                                                                                gap: '4px',
-                                                                                                padding: '2px 6px',
+                                                                                                justifyContent: 'center',
+                                                                                                padding: '2px 5px',
                                                                                                 borderRadius: '4px',
                                                                                                 background: highRisk.badge,
                                                                                                 border: `1px solid ${highRisk.border}`,
-                                                                                                color: 'var(--text-primary)',
-                                                                                                fontSize: '0.7rem',
-                                                                                                fontWeight: 600
+                                                                                                fontSize: '0.75rem',
+                                                                                                cursor: 'help'
                                                                                             }}
                                                                                         >
-                                                                                            <span>{highRisk.icon} {highRisk.label}</span>
+                                                                                            <span>{highRisk.icon}</span>
                                                                                         </span>
                                                                                     )}
                                                                                 </div>
