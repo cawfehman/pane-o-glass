@@ -83,20 +83,20 @@ export default function PasswordCheckCard() {
                 </div>
 
                 <form onSubmit={handlePasswordSearch} className="flex flex-col sm:flex-row gap-3.5 items-stretch">
-                    <div className="relative flex-1">
+                    <div className="relative flex-1 flex items-center">
                         <input
                             type={showPassword ? "text" : "password"}
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder="Enter password to check..."
                             disabled={pwdLoading}
-                            className="w-full pl-5 pr-12 py-4 bg-bg-dark border border-border-color rounded-xl text-text-primary text-base sm:text-lg outline-none focus:border-accent-primary focus:shadow-glow transition-all"
+                            className="w-full pl-5 pr-14 py-4 bg-bg-dark border border-border-color rounded-xl text-text-primary text-base sm:text-lg outline-none focus:border-accent-primary focus:shadow-glow transition-all"
                             required
                         />
                         <button
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3.5 top-1/2 -translate-y-1/2 p-2 text-text-muted hover:text-text-primary transition-colors bg-transparent border-none cursor-pointer"
+                            className="absolute right-0 inset-y-0 flex items-center justify-center px-4 text-text-muted hover:text-text-primary transition-colors bg-transparent border-none cursor-pointer"
                             tabIndex={-1}
                             title={showPassword ? "Hide password" : "Show password"}
                         >
