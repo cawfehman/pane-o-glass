@@ -4,9 +4,70 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { 
     ShieldCheck, Download, Mail, UserCheck, Users, 
     FileSpreadsheet, ChevronDown, AlertTriangle, KeyRound, 
-    Filter, Database, Layers, CheckCircle2, X, Plus, Sparkles, CreditCard, IdCard
+    Filter, Database, Layers, CheckCircle2, X, Plus, Sparkles, CreditCard, IdCard, Activity
 } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
+
+// Unified High-Risk Category Badge Component used identically everywhere in UI
+const RiskBadge = ({ 
+    type, 
+    tooltip, 
+    size = "sm" 
+}: { 
+    type: "passwords" | "financial" | "identity" | "health"; 
+    tooltip?: string;
+    size?: "sm" | "md";
+}) => {
+    const isMd = size === "md";
+    switch (type) {
+        case "passwords":
+            return (
+                <span 
+                    title={tooltip || "Critical: Exposed in breaches containing Passwords / Authentication Credentials"}
+                    className={`inline-flex items-center justify-center rounded bg-rose-500/15 text-rose-500 dark:text-rose-400 border border-rose-500/30 cursor-help transition-transform hover:scale-110 shrink-0 ${
+                        isMd ? "p-1" : "p-0.5 px-1"
+                    }`}
+                >
+                    <AlertTriangle size={isMd ? 13 : 11} className="text-rose-500 fill-rose-500/20" />
+                </span>
+            );
+        case "financial":
+            return (
+                <span 
+                    title={tooltip || "Financial Alert: Exposed in breaches containing Credit Cards / Bank Accounts"}
+                    className={`inline-flex items-center justify-center rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 cursor-help transition-transform hover:scale-110 shrink-0 ${
+                        isMd ? "p-1" : "p-0.5 px-1"
+                    }`}
+                >
+                    <CreditCard size={isMd ? 13 : 11} className="text-amber-500" />
+                </span>
+            );
+        case "identity":
+            return (
+                <span 
+                    title={tooltip || "Identity Alert: Exposed in breaches containing SSNs / Passports / Government IDs"}
+                    className={`inline-flex items-center justify-center rounded bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/30 cursor-help transition-transform hover:scale-110 shrink-0 ${
+                        isMd ? "p-1" : "p-0.5 px-1"
+                    }`}
+                >
+                    <IdCard size={isMd ? 13 : 11} className="text-purple-500" />
+                </span>
+            );
+        case "health":
+            return (
+                <span 
+                    title={tooltip || "Health Alert: Exposed in breaches containing Health / Medical / Biometric Records"}
+                    className={`inline-flex items-center justify-center rounded bg-pink-500/15 text-pink-600 dark:text-pink-400 border border-pink-500/30 cursor-help transition-transform hover:scale-110 shrink-0 ${
+                        isMd ? "p-1" : "p-0.5 px-1"
+                    }`}
+                >
+                    <Activity size={isMd ? 13 : 11} className="text-pink-500" />
+                </span>
+            );
+        default:
+            return null;
+    }
+};
 
 // High-Risk Data Categories for visual flags and quick filters
 const HIGH_RISK_DATA_CLASSES: Record<string, { type: string; label: string; icon: string; badge: string; border: string }> = {
@@ -174,27 +235,27 @@ export default function DomainSecurityPage() {
 
     const getBreachRiskIcons = (breach: any) => {
         if (!breach || !Array.isArray(breach.DataClasses)) return [];
-        const icons: { key: string; icon: string; title: string; color: string }[] = [];
+        const icons: { key: "passwords" | "financial" | "identity" | "health"; title: string }[] = [];
         const dcs = breach.DataClasses.map((dc: string) => dc.toLowerCase());
 
         // 1. Passwords / Credentials
         if (dcs.some((dc: string) => dc.includes("password") || dc.includes("auth token") || dc.includes("pin") || dc.includes("encrypted key") || dc.includes("mnemonic"))) {
-            icons.push({ key: "passwords", icon: "⚠️", title: "Passwords / Credentials Exposed", color: "#f87171" });
+            icons.push({ key: "passwords", title: "Critical: Exposed Passwords / Authentication Credentials" });
         }
 
         // 2. Financial (Credit Cards / Bank Accounts)
         if (dcs.some((dc: string) => dc.includes("credit card") || dc.includes("bank account") || dc.includes("cvv") || dc.includes("cryptocurrency"))) {
-            icons.push({ key: "financial", icon: "💳", title: "Financial Data (Credit Cards / Bank Accounts) Exposed", color: "#fbbf24" });
+            icons.push({ key: "financial", title: "Financial Alert: Exposed Credit Cards / Bank Accounts" });
         }
 
         // 3. Government & Identity (SSNs / Passports)
         if (dcs.some((dc: string) => dc.includes("social security") || dc.includes("passport") || dc.includes("driver's license") || dc.includes("government issued"))) {
-            icons.push({ key: "identity", icon: "🪪", title: "Identity Data (SSNs / Passports / Govt IDs) Exposed", color: "#c084fc" });
+            icons.push({ key: "identity", title: "Identity Alert: Exposed SSNs / Passports / Government IDs" });
         }
 
         // 4. Health & Biometrics
         if (dcs.some((dc: string) => dc.includes("health") || dc.includes("medical") || dc.includes("biometric"))) {
-            icons.push({ key: "health", icon: "🩺", title: "Health / Biometric Records Exposed", color: "#f472b6" });
+            icons.push({ key: "health", title: "Health Alert: Exposed Health, Medical, or Biometric Records" });
         }
 
         return icons;
@@ -677,9 +738,7 @@ export default function DomainSecurityPage() {
                 >
                     {/* Display all high-risk category icons that this breach leaked */}
                     {riskIcons.map(r => (
-                        <span key={r.key} title={r.title} className="text-xs shrink-0 select-none">
-                            {r.icon}
-                        </span>
+                        <RiskBadge key={r.key} type={r.key} tooltip={r.title} size="sm" />
                     ))}
                     <span>{meta?.Title || breachName}</span>
                 </button>
@@ -714,42 +773,11 @@ export default function DomainSecurityPage() {
                             )}
                         </strong>
 
-                        {/* High-Risk Category Exposure Badges (Icon-Only with Hover Tooltips) */}
-                        {exposures.passwords && (
-                            <span 
-                                title="Critical Warning: Exposed in breaches containing Passwords or Authentication Credentials"
-                                className="inline-flex items-center justify-center p-1 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/40 cursor-help transition-transform hover:scale-110"
-                            >
-                                <AlertTriangle size={13} className="text-rose-400 fill-rose-500/20" />
-                            </span>
-                        )}
-
-                        {exposures.financial && (
-                            <span 
-                                title="Financial Alert: Exposed in breaches leaking Financial Data (Credit Cards / Bank Accounts)"
-                                className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs cursor-help transition-transform hover:scale-110"
-                            >
-                                <span>💳</span>
-                            </span>
-                        )}
-
-                        {exposures.identity && (
-                            <span 
-                                title="Identity Alert: Exposed in breaches leaking Government IDs (SSNs / Passports / Driver's Licenses)"
-                                className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/40 text-xs cursor-help transition-transform hover:scale-110"
-                            >
-                                <span>🪪</span>
-                            </span>
-                        )}
-
-                        {exposures.health && (
-                            <span 
-                                title="Health Alert: Exposed in breaches leaking Health, Medical, or Biometric Records"
-                                className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md bg-pink-500/20 text-pink-300 border border-pink-500/40 text-xs cursor-help transition-transform hover:scale-110"
-                            >
-                                <span>🩺</span>
-                            </span>
-                        )}
+                        {/* High-Risk Category Exposure Badges (Identical RiskBadge components) */}
+                        {exposures.passwords && <RiskBadge type="passwords" size="md" />}
+                        {exposures.financial && <RiskBadge type="financial" size="md" />}
+                        {exposures.identity && <RiskBadge type="identity" size="md" />}
+                        {exposures.health && <RiskBadge type="health" size="md" />}
                     </div>
                     <div className="text-text-muted">{isExpanded ? '▲' : '▼'}</div>
                 </div>
@@ -1018,13 +1046,7 @@ export default function DomainSecurityPage() {
                                                                                     </button>
                                                                                     <div className="flex items-center gap-1">
                                                                                         {riskIcons.map(r => (
-                                                                                            <span 
-                                                                                                key={r.key}
-                                                                                                title={r.title}
-                                                                                                className="cursor-help text-xs select-none"
-                                                                                            >
-                                                                                                {r.icon}
-                                                                                            </span>
+                                                                                            <RiskBadge key={r.key} type={r.key} tooltip={r.title} size="sm" />
                                                                                         ))}
                                                                                     </div>
                                                                                 </div>
@@ -1073,9 +1095,7 @@ export default function DomainSecurityPage() {
                                                                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({b.date})</span>
                                                                             <div className="flex items-center gap-1 ml-1">
                                                                                 {riskIcons.map(r => (
-                                                                                    <span key={r.key} title={r.title} className="text-xs select-none cursor-help">
-                                                                                        {r.icon}
-                                                                                    </span>
+                                                                                    <RiskBadge key={r.key} type={r.key} tooltip={r.title} size="sm" />
                                                                                 ))}
                                                                             </div>
                                                                         </span>
@@ -1523,13 +1543,7 @@ export default function DomainSecurityPage() {
                                                                     </button>
                                                                     <div className="flex items-center gap-1">
                                                                         {riskIcons.map(r => (
-                                                                            <span 
-                                                                                key={r.key}
-                                                                                title={r.title}
-                                                                                className="cursor-help text-xs select-none"
-                                                                            >
-                                                                                {r.icon}
-                                                                            </span>
+                                                                            <RiskBadge key={r.key} type={r.key} tooltip={r.title} size="sm" />
                                                                         ))}
                                                                     </div>
                                                                 </div>
