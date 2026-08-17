@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { 
     LayoutDashboard, Wrench, Shield, Server, Network, Lock, 
     ShieldAlert, ShieldCheck, Globe, Map, Users, Key, 
-    ClipboardList, Activity, MessageSquare, Mail 
+    ClipboardList, Activity, MessageSquare, Mail, BellRing 
 } from "lucide-react";
 import packageJson from "../../package.json";
 import FeedbackModal from "./FeedbackModal";
@@ -150,6 +150,17 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                 >
                                     <Mail size={18} className="shrink-0" />
                                     <span className="nav-text">IronPort Telemetry</span>
+                                </Link>
+                            )}
+                            {hasPermission('notification-center') && (
+                                <Link 
+                                    href="/notifications" 
+                                    onClick={closeMobile}
+                                    title={isCollapsed ? "Notification Center" : undefined}
+                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/notifications") ? "active" : ""}`}
+                                >
+                                    <BellRing size={18} className="shrink-0 text-amber-400" />
+                                    <span className="nav-text">Notification Center</span>
                                 </Link>
                             )}
                         </div>

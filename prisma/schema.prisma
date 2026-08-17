@@ -215,3 +215,61 @@ model IronportHourlyStat {
 
   @@index([timestamp])
 }
+
+model NotificationTemplate {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  category    String   @default("BREACH") // "BREACH", "SECURITY_ALERT", "GENERAL"
+  subject     String
+  bodyHtml    String
+  bodyText    String?
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  campaigns   NotificationCampaign[]
+}
+
+model NotificationCampaign {
+  id              String   @id @default(cuid())
+  name            String
+  templateId      String?
+  template        NotificationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  status          String   @default("DRAFT") // "DRAFT", "TEST_SENT", "APPROVED", "SENDING", "COMPLETED", "CANCELLED"
+  sourceType      String   @default("HIBP_DOMAIN") // "HIBP_DOMAIN", "CSV_UPLOAD"
+  sourceQuery     String?  // e.g., "LinkedIn", "Passwords AND Credit cards"
+  totalCount      Int      @default(0)
+  sentCount       Int      @default(0)
+  failedCount     Int      @default(0)
+  createdById     String
+  approvedById    String?
+  approvedAt      DateTime?
+  testSentTo      String?
+  testSentAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  recipients      CampaignRecipient[]
+
+  @@index([status, createdAt])
+}
+
+model CampaignRecipient {
+  id                  String    @id @default(cuid())
+  campaignId          String
+  campaign            NotificationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  email               String
+  name                String?
+  adName              String?
+  accountStatus       String?   // "Active", "Disabled"
+  breachName          String?
+  breachDate          String?
+  breachDetails       String?
+  variablesJson       String?   // Full key-value dictionary for dynamic replacement
+  status              String    @default("PENDING") // "PENDING", "TEST_SENT", "SENT", "FAILED"
+  sentAt              DateTime?
+  errorMessage        String?
+
+  @@index([campaignId, status])
+  @@index([email])
+}
+

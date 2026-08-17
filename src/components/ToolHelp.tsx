@@ -114,6 +114,26 @@ export const helpData: Record<string, TooltipDetails> = {
             { name: "📈 Pink Activity Pulse (Health & Medical)", meaning: "Breach dataset exposes Health insurance information, Personal health/medical records, or Biometric data.", rgb: "#ec4899" }
         ]
     },
+    'notification-center': {
+        title: "Corporate Breach Notification Center",
+        version: "1.0.0",
+        capabilities: [
+            "Centralized Notification Management: Stage, review, test, approve, and dispatch customized mail-merge security alerts to corporate staff.",
+            "Dynamic Mail Merge Placeholders: Automatically populate employee and breach details using {{Name}}, {{Email}}, {{BreachName}}, {{BreachDate}}, {{BreachDetails}}, {{ExposedCategories}}, and {{AccountStatus}}.",
+            "Visual Rich-Text & HTML Template Hub: Create and customize reusable email templates with 1-click variable insertion buttons and responsive live preview.",
+            "Sandbox Self-Test Simulator: Test any campaign by selecting an actual recipient and safely routing the test email directly to your logged-in administrator inbox.",
+            "Save / Resume Draft Campaigns: Save campaigns in progress, refine recipient lists, switch templates, and resume dispatch at any time.",
+            "Role-Based Self-Approval & Throttled Queue: Authorized security staff (Admin, Systems, Analyst) can review and approve batches, sent with throttled relay delivery.",
+            "Direct 1-Click HIBP Integration: Seamlessly stage active accounts from any HIBP Domain Security search directly into the Notification Center."
+        ],
+        colors: [
+            { name: "Amber (Draft)", meaning: "Campaign is currently staged as a draft and awaiting template assignment or sandbox testing.", rgb: "#f59e0b" },
+            { name: "Purple (Test Dispatched)", meaning: "Sandbox test email was safely dispatched to the administrator inbox for review.", rgb: "#a855f7" },
+            { name: "Blue (Sending / In-Flight)", meaning: "Campaign is actively dispatching emails in throttled batches through the corporate relay.", rgb: "#3b82f6" },
+            { name: "Green (Completed)", meaning: "All staged recipient notification emails were successfully delivered.", rgb: "#22c55e" },
+            { name: "Rose (Failed / Errors)", meaning: "Delivery encountered SMTP relay errors or invalid recipient addresses.", rgb: "#ef4444" }
+        ]
+    },
     'threat-intel': {
         title: "Threat Intelligence Reputation Analyzer",
         version: "1.0.0",

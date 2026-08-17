@@ -253,7 +253,14 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'vectra', role: 'USER', isEnabled: false },
             { toolId: 'vectra', role: 'NETWORK', isEnabled: false },
             { toolId: 'vectra', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'vectra', role: 'SYSTEMS', isEnabled: false }
+            { toolId: 'vectra', role: 'SYSTEMS', isEnabled: false },
+
+            { toolId: 'notification-center', role: 'ADMIN', isEnabled: true },
+            { toolId: 'notification-center', role: 'ANALYST', isEnabled: true },
+            { toolId: 'notification-center', role: 'USER', isEnabled: false },
+            { toolId: 'notification-center', role: 'NETWORK', isEnabled: false },
+            { toolId: 'notification-center', role: 'DESKTOP', isEnabled: false },
+            { toolId: 'notification-center', role: 'SYSTEMS', isEnabled: true }
         ];
 
         let filteredPermissions = DEFAULT_PERMISSIONS;

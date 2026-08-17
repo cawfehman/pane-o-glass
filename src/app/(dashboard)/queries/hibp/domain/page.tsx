@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { 
     ShieldCheck, Download, Mail, UserCheck, Users, 
     FileSpreadsheet, ChevronDown, AlertTriangle, KeyRound, 
-    Filter, Database, Layers, CheckCircle2, X, Plus, Sparkles, CreditCard, IdCard, Activity
+    Filter, Database, Layers, CheckCircle2, X, Plus, Sparkles, CreditCard, IdCard, Activity, BellRing
 } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 
@@ -102,6 +103,7 @@ const HIGH_RISK_DATA_CLASSES: Record<string, { type: string; label: string; icon
 };
 
 export default function DomainSecurityPage() {
+    const router = useRouter();
     // Domain Search State
     const [domainStr, setDomainStr] = useState("");
     const [availableDomains, setAvailableDomains] = useState<{ DomainName: string }[]>([]);
@@ -536,6 +538,67 @@ export default function DomainSecurityPage() {
         document.body.removeChild(link);
     };
 
+    const stageNotificationCampaign = (breachName?: string) => {
+        if (!domainResults) return;
+
+        const isSingleBreach = Boolean(breachName);
+        const matchingNames = new Set<string>();
+        if (isSingleBreach) {
+            matchingNames.add(breachName!);
+        } else {
+            getFilteredBreaches.forEach((b: any) => matchingNames.add(b.Name));
+        }
+
+        const breachMeta = isSingleBreach ? allBreachesMeta[breachName!] : null;
+        const breachTitle = breachMeta?.Title || breachName || (selectedCategories.length > 0 ? `Category: ${selectedCategories.join(', ')}` : "Breach Audit");
+        const breachDetails = breachMeta?.Description ? breachMeta.Description.replace(/<[^>]*>?/gm, "").trim() : "Account credentials identified in third-party breach incident.";
+        const breachDate = breachMeta?.BreachDate || "Unknown";
+
+        const recipients = Object.entries(domainResults.aliases)
+            .filter(([_, breaches]) => {
+                return breaches.some(b => matchingNames.has(b));
+            })
+            .filter(([alias, _]) => {
+                const email = `${alias}@${domainStr}`.toLowerCase();
+                const ad = domainResults.adEnrichment[email] || {};
+                return ad.enabled === true; // Staged for active users
+            })
+            .map(([alias, breaches]) => {
+                const email = `${alias}@${domainStr}`.toLowerCase();
+                const ad = domainResults.adEnrichment[email] || {};
+                const rawName = ad.displayName || ad.name || "";
+                const firstLastName = formatFirstLast(rawName);
+                const matchingUserBreaches = breaches.filter(b => matchingNames.has(b));
+
+                return {
+                    email,
+                    name: firstLastName || alias,
+                    adName: rawName,
+                    accountStatus: "Active",
+                    breachName: isSingleBreach ? breachTitle : matchingUserBreaches.join("; "),
+                    breachDate: isSingleBreach ? breachDate : "Various",
+                    breachDetails: breachDetails,
+                    variablesJson: JSON.stringify({
+                        Name: firstLastName || alias,
+                        Email: email,
+                        BreachName: isSingleBreach ? breachTitle : matchingUserBreaches.join("; "),
+                        BreachDate: isSingleBreach ? breachDate : "Various",
+                        BreachDetails: breachDetails,
+                        ExposedCategories: breachMeta?.DataClasses ? breachMeta.DataClasses.join(", ") : "Credentials",
+                        AccountStatus: "Active",
+                    })
+                };
+            });
+
+        sessionStorage.setItem("pane_staged_notification", JSON.stringify({
+            name: `${breachTitle} Staff Notification`,
+            sourceQuery: breachTitle,
+            recipients,
+        }));
+
+        router.push("/notifications");
+    };
+
     const ExportDropdown = ({
         breachName,
         activeCount,
@@ -587,7 +650,7 @@ export default function DomainSecurityPage() {
                         style={{ background: "var(--bg-surface)", borderColor: "var(--border-color)" }}
                     >
                         <div className="px-3 py-1.5 text-[0.7rem] font-bold text-text-muted uppercase tracking-wider border-b border-border-color/60">
-                            Select Export Format
+                            Export & Notifications
                         </div>
 
                         {/* Option 1: Active Accounts Mail Merge */}
@@ -640,8 +703,6 @@ export default function DomainSecurityPage() {
                             </div>
                         </button>
 
-                        <div className="border-t border-border-color/60 my-0.5" />
-
                         {/* Option 3: Full Diagnostic CSV */}
                         <button
                             type="button"
@@ -658,6 +719,28 @@ export default function DomainSecurityPage() {
                                 </div>
                                 <p className="text-[0.7rem] text-text-muted mt-0.5 m-0 leading-tight">
                                     Complete raw AD fields & full breach history
+                                </p>
+                            </div>
+                        </button>
+
+                        <div className="border-t border-border-color/60 my-0.5" />
+
+                        {/* Option 4: Stage Notification Campaign */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsOpen(false);
+                                stageNotificationCampaign(breachName);
+                            }}
+                            className="flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-amber-500/10 text-left border-none bg-transparent cursor-pointer transition-colors group"
+                        >
+                            <BellRing size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                            <div>
+                                <div className="text-xs font-bold text-text-primary group-hover:text-amber-300 flex items-center justify-between">
+                                    <span>🚀 Stage Notification Campaign</span>
+                                </div>
+                                <p className="text-[0.7rem] text-text-muted mt-0.5 m-0 leading-tight">
+                                    Push active impacted accounts directly to Notification Center
                                 </p>
                             </div>
                         </button>
