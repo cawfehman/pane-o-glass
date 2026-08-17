@@ -5,7 +5,7 @@ import {
     BellRing, Mail, Send, Plus, Sparkles, FileSpreadsheet, 
     CheckCircle2, AlertTriangle, Play, RefreshCw, Trash2, 
     Edit, Eye, Clock, Check, Users, ArrowRight, ShieldCheck, 
-    ExternalLink, Layers, Search, Filter, KeyRound, AlertCircle, Copy, Lock
+    ExternalLink, Layers, Search, Filter, KeyRound, AlertCircle, Copy, Lock, ShieldAlert
 } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import RichTemplateEditor, { TemplateData } from "@/components/notifications/RichTemplateEditor";
@@ -30,12 +30,14 @@ export default function NotificationCenterPage() {
     const [wizardData, setWizardData] = useState<{
         id?: string;
         name: string;
+        breachName: string;
         templateId: string;
         sourceType: string;
         sourceQuery?: string;
         recipients: any[];
     }>({
         name: "",
+        breachName: "",
         templateId: "",
         sourceType: "CSV_UPLOAD",
         sourceQuery: "",
@@ -53,8 +55,9 @@ export default function NotificationCenterPage() {
     const [dispatchingId, setDispatchingId] = useState<string | null>(null);
     const [actionNotice, setActionNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-    // Inspect recipient list modal
+    // Inspect recipient list / delivery log modal
     const [viewingRecipientsCampaign, setViewingRecipientsCampaign] = useState<any | null>(null);
+    const [loadingRecipientsLog, setLoadingRecipientsLog] = useState(false);
     const [recipientSearch, setRecipientSearch] = useState("");
 
     // Fetch initial campaigns & templates
@@ -72,17 +75,19 @@ export default function NotificationCenterPage() {
                 const parsed = JSON.parse(stagedJson);
                 sessionStorage.removeItem("pane_staged_notification");
                 if (parsed && Array.isArray(parsed.recipients) && parsed.recipients.length > 0) {
+                    const extractedBreach = parsed.breachName || parsed.sourceQuery || parsed.recipients[0]?.breachName || "Data Breach Incident";
                     setWizardData({
-                        name: parsed.name || `HIBP Breach Notice - ${parsed.sourceQuery || "Domain Audit"}`,
+                        name: parsed.name || `${extractedBreach} - Staff Notification`,
+                        breachName: extractedBreach,
                         templateId: "",
                         sourceType: "HIBP_DOMAIN",
-                        sourceQuery: parsed.sourceQuery || "",
+                        sourceQuery: parsed.sourceQuery || extractedBreach,
                         recipients: parsed.recipients,
                     });
                     setActiveTab("wizard");
                     setActionNotice({
                         type: "success",
-                        message: `Successfully loaded ${parsed.recipients.length} impacted recipients from HIBP Domain query!`
+                        message: `Successfully loaded ${parsed.recipients.length} impacted recipients for breach "${extractedBreach}"!`
                     });
                 }
             }
@@ -114,7 +119,8 @@ export default function NotificationCenterPage() {
                 const data = await res.json();
                 setTemplates(data);
                 if (data.length > 0 && !wizardData.templateId) {
-                    setWizardData(prev => ({ ...prev, templateId: data[0].id }));
+                    const activeFirst = data.find((t: any) => t.isEnabled !== false) || data[0];
+                    setWizardData(prev => ({ ...prev, templateId: activeFirst.id }));
                 }
             }
         } catch (e) {
@@ -169,7 +175,10 @@ export default function NotificationCenterPage() {
             const res = await fetch("/api/notifications/campaigns", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(wizardData),
+                body: JSON.stringify({
+                    ...wizardData,
+                    breachName: wizardData.breachName.trim() || wizardData.recipients[0]?.breachName || wizardData.sourceQuery || "Data Breach Incident",
+                }),
             });
 
             if (!res.ok) {
@@ -193,6 +202,7 @@ export default function NotificationCenterPage() {
                 setWizardData({
                     id: full.id,
                     name: full.name,
+                    breachName: full.breachName || full.sourceQuery || full.recipients?.[0]?.breachName || "",
                     templateId: full.templateId || (templates[0]?.id || ""),
                     sourceType: full.sourceType,
                     sourceQuery: full.sourceQuery || "",
@@ -229,6 +239,22 @@ export default function NotificationCenterPage() {
             }
         } catch (e) {
             console.error("Failed to load campaign for test", e);
+        }
+    };
+
+    const handleOpenDeliveryLog = async (campaign: any) => {
+        try {
+            setLoadingRecipientsLog(true);
+            setViewingRecipientsCampaign(campaign); // Set temporary to open modal immediately
+            const res = await fetch(`/api/notifications/campaigns/${campaign.id}`);
+            if (res.ok) {
+                const full = await res.json();
+                setViewingRecipientsCampaign(full);
+            }
+        } catch (e) {
+            console.error("Failed to fetch full campaign log", e);
+        } finally {
+            setLoadingRecipientsLog(false);
         }
     };
 
@@ -321,7 +347,8 @@ export default function NotificationCenterPage() {
                         onClick={() => {
                             setWizardData({
                                 name: "",
-                                templateId: templates[0]?.id || "",
+                                breachName: "",
+                                templateId: templates.find(t => t.isEnabled !== false)?.id || templates[0]?.id || "",
                                 sourceType: "CSV_UPLOAD",
                                 sourceQuery: "",
                                 recipients: [],
@@ -350,7 +377,7 @@ export default function NotificationCenterPage() {
                     <button 
                         type="button" 
                         onClick={() => setActionNotice(null)}
-                        className="text-text-muted hover:text-text-primary p-1"
+                        className="text-text-muted hover:text-text-primary p-1 cursor-pointer"
                     >
                         ✕
                     </button>
@@ -467,6 +494,7 @@ export default function NotificationCenterPage() {
                                 const isDraft = c.status === "DRAFT" || c.status === "TEST_SENT";
                                 const isSending = c.status === "SENDING";
                                 const isCompleted = c.status.startsWith("COMPLETED");
+                                const breachLabel = c.breachName || c.sourceQuery || "Data Breach Incident";
 
                                 return (
                                     <div 
@@ -474,7 +502,8 @@ export default function NotificationCenterPage() {
                                         className="bg-bg-surface rounded-xl border border-border-color p-5 flex flex-col justify-between gap-4 transition-all hover:border-border-color-hover shadow-sm"
                                     >
                                         <div>
-                                            <div className="flex items-center justify-between gap-2 mb-2">
+                                            {/* Status and Date */}
+                                            <div className="flex items-center justify-between gap-2 mb-2.5">
                                                 <span className={`text-[0.7rem] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider border ${
                                                     c.status === "DRAFT" ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
                                                     c.status === "TEST_SENT" ? "bg-purple-500/15 text-purple-400 border-purple-500/30" :
@@ -488,11 +517,20 @@ export default function NotificationCenterPage() {
                                                 </span>
                                             </div>
 
-                                            <h3 className="text-base font-bold text-text-primary mb-1 line-clamp-1">
+                                            {/* Campaign Title */}
+                                            <h3 className="text-base font-bold text-text-primary mb-2 line-clamp-1">
                                                 {c.name}
                                             </h3>
 
-                                            <p className="text-xs text-text-muted mb-3">
+                                            {/* Explicit Breach Name Badge Row */}
+                                            <div className="flex items-center gap-1.5 text-xs text-text-muted mb-2.5">
+                                                <span className="font-bold text-text-secondary text-[0.7rem] uppercase tracking-wider">Breach:</span>
+                                                <span className="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-500 dark:text-rose-400 border border-rose-500/25 font-bold text-xs truncate max-w-[200px]" title={breachLabel}>
+                                                    {breachLabel}
+                                                </span>
+                                            </div>
+
+                                            <p className="text-xs text-text-muted mb-3 line-clamp-1">
                                                 Template: <span className="text-text-secondary font-medium">{c.template?.name || "None assigned"}</span>
                                             </p>
 
@@ -513,7 +551,7 @@ export default function NotificationCenterPage() {
 
                                             {c.testSentTo && (
                                                 <div className="text-[0.7rem] text-purple-300 bg-purple-500/10 p-2 rounded border border-purple-500/20 mb-2">
-                                                    ✓ Tested to: <strong>{c.testSentTo}</strong>
+                                                    ✓ Sandbox Tested to: <strong>{c.testSentTo}</strong>
                                                 </div>
                                             )}
                                         </div>
@@ -544,6 +582,16 @@ export default function NotificationCenterPage() {
 
                                                     <button
                                                         type="button"
+                                                        onClick={() => handleOpenDeliveryLog(c)}
+                                                        className="btn-secondary px-2.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
+                                                        title="View Staged Recipient List & Test Status"
+                                                    >
+                                                        <Users size={13} />
+                                                        <span>Log</span>
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
                                                         onClick={() => handleDispatchCampaign(c)}
                                                         disabled={dispatchingId === c.id}
                                                         className="btn-primary px-3 py-1.5 text-xs font-bold inline-flex items-center gap-1 cursor-pointer shadow-sm ml-auto"
@@ -557,10 +605,8 @@ export default function NotificationCenterPage() {
                                                 <>
                                                     <button
                                                         type="button"
-                                                        onClick={() => {
-                                                            setViewingRecipientsCampaign(c);
-                                                        }}
-                                                        className="btn-secondary px-3 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
+                                                        onClick={() => handleOpenDeliveryLog(c)}
+                                                        className="btn-secondary px-3 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
                                                     >
                                                         <Users size={13} />
                                                         <span>View Delivery Log</span>
@@ -594,7 +640,7 @@ export default function NotificationCenterPage() {
                                 {wizardData.id ? "Edit & Resume Campaign" : "Stage New Notification Campaign"}
                             </h2>
                             <p className="text-xs text-text-muted m-0 mt-1">
-                                Configure campaign parameters, select a mail merge template, and review recipient list.
+                                Configure campaign parameters, breach name, select a mail merge template, and review recipient list.
                             </p>
                         </div>
                         {wizardData.recipients.length > 0 && (
@@ -604,8 +650,8 @@ export default function NotificationCenterPage() {
                         )}
                     </div>
 
-                    {/* Step 1: Campaign Metadata */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Step 1: Campaign Metadata (Campaign Name, Breach Name, Template) */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary mb-1.5">
                                 Campaign Name <span className="text-rose-400">*</span>
@@ -614,7 +660,21 @@ export default function NotificationCenterPage() {
                                 type="text"
                                 value={wizardData.name}
                                 onChange={(e) => setWizardData(prev => ({ ...prev, name: e.target.value }))}
-                                placeholder="e.g. Adobe Incident Staff Notification - March 2026"
+                                placeholder="e.g. LinkedIn Staff Security Notice - March 2026"
+                                className="w-full px-3.5 py-2.5 rounded-lg bg-bg-dark border border-border-color text-text-primary text-sm font-medium focus:outline-none focus:border-accent-primary"
+                                required
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary mb-1.5">
+                                Breach / Incident Name <span className="text-rose-400">*</span>
+                            </label>
+                            <input 
+                                type="text"
+                                value={wizardData.breachName}
+                                onChange={(e) => setWizardData(prev => ({ ...prev, breachName: e.target.value }))}
+                                placeholder="e.g. LinkedIn, Adobe, 2026 Credential Leak"
                                 className="w-full px-3.5 py-2.5 rounded-lg bg-bg-dark border border-border-color text-text-primary text-sm font-medium focus:outline-none focus:border-accent-primary"
                                 required
                             />
@@ -654,9 +714,11 @@ export default function NotificationCenterPage() {
                             </label>
                             <CsvUploadValidator 
                                 onStaged={(recs, sum) => {
+                                    const extractedBreach = recs[0]?.breachName || sum.filename.replace(".csv", "");
                                     setWizardData(prev => ({
                                         ...prev,
-                                        name: prev.name || `Notification Campaign - ${sum.filename.replace(".csv", "")}`,
+                                        name: prev.name || `${extractedBreach} Notification Campaign`,
+                                        breachName: prev.breachName || extractedBreach,
                                         recipients: recs,
                                     }));
                                 }}
@@ -694,7 +756,7 @@ export default function NotificationCenterPage() {
                                             <tr key={idx} className="border-b border-border-color/50">
                                                 <td className="p-2.5 font-mono text-accent-primary">{r.email}</td>
                                                 <td className="p-2.5 text-text-primary">{r.name || "—"}</td>
-                                                <td className="p-2.5 text-text-secondary">{r.breachName || "—"}</td>
+                                                <td className="p-2.5 text-text-secondary">{r.breachName || wizardData.breachName || "—"}</td>
                                                 <td className="p-2.5 text-text-muted">{r.breachDate || "—"}</td>
                                                 <td className="p-2.5">
                                                     <span className="px-2 py-0.5 rounded-full text-[0.65rem] bg-yellow-400 text-black font-black">
@@ -822,7 +884,7 @@ export default function NotificationCenterPage() {
                                             </div>
 
                                             <div className="flex items-center justify-between gap-2 pt-3 border-t border-border-color flex-wrap">
-                                                {/* Duplicate / Clone Button - Always available */}
+                                                {/* Duplicate / Clone Button */}
                                                 <button
                                                     type="button"
                                                     onClick={() => {
@@ -897,7 +959,7 @@ export default function NotificationCenterPage() {
                         </div>
 
                         <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs leading-relaxed">
-                            <strong>Safe Testing Mode:</strong> This merges real recipient variables into template <em>&quot;{testModalCampaign.template?.name}&quot;</em>, but safely routes the actual email to <strong>your address</strong> so you can inspect Outlook formatting and layout before sending to staff.
+                            <strong>Safe Testing Mode:</strong> This merges real recipient variables for breach <strong>{testModalCampaign.breachName || testModalCampaign.sourceQuery || "Incident"}</strong> into template <em>&quot;{testModalCampaign.template?.name}&quot;</em>, but safely routes the actual email to <strong>your address</strong> so you can inspect Outlook formatting before sending to staff.
                         </div>
 
                         {testResult && (
@@ -923,7 +985,7 @@ export default function NotificationCenterPage() {
                                 >
                                     {testModalCampaign.recipients?.map((r: any, idx: number) => (
                                         <option key={r.id} value={r.id}>
-                                            #{idx + 1}: {r.name ? `${r.name} (${r.email})` : r.email} — {r.breachName || "Incident"}
+                                            #{idx + 1}: {r.name ? `${r.name} (${r.email})` : r.email} — {r.breachName || testModalCampaign.breachName || "Incident"}
                                         </option>
                                     ))}
                                 </select>
@@ -969,23 +1031,28 @@ export default function NotificationCenterPage() {
                 </div>
             )}
 
-            {/* MODAL: VIEW FULL RECIPIENT LOG */}
+            {/* MODAL: VIEW FULL RECIPIENT STAGING & DELIVERY LOG */}
             {viewingRecipientsCampaign && (
                 <div 
                     className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm"
                     onClick={() => setViewingRecipientsCampaign(null)}
                 >
                     <div 
-                        className="bg-bg-surface border border-border-color rounded-2xl w-full max-w-3xl p-6 shadow-2xl flex flex-col gap-4 animate-[fadeIn_0.2s_ease-out] max-h-[85vh]"
+                        className="bg-bg-surface border border-border-color rounded-2xl w-full max-w-4xl p-6 shadow-2xl flex flex-col gap-4 animate-[fadeIn_0.2s_ease-out] max-h-[88vh]"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="flex items-center justify-between border-b border-border-color pb-3">
                             <div>
-                                <h3 className="text-base font-bold text-text-primary m-0">
-                                    {viewingRecipientsCampaign.name} — Recipient Delivery Log
-                                </h3>
-                                <p className="text-xs text-text-muted m-0 mt-0.5">
-                                    Total: {viewingRecipientsCampaign.totalCount} | Sent: {viewingRecipientsCampaign.sentCount} | Failed: {viewingRecipientsCampaign.failedCount}
+                                <div className="flex items-center gap-2 mb-1">
+                                    <h3 className="text-base font-bold text-text-primary m-0">
+                                        {viewingRecipientsCampaign.name}
+                                    </h3>
+                                    <span className="px-2 py-0.5 rounded text-[0.7rem] bg-rose-500/15 text-rose-400 font-bold border border-rose-500/30">
+                                        Breach: {viewingRecipientsCampaign.breachName || viewingRecipientsCampaign.sourceQuery || "Incident"}
+                                    </span>
+                                </div>
+                                <p className="text-xs text-text-muted m-0">
+                                    Total Staged: <strong>{viewingRecipientsCampaign.totalCount || viewingRecipientsCampaign.recipients?.length || 0}</strong> | Sent: <strong className="text-emerald-400">{viewingRecipientsCampaign.sentCount || 0}</strong> | Failed: <strong className="text-rose-400">{viewingRecipientsCampaign.failedCount || 0}</strong>
                                 </p>
                             </div>
                             <button 
@@ -996,6 +1063,18 @@ export default function NotificationCenterPage() {
                             </button>
                         </div>
 
+                        {/* Sandbox Test Sent Banner */}
+                        {viewingRecipientsCampaign.testSentTo && (
+                            <div className="p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/25 text-purple-300 text-xs flex items-center justify-between">
+                                <span>✓ Sandbox Test Email dispatched to: <strong>{viewingRecipientsCampaign.testSentTo}</strong></span>
+                                {viewingRecipientsCampaign.testSentAt && (
+                                    <span className="text-purple-400/80 font-mono text-[0.7rem]">
+                                        {new Date(viewingRecipientsCampaign.testSentAt).toLocaleTimeString()}
+                                    </span>
+                                )}
+                            </div>
+                        )}
+
                         {/* Search in log */}
                         <div className="relative">
                             <Search size={14} className="absolute left-3 top-3 text-text-muted" />
@@ -1003,49 +1082,65 @@ export default function NotificationCenterPage() {
                                 type="text"
                                 value={recipientSearch}
                                 onChange={(e) => setRecipientSearch(e.target.value)}
-                                placeholder="Search by email or name..."
+                                placeholder="Search by email, name, or status..."
                                 className="w-full pl-9 pr-3 py-2 rounded-lg bg-bg-dark border border-border-color text-xs text-text-primary focus:outline-none focus:border-accent-primary"
                             />
                         </div>
 
                         {/* Recipients Table */}
-                        <div className="overflow-y-auto flex-1 rounded-lg border border-border-color bg-bg-dark">
-                            <table className="w-full text-left text-xs border-collapse">
-                                <thead className="sticky top-0 bg-bg-surface text-text-secondary">
-                                    <tr className="border-b border-border-color">
-                                        <th className="p-2.5">Email</th>
-                                        <th className="p-2.5">Name</th>
-                                        <th className="p-2.5">Status</th>
-                                        <th className="p-2.5">Sent Time</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(viewingRecipientsCampaign.recipients || [])
-                                        .filter((r: any) => 
-                                            !recipientSearch || 
-                                            r.email.toLowerCase().includes(recipientSearch.toLowerCase()) || 
-                                            (r.name && r.name.toLowerCase().includes(recipientSearch.toLowerCase()))
-                                        )
-                                        .map((r: any) => (
-                                            <tr key={r.id} className="border-b border-border-color/50">
-                                                <td className="p-2.5 font-mono text-accent-primary">{r.email}</td>
-                                                <td className="p-2.5 text-text-primary">{r.name || "—"}</td>
-                                                <td className="p-2.5">
-                                                    <span className={`px-2 py-0.5 rounded-full text-[0.65rem] font-bold ${
-                                                        r.status === "SENT" ? "bg-emerald-500/20 text-emerald-400" :
-                                                        r.status === "FAILED" ? "bg-rose-500/20 text-rose-400" :
-                                                        "bg-amber-500/20 text-amber-400"
-                                                    }`}>
-                                                        {r.status}
-                                                    </span>
-                                                </td>
-                                                <td className="p-2.5 text-text-muted">
-                                                    {r.sentAt ? new Date(r.sentAt).toLocaleTimeString() : "—"}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                </tbody>
-                            </table>
+                        <div className="overflow-y-auto flex-1 rounded-lg border border-border-color bg-bg-dark min-h-[220px]">
+                            {loadingRecipientsLog ? (
+                                <div className="flex items-center justify-center p-12 text-text-muted text-xs gap-2">
+                                    <RefreshCw size={14} className="animate-spin" />
+                                    <span>Loading recipients delivery log...</span>
+                                </div>
+                            ) : (
+                                <table className="w-full text-left text-xs border-collapse">
+                                    <thead className="sticky top-0 bg-bg-surface text-text-secondary">
+                                        <tr className="border-b border-border-color">
+                                            <th className="p-2.5">Email</th>
+                                            <th className="p-2.5">Name</th>
+                                            <th className="p-2.5">Breach Name</th>
+                                            <th className="p-2.5">Delivery Status</th>
+                                            <th className="p-2.5">Timestamp</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(viewingRecipientsCampaign.recipients || [])
+                                            .filter((r: any) => 
+                                                !recipientSearch || 
+                                                r.email.toLowerCase().includes(recipientSearch.toLowerCase()) || 
+                                                (r.name && r.name.toLowerCase().includes(recipientSearch.toLowerCase())) ||
+                                                (r.status && r.status.toLowerCase().includes(recipientSearch.toLowerCase()))
+                                            )
+                                            .map((r: any) => (
+                                                <tr key={r.id} className="border-b border-border-color/50 hover:bg-bg-surface/40">
+                                                    <td className="p-2.5 font-mono text-accent-primary">{r.email}</td>
+                                                    <td className="p-2.5 text-text-primary">{r.name || "—"}</td>
+                                                    <td className="p-2.5 text-text-secondary">{r.breachName || viewingRecipientsCampaign.breachName || "—"}</td>
+                                                    <td className="p-2.5">
+                                                        <span className={`px-2 py-0.5 rounded-full text-[0.65rem] font-bold ${
+                                                            r.status === "SENT" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
+                                                            r.status === "TEST_SENT" ? "bg-purple-500/20 text-purple-300 border border-purple-500/30" :
+                                                            r.status === "FAILED" ? "bg-rose-500/20 text-rose-400 border border-rose-500/30" :
+                                                            "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                                                        }`}>
+                                                            {r.status === "TEST_SENT" ? "Sandbox Tested" : r.status}
+                                                        </span>
+                                                        {r.error && (
+                                                            <div className="text-[0.65rem] text-rose-400 mt-0.5 line-clamp-1" title={r.error}>
+                                                                {r.error}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-2.5 text-text-muted">
+                                                        {r.sentAt ? new Date(r.sentAt).toLocaleTimeString() : "—"}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                    </tbody>
+                                </table>
+                            )}
                         </div>
 
                         <div className="flex justify-end pt-2 border-t border-border-color">

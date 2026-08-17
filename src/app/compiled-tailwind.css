@@ -641,6 +641,9 @@
   .max-h-\[85vh\] {
     max-height: 85vh;
   }
+  .max-h-\[88vh\] {
+    max-height: 88vh;
+  }
   .max-h-\[200px\] {
     max-height: 200px;
   }
@@ -1316,6 +1319,12 @@
       border-color: color-mix(in oklab, var(--color-purple-500) 20%, transparent);
     }
   }
+  .border-purple-500\/25 {
+    border-color: color-mix(in srgb, oklch(62.7% 0.265 303.9) 25%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-purple-500) 25%, transparent);
+    }
+  }
   .border-purple-500\/30 {
     border-color: color-mix(in srgb, oklch(62.7% 0.265 303.9) 30%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1359,6 +1368,12 @@
     border-color: color-mix(in srgb, oklch(64.5% 0.246 16.439) 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-rose-500) 20%, transparent);
+    }
+  }
+  .border-rose-500\/25 {
+    border-color: color-mix(in srgb, oklch(64.5% 0.246 16.439) 25%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-rose-500) 25%, transparent);
     }
   }
   .border-rose-500\/30 {
@@ -2422,6 +2437,12 @@
   .text-purple-400 {
     color: var(--color-purple-400);
   }
+  .text-purple-400\/80 {
+    color: color-mix(in srgb, oklch(71.4% 0.203 305.504) 80%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      color: color-mix(in oklab, var(--color-purple-400) 80%, transparent);
+    }
+  }
   .text-purple-500 {
     color: var(--color-purple-500);
   }
@@ -2893,6 +2914,14 @@
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:bg-bg-surface-hover\/40:hover {
         background-color: color-mix(in oklab, var(--color-bg-surface-hover) 40%, transparent);
+      }
+    }
+    .hover\:bg-bg-surface\/40:hover {
+      background-color: var(--color-bg-surface);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-bg-surface\/40:hover {
+        background-color: color-mix(in oklab, var(--color-bg-surface) 40%, transparent);
       }
     }
     .hover\:bg-blue-500\/20:hover {

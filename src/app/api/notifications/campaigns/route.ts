@@ -52,6 +52,7 @@ export async function POST(req: Request) {
         const {
             id,
             name,
+            breachName,
             templateId,
             sourceType = "HIBP_DOMAIN",
             sourceQuery,
@@ -63,6 +64,7 @@ export async function POST(req: Request) {
         }
 
         const username = session.user.name || (session.user as any)?.username || "User";
+        const resolvedBreachName = breachName || recipients?.[0]?.breachName || sourceQuery || "Data Breach Incident";
 
         // If ID provided, update existing draft
         if (id) {
@@ -76,6 +78,7 @@ export async function POST(req: Request) {
                 where: { id },
                 data: {
                     name,
+                    breachName: resolvedBreachName,
                     templateId: templateId || null,
                     sourceType,
                     sourceQuery: sourceQuery || existing.sourceQuery,
@@ -93,7 +96,7 @@ export async function POST(req: Request) {
                         name: r.name || "",
                         adName: r.adName || "",
                         accountStatus: r.accountStatus || "Active",
-                        breachName: r.breachName || "",
+                        breachName: r.breachName || resolvedBreachName,
                         breachDate: r.breachDate || "",
                         breachDetails: r.breachDetails || "",
                         variablesJson: typeof r.variablesJson === "string" ? r.variablesJson : JSON.stringify(r.variablesJson || r),
@@ -114,6 +117,7 @@ export async function POST(req: Request) {
         const campaign = await prisma.notificationCampaign.create({
             data: {
                 name,
+                breachName: resolvedBreachName,
                 templateId: templateId || null,
                 sourceType,
                 sourceQuery: sourceQuery || "",
@@ -132,7 +136,7 @@ export async function POST(req: Request) {
                     name: r.name || "",
                     adName: r.adName || "",
                     accountStatus: r.accountStatus || "Active",
-                    breachName: r.breachName || "",
+                    breachName: r.breachName || resolvedBreachName,
                     breachDate: r.breachDate || "",
                     breachDetails: r.breachDetails || "",
                     variablesJson: typeof r.variablesJson === "string" ? r.variablesJson : JSON.stringify(r.variablesJson || r),

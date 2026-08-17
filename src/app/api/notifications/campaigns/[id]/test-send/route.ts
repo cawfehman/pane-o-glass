@@ -97,6 +97,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             }, { status: 500 });
         }
 
+        // Update tested recipient record
+        await prisma.campaignRecipient.update({
+            where: { id: recipient.id },
+            data: {
+                status: "TEST_SENT",
+                sentAt: new Date(),
+                error: null,
+            }
+        });
+
         // Update campaign status
         await prisma.notificationCampaign.update({
             where: { id },

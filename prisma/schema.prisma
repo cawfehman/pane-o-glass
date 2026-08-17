@@ -234,6 +234,7 @@ model NotificationTemplate {
 model NotificationCampaign {
   id              String   @id @default(cuid())
   name            String
+  breachName      String?  // Explicit incident/breach name (e.g., "LinkedIn", "Adobe")
   templateId      String?
   template        NotificationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   status          String   @default("DRAFT") // "DRAFT", "TEST_SENT", "APPROVED", "SENDING", "COMPLETED", "CANCELLED"
