@@ -103,7 +103,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             data: {
                 status: "TEST_SENT",
                 sentAt: new Date(),
-                error: null,
+                errorMessage: null,
             }
         });
 
@@ -130,6 +130,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         });
     } catch (err: any) {
         console.error("Failed to send test email:", err);
-        return new NextResponse(err.message || "Failed to send test email", { status: 500 });
+        return NextResponse.json({ success: false, error: err.message || "Failed to send test email" }, { status: 500 });
     }
 }

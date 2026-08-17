@@ -273,9 +273,16 @@ export default function NotificationCenterPage() {
                 }),
             });
 
-            const data = await res.json();
+            let data: any = {};
+            const resText = await res.text();
+            try {
+                data = JSON.parse(resText);
+            } catch (e) {
+                data = { error: resText };
+            }
+
             if (!res.ok) {
-                throw new Error(data.error || "Failed to send test email.");
+                throw new Error(data.error || resText || "Failed to send test email.");
             }
 
             setTestResult({
