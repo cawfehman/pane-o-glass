@@ -10,7 +10,8 @@ const PRIMARY_COOPER_TEMPLATE = {
     subject: "Notification Regarding Your Corporate Email Address",
     isEnabled: true,
     bodyHtml: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; color: #1e293b; line-height: 1.6; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
-    <div style="background-color: #0f172a; padding: 22px 28px; text-align: left; border-bottom: 3px solid #0284c7;">
+    <!-- Cooper Header Banner with Brand Red Accent (Pantone 193 / RGB: 195, 0, 47) -->
+    <div style="background-color: #0f172a; padding: 22px 28px; text-align: left; border-bottom: 4px solid #C3002F;">
         <h2 style="color: #ffffff; margin: 0; font-size: 19px; font-weight: 700; letter-spacing: 0.02em;">Cooper University Health Care</h2>
         <p style="color: #94a3b8; margin: 4px 0 0 0; font-size: 13px;">Information Security Advisory</p>
     </div>
@@ -19,10 +20,11 @@ const PRIMARY_COOPER_TEMPLATE = {
         
         <p style="font-size: 14px;">We are reaching out to inform you that Cooper University Health Care has received notification from a trusted third-party source indicating that your email address (<strong>{{Email}}</strong>) was identified among information exposed in a data breach involving an external organization or service (<strong>{{BreachName}}</strong>).</p>
 
-        <div style="background-color: #f8fafc; border-left: 4px solid #0284c7; padding: 14px 18px; margin: 20px 0; border-radius: 0 6px 6px 0; font-size: 13px;">
-            <p style="margin: 0 0 4px 0;"><strong>Incident Source:</strong> {{BreachName}}</p>
-            <p style="margin: 0 0 4px 0;"><strong>Recorded Breach Date:</strong> {{BreachDate}}</p>
-            <p style="margin: 0;"><strong>Compromised Categories:</strong> {{ExposedCategories}}</p>
+        <!-- Breach Incident Callout with Cooper Red Accent -->
+        <div style="background-color: #fdf2f4; border-left: 4px solid #C3002F; padding: 14px 18px; margin: 20px 0; border-radius: 0 6px 6px 0; font-size: 13px;">
+            <p style="margin: 0 0 4px 0; color: #1e293b;"><strong>Incident Source:</strong> {{BreachName}}</p>
+            <p style="margin: 0 0 4px 0; color: #1e293b;"><strong>Recorded Breach Date:</strong> {{BreachDate}}</p>
+            <p style="margin: 0; color: #1e293b;"><strong>Compromised Categories:</strong> {{ExposedCategories}}</p>
         </div>
 
         <p style="font-size: 14px;">At this time, there is no indication that Cooper systems were involved in this incident. This notification is being provided as a precaution so that you are aware of the exposure and can take appropriate steps to protect any accounts that may be associated with the affected email address.</p>
@@ -37,8 +39,9 @@ const PRIMARY_COOPER_TEMPLATE = {
 
         <p style="font-size: 14px;">Please note that the exposure occurred outside of Cooper's environment. We are sharing this information to help you take proactive measures to protect your personal and professional accounts.</p>
 
-        <p style="background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #0369a1; margin: 22px 0;">
-            If you have any questions, please contact Information Security @ <a href="mailto:infosec@cooperhealth.edu" style="color: #0284c7; font-weight: 600; text-decoration: underline;">infosec@cooperhealth.edu</a>.
+        <!-- Information Security Contact Callout -->
+        <p style="background-color: #fff1f2; border: 1px solid #fecdd3; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #9f1239; margin: 22px 0;">
+            If you have any questions, please contact Information Security @ <a href="mailto:infosec@cooperhealth.edu" style="color: #C3002F; font-weight: 700; text-decoration: underline;">infosec@cooperhealth.edu</a>.
         </p>
 
         <p style="margin-top: 24px; margin-bottom: 0; font-size: 14px;">Thank you,</p>
