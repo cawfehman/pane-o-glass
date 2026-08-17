@@ -1,7 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { ShieldCheck, Download, Mail, UserCheck, Users, FileSpreadsheet, ChevronDown } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { 
+    ShieldCheck, Download, Mail, UserCheck, Users, 
+    FileSpreadsheet, ChevronDown, AlertTriangle, KeyRound, 
+    Filter, Database, Layers, CheckCircle2 
+} from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 
 export default function DomainSecurityPage() {
@@ -23,9 +27,12 @@ export default function DomainSecurityPage() {
     const [allBreachesMeta, setAllBreachesMeta] = useState<Record<string, any>>({});
     const [sortConfig, setSortConfig] = useState<{ key: 'count' | 'date', desc: boolean }>({ key: 'count', desc: true });
 
-    // Breach Search State
+    // Breach & Category Search State
+    const [searchMode, setSearchMode] = useState<"breachName" | "dataCategory">("breachName");
     const [breachSearchQuery, setBreachSearchQuery] = useState("");
     const [breachSearchView, setBreachSearchView] = useState<"details" | "impacted" | null>(null);
+    const [selectedCategory, setSelectedCategory] = useState<string>("Passwords");
+    const [categorySearchView, setCategorySearchView] = useState<"breaches" | "impacted" | null>(null);
     const [breachSearchLoading, setBreachSearchLoading] = useState(false);
     const [breachSearchError, setBreachSearchError] = useState("");
 
@@ -99,6 +106,52 @@ export default function DomainSecurityPage() {
         }
     };
 
+    // --- Data Classes & Password Detection Helpers ---
+
+    const breachHasPassword = (breach: any) => {
+        if (!breach || !Array.isArray(breach.DataClasses)) return false;
+        return breach.DataClasses.some((dc: string) => dc.toLowerCase().includes("password"));
+    };
+
+    const breachHasCategory = (breach: any, cat: string) => {
+        if (!breach || !Array.isArray(breach.DataClasses)) return false;
+        return breach.DataClasses.some((dc: string) => dc.toLowerCase() === cat.toLowerCase());
+    };
+
+    const allDataClasses = useMemo(() => {
+        const set = new Set<string>();
+        Object.values(allBreachesMeta).forEach((b: any) => {
+            if (Array.isArray(b.DataClasses)) {
+                b.DataClasses.forEach((dc: string) => set.add(dc));
+            }
+        });
+        const list = Array.from(set).sort((a, b) => a.localeCompare(b));
+        if (list.includes("Passwords")) {
+            return ["Passwords", ...list.filter(x => x !== "Passwords")];
+        }
+        return list;
+    }, [allBreachesMeta]);
+
+    const getBreachesForCategory = (category: string) => {
+        return Object.values(allBreachesMeta).filter((b: any) =>
+            breachHasCategory(b, category)
+        );
+    };
+
+    const getImpactedAliasesForCategory = (category: string) => {
+        if (!domainResults || !domainResults.hasBreaches) return [];
+        const matchingBreaches = new Set(
+            getBreachesForCategory(category).map((b: any) => b.Name)
+        );
+        const impacted: string[] = [];
+        Object.entries(domainResults.aliases).forEach(([alias, breaches]) => {
+            if (breaches.some(bName => matchingBreaches.has(bName))) {
+                impacted.push(alias);
+            }
+        });
+        return impacted;
+    };
+
     // --- Data Aggregation Helpers for Domain Search ---
 
     const getBreachCounts = () => {
@@ -145,6 +198,15 @@ export default function DomainSecurityPage() {
 
         setBreachSearchView(viewType);
 
+        if (viewType === 'impacted' && !domainResults) {
+            setBreachSearchLoading(true);
+            await fetchDomainData();
+            setBreachSearchLoading(false);
+        }
+    };
+
+    const triggerCategoryView = async (viewType: "breaches" | "impacted") => {
+        setCategorySearchView(viewType);
         if (viewType === 'impacted' && !domainResults) {
             setBreachSearchLoading(true);
             await fetchDomainData();
@@ -240,18 +302,23 @@ export default function DomainSecurityPage() {
 
     const exportMailMergeCSV = ({
         breachName,
+        categoryName,
         activeOnly,
     }: {
         breachName?: string;
+        categoryName?: string;
         activeOnly: boolean;
     }) => {
         if (!domainResults) return;
 
         const isSingleBreach = !!breachName;
-        const breachMeta = isSingleBreach ? allBreachesMeta[breachName] || {} : null;
-        const breachTitle = breachMeta?.Title || breachName || "Multiple Breaches";
-        const breachDate = breachMeta?.BreachDate || "Various";
-        const breachDetails = breachMeta ? stripHtml(breachMeta.Description) || "N/A" : "Multiple organizational domain breaches";
+        const isCategory = !!categoryName && !isSingleBreach;
+        const matchingCatBreaches = isCategory ? new Set(getBreachesForCategory(categoryName!).map((b: any) => b.Name)) : null;
+
+        const breachMeta = isSingleBreach ? allBreachesMeta[breachName!] || {} : null;
+        const breachTitle = breachMeta?.Title || breachName || (isCategory ? `Category: ${categoryName}` : "Multiple Breaches");
+        const breachDate = breachMeta?.BreachDate || (isCategory ? "Various" : "Various");
+        const breachDetails = breachMeta ? stripHtml(breachMeta.Description) || "N/A" : (isCategory ? `Impacted by data breaches leaking ${categoryName}` : "Multiple organizational domain breaches");
 
         // Headers formatted specifically for Outlook Mail Merge:
         const headers = [
@@ -265,7 +332,11 @@ export default function DomainSecurityPage() {
         ];
 
         const rows = Object.entries(domainResults.aliases)
-            .filter(([_, breaches]) => !isSingleBreach || breaches.includes(breachName!))
+            .filter(([_, breaches]) => {
+                if (isSingleBreach) return breaches.includes(breachName!);
+                if (isCategory) return breaches.some(b => matchingCatBreaches!.has(b));
+                return true;
+            })
             .filter(([alias]) => {
                 if (!activeOnly) return true;
                 const email = `${alias}@${domainStr}`.toLowerCase();
@@ -278,13 +349,14 @@ export default function DomainSecurityPage() {
                 const rawName = ad.displayName || "";
                 const firstLastName = formatFirstLast(rawName, alias);
                 const status = ad.email ? (ad.enabled ? "Active" : "Disabled") : "Not in AD";
+                const relevantBreaches = isCategory ? breaches.filter(b => matchingCatBreaches!.has(b)) : breaches;
 
                 return [
                     email,
                     firstLastName || "N/A",
                     rawName || "N/A",
                     status,
-                    isSingleBreach ? breachTitle : breaches.join("; "),
+                    isSingleBreach ? breachTitle : relevantBreaches.join("; "),
                     breachDetails,
                     isSingleBreach ? breachDate : "Various",
                 ];
@@ -302,8 +374,11 @@ export default function DomainSecurityPage() {
         link.setAttribute("href", url);
 
         const scopeLabel = activeOnly ? "active_accounts" : "all_accounts";
-        const cleanBreach = isSingleBreach ? breachName!.replace(/[^a-zA-Z0-9_-]/g, "_") : "domain_all";
-        const filename = `mail_merge_${cleanBreach}_${scopeLabel}_${domainStr}_${new Date().toISOString().split("T")[0]}.csv`;
+        let prefix = "domain_all";
+        if (isSingleBreach) prefix = breachName!.replace(/[^a-zA-Z0-9_-]/g, "_");
+        else if (isCategory) prefix = `category_${categoryName!.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+
+        const filename = `mail_merge_${prefix}_${scopeLabel}_${domainStr}_${new Date().toISOString().split("T")[0]}.csv`;
 
         link.setAttribute("download", filename);
         link.style.visibility = "hidden";
@@ -314,11 +389,13 @@ export default function DomainSecurityPage() {
 
     const ExportDropdown = ({
         breachName,
+        categoryName,
         activeCount,
         totalCount,
         label = "Export CSV",
     }: {
         breachName?: string;
+        categoryName?: string;
         activeCount?: number;
         totalCount?: number;
         label?: string;
@@ -371,7 +448,7 @@ export default function DomainSecurityPage() {
                             type="button"
                             onClick={() => {
                                 setIsOpen(false);
-                                exportMailMergeCSV({ breachName, activeOnly: true });
+                                exportMailMergeCSV({ breachName, categoryName, activeOnly: true });
                             }}
                             className="flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-emerald-500/10 text-left border-none bg-transparent cursor-pointer transition-colors group"
                         >
@@ -396,7 +473,7 @@ export default function DomainSecurityPage() {
                             type="button"
                             onClick={() => {
                                 setIsOpen(false);
-                                exportMailMergeCSV({ breachName, activeOnly: false });
+                                exportMailMergeCSV({ breachName, categoryName, activeOnly: false });
                             }}
                             className="flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-accent-primary/10 text-left border-none bg-transparent cursor-pointer transition-colors group"
                         >
@@ -455,6 +532,11 @@ export default function DomainSecurityPage() {
             bgStyle = ad.enabled ? 'rgba(234, 179, 8, 0.05)' : 'rgba(239, 68, 68, 0.05)';
         }
 
+        const hasAnyPasswordBreach = breachList.some((bName: string) => {
+            const meta = allBreachesMeta[bName];
+            return meta && breachHasPassword(meta);
+        });
+
         return (
             <div 
                 onClick={() => setExpandedAlias(isExpanded ? null : alias)}
@@ -469,7 +551,7 @@ export default function DomainSecurityPage() {
                 }}
             >
                 <div className="flex justify-between items-center">
-                    <div>
+                    <div className="flex items-center gap-2 flex-wrap">
                         <strong style={{ fontSize: '1.1rem', color: ad ? (ad.enabled ? '#eab308' : '#f87171') : 'var(--text-primary)' }}>
                             {alias}@{domainStr}
                             {ad && (
@@ -478,17 +560,44 @@ export default function DomainSecurityPage() {
                                 </span>
                             )}
                         </strong>
+                        {hasAnyPasswordBreach && (
+                            <span 
+                                title="This user has accounts exposed in breaches containing passwords!"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[0.7rem] font-bold"
+                            >
+                                <AlertTriangle size={12} className="text-rose-400 fill-rose-500/20" />
+                                <span>Password Exposed</span>
+                            </span>
+                        )}
                     </div>
                     <div className="text-text-muted">{isExpanded ? '▲' : '▼'}</div>
                 </div>
 
                 {!isExpanded && (
                     <div style={{ fontSize: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '10px' }}>
-                        {breachList.map((breachName: string) => (
-                            <span key={breachName} style={{ background: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '4px', color: 'var(--text-secondary)' }}>
-                                {breachName}
-                            </span>
-                        ))}
+                        {breachList.map((breachName: string) => {
+                            const meta = allBreachesMeta[breachName];
+                            const hasPwd = meta && breachHasPassword(meta);
+                            return (
+                                <span 
+                                    key={breachName} 
+                                    style={{ 
+                                        background: hasPwd ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)', 
+                                        border: hasPwd ? '1px solid rgba(239,68,68,0.4)' : '1px solid transparent',
+                                        padding: '2px 8px', 
+                                        borderRadius: '4px', 
+                                        color: hasPwd ? '#fca5a5' : 'var(--text-secondary)',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        fontWeight: hasPwd ? 600 : 400
+                                    }}
+                                >
+                                    {hasPwd && <AlertTriangle size={11} className="text-rose-400" />}
+                                    {breachName}
+                                </span>
+                            );
+                        })}
                     </div>
                 )}
 
@@ -513,11 +622,30 @@ export default function DomainSecurityPage() {
                         <div style={{ gridColumn: '1 / -1' }}>
                             <h5 style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Breach History</h5>
                             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                {breachList.map((breachName: string) => (
-                                    <span key={breachName} style={{ background: 'rgba(239,68,68,0.2)', padding: '4px 10px', borderRadius: '12px', color: '#fca5a5', fontSize: '0.75rem' }}>
-                                        {breachName}
-                                    </span>
-                                ))}
+                                {breachList.map((breachName: string) => {
+                                    const meta = allBreachesMeta[breachName];
+                                    const hasPwd = meta && breachHasPassword(meta);
+                                    return (
+                                        <span 
+                                            key={breachName} 
+                                            style={{ 
+                                                background: hasPwd ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.05)', 
+                                                border: hasPwd ? '1px solid rgba(239,68,68,0.4)' : '1px solid transparent',
+                                                padding: '4px 10px', 
+                                                borderRadius: '12px', 
+                                                color: hasPwd ? '#fca5a5' : 'var(--text-secondary)',
+                                                fontSize: '0.75rem',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                fontWeight: hasPwd ? 700 : 500
+                                            }}
+                                        >
+                                            {hasPwd && <AlertTriangle size={12} className="text-rose-400" />}
+                                            <span>{breachName}</span>
+                                        </span>
+                                    );
+                                })}
                             </div>
                         </div>
                     </div>
@@ -530,7 +658,7 @@ export default function DomainSecurityPage() {
         <div className="internal-scroll-layout">
             <QueryHeader
                 title="HIBP Domain Security"
-                description="Check if your verified organizational domains have been impacted by specific or global data breaches. Search results are enriched with Active Directory status:"
+                description="Check if your verified organizational domains have been impacted by specific data breaches or compromised data classes (e.g. passwords). Search results are enriched with Active Directory status:"
                 toolId="hibp-domain"
                 icon={<ShieldCheck />}
                 actions={
@@ -579,7 +707,7 @@ export default function DomainSecurityPage() {
                             transition: 'all 0.2s ease'
                         }}
                     >
-                        Breach Name Search
+                        Breach & Category Search
                     </button>
                 </div>
 
@@ -735,37 +863,51 @@ export default function DomainSecurityPage() {
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
-                                                                {getBreachCounts().map((b) => (
-                                                                    <tr key={b.name} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                                        <td style={{ padding: '12px 16px', fontWeight: 500, color: 'var(--accent-primary)' }}>{b.name}</td>
-                                                                        <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{b.date}</td>
-                                                                        <td style={{ padding: '8px 16px', textAlign: 'right' }}>
-                                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-                                                                                <span style={{ background: 'rgba(239,68,68,0.2)', padding: '4px 10px', borderRadius: '12px', color: '#fca5a5', fontSize: '0.85rem' }}>
-                                                                                    {b.count}
-                                                                                </span>
-                                                                                <button
-                                                                                    onClick={() => exportMailMergeCSV({ breachName: b.name, activeOnly: true })}
-                                                                                    className="btn-primary"
-                                                                                    style={{ padding: '4px 8px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#059669', borderColor: '#10b981', color: '#ffffff' }}
-                                                                                    title={`Export Active Accounts Mail Merge for ${b.name}`}
-                                                                                >
-                                                                                    <UserCheck size={12} />
-                                                                                    <span>Active</span>
-                                                                                </button>
-                                                                                <button
-                                                                                    onClick={() => exportMailMergeCSV({ breachName: b.name, activeOnly: false })}
-                                                                                    className="btn-primary"
-                                                                                    style={{ padding: '4px 8px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                                                                    title={`Export All Accounts Mail Merge for ${b.name}`}
-                                                                                >
-                                                                                    <Users size={12} />
-                                                                                    <span>All</span>
-                                                                                </button>
-                                                                            </div>
-                                                                        </td>
-                                                                    </tr>
-                                                                ))}
+                                                                {getBreachCounts().map((b) => {
+                                                                    const meta = allBreachesMeta[b.name];
+                                                                    const hasPwd = meta && breachHasPassword(meta);
+                                                                    return (
+                                                                        <tr key={b.name} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                                            <td style={{ padding: '12px 16px', fontWeight: 500, color: 'var(--accent-primary)' }}>
+                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                                    <span>{b.name}</span>
+                                                                                    {hasPwd && (
+                                                                                        <span 
+                                                                                            title="⚠️ Critical: This breach exposed user passwords!"
+                                                                                            style={{
+                                                                                                display: 'inline-flex',
+                                                                                                alignItems: 'center',
+                                                                                                gap: '4px',
+                                                                                                padding: '2px 6px',
+                                                                                                borderRadius: '4px',
+                                                                                                background: 'rgba(239, 68, 68, 0.15)',
+                                                                                                border: '1px solid rgba(239, 68, 68, 0.4)',
+                                                                                                color: '#f87171',
+                                                                                                fontSize: '0.7rem',
+                                                                                                fontWeight: 700
+                                                                                            }}
+                                                                                        >
+                                                                                            <AlertTriangle size={11} className="text-rose-400 fill-rose-500/20" />
+                                                                                            <span>Passwords</span>
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </td>
+                                                                            <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{b.date}</td>
+                                                                            <td style={{ padding: '8px 16px', textAlign: 'right' }}>
+                                                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                                                                                    <span style={{ background: 'rgba(239,68,68,0.2)', padding: '4px 10px', borderRadius: '12px', color: '#fca5a5', fontSize: '0.85rem' }}>
+                                                                                        {b.count}
+                                                                                    </span>
+                                                                                    <ExportDropdown
+                                                                                        breachName={b.name}
+                                                                                        label="Export"
+                                                                                    />
+                                                                                </div>
+                                                                            </td>
+                                                                        </tr>
+                                                                    );
+                                                                })}
                                                             </tbody>
                                                         </table>
                                                     </div>
@@ -778,15 +920,25 @@ export default function DomainSecurityPage() {
                                                     <div>
                                                         <h4 style={{ color: 'var(--text-primary)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)' }}>Top 10 Worst Breaches</h4>
                                                         <div className="grid gap-2">
-                                                            {getBreachCounts().slice(0, 10).map((b, idx) => (
-                                                                <div key={b.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-dark)', padding: '8px 16px', borderRadius: 'var(--radius-sm)' }}>
-                                                                    <span className="text-text-secondary">
-                                                                        <span style={{ color: 'var(--text-muted)', marginRight: '8px' }}>#{idx + 1}</span>
-                                                                        {b.name} <span style={{ fontSize: '0.8rem', marginLeft: '6px', color: 'var(--text-muted)' }}>({b.date})</span>
-                                                                    </span>
-                                                                    <span style={{ fontWeight: 600, color: '#fca5a5' }}>{b.count} org accounts</span>
-                                                                </div>
-                                                            ))}
+                                                            {getBreachCounts().slice(0, 10).map((b, idx) => {
+                                                                const meta = allBreachesMeta[b.name];
+                                                                const hasPwd = meta && breachHasPassword(meta);
+                                                                return (
+                                                                    <div key={b.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-dark)', padding: '8px 16px', borderRadius: 'var(--radius-sm)' }}>
+                                                                        <span className="text-text-secondary flex items-center gap-2">
+                                                                            <span style={{ color: 'var(--text-muted)', marginRight: '4px' }}>#{idx + 1}</span>
+                                                                            <span>{b.name}</span> 
+                                                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>({b.date})</span>
+                                                                            {hasPwd && (
+                                                                                <span title="Exposed Passwords">
+                                                                                    <AlertTriangle size={13} className="text-rose-400 fill-rose-500/20 ml-1" />
+                                                                                </span>
+                                                                            )}
+                                                                        </span>
+                                                                        <span style={{ fontWeight: 600, color: '#fca5a5' }}>{b.count} org accounts</span>
+                                                                    </div>
+                                                                );
+                                                            })}
                                                         </div>
                                                     </div>
 
@@ -836,50 +988,183 @@ export default function DomainSecurityPage() {
 
                 {activeTab === 'breach' && (
                     <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '2rem', minHeight: 0, overflowY: 'auto', paddingRight: '4px' }}>
-                        {/* --- BREACH NAME SEARCH CARD --- */}
+                        {/* --- BREACH & CATEGORY SEARCH CARD --- */}
                         <div className="glass-card flex flex-col">
                             <div style={{ flexShrink: 0 }}>
-                                <h3 className="mb-4">Breach Name Search</h3>
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                                    <h3 className="m-0">Breach & Category Search</h3>
+                                    
+                                    {/* Search Mode Pill Switcher */}
+                                    <div className="flex p-1 bg-bg-dark border border-border-color rounded-xl shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSearchMode("breachName");
+                                                setCategorySearchView(null);
+                                            }}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border-none cursor-pointer ${
+                                                searchMode === "breachName"
+                                                    ? "bg-accent-primary text-white shadow-sm"
+                                                    : "bg-transparent text-text-muted hover:text-text-primary"
+                                            }`}
+                                        >
+                                            Breach Name
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSearchMode("dataCategory");
+                                                setBreachSearchView(null);
+                                            }}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border-none cursor-pointer flex items-center gap-1.5 ${
+                                                searchMode === "dataCategory"
+                                                    ? "bg-accent-primary text-white shadow-sm"
+                                                    : "bg-transparent text-text-muted hover:text-text-primary"
+                                            }`}
+                                        >
+                                            <span>Data Category</span>
+                                            {selectedCategory.toLowerCase().includes("password") && (
+                                                <AlertTriangle size={12} className="text-rose-300 fill-rose-500/20" />
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+
                                 <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-                                    Search for a specific data breach by name to see its details and find out if your domain was impacted.
+                                    {searchMode === "breachName" 
+                                        ? "Search for a specific data breach by name to see its details and find out if your domain was impacted."
+                                        : "Search by compromised data category (e.g. Passwords, Credit cards, SSNs) to see all matching breaches and impacted employees on your domain."}
                                 </p>
 
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
-                                    <div className="input-group">
-                                        <label htmlFor="breachSearchQuery">Breach Name</label>
-                                        <input
-                                            type="text"
-                                            id="breachSearchQuery"
-                                            list="breachNamesList"
-                                            value={breachSearchQuery}
-                                            onChange={(e) => {
-                                                setBreachSearchQuery(e.target.value);
-                                                setBreachSearchView(null);
-                                                setBreachSearchError("");
-                                            }}
-                                            placeholder="e.g. LinkedIn"
-                                            disabled={Object.keys(allBreachesMeta).length === 0}
-                                        />
-                                        <datalist id="breachNamesList">
-                                            {Object.keys(allBreachesMeta).map(name => (
-                                                <option key={name} value={name} />
-                                            ))}
-                                        </datalist>
-                                    </div>
+                                {/* MODE 1: BREACH NAME SEARCH */}
+                                {searchMode === "breachName" && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+                                        <div className="input-group">
+                                            <label htmlFor="breachSearchQuery">Breach Name</label>
+                                            <input
+                                                type="text"
+                                                id="breachSearchQuery"
+                                                list="breachNamesList"
+                                                value={breachSearchQuery}
+                                                onChange={(e) => {
+                                                    setBreachSearchQuery(e.target.value);
+                                                    setBreachSearchView(null);
+                                                    setBreachSearchError("");
+                                                }}
+                                                placeholder="e.g. LinkedIn, Adobe, Dropbox..."
+                                                disabled={Object.keys(allBreachesMeta).length === 0}
+                                            />
+                                            <datalist id="breachNamesList">
+                                                {Object.keys(allBreachesMeta).map(name => (
+                                                    <option key={name} value={name} />
+                                                ))}
+                                            </datalist>
+                                        </div>
 
-                                    <div className="input-group">
-                                        <label htmlFor="breachDomainStr">Target Domain (for Impacted Emails)</label>
-                                        {availableDomains.length === 0 ? (
-                                            <input type="text" disabled placeholder="Fetching verified domains..." />
-                                        ) : (
+                                        <div className="input-group">
+                                            <label htmlFor="breachDomainStr">Target Domain (for Impacted Emails)</label>
+                                            {availableDomains.length === 0 ? (
+                                                <input type="text" disabled placeholder="Fetching verified domains..." />
+                                            ) : (
+                                                <select
+                                                    id="breachDomainStr"
+                                                    value={domainStr}
+                                                    onChange={(e) => {
+                                                        setDomainStr(e.target.value);
+                                                        setDomainResults(null);
+                                                        setActiveView(null);
+                                                        setBreachSearchView(null);
+                                                    }}
+                                                    style={{
+                                                        width: '100%', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                                        border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)',
+                                                        color: 'var(--text-primary)', fontSize: '1rem', outline: 'none'
+                                                    }}
+                                                >
+                                                    {availableDomains.map(d => (
+                                                        <option key={d.DomainName} value={d.DomainName} className="bg-bg-dark">{d.DomainName}</option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                        </div>
+
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginTop: '0.5rem' }}>
+                                            <button
+                                                type="button"
+                                                className="btn-primary"
+                                                style={{
+                                                    background: breachSearchView === 'details' ? 'var(--accent-secondary)' : 'var(--bg-surface-hover)',
+                                                    borderColor: breachSearchView === 'details' ? 'var(--accent-secondary)' : 'var(--border-color)',
+                                                    color: breachSearchView === 'details' ? '#fff' : 'var(--text-secondary)'
+                                                }}
+                                                onClick={() => triggerBreachView("details")}
+                                                disabled={!breachSearchQuery || Object.keys(allBreachesMeta).length === 0}
+                                            >
+                                                Breach Details
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn-primary"
+                                                style={{
+                                                    background: breachSearchView === 'impacted' ? 'var(--accent-secondary)' : 'var(--bg-surface-hover)',
+                                                    borderColor: breachSearchView === 'impacted' ? 'var(--accent-secondary)' : 'var(--border-color)',
+                                                    color: breachSearchView === 'impacted' ? '#fff' : 'var(--text-secondary)'
+                                                }}
+                                                onClick={() => triggerBreachView("impacted")}
+                                                disabled={!breachSearchQuery || Object.keys(allBreachesMeta).length === 0 || breachSearchLoading}
+                                            >
+                                                {breachSearchLoading && breachSearchView === 'impacted' ? 'Loading...' : 'Details & Impacted Emails'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* MODE 2: COMPROMISED DATA CATEGORY SEARCH */}
+                                {searchMode === "dataCategory" && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+                                        <div className="input-group">
+                                            <label htmlFor="selectedCategory" className="flex items-center justify-between">
+                                                <span>Compromised Data Category</span>
+                                                {selectedCategory.toLowerCase().includes("password") && (
+                                                    <span className="text-rose-400 text-xs font-bold flex items-center gap-1">
+                                                        <AlertTriangle size={13} className="fill-rose-500/20" />
+                                                        High Risk Category
+                                                    </span>
+                                                )}
+                                            </label>
                                             <select
-                                                id="breachDomainStr"
+                                                id="selectedCategory"
+                                                value={selectedCategory}
+                                                onChange={(e) => {
+                                                    setSelectedCategory(e.target.value);
+                                                    setCategorySearchView(null);
+                                                }}
+                                                style={{
+                                                    width: '100%', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                                    border: selectedCategory.toLowerCase().includes("password") ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--border-color)', 
+                                                    borderRadius: 'var(--radius-sm)',
+                                                    color: selectedCategory.toLowerCase().includes("password") ? '#fca5a5' : 'var(--text-primary)', 
+                                                    fontSize: '1rem', outline: 'none', fontWeight: 600
+                                                }}
+                                            >
+                                                {allDataClasses.map((cat) => (
+                                                    <option key={cat} value={cat} className="bg-bg-dark">
+                                                        {cat.toLowerCase().includes("password") ? `⚠️ ${cat} (High Risk)` : cat}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="input-group">
+                                            <label htmlFor="categoryDomainStr">Target Domain (for Impacted Emails)</label>
+                                            <select
+                                                id="categoryDomainStr"
                                                 value={domainStr}
                                                 onChange={(e) => {
                                                     setDomainStr(e.target.value);
                                                     setDomainResults(null);
                                                     setActiveView(null);
-                                                    setBreachSearchView(null);
+                                                    setCategorySearchView(null);
                                                 }}
                                                 style={{
                                                     width: '100%', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.03)',
@@ -891,38 +1176,37 @@ export default function DomainSecurityPage() {
                                                     <option key={d.DomainName} value={d.DomainName} className="bg-bg-dark">{d.DomainName}</option>
                                                 ))}
                                             </select>
-                                        )}
-                                    </div>
-                                </div>
+                                        </div>
 
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginBottom: '2rem' }}>
-                                    <button
-                                        type="button"
-                                        className="btn-primary"
-                                        style={{
-                                            background: breachSearchView === 'details' ? 'var(--accent-secondary)' : 'var(--bg-surface-hover)',
-                                            borderColor: breachSearchView === 'details' ? 'var(--accent-secondary)' : 'var(--border-color)',
-                                            color: breachSearchView === 'details' ? '#fff' : 'var(--text-secondary)'
-                                        }}
-                                        onClick={() => triggerBreachView("details")}
-                                        disabled={!breachSearchQuery || Object.keys(allBreachesMeta).length === 0}
-                                    >
-                                        Breach Details
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="btn-primary"
-                                        style={{
-                                            background: breachSearchView === 'impacted' ? 'var(--accent-secondary)' : 'var(--bg-surface-hover)',
-                                            borderColor: breachSearchView === 'impacted' ? 'var(--accent-secondary)' : 'var(--border-color)',
-                                            color: breachSearchView === 'impacted' ? '#fff' : 'var(--text-secondary)'
-                                        }}
-                                        onClick={() => triggerBreachView("impacted")}
-                                        disabled={!breachSearchQuery || Object.keys(allBreachesMeta).length === 0 || breachSearchLoading}
-                                    >
-                                        {breachSearchLoading && breachSearchView === 'impacted' ? 'Loading...' : 'Details & Impacted Emails'}
-                                    </button>
-                                </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginTop: '0.5rem' }}>
+                                            <button
+                                                type="button"
+                                                className="btn-primary"
+                                                style={{
+                                                    background: categorySearchView === 'breaches' ? 'var(--accent-secondary)' : 'var(--bg-surface-hover)',
+                                                    borderColor: categorySearchView === 'breaches' ? 'var(--accent-secondary)' : 'var(--border-color)',
+                                                    color: categorySearchView === 'breaches' ? '#fff' : 'var(--text-secondary)'
+                                                }}
+                                                onClick={() => triggerCategoryView("breaches")}
+                                            >
+                                                Matching Breaches ({getBreachesForCategory(selectedCategory).length})
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn-primary"
+                                                style={{
+                                                    background: categorySearchView === 'impacted' ? 'var(--accent-secondary)' : 'var(--bg-surface-hover)',
+                                                    borderColor: categorySearchView === 'impacted' ? 'var(--accent-secondary)' : 'var(--border-color)',
+                                                    color: categorySearchView === 'impacted' ? '#fff' : 'var(--text-secondary)'
+                                                }}
+                                                onClick={() => triggerCategoryView("impacted")}
+                                                disabled={breachSearchLoading}
+                                            >
+                                                {breachSearchLoading && categorySearchView === 'impacted' ? 'Loading...' : `Impacted Emails (${selectedCategory})`}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {breachSearchError && (
@@ -931,28 +1215,71 @@ export default function DomainSecurityPage() {
                                 </div>
                             )}
 
-                            {breachSearchView && allBreachesMeta[breachSearchQuery] && (
+                            {/* RESULT CONTAINER FOR SEARCH BY BREACH NAME */}
+                            {searchMode === "breachName" && breachSearchView && allBreachesMeta[breachSearchQuery] && (
                                 <div style={{ flex: 1, marginTop: '1rem', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                                    <div style={{ flexShrink: 0, background: 'var(--bg-dark)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', marginBottom: '1rem' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                                            <div>
-                                                <h4 style={{ color: 'var(--accent-primary)', fontSize: '1.2rem', marginBottom: '4px' }}>{allBreachesMeta[breachSearchQuery].Title}</h4>
-                                                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Breached: {allBreachesMeta[breachSearchQuery].BreachDate}</span>
-                                            </div>
-                                            <div style={{ textAlign: 'right' }}>
-                                                <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#fca5a5' }}>{allBreachesMeta[breachSearchQuery].PwnCount.toLocaleString()}</div>
-                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Accounts Compromised</div>
-                                            </div>
-                                        </div>
-                                        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }} dangerouslySetInnerHTML={{ __html: allBreachesMeta[breachSearchQuery].Description }}></p>
+                                    {(() => {
+                                        const breach = allBreachesMeta[breachSearchQuery];
+                                        const hasPassword = breachHasPassword(breach);
 
-                                        <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', marginBottom: '4px' }}><strong>Compromised Data:</strong></div>
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                            {allBreachesMeta[breachSearchQuery].DataClasses.map((dc: string) => (
-                                                <span key={dc} style={{ background: 'var(--bg-surface-hover)', padding: '4px 10px', borderRadius: '12px', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{dc}</span>
-                                            ))}
-                                        </div>
-                                    </div>
+                                        return (
+                                            <div style={{ flexShrink: 0, background: 'var(--bg-dark)', padding: '1.25rem', borderRadius: 'var(--radius-sm)', border: hasPassword ? '1px solid rgba(239,68,68,0.4)' : '1px solid var(--border-color)', marginBottom: '1rem' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                                                    <div>
+                                                        <div className="flex items-center gap-2.5 flex-wrap">
+                                                            <h4 style={{ color: 'var(--accent-primary)', fontSize: '1.3rem', margin: 0 }}>{breach.Title}</h4>
+                                                            {hasPassword && (
+                                                                <span 
+                                                                    title="⚠️ Critical: This breach exposed user passwords!"
+                                                                    className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/50 text-xs font-extrabold shadow-sm"
+                                                                >
+                                                                    <AlertTriangle size={13} className="text-rose-400 fill-rose-500/20" />
+                                                                    <span>Passwords Exposed</span>
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
+                                                            Breached: <strong>{breach.BreachDate}</strong>
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ textAlign: 'right' }}>
+                                                        <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#fca5a5' }}>{breach.PwnCount.toLocaleString()}</div>
+                                                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Accounts Compromised Globally</div>
+                                                    </div>
+                                                </div>
+
+                                                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: breach.Description }}></p>
+
+                                                <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', marginBottom: '8px', fontWeight: 600 }}>Compromised Data Classes:</div>
+                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                                    {breach.DataClasses.map((dc: string) => {
+                                                        const isPwd = dc.toLowerCase().includes("password");
+                                                        return (
+                                                            <span 
+                                                                key={dc} 
+                                                                style={{ 
+                                                                    background: isPwd ? 'rgba(239, 68, 68, 0.25)' : 'var(--bg-surface-hover)', 
+                                                                    border: isPwd ? '1px solid rgba(239, 68, 68, 0.6)' : '1px solid var(--border-color)',
+                                                                    color: isPwd ? '#fca5a5' : 'var(--text-muted)', 
+                                                                    fontWeight: isPwd ? 800 : 500,
+                                                                    padding: '4px 10px', 
+                                                                    borderRadius: '12px', 
+                                                                    fontSize: '0.75rem',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    boxShadow: isPwd ? '0 0 10px rgba(239, 68, 68, 0.25)' : 'none'
+                                                                }}
+                                                            >
+                                                                {isPwd && <AlertTriangle size={12} className="text-rose-400" />}
+                                                                <span>{dc}</span>
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
 
                                     {breachSearchView === 'impacted' && (
                                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -1013,6 +1340,148 @@ export default function DomainSecurityPage() {
                                                         })()}
                                                         <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '8px', overflowY: 'auto' }}>
                                                             {getImpactedAliasesForBreach().map(alias => (
+                                                                <EmailRecord key={alias} alias={alias} breachList={domainResults.aliases[alias]} />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* RESULT CONTAINER FOR SEARCH BY DATA CATEGORY */}
+                            {searchMode === "dataCategory" && categorySearchView && (
+                                <div style={{ flex: 1, marginTop: '1rem', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                                    {/* Category Info Header Banner */}
+                                    <div style={{ flexShrink: 0, background: selectedCategory.toLowerCase().includes("password") ? 'rgba(239,68,68,0.1)' : 'var(--bg-dark)', padding: '1rem 1.25rem', borderRadius: 'var(--radius-sm)', border: selectedCategory.toLowerCase().includes("password") ? '1px solid rgba(239,68,68,0.4)' : '1px solid var(--border-color)', marginBottom: '1rem' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                            <div className="flex items-center gap-2">
+                                                {selectedCategory.toLowerCase().includes("password") ? (
+                                                    <AlertTriangle size={20} className="text-rose-400 fill-rose-500/20" />
+                                                ) : (
+                                                    <Layers size={20} className="text-accent-primary" />
+                                                )}
+                                                <div>
+                                                    <strong style={{ fontSize: '1.1rem', color: selectedCategory.toLowerCase().includes("password") ? '#f87171' : 'var(--text-primary)' }}>
+                                                        Category: {selectedCategory}
+                                                    </strong>
+                                                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: '10px' }}>
+                                                        ({getBreachesForCategory(selectedCategory).length} total breaches compromise this data class)
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {categorySearchView === 'impacted' && domainResults && (
+                                                <ExportDropdown
+                                                    categoryName={selectedCategory}
+                                                    activeCount={getImpactedAliasesForCategory(selectedCategory).filter(alias => {
+                                                        const email = `${alias}@${domainStr}`.toLowerCase();
+                                                        return domainResults.adEnrichment[email]?.enabled;
+                                                    }).length}
+                                                    totalCount={getImpactedAliasesForCategory(selectedCategory).length}
+                                                    label={`Export ${selectedCategory} Report`}
+                                                />
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* View Mode A: Matching Breaches in this Category */}
+                                    {categorySearchView === 'breaches' && (
+                                        <div style={{ flex: 1, overflowY: 'auto' }}>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', background: 'var(--bg-dark)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+                                                <thead className="sticky-header">
+                                                    <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)', background: 'var(--bg-surface-hover)' }}>
+                                                        <th style={{ padding: '12px 16px' }}>Breach Name</th>
+                                                        <th style={{ padding: '12px 16px' }}>Breach Date</th>
+                                                        <th style={{ padding: '12px 16px', textAlign: 'right' }}>Compromised Accounts</th>
+                                                        <th style={{ padding: '12px 16px', textAlign: 'right' }}>Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {getBreachesForCategory(selectedCategory).map((b: any) => {
+                                                        const hasPwd = breachHasPassword(b);
+                                                        return (
+                                                            <tr key={b.Name} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                                <td style={{ padding: '12px 16px', fontWeight: 500, color: 'var(--accent-primary)' }}>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span>{b.Title || b.Name}</span>
+                                                                        {hasPwd && (
+                                                                            <span 
+                                                                                title="⚠️ This breach exposed user passwords!"
+                                                                                style={{
+                                                                                    display: 'inline-flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '4px',
+                                                                                    padding: '2px 6px',
+                                                                                    borderRadius: '4px',
+                                                                                    background: 'rgba(239, 68, 68, 0.15)',
+                                                                                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                                                                                    color: '#f87171',
+                                                                                    fontSize: '0.7rem',
+                                                                                    fontWeight: 700
+                                                                                }}
+                                                                            >
+                                                                                <AlertTriangle size={11} className="text-rose-400 fill-rose-500/20" />
+                                                                                <span>Passwords</span>
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                                <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{b.BreachDate}</td>
+                                                                <td style={{ padding: '12px 16px', textAlign: 'right', color: '#fca5a5', fontWeight: 600 }}>
+                                                                    {b.PwnCount.toLocaleString()}
+                                                                </td>
+                                                                <td style={{ padding: '8px 16px', textAlign: 'right' }}>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setSearchMode("breachName");
+                                                                            setBreachSearchQuery(b.Name);
+                                                                            triggerBreachView("impacted");
+                                                                        }}
+                                                                        className="btn-secondary"
+                                                                        style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                                                    >
+                                                                        Check Domain Impact
+                                                                    </button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+
+                                    {/* View Mode B: Impacted Emails in this Category */}
+                                    {categorySearchView === 'impacted' && (
+                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                                            {domainError && (
+                                                <div style={{ flexShrink: 0, padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444' }}>
+                                                    <strong>Domain Error:</strong> {domainError}
+                                                </div>
+                                            )}
+
+                                            {domainResults && (
+                                                getImpactedAliasesForCategory(selectedCategory).length === 0 ? (
+                                                    <div style={{ flexShrink: 0, padding: '1rem', backgroundColor: 'rgba(34,197,94,0.1)', color: '#22c55e', borderRadius: 'var(--radius-md)', border: '1px solid #22c55e' }}>
+                                                        <strong>Clear!</strong> No emails on {domainStr} were impacted by breaches leaking {selectedCategory}.
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                                                        <div style={{ flexShrink: 0, padding: '0.75rem 1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                            <strong>{getImpactedAliasesForCategory(selectedCategory).length} Accounts Impacted by {selectedCategory} Exposure</strong>
+                                                            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                                                {getImpactedAliasesForCategory(selectedCategory).filter(alias => {
+                                                                    const email = `${alias}@${domainStr}`.toLowerCase();
+                                                                    return domainResults.adEnrichment[email]?.enabled;
+                                                                }).length} Active Accounts
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '8px', overflowY: 'auto' }}>
+                                                            {getImpactedAliasesForCategory(selectedCategory).map(alias => (
                                                                 <EmailRecord key={alias} alias={alias} breachList={domainResults.aliases[alias]} />
                                                             ))}
                                                         </div>
