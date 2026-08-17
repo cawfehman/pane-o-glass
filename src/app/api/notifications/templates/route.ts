@@ -114,22 +114,33 @@ export async function GET(req: Request) {
         const { searchParams } = new URL(req.url);
         const activeOnly = searchParams.get("activeOnly") === "true";
 
-        // Upsert primary Cooper template
-        await prisma.notificationTemplate.upsert({
-            where: { name: PRIMARY_COOPER_TEMPLATE.name },
-            update: {
-                description: PRIMARY_COOPER_TEMPLATE.description,
-                category: PRIMARY_COOPER_TEMPLATE.category,
-                subject: PRIMARY_COOPER_TEMPLATE.subject,
-                bodyHtml: PRIMARY_COOPER_TEMPLATE.bodyHtml,
-                bodyText: PRIMARY_COOPER_TEMPLATE.bodyText,
-                isEnabled: true,
-            },
-            create: {
-                ...PRIMARY_COOPER_TEMPLATE,
-                createdBy: "Information Security",
-            }
+        // Only seed primary template if it doesn't already exist in the database
+        const existingPrimary = await prisma.notificationTemplate.findUnique({
+            where: { name: PRIMARY_COOPER_TEMPLATE.name }
         });
+
+        if (!existingPrimary) {
+            await prisma.notificationTemplate.create({
+                data: {
+                    ...PRIMARY_COOPER_TEMPLATE,
+                    createdBy: "Information Security",
+                }
+            });
+
+            // Disable legacy seed templates if they exist in DB
+            await prisma.notificationTemplate.updateMany({
+                where: {
+                    name: {
+                        in: [
+                            "Standard Credential Breach Notice",
+                            "Urgent Password Reset Directive",
+                            "Financial & Identity Compromise Notice"
+                        ]
+                    }
+                },
+                data: { isEnabled: false }
+            });
+        }
 
         const where: any = {};
         if (activeOnly) {
@@ -216,7 +227,7 @@ export async function PUT(req: Request) {
         const creator = String(existing.createdBy || "").toLowerCase();
 
         const isAdmin = role === "ADMIN";
-        const isOwner = creator === currentUsername || creator === currentName || creator === "user";
+        const isOwner = creator === currentUsername || creator === currentName || creator === "user" || creator === "information security" || creator === "system";
 
         // Enforce immutability check
         if (!isAdmin && !isOwner) {

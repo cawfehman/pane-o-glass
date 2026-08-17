@@ -5,7 +5,7 @@ import {
     Save, Sparkles, Code, Eye, Tag, AlertCircle, 
     RotateCcw, Check, Copy, ExternalLink, HelpCircle,
     Bold, Italic, Underline, List, ListOrdered, Link,
-    Edit3, Type, Undo, Redo
+    Edit3, Type, Undo, Redo, RemoveFormatting
 } from "lucide-react";
 import { DEFAULT_PLACEHOLDERS, renderMergedText, TemplateVariables } from "@/lib/templateParser";
 
@@ -55,6 +55,7 @@ export default function RichTemplateEditor({
 
     const visualEditorRef = useRef<HTMLDivElement>(null);
 
+    // Initialize state when initialTemplate prop changes
     useEffect(() => {
         if (initialTemplate) {
             setName(initialTemplate.name || "");
@@ -66,14 +67,19 @@ export default function RichTemplateEditor({
         }
     }, [initialTemplate]);
 
-    // Keep visual editor content in sync when switching modes or loading initial template
+    // Populate visual editor content only on mount or when switching into visual mode
     useEffect(() => {
         if (editorMode === "visual" && visualEditorRef.current) {
-            if (visualEditorRef.current.innerHTML !== bodyHtml) {
-                visualEditorRef.current.innerHTML = bodyHtml;
-            }
+            visualEditorRef.current.innerHTML = bodyHtml;
         }
-    }, [editorMode, bodyHtml]);
+    }, [editorMode]);
+
+    // Initial mount hydration
+    useEffect(() => {
+        if (visualEditorRef.current && initialTemplate?.bodyHtml) {
+            visualEditorRef.current.innerHTML = initialTemplate.bodyHtml;
+        }
+    }, []);
 
     const handleVisualInput = () => {
         if (visualEditorRef.current) {
@@ -82,15 +88,14 @@ export default function RichTemplateEditor({
     };
 
     const execCmd = (command: string, value: string | undefined = undefined) => {
-        if (editorMode !== "visual") return;
+        if (editorMode !== "visual" || !visualEditorRef.current) return;
+        visualEditorRef.current.focus();
         document.execCommand(command, false, value);
-        if (visualEditorRef.current) {
-            setBodyHtml(visualEditorRef.current.innerHTML);
-        }
+        setBodyHtml(visualEditorRef.current.innerHTML);
     };
 
     const handleInsertLink = () => {
-        const url = prompt("Enter the destination URL:", "https://");
+        const url = prompt("Enter destination URL:", "https://");
         if (url) {
             execCmd("createLink", url);
         }
@@ -98,16 +103,14 @@ export default function RichTemplateEditor({
 
     const insertVariable = (varKey: string, target: "subject" | "body") => {
         if (target === "subject") {
-            setSubject(prev => prev + ` ${varKey}`);
+            setSubject(prev => prev ? `${prev} ${varKey}` : varKey);
         } else {
-            if (editorMode === "visual") {
-                if (visualEditorRef.current) {
-                    visualEditorRef.current.focus();
-                    document.execCommand("insertText", false, ` ${varKey} `);
-                    setBodyHtml(visualEditorRef.current.innerHTML);
-                }
+            if (editorMode === "visual" && visualEditorRef.current) {
+                visualEditorRef.current.focus();
+                document.execCommand("insertText", false, ` ${varKey} `);
+                setBodyHtml(visualEditorRef.current.innerHTML);
             } else {
-                setBodyHtml(prev => prev + ` ${varKey}`);
+                setBodyHtml(prev => prev ? `${prev} ${varKey}` : varKey);
             }
         }
     };
@@ -153,6 +156,27 @@ export default function RichTemplateEditor({
 
     return (
         <form onSubmit={handleSave} className="flex flex-col gap-6">
+            {/* Scoped CSS for Rich Lists and Text Formatting */}
+            <style>{`
+                .wysiwyg-editor-area ul { 
+                    list-style-type: disc !important; 
+                    padding-left: 28px !important; 
+                    margin: 10px 0 !important; 
+                }
+                .wysiwyg-editor-area ol { 
+                    list-style-type: decimal !important; 
+                    padding-left: 28px !important; 
+                    margin: 10px 0 !important; 
+                }
+                .wysiwyg-editor-area li { 
+                    margin: 4px 0 !important; 
+                    display: list-item !important; 
+                }
+                .wysiwyg-editor-area p { 
+                    margin: 8px 0 !important; 
+                }
+            `}</style>
+
             {error && (
                 <div className="p-3.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-400 text-sm flex items-center gap-2">
                     <AlertCircle size={18} className="shrink-0" />
@@ -243,6 +267,7 @@ export default function RichTemplateEditor({
                             </span>
                             <button
                                 type="button"
+                                onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => insertVariable(p.key, "subject")}
                                 title={`Insert ${p.key} into Subject line`}
                                 className="px-2 py-1 text-[0.7rem] bg-bg-surface hover:bg-accent-primary/20 text-text-secondary border-l border-border-color cursor-pointer transition-colors"
@@ -251,6 +276,7 @@ export default function RichTemplateEditor({
                             </button>
                             <button
                                 type="button"
+                                onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => insertVariable(p.key, "body")}
                                 title={`Insert ${p.key} into Email Body`}
                                 className="px-2 py-1 text-[0.7rem] bg-bg-surface hover:bg-accent-primary/20 text-text-secondary border-l border-border-color cursor-pointer transition-colors"
@@ -287,6 +313,7 @@ export default function RichTemplateEditor({
                         <div className="flex items-center gap-1 bg-bg-surface p-0.5 rounded-lg border border-border-color">
                             <button
                                 type="button"
+                                onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => setEditorMode("visual")}
                                 className={`px-3 py-1 rounded-md text-xs font-bold cursor-pointer transition-colors flex items-center gap-1.5 ${
                                     editorMode === "visual"
@@ -300,6 +327,7 @@ export default function RichTemplateEditor({
 
                             <button
                                 type="button"
+                                onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => setEditorMode("html")}
                                 className={`px-3 py-1 rounded-md text-xs font-bold cursor-pointer transition-colors flex items-center gap-1.5 ${
                                     editorMode === "html"
@@ -312,36 +340,40 @@ export default function RichTemplateEditor({
                             </button>
                         </div>
 
-                        {/* Rich Text Toolbar (Active when in Visual Mode) */}
+                        {/* Rich Text Toolbar (Active in Visual Mode) */}
                         {editorMode === "visual" && (
                             <div className="flex items-center gap-1">
                                 <button
                                     type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => execCmd("bold")}
                                     className="p-1.5 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary cursor-pointer"
-                                    title="Bold (Ctrl+B)"
+                                    title="Bold"
                                 >
                                     <Bold size={14} />
                                 </button>
                                 <button
                                     type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => execCmd("italic")}
                                     className="p-1.5 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary cursor-pointer"
-                                    title="Italic (Ctrl+I)"
+                                    title="Italic"
                                 >
                                     <Italic size={14} />
                                 </button>
                                 <button
                                     type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => execCmd("underline")}
                                     className="p-1.5 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary cursor-pointer"
-                                    title="Underline (Ctrl+U)"
+                                    title="Underline"
                                 >
                                     <Underline size={14} />
                                 </button>
                                 <span className="w-[1px] h-4 bg-border-color mx-1" />
                                 <button
                                     type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => execCmd("insertUnorderedList")}
                                     className="p-1.5 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary cursor-pointer"
                                     title="Bullet List"
@@ -350,6 +382,7 @@ export default function RichTemplateEditor({
                                 </button>
                                 <button
                                     type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={() => execCmd("insertOrderedList")}
                                     className="p-1.5 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary cursor-pointer"
                                     title="Numbered List"
@@ -358,11 +391,21 @@ export default function RichTemplateEditor({
                                 </button>
                                 <button
                                     type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
                                     onClick={handleInsertLink}
                                     className="p-1.5 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary cursor-pointer"
                                     title="Insert Link"
                                 >
                                     <Link size={14} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => execCmd("removeFormat")}
+                                    className="p-1.5 rounded hover:bg-bg-surface text-text-secondary hover:text-text-primary cursor-pointer"
+                                    title="Clear Formatting"
+                                >
+                                    <RemoveFormatting size={14} />
                                 </button>
                             </div>
                         )}
@@ -370,7 +413,7 @@ export default function RichTemplateEditor({
 
                     {/* Editor Content Area */}
                     {editorMode === "visual" ? (
-                        <div className="flex-1 p-5 overflow-y-auto bg-[#ffffff] text-[#1e293b] focus:outline-none">
+                        <div className="flex-1 p-5 overflow-y-auto bg-[#ffffff] text-[#1e293b] focus:outline-none wysiwyg-editor-area">
                             <div
                                 ref={visualEditorRef}
                                 contentEditable={true}
@@ -391,7 +434,7 @@ export default function RichTemplateEditor({
                     )}
 
                     <div className="p-2 bg-bg-dark/40 border-t border-border-color text-[0.7rem] text-text-muted flex justify-between">
-                        <span>{editorMode === "visual" ? "✏️ Visual Direct Editing Active (Edits update HTML automatically)" : "💻 Raw HTML Code Editor Active"}</span>
+                        <span>{editorMode === "visual" ? "✏️ Visual Direct Editing (Edits sync with HTML automatically)" : "💻 Raw HTML Code Editor Active"}</span>
                         <span>{bodyHtml.length} characters</span>
                     </div>
                 </div>
@@ -415,7 +458,7 @@ export default function RichTemplateEditor({
                         </div>
                     </div>
 
-                    <div className="flex-1 p-5 overflow-y-auto bg-[#ffffff] text-[#1e293b] rounded-b-xl">
+                    <div className="flex-1 p-5 overflow-y-auto bg-[#ffffff] text-[#1e293b] rounded-b-xl wysiwyg-editor-area">
                         {previewHtml ? (
                             <div 
                                 dangerouslySetInnerHTML={{ __html: previewHtml }} 

@@ -757,6 +757,7 @@ export default function NotificationCenterPage() {
                                 </button>
                             </div>
                             <RichTemplateEditor 
+                                key={editingTemplate?.id || (editingTemplate ? 'clone' : 'new')}
                                 initialTemplate={editingTemplate}
                                 onSave={handleSaveTemplate}
                                 onCancel={() => { setIsCreatingTemplate(false); setEditingTemplate(null); }}
