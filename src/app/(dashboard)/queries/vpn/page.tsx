@@ -9,6 +9,8 @@ import {
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import { VpnWorldMap } from "@/components/VpnWorldMap";
 import { useSession } from "next-auth/react";
+import { PromptDialog } from "@/components/common/PromptDialog";
+import { PaginationControls } from "@/components/common/PaginationControls";
 
 export default function VpnTroubleshootingPage() {
     const { data: session } = useSession();
@@ -25,12 +27,17 @@ export default function VpnTroubleshootingPage() {
     const [syncRange, setSyncRange] = useState<number>(2100);
     const [syncStatus, setSyncStatus] = useState("Syncing...");
 
+    // Prompt Dialog State
+    const [isPromptOpen, setIsPromptOpen] = useState(false);
+    const [promptError, setPromptError] = useState("");
+
     const [activeTab, setActiveTab] = useState<"feed" | "security" | "bandwidth" | "map">("feed");
     const [sortKey, setSortKey] = useState<string>("createdAt");
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
     const [bandwidthScope, setBandwidthScope] = useState<string>("last30days");
     const [securityScope, setSecurityScope] = useState<string>("last24hours");
     const [feedSubTab, setFeedSubTab] = useState<"all" | "success" | "failure">("all");
+    const [feedPage, setFeedPage] = useState<number>(1);
     const [displayRows, setDisplayRows] = useState<number>(() => {
         if (typeof window !== "undefined") {
             const saved = localStorage.getItem("vpn_display_rows");
@@ -44,8 +51,10 @@ export default function VpnTroubleshootingPage() {
 
     const handleDisplayRowsChange = (val: number) => {
         setDisplayRows(val);
+        setFeedPage(1);
         localStorage.setItem("vpn_display_rows", val.toString());
     };
+
 
     const [topFailedUsernames, setTopFailedUsernames] = useState<any[]>([]);
     const [topFailedValidUsernames, setTopFailedValidUsernames] = useState<any[]>([]);
@@ -132,29 +141,18 @@ export default function VpnTroubleshootingPage() {
     };
 
     const handleSync = async () => {
-        let passwordInput = "";
-
         if (syncRange >= 86400) {
-            const rangeStr = syncRange >= 2592000 ? "30 Days" : syncRange >= 604800 ? "7 Days" : "24 Hours";
-            const promptVal = prompt(
-                `🔒 Security Verification Required\n\nSyncing log events for the last ${rangeStr} requires authorization.\n\nEnter authorization password:`
-            );
-
-            if (promptVal === null) {
-                // User cancelled the prompt
-                return;
-            }
-
-            if (!promptVal.trim()) {
-                setError("Authorization failed: Password cannot be blank.");
-                return;
-            }
-
-            passwordInput = promptVal.trim();
+            setPromptError("");
+            setIsPromptOpen(true);
+            return;
         }
+        executeSync("");
+    };
 
+    const executeSync = async (passwordInput: string) => {
         setSyncing(true);
         setError("");
+        setPromptError("");
         setSyncNotification(null);
         setSyncStatus("Initializing connection to Graylog...");
 
@@ -182,7 +180,12 @@ export default function VpnTroubleshootingPage() {
             });
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || "Sync request failed");
+                const errMsg = errData.error || "Sync request failed";
+                if (isPromptOpen) {
+                    setPromptError(errMsg);
+                    throw new Error(errMsg);
+                }
+                throw new Error(errMsg);
             }
             const data = await res.json();
             const count = data.syncedCount ?? 0;
@@ -194,6 +197,7 @@ export default function VpnTroubleshootingPage() {
                 ? `${Math.round(minutes / 60)} hour(s)` 
                 : `${minutes} minute(s)`;
             setSyncNotification(`Sync complete! Retransmitted/synced ${count} event${count === 1 ? "" : "s"} from the last ${rangeStr}.`);
+            setIsPromptOpen(false);
             
             // Auto-clear notification after 5 seconds
             setTimeout(() => {
@@ -202,7 +206,9 @@ export default function VpnTroubleshootingPage() {
 
             await fetchDashboardData();
         } catch (err: any) {
-            setError(err.message || "Failed to trigger log sync.");
+            if (!isPromptOpen) {
+                setError(err.message || "Failed to trigger log sync.");
+            }
         } finally {
             clearInterval(intervalId);
             setSyncing(false);
@@ -857,14 +863,30 @@ export default function VpnTroubleshootingPage() {
 
                     {/* Search Results */}
                     {searchResults !== null && (
-                        <section style={{ marginBottom: '2.5rem' }}>
-                            <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1rem' }}>
-                                Search Results ({searchResults.length})
-                            </h2>
-                            <div className="glass-card flex-1 min-h-0 flex flex-col" style={{ padding: 0, overflow: 'hidden' }}>
-                                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6" style={{ width: '100%' }}>
+                        <section className="flex flex-col gap-2">
+                            <div className="flex justify-between items-center">
+                                <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>
+                                    Search Results ({getFilteredEvents(searchResults).length})
+                                </h2>
+                            </div>
+
+                            <div className="glass-card flex flex-col border border-border-color rounded-xl overflow-hidden shadow-sm" style={{ maxHeight: '600px' }}>
+                                {/* Top Pinned Pagination */}
+                                <div className="p-3 border-b border-border-color bg-bg-surface/80 backdrop-blur-md shrink-0">
+                                    <PaginationControls
+                                        totalRecords={getFilteredEvents(searchResults).length}
+                                        page={feedPage}
+                                        limit={displayRows}
+                                        limitOptions={[25, 50, 100, 200]}
+                                        onPageChange={setFeedPage}
+                                        onLimitChange={handleDisplayRowsChange}
+                                        showLimitSelector={true}
+                                    />
+                                </div>
+
+                                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar" style={{ width: '100%' }}>
                                     <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', textAlign: 'left' }}>
-                                        <thead>
+                                        <thead className="sticky top-0 z-10">
                                             <tr style={{ borderBottom: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
                                                 {renderSortableHeader("Timestamp", "createdAt")}
                                                 {renderSortableHeader("User", "username")}
@@ -884,7 +906,9 @@ export default function VpnTroubleshootingPage() {
                                                     </td>
                                                 </tr>
                                             ) : (
-                                                getSortedData(getFilteredEvents(searchResults)).slice(0, displayRows).map((evt) => (
+                                                getSortedData(getFilteredEvents(searchResults))
+                                                    .slice((feedPage - 1) * displayRows, feedPage * displayRows)
+                                                    .map((evt) => (
                                                     <tr key={evt.id} style={{ 
                                                         borderBottom: '1px solid var(--border-color)', 
                                                         transition: 'background-color 0.2s',
@@ -914,7 +938,7 @@ export default function VpnTroubleshootingPage() {
                                                                                 background: 'rgba(245, 158, 11, 0.15)', 
                                                                                 color: '#fbbf24', 
                                                                                 padding: '2px 6px', 
-                                                                                borderRadius: '4px',
+                                                                                borderRadius: '4px', 
                                                                                 fontWeight: 700
                                                                             }}>
                                                                                 ⚠️ Non-US ({evt.ipCountryCode})
@@ -937,7 +961,7 @@ export default function VpnTroubleshootingPage() {
                                                                     gap: '4px',
                                                                     padding: '4px 8px', 
                                                                     borderRadius: '6px', 
-                                                                    fontSize: '0.8rem',
+                                                                    fontSize: '0.8rem', 
                                                                     fontWeight: 600,
                                                                     background: evt.status === "FAILURE" ? 'rgba(239, 68, 68, 0.15)' : evt.status === "SUCCESS" ? 'rgba(34, 197, 94, 0.15)' : 'rgba(59, 130, 246, 0.15)',
                                                                     color: evt.status === "FAILURE" ? '#f87171' : evt.status === "SUCCESS" ? '#4ade80' : '#60a5fa'
@@ -972,27 +996,6 @@ export default function VpnTroubleshootingPage() {
                                                                 }}>
                                                                     {evt.vpnType || "SSL"}
                                                                 </span>
-                                                                {evt.vpnStream && (
-                                                                    <span 
-                                                                        title={evt.vpnStream === "Kel-3140" ? "Reconnect" : "Connect"}
-                                                                        style={{
-                                                                            display: 'inline-flex',
-                                                                            alignItems: 'center',
-                                                                            justifyContent: 'center',
-                                                                            width: '18px',
-                                                                            height: '18px',
-                                                                            borderRadius: '50%',
-                                                                            fontSize: '0.7rem',
-                                                                            fontWeight: 800,
-                                                                            background: evt.vpnStream === "Kel-3140" ? 'rgba(236, 72, 153, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-                                                                            color: evt.vpnStream === "Kel-3140" ? '#f472b6' : '#4ade80',
-                                                                            border: evt.vpnStream === "Kel-3140" ? '1px solid rgba(236, 72, 153, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)',
-                                                                            cursor: 'help'
-                                                                        }}
-                                                                    >
-                                                                        {evt.vpnStream === "Kel-3140" ? "R" : "C"}
-                                                                    </span>
-                                                                )}
                                                             </div>
                                                         </td>
                                                         <td style={{ padding: '14px 16px', fontSize: '0.9rem' }}>
@@ -1010,20 +1013,47 @@ export default function VpnTroubleshootingPage() {
                                         </tbody>
                                     </table>
                                 </div>
+
+                                {/* Bottom Pinned Pagination */}
+                                <div className="p-3 border-t border-border-color bg-bg-surface/80 backdrop-blur-md shrink-0">
+                                    <PaginationControls
+                                        totalRecords={getFilteredEvents(searchResults).length}
+                                        page={feedPage}
+                                        limit={displayRows}
+                                        onPageChange={setFeedPage}
+                                        showLimitSelector={false}
+                                    />
+                                </div>
                             </div>
                         </section>
                     )}
 
                     {/* Recent activity timeline */}
-                    <section className="w-full">
-                        <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Database size={20} className="text-accent-primary" />
-                            Recent Activity Feed
-                        </h2>
-                        <div className="glass-card flex-1 min-h-0 flex flex-col" style={{ padding: 0, overflow: 'hidden', width: '100%' }}>
-                            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6" style={{ width: '100%' }}>
+                    <section className="w-full flex flex-col gap-2">
+                        <div className="flex justify-between items-center">
+                            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Database size={20} className="text-accent-primary" />
+                                Recent Activity Feed ({getFilteredEvents(recentEvents).length})
+                            </h2>
+                        </div>
+
+                        <div className="glass-card flex flex-col border border-border-color rounded-xl overflow-hidden shadow-sm" style={{ maxHeight: '650px' }}>
+                            {/* Top Pinned Pagination */}
+                            <div className="p-3 border-b border-border-color bg-bg-surface/80 backdrop-blur-md shrink-0">
+                                <PaginationControls
+                                    totalRecords={getFilteredEvents(recentEvents).length}
+                                    page={feedPage}
+                                    limit={displayRows}
+                                    limitOptions={[25, 50, 100, 200]}
+                                    onPageChange={setFeedPage}
+                                    onLimitChange={handleDisplayRowsChange}
+                                    showLimitSelector={true}
+                                />
+                            </div>
+
+                            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar" style={{ width: '100%' }}>
                                 <table style={{ width: '100%', minWidth: '900px', borderCollapse: 'collapse', textAlign: 'left' }}>
-                                    <thead>
+                                    <thead className="sticky top-0 z-10">
                                         <tr style={{ borderBottom: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
                                             {renderSortableHeader("Timestamp", "createdAt")}
                                             {renderSortableHeader("User", "username")}
@@ -1049,7 +1079,9 @@ export default function VpnTroubleshootingPage() {
                                                 </td>
                                             </tr>
                                         ) : (
-                                            getSortedData(getFilteredEvents(recentEvents)).slice(0, displayRows).map((evt) => (
+                                            getSortedData(getFilteredEvents(recentEvents))
+                                                .slice((feedPage - 1) * displayRows, feedPage * displayRows)
+                                                .map((evt) => (
                                                 <tr key={evt.id} style={{ 
                                                     borderBottom: '1px solid var(--border-color)', 
                                                     transition: 'background-color 0.2s',
@@ -1079,7 +1111,7 @@ export default function VpnTroubleshootingPage() {
                                                                             background: 'rgba(245, 158, 11, 0.15)', 
                                                                             color: '#fbbf24', 
                                                                             padding: '2px 6px', 
-                                                                            borderRadius: '4px',
+                                                                            borderRadius: '4px', 
                                                                             fontWeight: 700
                                                                         }}>
                                                                             ⚠️ Non-US ({evt.ipCountryCode})
@@ -1102,7 +1134,7 @@ export default function VpnTroubleshootingPage() {
                                                                 gap: '4px',
                                                                 padding: '4px 8px', 
                                                                 borderRadius: '6px', 
-                                                                fontSize: '0.8rem',
+                                                                fontSize: '0.8rem', 
                                                                 fontWeight: 600,
                                                                 background: evt.status === "FAILURE" ? 'rgba(239, 68, 68, 0.15)' : evt.status === "SUCCESS" ? 'rgba(34, 197, 94, 0.15)' : 'rgba(59, 130, 246, 0.15)',
                                                                 color: evt.status === "FAILURE" ? '#f87171' : evt.status === "SUCCESS" ? '#4ade80' : '#60a5fa'
@@ -1137,27 +1169,6 @@ export default function VpnTroubleshootingPage() {
                                                             }}>
                                                                 {evt.vpnType || "SSL"}
                                                             </span>
-                                                            {evt.vpnStream && (
-                                                                <span 
-                                                                    title={evt.vpnStream === "Kel-3140" ? "Reconnect" : "Connect"}
-                                                                    style={{
-                                                                        display: 'inline-flex',
-                                                                        alignItems: 'center',
-                                                                        justifyContent: 'center',
-                                                                        width: '18px',
-                                                                        height: '18px',
-                                                                        borderRadius: '50%',
-                                                                        fontSize: '0.7rem',
-                                                                        fontWeight: 800,
-                                                                        background: evt.vpnStream === "Kel-3140" ? 'rgba(236, 72, 153, 0.15)' : 'rgba(34, 197, 94, 0.15)',
-                                                                        color: evt.vpnStream === "Kel-3140" ? '#f472b6' : '#4ade80',
-                                                                        border: evt.vpnStream === "Kel-3140" ? '1px solid rgba(236, 72, 153, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)',
-                                                                        cursor: 'help'
-                                                                    }}
-                                                                >
-                                                                    {evt.vpnStream === "Kel-3140" ? "R" : "C"}
-                                                                </span>
-                                                            )}
                                                         </div>
                                                     </td>
                                                     <td style={{ padding: '14px 16px', fontSize: '0.9rem' }}>
@@ -1174,6 +1185,17 @@ export default function VpnTroubleshootingPage() {
                                         )}
                                     </tbody>
                                 </table>
+                            </div>
+
+                            {/* Bottom Pinned Pagination */}
+                            <div className="p-3 border-t border-border-color bg-bg-surface/80 backdrop-blur-md shrink-0">
+                                <PaginationControls
+                                    totalRecords={getFilteredEvents(recentEvents).length}
+                                    page={feedPage}
+                                    limit={displayRows}
+                                    onPageChange={setFeedPage}
+                                    showLimitSelector={false}
+                                />
                             </div>
                         </div>
                     </section>
@@ -2041,6 +2063,25 @@ export default function VpnTroubleshootingPage() {
                     </div>
                 </div>
             )}
+
+            {/* Historical Log Sync Security Authorization Modal */}
+            <PromptDialog
+                isOpen={isPromptOpen}
+                title="Historical Log Synchronization Authorization"
+                description={`Syncing Graylog SIEM VPN connection logs for the selected range (${syncRange >= 2592000 ? "30 Days" : syncRange >= 604800 ? "7 Days" : "24 Hours"}) requires administrator authorization.`}
+                placeholder="Enter authorization password..."
+                isPassword={true}
+                confirmText="Authorize & Sync"
+                onConfirm={(pwd) => executeSync(pwd)}
+                onCancel={() => {
+                    setIsPromptOpen(false);
+                    setPromptError("");
+                }}
+                loading={syncing}
+                errorMessage={promptError}
+            />
         </div>
     );
 }
+
+

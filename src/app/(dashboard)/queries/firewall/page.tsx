@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import { Shield } from "lucide-react";
 import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { PaginationControls } from "@/components/common/PaginationControls";
 
 export default function CiscoFirewallPage() {
     const [activeTab, setActiveTab] = useState<"manual" | "guardian" | "blacklist" | "database">("manual");
@@ -26,9 +28,29 @@ export default function CiscoFirewallPage() {
     const [loadingGuardianEvents, setLoadingGuardianEvents] = useState(false);
     const [guardianSearch, setGuardianSearch] = useState("");
     const [guardianFilter, setGuardianFilter] = useState("");
+    const [guardianPage, setGuardianPage] = useState(1);
+    const [guardianLimit, setGuardianLimit] = useState(25);
 
     const [blacklist, setBlacklist] = useState<any[]>([]);
     const [loadingBlacklist, setLoadingBlacklist] = useState(false);
+    const [blacklistPage, setBlacklistPage] = useState(1);
+    const [blacklistLimit, setBlacklistLimit] = useState(25);
+
+    // Confirm Dialog State
+    const [confirmModal, setConfirmModal] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        onConfirm: () => void;
+        variant?: "danger" | "warning" | "info";
+    }>({
+        isOpen: false,
+        title: "",
+        message: "",
+        onConfirm: () => {},
+        variant: "danger",
+    });
+
 
     const fetchHistory = async () => {
         try {
@@ -88,26 +110,34 @@ export default function CiscoFirewallPage() {
         }
     };
 
-    const handleRemoveFromBlacklist = async (ip: string) => {
-        if (confirm(`Are you sure you want to remove ${ip} from the do-not-unshun blacklist? This will clear the block, but will NOT automatically remove the shun from the firewalls if the shun is currently active.`)) {
-            try {
-                const res = await fetch(`/api/firewall/guardian/blacklist?ip=${encodeURIComponent(ip)}`, {
-                    method: "DELETE"
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.success) {
-                        fetchBlacklist();
+    const handleRemoveFromBlacklist = (ip: string) => {
+        setConfirmModal({
+            isOpen: true,
+            title: `Remove ${ip} from Blacklist?`,
+            message: `Are you sure you want to remove ${ip} from the do-not-unshun blacklist? This will clear the block, but will NOT automatically remove the shun from the firewalls if the shun is currently active.`,
+            variant: "warning",
+            onConfirm: async () => {
+                try {
+                    const res = await fetch(`/api/firewall/guardian/blacklist?ip=${encodeURIComponent(ip)}`, {
+                        method: "DELETE"
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.success) {
+                            fetchBlacklist();
+                        } else {
+                            setActionError(data.error || "Failed to remove IP from blacklist");
+                        }
                     } else {
-                        alert(data.error || "Failed to remove IP from blacklist");
+                        setActionError("Failed to remove IP from blacklist");
                     }
-                } else {
-                    alert("Failed to remove IP from blacklist");
+                } catch (e: any) {
+                    setActionError(e.message || "Failed to remove IP from blacklist");
+                } finally {
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
                 }
-            } catch (e: any) {
-                alert(e.message || "Failed to remove IP from blacklist");
             }
-        }
+        });
     };
 
     useEffect(() => {
@@ -487,7 +517,7 @@ export default function CiscoFirewallPage() {
             </div>
         </>
         ) : activeTab === "guardian" ? (
-             <div className="flex-1 min-h-0 flex flex-col gap-6">
+             <div className="flex-1 min-h-0 flex flex-col gap-4">
                 {/* --- SEARCH & FILTER CONTROLS --- */}
                 <div className="glass-card" style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, minWidth: '250px' }}>
@@ -495,11 +525,14 @@ export default function CiscoFirewallPage() {
                             type="text"
                             placeholder="Search by IP, Company Name, CIDR, ASN or details..."
                             value={guardianSearch}
-                            onChange={(e) => setGuardianSearch(e.target.value)}
+                            onChange={(e) => {
+                                setGuardianSearch(e.target.value);
+                                setGuardianPage(1);
+                            }}
                             style={{
                                 width: '100%',
                                 padding: '10px 14px',
-                                backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                backgroundColor: 'var(--bg-dark)',
                                 border: '1px solid var(--border-color)',
                                 borderRadius: '8px',
                                 color: 'var(--text-primary)',
@@ -510,11 +543,14 @@ export default function CiscoFirewallPage() {
                     <div style={{ width: '180px' }}>
                         <select
                             value={guardianFilter}
-                            onChange={(e) => setGuardianFilter(e.target.value)}
+                            onChange={(e) => {
+                                setGuardianFilter(e.target.value);
+                                setGuardianPage(1);
+                            }}
                             style={{
                                 width: '100%',
                                 padding: '10px 14px',
-                                backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                                backgroundColor: 'var(--bg-dark)',
                                 border: '1px solid var(--border-color)',
                                 borderRadius: '8px',
                                 color: 'var(--text-primary)',
@@ -522,55 +558,73 @@ export default function CiscoFirewallPage() {
                                 cursor: 'pointer'
                             }}
                         >
-                            <option value="" className="bg-bg-dark">All Actions</option>
-                            <option value="AUTO_UNSHUNNED" className="bg-bg-dark">Auto-Unshunned</option>
-                            <option value="SKIPPED" className="bg-bg-dark">Skipped (Retained)</option>
-                            <option value="FAILED" className="bg-bg-dark">Failed</option>
+                            <option value="" className="bg-bg-dark text-text-primary">All Actions</option>
+                            <option value="AUTO_UNSHUNNED" className="bg-bg-dark text-text-primary">Auto-Unshunned</option>
+                            <option value="SKIPPED" className="bg-bg-dark text-text-primary">Skipped (Retained)</option>
+                            <option value="FAILED" className="bg-bg-dark text-text-primary">Failed</option>
                         </select>
                     </div>
                 </div>
 
                 {/* --- GUARDIAN EVENTS TABLE --- */}
-                <div className="glass-card flex-1 flex flex-col min-h-0" style={{ minHeight: '400px' }}>
-                    <div className="mb-4">
-                        <h3>Guardian Shun Intel Log</h3>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                <div className="glass-card flex-1 flex flex-col min-h-0 border border-border-color rounded-xl overflow-hidden shadow-sm" style={{ minHeight: '400px', padding: 0 }}>
+                    <div className="p-4 border-b border-border-color bg-bg-surface/60 shrink-0">
+                        <h3 className="m-0 text-base font-bold text-text-primary">Guardian Shun Intel Log ({guardianEvents.length})</h3>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
                             Search, report, and display real-time Graylog shun logs that were auto-unshunned or retained.
                         </p>
+                        
+                        {/* Top Pinned Pagination */}
+                        <div className="pt-3 mt-3 border-t border-border-color/60">
+                            <PaginationControls
+                                totalRecords={guardianEvents.length}
+                                page={guardianPage}
+                                limit={guardianLimit}
+                                limitOptions={[25, 50, 100, 200]}
+                                onPageChange={setGuardianPage}
+                                onLimitChange={(l) => {
+                                    setGuardianLimit(l);
+                                    setGuardianPage(1);
+                                }}
+                                showLimitSelector={true}
+                            />
+                        </div>
                     </div>
 
                     {loadingGuardianEvents ? (
-                        <p className="text-text-muted">Loading Guardian events...</p>
+                        <div className="p-8 text-center text-text-muted">Loading Guardian events...</div>
                     ) : guardianEvents.length === 0 ? (
-                        <p className="text-text-muted">No matching logs found.</p>
+                        <div className="p-8 text-center text-text-muted">No matching logs found.</div>
                     ) : (
                         <div className="flex-1 overflow-auto custom-scrollbar">
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead className="sticky top-0 bg-bg-surface z-10">
                                     <tr style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Timestamp</th>
-                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>IP / CIDR</th>
-                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Company / ASN</th>
-                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Type</th>
-                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Action</th>
-                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>VPN History</th>
-                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Trigger</th>
-                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Details</th>
+                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Timestamp</th>
+                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>IP / CIDR</th>
+                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Company / ASN</th>
+                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Type</th>
+                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Action</th>
+                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>VPN History</th>
+                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Trigger</th>
+                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Details</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {guardianEvents.map((event) => (
-                                        <tr key={event.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }}>
-                                            <td style={{ padding: '12px 8px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                    {guardianEvents
+                                        .slice((guardianPage - 1) * guardianLimit, guardianPage * guardianLimit)
+                                        .map((event) => (
+                                        <tr key={event.id} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }} className="table-row-hover">
+                                            <td style={{ padding: '12px 14px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                                                 {new Date(event.createdAt).toLocaleString()}
                                             </td>
-                                            <td style={{ padding: '12px 8px' }}>
+                                            <td style={{ padding: '12px 14px' }}>
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                     <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent-primary)' }}>{event.ip}</span>
                                                     {event.cidr && <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'monospace' }}>{event.cidr}</span>}
                                                 </div>
                                             </td>
-                                            <td style={{ padding: '12px 8px' }}>
+                                            <td style={{ padding: '12px 14px' }}>
                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                     <span className="font-medium text-text-primary">
                                                         {event.companyName || "Unknown"}
@@ -578,7 +632,7 @@ export default function CiscoFirewallPage() {
                                                     {event.asn && <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{event.asn}</span>}
                                                 </div>
                                             </td>
-                                            <td style={{ padding: '12px 8px' }}>
+                                            <td style={{ padding: '12px 14px' }}>
                                                 <span style={{ 
                                                     padding: '4px 8px', 
                                                     borderRadius: '4px', 
@@ -591,7 +645,7 @@ export default function CiscoFirewallPage() {
                                                     {event.companyType || "unknown"}
                                                 </span>
                                             </td>
-                                            <td style={{ padding: '12px 8px' }}>
+                                            <td style={{ padding: '12px 14px' }}>
                                                 <span style={{
                                                     padding: '4px 8px',
                                                     borderRadius: '12px',
@@ -603,7 +657,7 @@ export default function CiscoFirewallPage() {
                                                     {event.action}
                                                 </span>
                                             </td>
-                                            <td style={{ padding: '12px 8px' }}>
+                                            <td style={{ padding: '12px 14px' }}>
                                                 {event.hasVpnHistory ? (
                                                     <span style={{ color: '#10b981', display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', fontWeight: 600 }}>
                                                         🟢 Yes
@@ -614,7 +668,7 @@ export default function CiscoFirewallPage() {
                                                     </span>
                                                 )}
                                             </td>
-                                            <td style={{ padding: '12px 8px' }}>
+                                            <td style={{ padding: '12px 14px' }}>
                                                 <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                                                     {(event.reason || "NONE").split(',').map((r: string) => (
                                                         <span key={r} style={{
@@ -630,7 +684,7 @@ export default function CiscoFirewallPage() {
                                                     ))}
                                                 </div>
                                             </td>
-                                            <td style={{ padding: '12px 8px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                                            <td style={{ padding: '12px 14px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
                                                 {event.details}
                                             </td>
                                         </tr>
@@ -639,55 +693,78 @@ export default function CiscoFirewallPage() {
                             </table>
                         </div>
                     )}
+
+                    {/* Bottom Pinned Pagination */}
+                    <div className="p-3 border-t border-border-color bg-bg-surface/80 backdrop-blur-md shrink-0">
+                        <PaginationControls
+                            totalRecords={guardianEvents.length}
+                            page={guardianPage}
+                            limit={guardianLimit}
+                            onPageChange={setGuardianPage}
+                            showLimitSelector={false}
+                        />
+                    </div>
                 </div>
             </div>
         ) : activeTab === "blacklist" ? (
             <div className="flex-1 min-h-0 flex flex-col gap-6">
-                <div className="glass-card flex-1 flex flex-col min-h-0" style={{ minHeight: '400px' }}>
-                    <div className="mb-4">
-                        <h3>Guardian Do-Not-Unshun Blacklist</h3>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                <div className="glass-card flex-1 flex flex-col min-h-0 border border-border-color rounded-xl overflow-hidden shadow-sm" style={{ minHeight: '400px', padding: 0 }}>
+                    <div className="p-4 border-b border-border-color bg-bg-surface/60 shrink-0">
+                        <h3 className="m-0 text-base font-bold text-text-primary">Guardian Do-Not-Unshun Blacklist ({blacklist.length})</h3>
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
                             The following IP addresses have triggered automated safety limits (e.g. repeated unshuns or suspicious brute forcing) and are barred from auto-unshunning. They must be manually cleared to allow automated handling again.
                         </p>
+
+                        {/* Top Pinned Pagination */}
+                        <div className="pt-3 mt-3 border-t border-border-color/60">
+                            <PaginationControls
+                                totalRecords={blacklist.length}
+                                page={blacklistPage}
+                                limit={blacklistLimit}
+                                limitOptions={[25, 50, 100, 200]}
+                                onPageChange={setBlacklistPage}
+                                onLimitChange={(l) => {
+                                    setBlacklistLimit(l);
+                                    setBlacklistPage(1);
+                                }}
+                                showLimitSelector={true}
+                            />
+                        </div>
                     </div>
 
                     {loadingBlacklist ? (
-                        <p className="text-text-muted">Loading blacklist...</p>
+                        <div className="p-8 text-center text-text-muted">Loading blacklist...</div>
                     ) : blacklist.length === 0 ? (
-                        <p className="text-text-muted">No IPs currently blacklisted.</p>
+                        <div className="p-8 text-center text-text-muted">No IPs currently blacklisted.</div>
                     ) : (
                         <div className="flex-1 overflow-auto custom-scrollbar">
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead className="sticky top-0 bg-bg-surface z-10">
                                     <tr style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Blacklisted Date</th>
-                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>IP Address</th>
-                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)' }}>Reason for Blocking</th>
-                                        <th style={{ padding: '12px 8px', borderBottom: '1px solid var(--border-color)', textAlign: 'right' }}>Actions</th>
+                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Blacklisted Date</th>
+                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>IP Address</th>
+                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Reason for Blocking</th>
+                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)', textAlign: 'right' }}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {blacklist.map((item) => (
-                                        <tr key={item.ip} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }}>
-                                            <td style={{ padding: '12px 8px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                    {blacklist
+                                        .slice((blacklistPage - 1) * blacklistLimit, blacklistPage * blacklistLimit)
+                                        .map((item) => (
+                                        <tr key={item.ip} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }} className="table-row-hover">
+                                            <td style={{ padding: '12px 14px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                                                 {new Date(item.createdAt).toLocaleString()}
                                             </td>
-                                            <td style={{ padding: '12px 8px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                                            <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent-primary)' }}>
                                                 {item.ip}
                                             </td>
-                                            <td style={{ padding: '12px 8px', color: 'var(--text-primary)' }}>
+                                            <td style={{ padding: '12px 14px', color: 'var(--text-primary)' }}>
                                                 {item.reason}
                                             </td>
-                                            <td style={{ padding: '12px 8px', textAlign: 'right' }}>
+                                            <td style={{ padding: '12px 14px', textAlign: 'right' }}>
                                                 <button
                                                     onClick={() => handleRemoveFromBlacklist(item.ip)}
-                                                    className="mac-button"
-                                                    style={{
-                                                        fontSize: '0.8rem',
-                                                        padding: '4px 8px',
-                                                        borderColor: '#f87171',
-                                                        color: '#f87171'
-                                                    }}
+                                                    className="px-3 py-1 text-xs font-semibold rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
                                                 >
                                                     Clear Block
                                                 </button>
@@ -698,12 +775,33 @@ export default function CiscoFirewallPage() {
                             </table>
                         </div>
                     )}
+
+                    {/* Bottom Pinned Pagination */}
+                    <div className="p-3 border-t border-border-color bg-bg-surface/80 backdrop-blur-md shrink-0">
+                        <PaginationControls
+                            totalRecords={blacklist.length}
+                            page={blacklistPage}
+                            limit={blacklistLimit}
+                            onPageChange={setBlacklistPage}
+                            showLimitSelector={false}
+                        />
+                    </div>
                 </div>
             </div>
         ) : activeTab === "database" ? (
             <ShunDatabaseTab />
         ) : null}
             </div>
+
+            {/* Reusable Confirm Dialog */}
+            <ConfirmDialog
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                variant={confirmModal.variant}
+                onConfirm={confirmModal.onConfirm}
+                onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+            />
     </div>
     );
 }

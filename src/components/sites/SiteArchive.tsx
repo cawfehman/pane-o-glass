@@ -15,7 +15,7 @@ interface SiteArchiveProps {
     loading: boolean;
     latestVersion: SiteVersion | null;
     actionLoading: boolean;
-    onRevert: (versionId: string, versionNumber: number) => Promise<void>;
+    onRevert: (versionId: string, versionNumber: number) => void | Promise<void>;
 }
 
 export function SiteArchive({ versions, loading, latestVersion, actionLoading, onRevert }: SiteArchiveProps) {

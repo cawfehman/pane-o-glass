@@ -1,11 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { DataTableContainer } from "@/components/common/DataTableContainer";
+import { MessageSquare } from "lucide-react";
 
 export default function AdminFeedbackPage() {
     const [feedbackList, setFeedbackList] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [searchQuery, setSearchQuery] = useState("");
+    const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(25);
 
     const fetchFeedback = async () => {
         try {
@@ -27,60 +32,102 @@ export default function AdminFeedbackPage() {
         fetchFeedback();
     }, []);
 
+    const filteredFeedback = useMemo(() => {
+        if (!searchQuery.trim()) return feedbackList;
+        const q = searchQuery.toLowerCase();
+        return feedbackList.filter((item) => {
+            const user = (item.user?.username || "").toLowerCase();
+            const subject = (item.subject || "").toLowerCase();
+            const tool = (item.tool || "").toLowerCase();
+            const body = (item.body || "").toLowerCase();
+            return user.includes(q) || subject.includes(q) || tool.includes(q) || body.includes(q);
+        });
+    }, [feedbackList, searchQuery]);
+
+    const paginatedFeedback = useMemo(() => {
+        const start = (page - 1) * limit;
+        return filteredFeedback.slice(start, start + limit);
+    }, [filteredFeedback, page, limit]);
+
     return (
-        <div className="internal-scroll-layout">
-            <div className="shrink-0 mb-8">
-                <h1>User Feedback Management</h1>
-                <p className="text-text-secondary">Review and track feedback submitted by members across the utility suite.</p>
+        <div className="internal-scroll-layout flex flex-col h-full">
+            <div className="shrink-0 mb-4">
+                <h1 className="flex items-center gap-2">
+                    <MessageSquare className="text-accent-primary" size={28} />
+                    User Feedback Management
+                </h1>
+                <p className="text-text-secondary text-sm">
+                    Review and track feedback submitted by members across the utility suite.
+                </p>
             </div>
 
-            <div className="glass-card flex-1 flex flex-col min-h-0 pb-0">
-                {loading ? (
-                    <p className="text-text-muted p-6">Loading feedback...</p>
-                ) : error ? (
-                    <div className="m-6 p-4 bg-red-500/10 text-red-500 rounded-md border border-red-500">
-                        {error}
-                    </div>
-                ) : feedbackList.length === 0 ? (
-                    <p className="text-text-muted p-6">No feedback has been submitted yet.</p>
-                ) : (
-                    <div className="flex-1 overflow-auto">
-                        <table className="w-full border-collapse text-left">
-                            <thead className="sticky-header">
-                                <tr className="border-b border-border-color text-text-secondary">
-                                    <th className="py-3 pl-6 pr-0">Timestamp</th>
-                                    <th className="py-3 px-2">User</th>
-                                    <th className="py-3 px-2">Tool/Page</th>
-                                    <th className="py-3 px-2">Subject</th>
-                                    <th className="py-3 pr-2 pl-0">Details</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {feedbackList.map((item) => (
-                                    <tr key={item.id} className="border-b border-border-color">
-                                        <td className="py-3 pl-6 pr-0 text-text-muted text-sm whitespace-nowrap">
-                                            {new Date(item.createdAt).toLocaleString()}
-                                        </td>
-                                        <td className="py-3 px-2 font-medium text-text-primary whitespace-nowrap">
-                                            {item.user?.username || "Unknown"}
-                                            {item.user?.firstName && ` (${item.user.firstName})`}
-                                        </td>
-                                        <td className="py-3 px-2 text-accent-primary text-sm">
-                                            <code>{item.tool}</code>
-                                        </td>
-                                        <td className="py-3 px-2 font-semibold text-text-primary">
-                                            {item.subject}
-                                        </td>
-                                        <td className="py-3 pr-2 pl-0 text-text-secondary text-[0.9rem] max-w-[400px]">
-                                            {item.body}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
+            <DataTableContainer
+                title="Submitted Feedback"
+                subtitle={`Showing ${filteredFeedback.length} total submissions`}
+                searchValue={searchQuery}
+                searchPlaceholder="Search feedback by user, tool, or keyword..."
+                onSearchChange={(q) => {
+                    setSearchQuery(q);
+                    setPage(1);
+                }}
+                onSearchClear={() => {
+                    setSearchQuery("");
+                    setPage(1);
+                }}
+                pagination={{
+                    totalRecords: filteredFeedback.length,
+                    page,
+                    limit,
+                    limitOptions: [25, 50, 100],
+                    onPageChange: setPage,
+                    onLimitChange: (l) => {
+                        setLimit(l);
+                        setPage(1);
+                    },
+                    showLimitSelector: true,
+                }}
+                loading={loading}
+                error={error}
+                empty={filteredFeedback.length === 0}
+                emptyTitle="No feedback found"
+                emptyMessage="No user feedback matching your filter criteria."
+            >
+                <table className="w-full border-collapse text-left text-sm">
+                    <thead className="sticky top-0 bg-bg-surface z-10">
+                        <tr className="border-b border-border-color text-text-secondary text-xs uppercase">
+                            <th className="py-3 px-4">Timestamp</th>
+                            <th className="py-3 px-4">User</th>
+                            <th className="py-3 px-4">Tool / Page</th>
+                            <th className="py-3 px-4">Subject</th>
+                            <th className="py-3 px-4">Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {paginatedFeedback.map((item) => (
+                            <tr key={item.id} className="border-b border-border-color hover:bg-bg-surface-hover/40 transition-colors">
+                                <td className="py-3 px-4 text-text-muted text-xs whitespace-nowrap">
+                                    {new Date(item.createdAt).toLocaleString()}
+                                </td>
+                                <td className="py-3 px-4 font-semibold text-text-primary whitespace-nowrap">
+                                    {item.user?.username || "Unknown"}
+                                    {item.user?.firstName && ` (${item.user.firstName})`}
+                                </td>
+                                <td className="py-3 px-4 text-accent-primary text-xs">
+                                    <span className="px-2 py-0.5 rounded bg-accent-glow border border-accent-primary/20 font-mono">
+                                        {item.tool}
+                                    </span>
+                                </td>
+                                <td className="py-3 px-4 font-semibold text-text-primary">
+                                    {item.subject}
+                                </td>
+                                <td className="py-3 px-4 text-text-secondary text-xs max-w-md leading-relaxed">
+                                    {item.body}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </DataTableContainer>
         </div>
     );
 }

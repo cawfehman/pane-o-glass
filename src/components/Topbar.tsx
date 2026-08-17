@@ -1,12 +1,11 @@
-import { auth } from "@/lib/auth"
-import UserMenu from "./UserMenu"
+import { auth } from "@/lib/auth";
+import TopbarClient from "./TopbarClient";
 
 export default async function Topbar() {
-    const session = await auth()
+    const session = await auth();
 
     return (
-        <header className="topbar">
-            <UserMenu userName={session?.user?.name || "User"} />
-        </header>
+        <TopbarClient userName={session?.user?.name || "User"} />
     );
 }
+

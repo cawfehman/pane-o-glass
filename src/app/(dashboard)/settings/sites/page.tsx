@@ -15,6 +15,7 @@ import { CsvUploader } from "@/components/sites/CsvUploader";
 import { SiteArchive, SiteVersion } from "@/components/sites/SiteArchive";
 import { SiteModal } from "@/components/sites/SiteModal";
 import { SiteTable } from "@/components/sites/SiteTable";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 
 export default function SiteManagementPage() {
     const [versions, setVersions] = useState<SiteVersion[]>([]);
@@ -30,6 +31,22 @@ export default function SiteManagementPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentSite, setCurrentSite] = useState<any>({ code: "", name: "", address: "", status: "Active", notes: "" });
     const [actionLoading, setActionLoading] = useState(false);
+
+    // Confirm Dialog State
+    const [confirmModal, setConfirmModal] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        onConfirm: () => void;
+        variant?: "danger" | "warning" | "info";
+    }>({
+        isOpen: false,
+        title: "",
+        message: "",
+        onConfirm: () => {},
+        variant: "warning",
+    });
+
 
     const fetchVersions = useCallback(async () => {
         setLoading(true);
@@ -82,27 +99,35 @@ export default function SiteManagementPage() {
         }
     };
 
-    const handleRevert = async (versionId: string, versionNumber: number) => {
-        if (!confirm(`Are you absolutely sure you want to rollback the active mapping engine straight to version ${versionNumber}? This will immediately overwrite current mapped access directives.`)) return;
-        setActionLoading(true);
-        setError("");
-        setSuccess("");
-        try {
-            const res = await fetch('/api/settings/sites', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'revert', versionId })
-            });
-            const data = await res.json();
-            if (data.error) throw new Error(data.error);
-            setSuccess(`Successfully reverted configuration engine back to v${versionNumber}.`);
-            fetchVersions();
-        } catch (e: any) {
-            setError(e.message);
-        } finally {
-            setActionLoading(false);
-            setTimeout(() => { setError(""); setSuccess(""); }, 5000);
-        }
+    const handleRevert = (versionId: string, versionNumber: number) => {
+        setConfirmModal({
+            isOpen: true,
+            title: `Rollback Mapping Engine to v${versionNumber}?`,
+            message: `Are you absolutely sure you want to rollback the active mapping engine straight to version ${versionNumber}? This will immediately overwrite current mapped access directives.`,
+            variant: "warning",
+            onConfirm: async () => {
+                setActionLoading(true);
+                setError("");
+                setSuccess("");
+                try {
+                    const res = await fetch('/api/settings/sites', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'revert', versionId })
+                    });
+                    const data = await res.json();
+                    if (data.error) throw new Error(data.error);
+                    setSuccess(`Successfully reverted configuration engine back to v${versionNumber}.`);
+                    fetchVersions();
+                } catch (e: any) {
+                    setError(e.message);
+                } finally {
+                    setActionLoading(false);
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                    setTimeout(() => { setError(""); setSuccess(""); }, 5000);
+                }
+            }
+        });
     };
 
     const handleAddClick = () => {
@@ -306,6 +331,17 @@ export default function SiteManagementPage() {
                 performAction={performAction} 
                 actionLoading={actionLoading} 
             />
+
+            {/* Confirm Dialog */}
+            <ConfirmDialog
+                isOpen={confirmModal.isOpen}
+                title={confirmModal.title}
+                message={confirmModal.message}
+                variant={confirmModal.variant}
+                onConfirm={confirmModal.onConfirm}
+                onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+            />
         </div>
     );
 }
+
