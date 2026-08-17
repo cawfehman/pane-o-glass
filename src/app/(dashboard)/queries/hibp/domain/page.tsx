@@ -614,8 +614,8 @@ export default function DomainSecurityPage() {
         let borderStyle = '1px solid var(--border-color)';
         let bgStyle = 'var(--bg-dark)';
         if (ad) {
-            borderStyle = ad.enabled ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(239, 68, 68, 0.35)';
-            bgStyle = ad.enabled ? 'rgba(16, 185, 129, 0.03)' : 'rgba(239, 68, 68, 0.03)';
+            borderStyle = ad.enabled ? '1px solid rgba(234, 179, 8, 0.45)' : '1px solid rgba(239, 68, 68, 0.45)';
+            bgStyle = ad.enabled ? 'rgba(234, 179, 8, 0.05)' : 'rgba(239, 68, 68, 0.05)';
         }
 
         // Aggregate all high-risk exposures across this user's compromised breaches
@@ -704,10 +704,10 @@ export default function DomainSecurityPage() {
                         <strong style={{ fontSize: '1.05rem', color: 'var(--text-primary)' }}>
                             {alias}@{domainStr}
                             {ad && (
-                                <span className={`text-[0.7rem] ml-2.5 px-2 py-0.5 rounded font-bold uppercase tracking-wider align-middle inline-flex items-center gap-1 ${
+                                <span className={`text-[0.7rem] ml-2.5 px-2.5 py-0.5 rounded-full uppercase tracking-wider align-middle inline-flex items-center gap-1 shadow-sm ${
                                     ad.enabled 
-                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" 
-                                        : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                                        ? "bg-yellow-400 text-black border border-yellow-500 font-black" 
+                                        : "bg-rose-500/20 text-rose-300 border border-rose-500/40 font-bold"
                                 }`}>
                                     {ad.enabled ? 'Active' : 'Disabled'} {ad.locked ? '(Locked)' : ''}
                                 </span>
@@ -802,7 +802,7 @@ export default function DomainSecurityPage() {
                 actions={
                     <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                         <span className="flex items-center gap-2">
-                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)' }}></span> 
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#facc15', boxShadow: '0 0 10px rgba(250, 204, 21, 0.5)' }}></span> 
                             Active Account
                         </span>
                         <span className="flex items-center gap-2">
@@ -1101,7 +1101,7 @@ export default function DomainSecurityPage() {
                                                                 
                                                                 let bg = 'var(--bg-surface-hover)';
                                                                 if (ad) {
-                                                                    bg = ad.enabled ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)';
+                                                                    bg = ad.enabled ? 'rgba(234, 179, 8, 0.08)' : 'rgba(239, 68, 68, 0.08)';
                                                                 }
 
                                                                 return (
@@ -1109,10 +1109,10 @@ export default function DomainSecurityPage() {
                                                                         <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center' }}>
                                                                             {aliasObj.alias}@{domainStr}
                                                                             {ad && (
-                                                                                <span className={`text-[0.65rem] ml-2 px-1.5 py-0.2 rounded font-bold uppercase ${
+                                                                                <span className={`text-[0.65rem] ml-2 px-2 py-0.2 rounded-full font-black uppercase ${
                                                                                     ad.enabled 
-                                                                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30" 
-                                                                                        : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30"
+                                                                                        ? "bg-yellow-400 text-black border border-yellow-500" 
+                                                                                        : "bg-rose-500/20 text-rose-300 border border-rose-500/40"
                                                                                 }`}>
                                                                                     {ad.enabled ? 'Active' : 'Disabled'}
                                                                                 </span>
@@ -1626,7 +1626,7 @@ export default function DomainSecurityPage() {
                                                                     <strong style={{ color: '#f87171', fontSize: '1rem' }}>
                                                                         {impacted.length} Impacted {impacted.length === 1 ? 'Account' : 'Accounts'} on {domainStr}
                                                                     </strong>
-                                                                    <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(34,197,94,0.2)', color: '#4ade80', fontWeight: 700 }}>
+                                                                    <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '9999px', background: '#facc15', color: '#000000', fontWeight: 800, border: '1px solid #eab308' }}>
                                                                         {activeCount} Active
                                                                     </span>
                                                                     {impacted.length - activeCount > 0 && (
