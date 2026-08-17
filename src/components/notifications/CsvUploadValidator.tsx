@@ -122,17 +122,37 @@ export default function CsvUploadValidator({ onStaged }: CsvUploadValidatorProps
         const file = e.target.files?.[0];
         if (!file) return;
 
+        // Guard against excessively large files freezing the browser
+        if (file.size > 5 * 1024 * 1024) {
+            setValidationError("File too large. Maximum upload size is 5 MB. Please split the file and upload in batches.");
+            return;
+        }
+
         setFileName(file.name);
         setParsing(true);
 
         try {
             const text = await file.text();
-            const { records, summary: sum } = parseCSV(text);
-            if (records.length === 0) {
+            const { records: rawRecords, summary: sum } = parseCSV(text);
+            if (rawRecords.length === 0) {
                 throw new Error("No valid email records were found in the uploaded file.");
             }
+
+            // De-duplicate by email (case-insensitive), keeping first occurrence
+            const seen = new Set<string>();
+            const records = rawRecords.filter(r => {
+                const key = r.email.toLowerCase();
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+            const dupeCount = rawRecords.length - records.length;
+
             setParsedData(records);
-            setSummary(sum);
+            setSummary({ ...sum, valid: records.length, invalid: sum.invalid + dupeCount });
+            if (dupeCount > 0) {
+                setValidationError(`${dupeCount} duplicate email address${dupeCount > 1 ? "es" : ""} removed. Each recipient will only receive one email.`);
+            }
         } catch (err: any) {
             setValidationError(err.message || "Failed to process CSV file.");
             setParsedData(null);

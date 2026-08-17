@@ -67,6 +67,30 @@ export default function NotificationCenterPage() {
         checkStagedHandoff();
     }, []);
 
+    // Guard against navigating away with unsaved wizard data
+    useEffect(() => {
+        const hasUnsaved = wizardData.recipients.length > 0 && activeTab === "wizard";
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (hasUnsaved) {
+                e.preventDefault();
+                e.returnValue = "";
+            }
+        };
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    }, [wizardData.recipients.length, activeTab]);
+
+    // Safe tab switcher — warns if wizard has unsaved staged data
+    const switchTab = (tab: "campaigns" | "wizard" | "templates" | "history") => {
+        if (activeTab === "wizard" && tab !== "wizard" && wizardData.recipients.length > 0) {
+            if (!confirm("You have unsaved staged recipients. Leaving the wizard will discard them. Continue?")) {
+                return;
+            }
+            setWizardData({ name: "", breachName: "", templateId: "", sourceType: "CSV_UPLOAD", sourceQuery: "", recipients: [] });
+        }
+        setActiveTab(tab);
+    };
+
     // Check if user came directly from HIBP Domain with staged data in sessionStorage
     const checkStagedHandoff = () => {
         try {
@@ -414,7 +438,7 @@ export default function NotificationCenterPage() {
                 <div className="flex items-center gap-2">
                     <button
                         type="button"
-                        onClick={() => { setActiveTab("campaigns"); setIsCreatingTemplate(false); setEditingTemplate(null); }}
+                        onClick={() => { switchTab("campaigns"); setIsCreatingTemplate(false); setEditingTemplate(null); }}
                         className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center gap-2 ${
                             activeTab === "campaigns" 
                                 ? "bg-accent-primary text-white shadow-md" 
@@ -427,7 +451,7 @@ export default function NotificationCenterPage() {
 
                     <button
                         type="button"
-                        onClick={() => { setActiveTab("wizard"); setIsCreatingTemplate(false); setEditingTemplate(null); }}
+                        onClick={() => { switchTab("wizard"); setIsCreatingTemplate(false); setEditingTemplate(null); }}
                         className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center gap-2 ${
                             activeTab === "wizard" 
                                 ? "bg-accent-primary text-white shadow-md" 
@@ -440,7 +464,7 @@ export default function NotificationCenterPage() {
 
                     <button
                         type="button"
-                        onClick={() => setActiveTab("templates")}
+                        onClick={() => switchTab("templates")}
                         className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center gap-2 ${
                             activeTab === "templates" 
                                 ? "bg-accent-primary text-white shadow-md" 
@@ -672,6 +696,19 @@ export default function NotificationCenterPage() {
                                                         <Users size={13} />
                                                         <span>View Delivery Log</span>
                                                     </button>
+
+                                                    {c.status === "COMPLETED_WITH_ERRORS" && c.failedCount > 0 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleDispatchCampaign(c)}
+                                                            disabled={dispatchingId === c.id}
+                                                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 cursor-pointer inline-flex items-center gap-1.5"
+                                                            title={`Retry ${c.failedCount} failed recipient${c.failedCount > 1 ? "s" : ""}`}
+                                                        >
+                                                            <RefreshCw size={12} />
+                                                            <span>Retry Failed ({c.failedCount})</span>
+                                                        </button>
+                                                    )}
 
                                                     <button
                                                         type="button"
@@ -1118,11 +1155,42 @@ export default function NotificationCenterPage() {
                                 </p>
                             </div>
                             <button 
-                                onClick={() => setViewingRecipientsCampaign(null)}
-                                className="text-text-muted hover:text-text-primary cursor-pointer p-1"
-                            >
-                                ✕
-                            </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        title="Export delivery log as CSV"
+                                        onClick={() => {
+                                            const c = viewingRecipientsCampaign;
+                                            const rows = [["Email", "Name", "Status", "Sent At", "Error"]];
+                                            (c.recipients || []).forEach((r: any) => {
+                                                rows.push([
+                                                    r.email || "",
+                                                    r.name || "",
+                                                    r.status || "",
+                                                    r.sentAt ? new Date(r.sentAt).toLocaleString() : "",
+                                                    r.errorMessage || "",
+                                                ]);
+                                            });
+                                            const csv = rows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+                                            const blob = new Blob([csv], { type: "text/csv" });
+                                            const url = URL.createObjectURL(blob);
+                                            const a = document.createElement("a");
+                                            a.href = url;
+                                            a.download = `delivery-log-${c.name.replace(/\s+/g, "-").toLowerCase()}.csv`;
+                                            a.click();
+                                            URL.revokeObjectURL(url);
+                                        }}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 cursor-pointer inline-flex items-center gap-1.5"
+                                    >
+                                        ↓ Export CSV
+                                    </button>
+                                    <button 
+                                        onClick={() => setViewingRecipientsCampaign(null)}
+                                        className="text-text-muted hover:text-text-primary cursor-pointer p-1"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
                         </div>
 
                         {/* Sandbox Test Sent Banner */}
