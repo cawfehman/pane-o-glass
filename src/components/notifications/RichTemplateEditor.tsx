@@ -15,6 +15,8 @@ export interface TemplateData {
     subject: string;
     bodyHtml: string;
     bodyText?: string;
+    isEnabled?: boolean;
+    createdBy?: string;
 }
 
 interface RichTemplateEditorProps {
@@ -43,7 +45,7 @@ export default function RichTemplateEditor({
     const [category, setCategory] = useState(initialTemplate?.category || "BREACH");
     const [subject, setSubject] = useState(initialTemplate?.subject || "");
     const [bodyHtml, setBodyHtml] = useState(initialTemplate?.bodyHtml || "");
-    const [activeTab, setActiveTab] = useState<"visual" | "html">("visual");
+    const [isEnabled, setIsEnabled] = useState(initialTemplate?.isEnabled !== false);
     const [saving, setSaving] = useState(false);
     const [savedNotice, setSavedNotice] = useState(false);
     const [error, setError] = useState("");
@@ -55,6 +57,7 @@ export default function RichTemplateEditor({
             setCategory(initialTemplate.category || "BREACH");
             setSubject(initialTemplate.subject || "");
             setBodyHtml(initialTemplate.bodyHtml || "");
+            setIsEnabled(initialTemplate.isEnabled !== false);
         }
     }, [initialTemplate]);
 
@@ -91,6 +94,7 @@ export default function RichTemplateEditor({
                 category,
                 subject: subject.trim(),
                 bodyHtml,
+                isEnabled,
             });
             setSavedNotice(true);
             setTimeout(() => setSavedNotice(false), 3000);
@@ -121,7 +125,7 @@ export default function RichTemplateEditor({
             )}
 
             {/* Template Header Form */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-bg-surface p-5 rounded-xl border border-border-color">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-bg-surface p-5 rounded-xl border border-border-color">
                 <div className="md:col-span-2">
                     <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary mb-1.5">
                         Template Name <span className="text-rose-400">*</span>
@@ -151,7 +155,21 @@ export default function RichTemplateEditor({
                     </select>
                 </div>
 
-                <div className="md:col-span-3">
+                <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary mb-1.5">
+                        Status
+                    </label>
+                    <select
+                        value={isEnabled ? "active" : "disabled"}
+                        onChange={(e) => setIsEnabled(e.target.value === "active")}
+                        className="w-full px-3.5 py-2 rounded-lg bg-bg-dark border border-border-color text-text-primary text-sm font-semibold focus:outline-none focus:border-accent-primary"
+                    >
+                        <option value="active" className="text-emerald-400">Active / Enabled</option>
+                        <option value="disabled" className="text-rose-400">Disabled / Archived</option>
+                    </select>
+                </div>
+
+                <div className="md:col-span-4">
                     <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary mb-1.5">
                         Description / Purpose
                     </label>
@@ -159,7 +177,7 @@ export default function RichTemplateEditor({
                         type="text"
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
-                        placeholder="e.g. Sent to active corporate staff whose accounts appeared in external credential dumps"
+                        placeholder="e.g. Official Cooper security notification informing staff their corporate email was in an external breach"
                         className="w-full px-3.5 py-2 rounded-lg bg-bg-dark border border-border-color text-text-primary text-sm focus:outline-none focus:border-accent-primary"
                     />
                 </div>

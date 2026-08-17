@@ -3,99 +3,104 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/app/actions/permissions";
 
-const SEED_TEMPLATES = [
-    {
-        name: "Standard Credential Breach Notice",
-        description: "Official security notification alerting the user their corporate email address was identified in a verified data breach.",
-        category: "BREACH",
-        subject: "Security Notification: Action Required Regarding Data Breach ({{BreachName}})",
-        bodyHtml: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; line-height: 1.6; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-    <div style="background-color: #0f172a; padding: 24px; text-align: center;">
-        <h2 style="color: #ffffff; margin: 0; font-size: 20px; letter-spacing: 0.05em;">Information Security Advisory</h2>
+const PRIMARY_COOPER_TEMPLATE = {
+    name: "Corporate Email Exposure Advisory",
+    description: "Official Cooper University Health Care security notification informing staff their corporate email address was identified in a third-party breach.",
+    category: "BREACH",
+    subject: "Notification Regarding Your Corporate Email Address",
+    isEnabled: true,
+    bodyHtml: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; color: #1e293b; line-height: 1.6; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
+    <div style="background-color: #0f172a; padding: 22px 28px; text-align: left; border-bottom: 3px solid #0284c7;">
+        <h2 style="color: #ffffff; margin: 0; font-size: 19px; font-weight: 700; letter-spacing: 0.02em;">Cooper University Health Care</h2>
+        <p style="color: #94a3b8; margin: 4px 0 0 0; font-size: 13px;">Information Security Advisory</p>
     </div>
-    <div style="padding: 24px;">
-        <p>Dear {{Name}},</p>
-        <p>Our security monitoring systems have detected that your corporate email address (<strong>{{Email}}</strong>) was included in a known third-party security incident involving <strong>{{BreachName}}</strong>.</p>
+    <div style="padding: 28px;">
+        <p style="margin-top: 0; font-size: 15px;">Hello{{#if Name}} {{Name}}{{/if}},</p>
         
-        <div style="background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 14px 18px; margin: 20px 0; border-radius: 0 6px 6px 0;">
-            <p style="margin: 0 0 6px 0;"><strong>Incident:</strong> {{BreachName}}</p>
-            <p style="margin: 0 0 6px 0;"><strong>Incident Date:</strong> {{BreachDate}}</p>
-            <p style="margin: 0 0 6px 0;"><strong>Compromised Categories:</strong> {{ExposedCategories}}</p>
-            <p style="margin: 0;"><strong>Details:</strong> {{BreachDetails}}</p>
+        <p style="font-size: 14px;">We are reaching out to inform you that Cooper University Health Care has received notification from a trusted third-party source indicating that your email address (<strong>{{Email}}</strong>) was identified among information exposed in a data breach involving an external organization or service{{#if BreachName}} (<strong>{{BreachName}}</strong>){{/if}}.</p>
+
+        <div style="background-color: #f8fafc; border-left: 4px solid #0284c7; padding: 14px 18px; margin: 20px 0; border-radius: 0 6px 6px 0; font-size: 13px;">
+            <p style="margin: 0 0 4px 0;"><strong>Incident Source:</strong> {{BreachName}}</p>
+            <p style="margin: 0 0 4px 0;"><strong>Recorded Breach Date:</strong> {{BreachDate}}</p>
+            <p style="margin: 0;"><strong>Compromised Categories:</strong> {{ExposedCategories}}</p>
         </div>
 
-        <h3 style="color: #0f172a; font-size: 16px; margin-top: 24px;">Recommended Next Steps:</h3>
-        <ul style="padding-left: 20px;">
-            <li>If you used your corporate password on this third-party service, please change your Active Directory password immediately.</li>
-            <li>Ensure you are not reusing your corporate password across any personal accounts or external websites.</li>
-            <li>Be vigilant for unexpected phishing emails or multi-factor authentication (MFA) prompts.</li>
+        <p style="font-size: 14px;">At this time, there is no indication that Cooper systems were involved in this incident. This notification is being provided as a precaution so that you are aware of the exposure and can take appropriate steps to protect any accounts that may be associated with the affected email address.</p>
+
+        <p style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">As a best practice, we recommend that you:</p>
+        <ul style="margin-top: 0; padding-left: 22px; font-size: 14px;">
+            <li style="margin-bottom: 6px;">Change passwords for any external accounts that may have been affected.</li>
+            <li style="margin-bottom: 6px;">Ensure unique passwords are used across different services.</li>
+            <li style="margin-bottom: 6px;">Enable Multi-Factor Authentication (MFA) where available.</li>
+            <li style="margin-bottom: 6px;">Remain alert for phishing emails or other suspicious communications.</li>
         </ul>
 
-        <p style="margin-top: 24px;">If you have any questions or require assistance, please contact the Information Security Helpdesk.</p>
-        <p style="margin-bottom: 0;">Sincerely,<br><strong>Information Security Team</strong></p>
+        <p style="font-size: 14px;">Please note that the exposure occurred outside of Cooper's environment. We are sharing this information to help you take proactive measures to protect your personal and professional accounts.</p>
+
+        <p style="background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #0369a1; margin: 22px 0;">
+            If you have any questions, please contact Information Security @ <a href="mailto:infosec@cooperhealth.edu" style="color: #0284c7; font-weight: 600; text-decoration: underline;">infosec@cooperhealth.edu</a>.
+        </p>
+
+        <p style="margin-top: 24px; margin-bottom: 0; font-size: 14px;">Thank you,</p>
+        <p style="margin-top: 4px; margin-bottom: 0; font-weight: 700; color: #0f172a; font-size: 14px;">
+            Information Security<br>
+            <span style="font-weight: 500; color: #475569;">Cooper University Health Care</span>
+        </p>
     </div>
-    <div style="background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 12px; color: #64748b;">
-        This is an automated security advisory from Cooper University Health Care Information Security.
+    <div style="background-color: #f8fafc; padding: 14px 28px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0;">
+        This is an official communication from Cooper University Health Care Information Security.
     </div>
 </div>`,
+    bodyText: `Hello,
+
+We are reaching out to inform you that Cooper University Health Care has received notification from a trusted third-party source indicating that your email address ({{Email}}) was identified among information exposed in a data breach involving an external organization or service ({{BreachName}}).
+
+At this time, there is no indication that Cooper systems were involved in this incident. This notification is being provided as a precaution so that you are aware of the exposure and can take appropriate steps to protect any accounts that may be associated with the affected email address.
+
+As a best practice, we recommend that you:
+- Change passwords for any external accounts that may have been affected.
+- Ensure unique passwords are used across different services.
+- Enable Multi-Factor Authentication (MFA) where available.
+- Remain alert for phishing emails or other suspicious communications.
+
+Please note that the exposure occurred outside of Cooper's environment. We are sharing this information to help you take proactive measures to protect your personal and professional accounts.
+
+If you have any questions, please contact Information Security @ infosec@cooperhealth.edu.
+
+Thank you,
+
+Information Security
+Cooper University Health Care`
+};
+
+const LEGACY_SEED_TEMPLATES = [
+    {
+        name: "Standard Credential Breach Notice (Archived)",
+        description: "Legacy generic breach notice. (Disabled)",
+        category: "BREACH",
+        subject: "Security Notification: Action Required Regarding Data Breach ({{BreachName}})",
+        isEnabled: false,
+        bodyHtml: `<div>Legacy template archived.</div>`,
     },
     {
-        name: "Urgent Password Reset Directive",
-        description: "High-priority notice for critical breaches where cleartext or unsalted passwords were leaked.",
+        name: "Urgent Password Reset Directive (Archived)",
+        description: "Legacy password reset notice. (Disabled)",
         category: "SECURITY_ALERT",
         subject: "URGENT ACTION REQUIRED: Mandatory Password Reset for {{Email}}",
-        bodyHtml: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; line-height: 1.6; border: 1px solid #fecdd3; border-radius: 8px; overflow: hidden;">
-    <div style="background-color: #be123c; padding: 24px; text-align: center;">
-        <h2 style="color: #ffffff; margin: 0; font-size: 20px; letter-spacing: 0.05em;">⚠️ Mandatory Security Directive</h2>
-    </div>
-    <div style="padding: 24px;">
-        <p>Dear {{Name}},</p>
-        <p style="color: #9f1239; font-weight: bold;">Your corporate credentials were confirmed to be exposed in a critical data breach ({{BreachName}}).</p>
-        
-        <div style="background-color: #fff1f2; border: 1px solid #fecdd3; padding: 16px; margin: 20px 0; border-radius: 6px;">
-            <p style="margin: 0 0 6px 0;"><strong>Incident Source:</strong> {{BreachName}}</p>
-            <p style="margin: 0 0 6px 0;"><strong>Compromised Data:</strong> {{ExposedCategories}}</p>
-            <p style="margin: 0;"><strong>Recorded Breach Date:</strong> {{BreachDate}}</p>
-        </div>
-
-        <p>Because passwords or authentication tokens were exposed, you must reset your password as soon as possible:</p>
-        <ol style="padding-left: 20px;">
-            <li>Press <strong>Ctrl + Alt + Delete</strong> on your corporate workstation and select <em>Change a password</em>, or visit the self-service portal.</li>
-            <li>Create a new unique password that meets our corporate complexity requirements.</li>
-            <li>Never disclose your credentials or MFA approval codes to anyone.</li>
-        </ol>
-
-        <p style="margin-top: 24px;">Thank you for your prompt cooperation in safeguarding our organization's systems.</p>
-        <p style="margin-bottom: 0;"><strong>Information Security Operations</strong></p>
-    </div>
-</div>`,
+        isEnabled: false,
+        bodyHtml: `<div>Legacy template archived.</div>`,
     },
     {
-        name: "Financial & Identity Compromise Notice",
-        description: "Targeted alert for breaches containing sensitive financial data, SSNs, or payment card records.",
+        name: "Financial & Identity Compromise Notice (Archived)",
+        description: "Legacy financial alert notice. (Disabled)",
         category: "BREACH",
         subject: "Security Alert: Sensitive Data Exposure Notice ({{BreachName}})",
-        bodyHtml: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1e293b; line-height: 1.6; border: 1px solid #fed7aa; border-radius: 8px; overflow: hidden;">
-    <div style="background-color: #c2410c; padding: 24px; text-align: center;">
-        <h2 style="color: #ffffff; margin: 0; font-size: 20px; letter-spacing: 0.05em;">Security & Identity Alert</h2>
-    </div>
-    <div style="padding: 24px;">
-        <p>Dear {{Name}},</p>
-        <p>We are notifying you that your details associated with <strong>{{Email}}</strong> were identified in a high-risk breach of <strong>{{BreachName}}</strong> that exposed sensitive identity or financial records.</p>
-        
-        <div style="background-color: #fff7ed; border-left: 4px solid #f97316; padding: 14px 18px; margin: 20px 0; border-radius: 0 6px 6px 0;">
-            <p style="margin: 0 0 6px 0;"><strong>Exposed Categories:</strong> {{ExposedCategories}}</p>
-            <p style="margin: 0;"><strong>Incident Date:</strong> {{BreachDate}}</p>
-        </div>
-
-        <p>We strongly recommend monitoring your financial statements and credit reports for any suspicious activity, and taking advantage of credit monitoring services if applicable.</p>
-        <p style="margin-bottom: 0;">Sincerely,<br><strong>Corporate Information Security</strong></p>
-    </div>
-</div>`,
+        isEnabled: false,
+        bodyHtml: `<div>Legacy template archived.</div>`,
     }
 ];
 
-export async function GET() {
+export async function GET(req: Request) {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role;
@@ -103,25 +108,51 @@ export async function GET() {
             return new NextResponse("Forbidden", { status: 403 });
         }
 
-        let templates = await prisma.notificationTemplate.findMany({
-            orderBy: { createdAt: "desc" }
+        const { searchParams } = new URL(req.url);
+        const activeOnly = searchParams.get("activeOnly") === "true";
+
+        const username = session.user.name || (session.user as any)?.username || "System";
+
+        // Check if primary template exists; if not, create it
+        const existingPrimary = await prisma.notificationTemplate.findUnique({
+            where: { name: PRIMARY_COOPER_TEMPLATE.name }
         });
 
-        // Seed initial templates if empty
-        if (templates.length === 0) {
-            const username = session.user.name || (session.user as any)?.username || "System";
-            for (const seed of SEED_TEMPLATES) {
-                await prisma.notificationTemplate.create({
-                    data: {
-                        ...seed,
-                        createdBy: username,
+        if (!existingPrimary) {
+            await prisma.notificationTemplate.create({
+                data: {
+                    ...PRIMARY_COOPER_TEMPLATE,
+                    createdBy: "Information Security",
+                }
+            });
+
+            // Disable legacy seed templates if they exist in DB
+            await prisma.notificationTemplate.updateMany({
+                where: {
+                    name: {
+                        in: [
+                            "Standard Credential Breach Notice",
+                            "Urgent Password Reset Directive",
+                            "Financial & Identity Compromise Notice"
+                        ]
                     }
-                });
-            }
-            templates = await prisma.notificationTemplate.findMany({
-                orderBy: { createdAt: "desc" }
+                },
+                data: { isEnabled: false }
             });
         }
+
+        const where: any = {};
+        if (activeOnly) {
+            where.isEnabled = true;
+        }
+
+        const templates = await prisma.notificationTemplate.findMany({
+            where,
+            orderBy: [
+                { isEnabled: "desc" },
+                { createdAt: "desc" }
+            ]
+        });
 
         return NextResponse.json(templates);
     } catch (err: any) {
@@ -139,13 +170,13 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { name, description, category, subject, bodyHtml, bodyText } = body;
+        const { name, description, category, subject, bodyHtml, bodyText, isEnabled = true } = body;
 
         if (!name || !subject || !bodyHtml) {
             return new NextResponse("Name, Subject, and Email Body are required.", { status: 400 });
         }
 
-        const username = session.user.name || (session.user as any)?.username || "User";
+        const username = (session.user as any)?.username || session.user.name || "User";
 
         const template = await prisma.notificationTemplate.create({
             data: {
@@ -155,6 +186,7 @@ export async function POST(req: Request) {
                 subject,
                 bodyHtml,
                 bodyText: bodyText || "",
+                isEnabled: isEnabled !== false,
                 createdBy: username,
             }
         });
@@ -175,21 +207,45 @@ export async function PUT(req: Request) {
         }
 
         const body = await req.json();
-        const { id, name, description, category, subject, bodyHtml, bodyText } = body;
+        const { id, name, description, category, subject, bodyHtml, bodyText, isEnabled } = body;
 
         if (!id) {
             return new NextResponse("Template ID is required", { status: 400 });
         }
 
+        const existing = await prisma.notificationTemplate.findUnique({
+            where: { id }
+        });
+
+        if (!existing) {
+            return new NextResponse("Template not found", { status: 404 });
+        }
+
+        const currentUsername = String((session.user as any)?.username || "").toLowerCase();
+        const currentName = String(session.user.name || "").toLowerCase();
+        const creator = String(existing.createdBy || "").toLowerCase();
+
+        const isAdmin = role === "ADMIN";
+        const isOwner = creator === currentUsername || creator === currentName || creator === "user";
+
+        // Enforce immutability check
+        if (!isAdmin && !isOwner) {
+            return new NextResponse(
+                `Forbidden: Only the template creator (${existing.createdBy}) or an Administrator can edit this template. Please duplicate/clone this template to make your own changes.`,
+                { status: 403 }
+            );
+        }
+
         const updated = await prisma.notificationTemplate.update({
             where: { id },
             data: {
-                name,
-                description,
-                category,
-                subject,
-                bodyHtml,
-                bodyText,
+                name: name ?? existing.name,
+                description: description ?? existing.description,
+                category: category ?? existing.category,
+                subject: subject ?? existing.subject,
+                bodyHtml: bodyHtml ?? existing.bodyHtml,
+                bodyText: bodyText ?? existing.bodyText,
+                isEnabled: typeof isEnabled === "boolean" ? isEnabled : existing.isEnabled,
             }
         });
 
@@ -213,6 +269,28 @@ export async function DELETE(req: Request) {
 
         if (!id) {
             return new NextResponse("Template ID is required", { status: 400 });
+        }
+
+        const existing = await prisma.notificationTemplate.findUnique({
+            where: { id }
+        });
+
+        if (!existing) {
+            return new NextResponse("Template not found", { status: 404 });
+        }
+
+        const currentUsername = String((session.user as any)?.username || "").toLowerCase();
+        const currentName = String(session.user.name || "").toLowerCase();
+        const creator = String(existing.createdBy || "").toLowerCase();
+
+        const isAdmin = role === "ADMIN";
+        const isOwner = creator === currentUsername || creator === currentName || creator === "user";
+
+        if (!isAdmin && !isOwner) {
+            return new NextResponse(
+                `Forbidden: Only the template creator (${existing.createdBy}) or an Administrator can delete this template.`,
+                { status: 403 }
+            );
         }
 
         await prisma.notificationTemplate.delete({

@@ -5,7 +5,7 @@ import {
     BellRing, Mail, Send, Plus, Sparkles, FileSpreadsheet, 
     CheckCircle2, AlertTriangle, Play, RefreshCw, Trash2, 
     Edit, Eye, Clock, Check, Users, ArrowRight, ShieldCheck, 
-    ExternalLink, Layers, Search, Filter, KeyRound, AlertCircle
+    ExternalLink, Layers, Search, Filter, KeyRound, AlertCircle, Copy, Lock
 } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import RichTemplateEditor, { TemplateData } from "@/components/notifications/RichTemplateEditor";
@@ -629,10 +629,19 @@ export default function NotificationCenterPage() {
                                 onChange={(e) => setWizardData(prev => ({ ...prev, templateId: e.target.value }))}
                                 className="w-full px-3.5 py-2.5 rounded-lg bg-bg-dark border border-border-color text-text-primary text-sm font-medium focus:outline-none focus:border-accent-primary"
                             >
-                                <option value="" disabled>-- Select a template --</option>
-                                {templates.map(t => (
-                                    <option key={t.id} value={t.id}>{t.name} ({t.category})</option>
-                                ))}
+                                <option value="" disabled>-- Select an active template --</option>
+                                <optgroup label="Active Templates">
+                                    {templates.filter(t => t.isEnabled !== false).map(t => (
+                                        <option key={t.id} value={t.id}>{t.name} ({t.category})</option>
+                                    ))}
+                                </optgroup>
+                                {templates.some(t => t.isEnabled === false) && (
+                                    <optgroup label="Disabled / Archived Templates">
+                                        {templates.filter(t => t.isEnabled === false).map(t => (
+                                            <option key={t.id} value={t.id}>[Disabled] {t.name}</option>
+                                        ))}
+                                    </optgroup>
+                                )}
                             </select>
                         </div>
                     </div>
@@ -772,43 +781,89 @@ export default function NotificationCenterPage() {
 
                             {/* Template Grid */}
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                {templates.map(t => (
-                                    <div key={t.id} className="bg-bg-surface rounded-xl border border-border-color p-5 flex flex-col justify-between gap-4">
-                                        <div>
-                                            <div className="flex items-center justify-between gap-2 mb-2">
-                                                <span className="text-[0.7rem] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-accent-primary/15 text-accent-primary border border-accent-primary/30">
-                                                    {t.category}
-                                                </span>
-                                            </div>
-                                            <h4 className="text-base font-bold text-text-primary mb-1">{t.name}</h4>
-                                            <p className="text-xs text-text-muted line-clamp-2 mb-3">{t.description || "No description provided."}</p>
-                                            <div className="text-xs text-text-secondary bg-bg-dark p-2.5 rounded-lg border border-border-color font-mono line-clamp-1">
-                                                <strong>Subj:</strong> {t.subject}
-                                            </div>
-                                        </div>
+                                {templates.map(t => {
+                                    const isActive = t.isEnabled !== false;
 
-                                        <div className="flex items-center justify-between gap-2 pt-3 border-t border-border-color">
-                                            <button
-                                                type="button"
-                                                onClick={() => setEditingTemplate(t)}
-                                                className="btn-secondary px-3 py-1.5 text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
-                                            >
-                                                <Edit size={13} />
-                                                <span>Edit</span>
-                                            </button>
-                                            {t.id && (
+                                    return (
+                                        <div 
+                                            key={t.id} 
+                                            className={`bg-bg-surface rounded-xl border p-5 flex flex-col justify-between gap-4 transition-all shadow-sm ${
+                                                isActive ? "border-border-color hover:border-accent-primary/50" : "border-border-color/50 opacity-75"
+                                            }`}
+                                        >
+                                            <div>
+                                                <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[0.7rem] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-accent-primary/15 text-accent-primary border border-accent-primary/30">
+                                                            {t.category}
+                                                        </span>
+                                                        <span className={`text-[0.65rem] px-2 py-0.5 rounded-full font-black uppercase tracking-wider border ${
+                                                            isActive 
+                                                                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30" 
+                                                                : "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30"
+                                                        }`}>
+                                                            {isActive ? "Active" : "Disabled"}
+                                                        </span>
+                                                    </div>
+
+                                                    {t.createdBy && (
+                                                        <span className="text-[0.7rem] text-text-muted">
+                                                            By: <strong>{t.createdBy}</strong>
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                <h4 className="text-base font-bold text-text-primary mb-1">{t.name}</h4>
+                                                <p className="text-xs text-text-muted line-clamp-2 mb-3">{t.description || "No description provided."}</p>
+                                                <div className="text-xs text-text-secondary bg-bg-dark p-2.5 rounded-lg border border-border-color font-mono line-clamp-1">
+                                                    <strong>Subj:</strong> {t.subject}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center justify-between gap-2 pt-3 border-t border-border-color flex-wrap">
+                                                {/* Duplicate / Clone Button - Always available */}
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleDeleteTemplate(t.id!)}
-                                                    className="p-1.5 text-text-muted hover:text-rose-400 cursor-pointer"
-                                                    title="Delete template"
+                                                    onClick={() => {
+                                                        setEditingTemplate({
+                                                            ...t,
+                                                            id: undefined,
+                                                            name: `${t.name} (Custom Copy)`,
+                                                            isEnabled: true,
+                                                        });
+                                                    }}
+                                                    className="btn-secondary px-2.5 py-1.5 text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
+                                                    title="Clone this template to make a customized copy"
                                                 >
-                                                    <Trash2 size={15} />
+                                                    <Copy size={13} />
+                                                    <span>Clone</span>
                                                 </button>
-                                            )}
+
+                                                {/* Edit Button */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingTemplate(t)}
+                                                    className="btn-secondary px-2.5 py-1.5 text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
+                                                    title="Edit this template (Authors / Admins)"
+                                                >
+                                                    <Edit size={13} />
+                                                    <span>Edit</span>
+                                                </button>
+
+                                                {t.id && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteTemplate(t.id!)}
+                                                        className="p-1.5 text-text-muted hover:text-rose-400 cursor-pointer ml-auto"
+                                                        title="Delete template"
+                                                    >
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
