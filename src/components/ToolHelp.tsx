@@ -95,22 +95,23 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     'hibp-domain': {
         title: "Have I Been Pwned? (HIBP) Domain Security",
-        version: "2.2.0",
+        version: "2.3.0",
         capabilities: [
-            "Track leaked account credentials domain-wide across all verified corporate domain names.",
-            "Real-time Active Directory identity enrichment (Account Status, Title, Department, Locked state, and Password Last Set timestamp).",
-            "Unified Breach & Category Search: Search by specific breach names or filter by one or multiple compromised data categories (Passwords, Credit cards, SSNs, Bank accounts, Auth tokens, etc.) with configurable ALL (AND) / ANY (OR) logic.",
-            "Multi-Category Risk Indicators: Account cards and breach tables display category icons for Passwords (⚠️), Financial Data (💳), Government IDs / SSNs (🪪), and Health Records (🩺).",
-            "Interactive Breach Details Modal: Hover over any breach pill for quick summaries or click it to open a comprehensive incident breakdown with verified date, global pwn counts, compromised categories, and a 'Check Domain Impact' button.",
-            "3-Way CSV Export Suite: One-click export for Active Accounts Only (Outlook Mail Merge format with First Last names), All Accounts (Mail Merge format), or Full Diagnostic CSV (raw AD fields & complete breach histories)."
+            "Domain-Wide Breach Intelligence: Query compromised email aliases and credential leaks across all verified organizational domains.",
+            "Active Directory Identity Enrichment: Real-time AD status (Active in high-contrast yellow badge, Disabled in red), Title, Department, Locked status, and Password Last Set date.",
+            "Unified Breach & Category Filtering: Search by breach name (e.g. LinkedIn, Adobe) or filter across 140+ compromised data categories with configurable ALL (AND) and ANY (OR) matching logic.",
+            "1-Click Quick Category Presets: Instantly filter by critical threat categories: Passwords (⚠️), Credit cards (💳), Social security numbers (🪪), Bank account numbers (🏦), Auth tokens (🔑), and Health insurance information (🩺).",
+            "Multi-Category Risk Badges: Clean, standardized SVG icons (AlertTriangle ⚠️, CreditCard 💳, IdCard 🪪, Activity Pulse 📈) appear consistently across employee cards, breach pills, and data tables.",
+            "Interactive Breach Details Modal: Hover over any breach pill for quick exposure summaries or click it to view complete incident writeups, global pwn counts, and check domain impact.",
+            "3-Way CSV Export Suite: One-click export for Active Accounts Only (Outlook Mail Merge with First Last names), All Accounts (Mail Merge), or Full Diagnostic CSV (raw AD attributes & full breach history)."
         ],
         colors: [
-            { name: "Yellow Badge & Highlight (Active AD Account)", meaning: "Active corporate Active Directory account with compromised credentials. Highlighted with black-on-yellow badge for maximum visibility across all themes.", rgb: "#facc15" },
-            { name: "Red / Rose (Disabled / Locked)", meaning: "Disabled or locked Active Directory account appearing in breach datasets.", rgb: "#ef4444" },
-            { name: "⚠️ Warning Triangle (Passwords / Credentials)", meaning: "Breach dataset exposes user passwords, password hints, auth tokens, PINs, or encryption keys.", rgb: "#f43f5e" },
-            { name: "💳 Amber (Financial Data)", meaning: "Breach dataset exposes Credit cards, CVVs, Bank account numbers, or payment data.", rgb: "#f59e0b" },
-            { name: "🪪 Purple (Government & Identity)", meaning: "Breach dataset exposes Social Security Numbers (SSNs), Passports, Driver's Licenses, or Government IDs.", rgb: "#a855f7" },
-            { name: "🩺 Crimson (Health & Medical)", meaning: "Breach dataset exposes Health insurance information, Personal health data, or Biometric records.", rgb: "#fb7185" }
+            { name: "Yellow Badge & Border (Active AD Account)", meaning: "Active corporate Active Directory account appearing in breach datasets. Prioritize for notification and password resets.", rgb: "#facc15" },
+            { name: "Red / Rose (Disabled / Locked Account)", meaning: "Disabled or locked corporate account appearing in breach datasets.", rgb: "#ef4444" },
+            { name: "⚠️ Red Alert Triangle (Passwords / Credentials)", meaning: "Breach dataset exposes user passwords, password hints, historical passwords, auth tokens, PINs, or encryption keys.", rgb: "#f43f5e" },
+            { name: "💳 Amber Credit Card (Financial Data)", meaning: "Breach dataset exposes Credit cards, CVVs, Bank account numbers, partial credit cards, or crypto wallets.", rgb: "#f59e0b" },
+            { name: "🪪 Purple ID Card (Government & Identity)", meaning: "Breach dataset exposes Social Security Numbers (SSNs), Passports, Driver's Licenses, or Government-issued IDs.", rgb: "#a855f7" },
+            { name: "📈 Pink Activity Pulse (Health & Medical)", meaning: "Breach dataset exposes Health insurance information, Personal health/medical records, or Biometric data.", rgb: "#ec4899" }
         ]
     },
     'threat-intel': {
