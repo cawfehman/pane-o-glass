@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { ShieldCheck } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { ShieldCheck, Download, Mail, UserCheck, Users, FileSpreadsheet, ChevronDown } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 
 export default function DomainSecurityPage() {
@@ -210,6 +210,237 @@ export default function DomainSecurityPage() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    };
+
+    const formatFirstLast = (adName?: string, fallbackAlias?: string) => {
+        if (!adName || adName === "N/A") {
+            return fallbackAlias || "N/A";
+        }
+        if (adName.includes(",")) {
+            const parts = adName.split(",");
+            const last = parts[0].trim();
+            const first = parts.slice(1).join(",").trim();
+            return `${first} ${last}`.trim();
+        }
+        return adName.trim();
+    };
+
+    const stripHtml = (html?: string) => {
+        if (!html) return "";
+        return html
+            .replace(/<[^>]*>/g, "")
+            .replace(/&quot;/g, '"')
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .replace(/&#39;/g, "'")
+            .replace(/\s+/g, " ")
+            .trim();
+    };
+
+    const exportMailMergeCSV = ({
+        breachName,
+        activeOnly,
+    }: {
+        breachName?: string;
+        activeOnly: boolean;
+    }) => {
+        if (!domainResults) return;
+
+        const isSingleBreach = !!breachName;
+        const breachMeta = isSingleBreach ? allBreachesMeta[breachName] || {} : null;
+        const breachTitle = breachMeta?.Title || breachName || "Multiple Breaches";
+        const breachDate = breachMeta?.BreachDate || "Various";
+        const breachDetails = breachMeta ? stripHtml(breachMeta.Description) || "N/A" : "Multiple organizational domain breaches";
+
+        // Headers formatted specifically for Outlook Mail Merge:
+        const headers = [
+            "Email",
+            "Name",
+            "AD Name",
+            "Account Status",
+            "Breach Name",
+            "Breach Details",
+            "Date of Breach",
+        ];
+
+        const rows = Object.entries(domainResults.aliases)
+            .filter(([_, breaches]) => !isSingleBreach || breaches.includes(breachName!))
+            .filter(([alias]) => {
+                if (!activeOnly) return true;
+                const email = `${alias}@${domainStr}`.toLowerCase();
+                const ad = domainResults.adEnrichment[email];
+                return ad && ad.enabled;
+            })
+            .map(([alias, breaches]) => {
+                const email = `${alias}@${domainStr}`.toLowerCase();
+                const ad = domainResults.adEnrichment[email] || {};
+                const rawName = ad.displayName || "";
+                const firstLastName = formatFirstLast(rawName, alias);
+                const status = ad.email ? (ad.enabled ? "Active" : "Disabled") : "Not in AD";
+
+                return [
+                    email,
+                    firstLastName || "N/A",
+                    rawName || "N/A",
+                    status,
+                    isSingleBreach ? breachTitle : breaches.join("; "),
+                    breachDetails,
+                    isSingleBreach ? breachDate : "Various",
+                ];
+            });
+
+        const csvContent = [headers, ...rows]
+            .map((row) =>
+                row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")
+            )
+            .join("\n");
+
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+
+        const scopeLabel = activeOnly ? "active_accounts" : "all_accounts";
+        const cleanBreach = isSingleBreach ? breachName!.replace(/[^a-zA-Z0-9_-]/g, "_") : "domain_all";
+        const filename = `mail_merge_${cleanBreach}_${scopeLabel}_${domainStr}_${new Date().toISOString().split("T")[0]}.csv`;
+
+        link.setAttribute("download", filename);
+        link.style.visibility = "hidden";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const ExportDropdown = ({
+        breachName,
+        activeCount,
+        totalCount,
+        label = "Export CSV",
+    }: {
+        breachName?: string;
+        activeCount?: number;
+        totalCount?: number;
+        label?: string;
+    }) => {
+        const [isOpen, setIsOpen] = useState(false);
+        const dropdownRef = useRef<HTMLDivElement>(null);
+
+        useEffect(() => {
+            const handleClickOutside = (e: MouseEvent) => {
+                if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                    setIsOpen(false);
+                }
+            };
+            const handleKeyDown = (e: KeyboardEvent) => {
+                if (e.key === "Escape") setIsOpen(false);
+            };
+            if (isOpen) {
+                document.addEventListener("mousedown", handleClickOutside);
+                document.addEventListener("keydown", handleKeyDown);
+            }
+            return () => {
+                document.removeEventListener("mousedown", handleClickOutside);
+                document.removeEventListener("keydown", handleKeyDown);
+            };
+        }, [isOpen]);
+
+        return (
+            <div className="relative inline-block" ref={dropdownRef}>
+                <button
+                    type="button"
+                    onClick={() => setIsOpen(!isOpen)}
+                    className="btn-primary inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold shadow-sm cursor-pointer transition-all"
+                >
+                    <Download size={14} />
+                    <span>{label}</span>
+                    <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {isOpen && (
+                    <div 
+                        className="absolute right-0 top-full mt-2 w-72 bg-bg-surface border border-border-color rounded-xl shadow-2xl z-50 p-1.5 flex flex-col gap-1"
+                        style={{ background: "var(--bg-surface)", borderColor: "var(--border-color)" }}
+                    >
+                        <div className="px-3 py-1.5 text-[0.7rem] font-bold text-text-muted uppercase tracking-wider border-b border-border-color/60">
+                            Select Export Format
+                        </div>
+
+                        {/* Option 1: Active Accounts Mail Merge */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsOpen(false);
+                                exportMailMergeCSV({ breachName, activeOnly: true });
+                            }}
+                            className="flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-emerald-500/10 text-left border-none bg-transparent cursor-pointer transition-colors group"
+                        >
+                            <UserCheck size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+                            <div>
+                                <div className="text-xs font-bold text-text-primary group-hover:text-emerald-300 flex items-center justify-between">
+                                    <span>Active Accounts (Mail Merge)</span>
+                                    {typeof activeCount === "number" && (
+                                        <span className="text-[0.65rem] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-mono">
+                                            {activeCount}
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-[0.7rem] text-text-muted mt-0.5 m-0 leading-tight">
+                                    Only active AD accounts • Formatted with First Last names for Outlook
+                                </p>
+                            </div>
+                        </button>
+
+                        {/* Option 2: All Accounts Mail Merge */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsOpen(false);
+                                exportMailMergeCSV({ breachName, activeOnly: false });
+                            }}
+                            className="flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-accent-primary/10 text-left border-none bg-transparent cursor-pointer transition-colors group"
+                        >
+                            <Users size={16} className="text-accent-primary shrink-0 mt-0.5" />
+                            <div>
+                                <div className="text-xs font-bold text-text-primary group-hover:text-accent-primary flex items-center justify-between">
+                                    <span>All Accounts (Mail Merge)</span>
+                                    {typeof totalCount === "number" && (
+                                        <span className="text-[0.65rem] px-1.5 py-0.2 rounded bg-accent-primary/20 text-accent-primary font-mono">
+                                            {totalCount}
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-[0.7rem] text-text-muted mt-0.5 m-0 leading-tight">
+                                    All accounts (Active & Inactive) • Formatted with First Last names
+                                </p>
+                            </div>
+                        </button>
+
+                        <div className="border-t border-border-color/60 my-0.5" />
+
+                        {/* Option 3: Full Diagnostic CSV */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsOpen(false);
+                                downloadCSV(breachName);
+                            }}
+                            className="flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-bg-surface-hover text-left border-none bg-transparent cursor-pointer transition-colors group"
+                        >
+                            <FileSpreadsheet size={16} className="text-text-muted shrink-0 mt-0.5" />
+                            <div>
+                                <div className="text-xs font-bold text-text-primary group-hover:text-text-primary">
+                                    Full Diagnostic CSV
+                                </div>
+                                <p className="text-[0.7rem] text-text-muted mt-0.5 m-0 leading-tight">
+                                    Complete raw AD fields & full breach history
+                                </p>
+                            </div>
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
     };
 
     const EmailRecord = ({ alias, breachList }: { alias: string, breachList: string[] }) => {
@@ -465,7 +696,10 @@ export default function DomainSecurityPage() {
                                                 <>
                                                     <div style={{ flexShrink: 0, padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                         <strong>{Object.keys(domainResults.aliases).length} Impacted Email Aliases Found</strong>
-                                                        <button onClick={() => downloadCSV()} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '0.75rem' }}>Export Enriched CSV</button>
+                                                        <ExportDropdown
+                                                            totalCount={Object.keys(domainResults.aliases).length}
+                                                            label="Export Report"
+                                                        />
                                                     </div>
                                                     <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr', gap: '1rem', overflowY: 'auto', paddingRight: '0.5rem' }}>
                                                         {Object.entries(domainResults.aliases).map(([alias, breachList]: [string, any]) => (
@@ -505,10 +739,30 @@ export default function DomainSecurityPage() {
                                                                     <tr key={b.name} style={{ borderBottom: '1px solid var(--border-color)' }}>
                                                                         <td style={{ padding: '12px 16px', fontWeight: 500, color: 'var(--accent-primary)' }}>{b.name}</td>
                                                                         <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{b.date}</td>
-                                                                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                                                                            <span style={{ background: 'rgba(239,68,68,0.2)', padding: '4px 10px', borderRadius: '12px', color: '#fca5a5', fontSize: '0.85rem' }}>
-                                                                                {b.count}
-                                                                            </span>
+                                                                        <td style={{ padding: '8px 16px', textAlign: 'right' }}>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                                                                                <span style={{ background: 'rgba(239,68,68,0.2)', padding: '4px 10px', borderRadius: '12px', color: '#fca5a5', fontSize: '0.85rem' }}>
+                                                                                    {b.count}
+                                                                                </span>
+                                                                                <button
+                                                                                    onClick={() => exportMailMergeCSV({ breachName: b.name, activeOnly: true })}
+                                                                                    className="btn-primary"
+                                                                                    style={{ padding: '4px 8px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#059669', borderColor: '#10b981', color: '#ffffff' }}
+                                                                                    title={`Export Active Accounts Mail Merge for ${b.name}`}
+                                                                                >
+                                                                                    <UserCheck size={12} />
+                                                                                    <span>Active</span>
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => exportMailMergeCSV({ breachName: b.name, activeOnly: false })}
+                                                                                    className="btn-primary"
+                                                                                    style={{ padding: '4px 8px', fontSize: '0.7rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                                                    title={`Export All Accounts Mail Merge for ${b.name}`}
+                                                                                >
+                                                                                    <Users size={12} />
+                                                                                    <span>All</span>
+                                                                                </button>
+                                                                            </div>
                                                                         </td>
                                                                     </tr>
                                                                 ))}
@@ -539,7 +793,10 @@ export default function DomainSecurityPage() {
                                                     <div>
                                                         <h4 style={{ color: 'var(--text-primary)', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                             Top 25 Most Compromised Aliases
-                                                            <button onClick={() => downloadCSV()} className="btn-secondary" style={{ padding: '4px 8px', fontSize: '0.7rem' }}>Download Full Report</button>
+                                                            <ExportDropdown
+                                                                totalCount={Object.keys(domainResults.aliases).length}
+                                                                label="Export Full Report"
+                                                            />
                                                         </h4>
                                                         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '8px' }}>
                                                             {getTopAliases(25).map((aliasObj, idx) => {
@@ -716,10 +973,44 @@ export default function DomainSecurityPage() {
                                                     </div>
                                                 ) : (
                                                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                                                        <div style={{ flexShrink: 0, padding: '0.75rem 1rem', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 'var(--radius-md)', border: '1px solid #ef4444', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                            <strong>{getImpactedAliasesForBreach().length} Affected Aliases Found</strong>
-                                                            <button onClick={() => downloadCSV(breachSearchQuery)} className="btn-secondary" style={{ padding: '6px 12px', fontSize: '0.75rem' }}>Export Breach Report</button>
-                                                        </div>
+                                                        {(() => {
+                                                            const impacted = getImpactedAliasesForBreach();
+                                                            const activeCount = impacted.filter(alias => {
+                                                                const email = `${alias}@${domainStr}`.toLowerCase();
+                                                                const ad = domainResults?.adEnrichment[email];
+                                                                return ad && ad.enabled;
+                                                            }).length;
+
+                                                            return (
+                                                                <div style={{ flexShrink: 0, padding: '1rem', backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 'var(--radius-md)', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                                                                    <div>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                            <strong style={{ color: '#f87171', fontSize: '1rem' }}>
+                                                                                {impacted.length} Impacted {impacted.length === 1 ? 'Account' : 'Accounts'} on {domainStr}
+                                                                            </strong>
+                                                                            <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(34,197,94,0.2)', color: '#4ade80', fontWeight: 700 }}>
+                                                                                {activeCount} Active
+                                                                            </span>
+                                                                            {impacted.length - activeCount > 0 && (
+                                                                                <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(239,68,68,0.2)', color: '#fca5a5', fontWeight: 700 }}>
+                                                                                    {impacted.length - activeCount} Inactive / External
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                                                                            Select an Outlook Mail Merge format or full diagnostic export below.
+                                                                        </p>
+                                                                    </div>
+
+                                                                    <ExportDropdown
+                                                                        breachName={breachSearchQuery}
+                                                                        activeCount={activeCount}
+                                                                        totalCount={impacted.length}
+                                                                        label="Export Breach Report"
+                                                                    />
+                                                                </div>
+                                                            );
+                                                        })()}
                                                         <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '8px', overflowY: 'auto' }}>
                                                             {getImpactedAliasesForBreach().map(alias => (
                                                                 <EmailRecord key={alias} alias={alias} breachList={domainResults.aliases[alias]} />
