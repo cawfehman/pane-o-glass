@@ -14,96 +14,110 @@ export interface TooltipDetails {
 export const helpData: Record<string, TooltipDetails> = {
     firewall: {
         title: "Cisco Firewall & Guardian",
-        version: "1.0.0",
+        version: "1.3.0",
         capabilities: [
-            "Query current active IP shuns across configured Cisco perimeter firewalls.",
-            "Manually remove shuns to unblock false-positive connections.",
-            "Review historic manual shun and unshun auditing events.",
-            "Audit 'Guardian' logs—our background automation system that automatically shuns malicious IPs trying to brute-force network entry points.",
-            "Manage the 'Guardian Blacklist'—a persistent list of IPs barred from auto-unshunning (e.g. repeated unshun triggers or failed faked domain usernames).",
-            "Perform automatic Active Directory lookup checks to verify whether failed corporate usernames exist before allowing auto-unshuns.",
-            "Utilize command-line range parameters (--range <minutes>) for manual outage recovery/catch-up scans."
+            "Query active IP shuns across all 4 perimeter firewalls (Wilmington Primary/Secondary & Keleman Primary/Secondary).",
+            "Manually remove shuns to unblock false-positive connections with administrative audit logging.",
+            "Historical Shun Database: Search persistent historic shun database with IP ASN, Organization, and Geolocation enrichment.",
+            "Hourly Snapshot Tracking: Audit historical shun snapshot logs across all firewalls.",
+            "Audit 'Guardian' logs—automated background defense system that detects brute-force attacks and auto-shuns malicious IPs.",
+            "Intelligent Auto-Unshun: Validates failed usernames against Active Directory LDAP; auto-unshuns valid employees who mis-typed passwords while blacklisting external attackers.",
+            "Guardian Blacklist Management: Maintain persistent blacklist of IPs barred from auto-unshunning.",
+            "Catch-Up Scans: Execute manual recovery scans with custom minute ranges (--range <minutes>)."
         ],
         colors: [
-            { name: "Green (heartbeat)", meaning: "Guardian service is active and scanning.", rgb: "#22c55e" },
-            { name: "Amber/Yellow (warning)", meaning: "Guardian is running but encountered an error on the last scan.", rgb: "#eab308" },
-            { name: "Red (stalled)", meaning: "Guardian heartbeat is down or missing.", rgb: "#ef4444" }
+            { name: "Green (Active / Heartbeat)", meaning: "Guardian service is active and scanning, or firewall connection is healthy.", rgb: "#22c55e" },
+            { name: "Amber / Yellow (Warning)", meaning: "Guardian encountered a temporary scan issue or firewall warning.", rgb: "#eab308" },
+            { name: "Red (Stalled / Shunned)", meaning: "Guardian heartbeat is down, or IP is actively shunned on the firewall.", rgb: "#ef4444" },
+            { name: "Purple (Enriched)", meaning: "Shun record has been enriched with ASN and Geolocation metadata.", rgb: "#a855f7" }
         ],
-        backgroundJobs: ["Guardian Automated Scanner: Cron checks host connection statuses and manages threat lists."]
+        backgroundJobs: [
+            "Guardian Automated Scanner: Cron checks host connection statuses and manages threat lists.",
+            "Shun Snapshot Sync: Periodically snapshots active shuns across all firewall pairs."
+        ]
     },
     ise: {
         title: "Cisco ISE Center",
-        version: "1.0.0",
+        version: "1.2.0",
         capabilities: [
-            "Query active wired/wireless endpoint connection parameters by MAC address, username, or IP.",
-            "Inspect details of user login sessions, including Auth protocols, Network Devices, and VLAN assignments.",
-            "Verify live port connection paths (Switch, Port, and Port Security profiles).",
-            "Look up locations, addresses, and site contacts from the corporate site directory list."
+            "Query active wired and wireless endpoint connection sessions by MAC address, username, or IP.",
+            "Inspect user login sessions, Auth protocols (EAP-TLS, PEAP, MAB), Network Devices, and VLAN assignments.",
+            "Failure Triage & Analysis: Diagnose endpoint authentication failures and policy rejections in real time.",
+            "Verify live port connection paths (Switch, Interface, and Port Security profiles).",
+            "Corporate Site Directory: Look up physical addresses, floor maps, and site contact lists."
         ],
         colors: [
-            { name: "Green (Active)", meaning: "Successful active endpoint authentication.", rgb: "#22c55e" },
+            { name: "Green (Active / Success)", meaning: "Successful active endpoint authentication and network authorization.", rgb: "#22c55e" },
+            { name: "Red (Failure / Rejected)", meaning: "Authentication failure or authorization profile rejection.", rgb: "#ef4444" },
             { name: "Light Blue (Info)", meaning: "Informational syslog profile status.", rgb: "#3b82f6" },
-            { name: "Gray (Local)", meaning: "IP is local/private and bypassed Geolocation enrichment.", rgb: "#9ca3af" }
+            { name: "Gray (Local)", meaning: "IP is local/private (RFC 1918) and bypassed external Geolocation.", rgb: "#9ca3af" }
         ]
     },
     vpn: {
         title: "VPN Troubleshooting Dashboard",
-        version: "1.2.0",
+        version: "2.1.0",
         capabilities: [
-            "Search real-time VPN connection logs using advanced date-range queries (e.g. 'username last 7 days', 'username june 6-8', or standalone ranges like 'last 24 hours').",
-            "Troubleshoot logins, inspect session durations, and track total upload (Tx) / download (Rx) bandwidth.",
-            "Review 'Security Insights' cards highlighting failed usernames and international Non-US connections.",
-            "Hover over usernames to trigger real-time Active Directory LDAP lookup cards (supports all username formats).",
-            "Differentiate connection protocols (SSL in blue, IKEv2 in purple) and stream sources (R/Reconnect for Kel-3140 in rose, C/Connect for WDC-FTD in green)."
+            "Search real-time AnyConnect / Secure Client VPN connection logs using natural date queries (e.g. 'username last 7 days', 'june 6-8', 'last 24 hours').",
+            "Interactive Connection Map: Visualize active global and domestic VPN tunnels with dual World and US State views, interactive pin clustering, and automatic IPLocate geocoding.",
+            "Capacity & Load Telemetry: Track 24-Hour Peak Unique Users, Average Weekday Users, Average Weekend Users, and active session counts.",
+            "Session Bandwidth Analysis: Troubleshoot session durations and inspect Top Bandwidth Consumers by upload (Tx), download (Rx), and total data transfer.",
+            "Security Insights: Audit top failed usernames (with Active Directory format validation), top failed ASNs, and international non-US connections.",
+            "Identity Hover Popovers: Hover over any username to trigger real-time Active Directory LDAP cards with Locked Out (🔒) and Disabled account detection.",
+            "Protocol & Stream Badging: Differentiate SSL (blue) vs IKEv2/IPSec (purple) and Reconnect (Kel-3140 in rose) vs Connect (WDC-FTD in green)."
         ],
         colors: [
-            { name: "Green (Badge)", meaning: "Client successfully connected to the VPN gateway.", rgb: "#22c55e" },
-            { name: "Red (Badge)", meaning: "Connection failed. Displays the rejection reason (e.g. invalid password).", rgb: "#ef4444" },
-            { name: "Soft Amber (Highlight)", meaning: "International connection warning. Left-border warning shows when source IP country code is outside the United States.", rgb: "#f59e0b" },
-            { name: "Blue (Badge)", meaning: "Disconnect connection teardown message containing byte stats.", rgb: "#3b82f6" },
-            { name: "Sky Blue / Purple (Protocol)", meaning: "SSL vs IKEv2 (IPSec) VPN connection types.", rgb: "#a855f7" },
-            { name: "Rose / Green (Stream)", meaning: "R (Keleman Kel-3140 Reconnect stream) vs C (Wilmington WDC-FTD Connect stream) source badges.", rgb: "#ec4899" },
-            { name: "Orange Lock Badge (🔒)", meaning: "AD account is Locked Out.", rgb: "#ffa500" },
-            { name: "Red Warning Badge (⚠️)", meaning: "Username not found in Active Directory.", rgb: "#ff4d4d" }
+            { name: "Green (Connected / Active)", meaning: "Client successfully authenticated and established an active tunnel.", rgb: "#22c55e" },
+            { name: "Red (Failed Connection)", meaning: "Connection rejected. Displays reason (invalid credentials, certificate failure, timeout).", rgb: "#ef4444" },
+            { name: "Amber (International / Non-US)", meaning: "Connection originating from outside the United States. Highlighted for security review.", rgb: "#f59e0b" },
+            { name: "Blue (Disconnect / Teardown)", meaning: "Session disconnected cleanly; badge contains duration and byte transfer totals.", rgb: "#3b82f6" },
+            { name: "Sky Blue / Purple (Protocol)", meaning: "SSL VPN (blue) vs IKEv2 / IPSec (purple) protocol badges.", rgb: "#a855f7" },
+            { name: "Rose / Green (Gateway Stream)", meaning: "R (Keleman Kel-3140 Reconnect in rose) vs C (Wilmington WDC-FTD Connect in green).", rgb: "#ec4899" },
+            { name: "Orange Lock Badge (🔒)", meaning: "AD account is actively Locked Out in Active Directory.", rgb: "#ffa500" },
+            { name: "Red Warning Badge (⚠️)", meaning: "Username not found in Active Directory (potential typo or external probe).", rgb: "#ff4d4d" }
         ],
-        backgroundJobs: ["Graylog VPN Sync: Syncs VPN authentication logs from Graylog to the SQLite database relative or absolute ranges."]
+        backgroundJobs: [
+            "Graylog VPN Sync: Ingests VPN authentication, disconnect, and byte stats from Graylog clusters.",
+            "IP Geolocation Cache: Auto-enriches and caches regional lat/long coordinates for domestic & global source IPs."
+        ]
     },
     'ise-tacacs': {
         title: "TACACS+ Administration Audit",
-        version: "1.0.0",
+        version: "1.1.0",
         capabilities: [
-            "Search administrative logins into network switches, routers, and firewalls.",
-            "Audit the precise CLI commands executed by engineers during sessions.",
-            "Check command status to confirm command execution authority (Permit vs Deny logs)."
+            "Audit administrative logins to network switches, routers, and firewalls across the infrastructure.",
+            "Search executed CLI commands by network engineer username, target device, or keyword.",
+            "Verify command authorization status to confirm policy enforcement (Permit vs Deny logs)."
         ],
         colors: [
-            { name: "Green (Success)", meaning: "Administration session authentication or command execution permitted.", rgb: "#22c55e" },
-            { name: "Red (Deny)", meaning: "Administrative command execution denied by policy.", rgb: "#ef4444" }
+            { name: "Green (Permit)", meaning: "Administrative login or CLI command execution permitted by TACACS+ policy.", rgb: "#22c55e" },
+            { name: "Red (Deny)", meaning: "Administrative command execution denied by security policy.", rgb: "#ef4444" }
         ]
     },
     'hibp-account': {
         title: "Have I Been Pwned? (HIBP) Account Security",
-        version: "1.0.0",
+        version: "1.1.0",
         capabilities: [
-            "Query external databases to check if a specific corporate account has been compromised.",
-            "List all known breach names, dates, leaked data types, and severity scales associated with the email address."
+            "Query Have I Been Pwned database to check if a specific corporate account has been exposed in public breach datasets.",
+            "Inspect breach incident summaries, exposure dates, leaked data classes (passwords, emails, phone numbers), and severity scores.",
+            "Check public paste sites (Pastebin, Ghostbin) for leaked employee credentials."
         ],
         colors: [
-            { name: "Red Warning", meaning: "Account found in leaked data breach set. Urgent password reset recommended.", rgb: "#ef4444" },
-            { name: "Green Check", meaning: "No breach history found for the query.", rgb: "#22c55e" }
+            { name: "Red Warning", meaning: "Account compromised in one or more breach datasets. Password reset recommended.", rgb: "#ef4444" },
+            { name: "Green Check", meaning: "No breach history found for the queried corporate email address.", rgb: "#22c55e" }
         ]
     },
     'hibp-domain': {
         title: "Have I Been Pwned? (HIBP) Domain Security",
-        version: "2.3.0",
+        version: "2.4.0",
         capabilities: [
             "Domain-Wide Breach Intelligence: Query compromised email aliases and credential leaks across all verified organizational domains.",
-            "Active Directory Identity Enrichment: Real-time AD status (Active in high-contrast yellow badge, Disabled in red), Title, Department, Locked status, and Password Last Set date.",
+            "Active Directory Identity Enrichment: Real-time AD status (Active in yellow, Disabled in red), Title, Department, Locked status, and Password Last Set date.",
+            "Direct 1-Click Notification Staging: Stage filtered breached employees directly into the Corporate Breach Notification Center.",
             "Unified Breach & Category Filtering: Search by breach name (e.g. LinkedIn, Adobe) or filter across 140+ compromised data categories with configurable ALL (AND) and ANY (OR) matching logic.",
             "1-Click Quick Category Presets: Instantly filter by critical threat categories: Passwords (⚠️), Credit cards (💳), Social security numbers (🪪), Bank account numbers (🏦), Auth tokens (🔑), and Health insurance information (🩺).",
-            "Multi-Category Risk Badges: Clean, standardized SVG icons (AlertTriangle ⚠️, CreditCard 💳, IdCard 🪪, Activity Pulse 📈) appear consistently across employee cards, breach pills, and data tables.",
-            "Interactive Breach Details Modal: Hover over any breach pill for quick exposure summaries or click it to view complete incident writeups, global pwn counts, and check domain impact.",
-            "3-Way CSV Export Suite: One-click export for Active Accounts Only (Outlook Mail Merge with First Last names), All Accounts (Mail Merge), or Full Diagnostic CSV (raw AD attributes & full breach history)."
+            "Multi-Category Risk Badges: Clean standardized SVG badges (AlertTriangle ⚠️, CreditCard 💳, IdCard 🪪, Activity Pulse 📈) appear consistently across cards and tables.",
+            "Interactive Breach Details Modal: View full incident writeups, global pwn counts, compromised data attributes, and check organizational impact.",
+            "3-Way CSV Export Suite: One-click export for Active Accounts Only (Outlook Mail Merge), All Accounts (Mail Merge), or Full Diagnostic CSV."
         ],
         colors: [
             { name: "Yellow Badge & Border (Active AD Account)", meaning: "Active corporate Active Directory account appearing in breach datasets. Prioritize for notification and password resets.", rgb: "#facc15" },
@@ -141,13 +155,13 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     'threat-intel': {
         title: "Threat Intelligence Reputation Analyzer",
-        version: "1.0.0",
+        version: "1.1.0",
         capabilities: [
             "Perform real-time reputation analysis on public/private IPs, Domain Names, and File Signatures.",
-            "Resolve live DNS zone records (A, MX, NS, TXT) directly from the target DNS servers.",
+            "Resolve live DNS zone records (A, MX, NS, TXT) directly from the authoritative DNS servers.",
             "Check domain safety, risk classifications, and categories against Cisco Umbrella Investigate database.",
             "Scan file hashes (MD5, SHA-1, SHA-256) to identify malware families and threat signatures.",
-            "Automatically log lookups into the central system database for audit compliance."
+            "Audit Logging: Automatically record indicator lookups in central audit database."
         ],
         colors: [
             { name: "Green (Benign / Clean)", meaning: "Indicator is determined to be clean with a risk index close to 0.", rgb: "#22c55e" },
