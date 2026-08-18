@@ -13,8 +13,8 @@ import {
     Activity, 
     RefreshCw,
     TrendingUp,
-    Calendar,
-    BarChart3
+    ShieldAlert,
+    Lock
 } from "lucide-react";
 import { 
     AreaChart, 
@@ -26,8 +26,7 @@ import {
     CartesianGrid, 
     Tooltip, 
     ResponsiveContainer, 
-    Legend,
-    ReferenceLine
+    Legend
 } from "recharts";
 
 export default function SystemHealthPage() {
@@ -124,7 +123,7 @@ export default function SystemHealthPage() {
     };
 
     // Custom Tooltip for Latency Chart
-    const CustomLatencyTooltip = ({ active, payload, label }: any) => {
+    const CustomLatencyTooltip = ({ active, payload }: any) => {
         if (active && payload && payload.length) {
             const data = payload[0].payload;
             return (
@@ -145,9 +144,9 @@ export default function SystemHealthPage() {
                             <span>Point Read:</span>
                             <span className="font-bold">{data.pointReadMs} ms</span>
                         </div>
-                        {data.contentionDetected && (
-                            <div className="mt-1 pt-1 border-t border-red-500/30 text-red-400 font-bold flex items-center gap-1">
-                                ⚠️ Lock Contention Detected
+                        {data.healthStatus && data.healthStatus !== "HEALTHY" && (
+                            <div className="mt-1 pt-1 border-t border-amber-500/30 text-amber-300 font-sans text-[0.7rem] flex items-center gap-1 font-bold">
+                                {data.healthStatus === "CRITICAL" ? "🔴 CRITICAL" : "🟡 DEGRADED"}: {data.degradedReasons || "Elevated latency"}
                             </div>
                         )}
                         {data.activeCron && (
@@ -435,13 +434,13 @@ export default function SystemHealthPage() {
                         </div>
 
                         {/* ========================================================================= */}
-                        {/* Historical Telemetry Time-Series & Cron Correlation Suite */}
+                        {/* Historical Telemetry Time-Series & SLA Incident Suite */}
                         {/* ========================================================================= */}
-                        <div className="flex flex-col gap-4 border-t border-border-color pt-5">
+                        <div className="flex flex-col gap-5 border-t border-border-color pt-5">
                             <div className="flex justify-between items-center flex-wrap gap-3">
                                 <div className="flex items-center gap-2">
                                     <TrendingUp size={18} className="text-accent-primary" />
-                                    <h3 className="text-base font-bold text-text-primary m-0">Historical Telemetry & Cron Correlation</h3>
+                                    <h3 className="text-base font-bold text-text-primary m-0">Historical Telemetry & Health SLA Tracking</h3>
                                 </div>
 
                                 {/* Timeframe Selector */}
@@ -461,6 +460,120 @@ export default function SystemHealthPage() {
                                     ))}
                                 </div>
                             </div>
+
+                            {/* Health SLA & Incident Counters (4-Card Row) */}
+                            {historyData?.summary && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                                    <div className="p-3.5 rounded-xl bg-black/20 border border-white/5 flex flex-col justify-between">
+                                        <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-1">
+                                            <span>Database Health SLA</span>
+                                            <CheckCircle2 size={15} className="text-emerald-400" />
+                                        </div>
+                                        <div className="text-xl font-extrabold font-mono text-emerald-400">
+                                            {historyData.summary.healthPercentage}% Healthy
+                                        </div>
+                                        <div className="text-[0.7rem] text-text-muted mt-1">
+                                            {historyData.summary.healthyCount} of {historyData.summary.totalSnapshots} snapshots nominal
+                                        </div>
+                                    </div>
+
+                                    <div className="p-3.5 rounded-xl bg-black/20 border border-white/5 flex flex-col justify-between">
+                                        <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-1">
+                                            <span>Degraded Occurrences</span>
+                                            <AlertTriangle size={15} className="text-amber-400" />
+                                        </div>
+                                        <div className={`text-xl font-extrabold font-mono ${historyData.summary.degradedCount > 0 ? "text-amber-400" : "text-text-primary"}`}>
+                                            {historyData.summary.degradedCount} <span className="text-xs font-sans text-text-muted font-normal">events</span>
+                                        </div>
+                                        <div className="text-[0.7rem] text-text-muted mt-1">
+                                            Write &gt;100ms or Scan &gt;50ms
+                                        </div>
+                                    </div>
+
+                                    <div className="p-3.5 rounded-xl bg-black/20 border border-white/5 flex flex-col justify-between">
+                                        <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-1">
+                                            <span>Critical Incidents</span>
+                                            <ShieldAlert size={15} className={historyData.summary.criticalCount > 0 ? "text-rose-400" : "text-text-muted"} />
+                                        </div>
+                                        <div className={`text-xl font-extrabold font-mono ${historyData.summary.criticalCount > 0 ? "text-rose-400" : "text-emerald-400"}`}>
+                                            {historyData.summary.criticalCount} <span className="text-xs font-sans text-text-muted font-normal">incidents</span>
+                                        </div>
+                                        <div className="text-[0.7rem] text-text-muted mt-1">
+                                            Lock wait &gt;1s or Write &gt;1s
+                                        </div>
+                                    </div>
+
+                                    <div className="p-3.5 rounded-xl bg-black/20 border border-white/5 flex flex-col justify-between">
+                                        <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-1">
+                                            <span>Peak WAL Size</span>
+                                            <Zap size={15} className="text-purple-400" />
+                                        </div>
+                                        <div className="text-xl font-extrabold font-mono text-text-primary">
+                                            {historyData.summary.maxWalSizeMB} MB
+                                        </div>
+                                        <div className="text-[0.7rem] text-text-muted mt-1">
+                                            Lock Wait Events: <span className="font-mono text-emerald-400 font-bold">{historyData.summary.contentionIncidents}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Incident Root-Cause Drilldown Table (Only rendered if incidents occurred) */}
+                            {historyData?.incidents && historyData.incidents.length > 0 && (
+                                <div className="p-4 rounded-xl bg-rose-500/[0.04] border border-rose-500/20 flex flex-col gap-2.5">
+                                    <div className="flex justify-between items-center">
+                                        <span className="font-bold text-xs uppercase tracking-wide text-rose-400 flex items-center gap-1.5">
+                                            <ShieldAlert size={14} /> Degraded & Critical Incident Triage Log ({historyData.incidents.length})
+                                        </span>
+                                        <span className="text-[0.68rem] text-text-muted">Threshold breaches in selected timeframe</span>
+                                    </div>
+
+                                    <div className="overflow-x-auto max-h-[160px] rounded-lg border border-white/5 bg-black/20">
+                                        <table className="w-full text-left text-xs border-collapse font-mono">
+                                            <thead>
+                                                <tr className="border-b border-border-color bg-white/[0.02] text-text-secondary uppercase text-[0.68rem]">
+                                                    <th className="py-2 px-3">Timestamp</th>
+                                                    <th className="py-2 px-3">Severity</th>
+                                                    <th className="py-2 px-3">Trigger / Root Cause</th>
+                                                    <th className="py-2 px-3 text-right">Write Latency</th>
+                                                    <th className="py-2 px-3 text-right">Scan Latency</th>
+                                                    <th className="py-2 px-3">Active Cron</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-white/5 text-[0.75rem]">
+                                                {historyData.incidents.map((inc: any, i: number) => (
+                                                    <tr key={i}>
+                                                        <td className="py-2 px-3 text-text-muted whitespace-nowrap">
+                                                            {new Date(inc.timestamp).toLocaleString()}
+                                                        </td>
+                                                        <td className="py-2 px-3">
+                                                            <span className={`px-2 py-0.5 rounded text-[0.65rem] font-bold ${
+                                                                inc.healthStatus === "CRITICAL"
+                                                                    ? "bg-rose-500/20 text-rose-400 border border-rose-500/30"
+                                                                    : "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                                                            }`}>
+                                                                {inc.healthStatus}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-2 px-3 font-sans text-text-primary">
+                                                            {inc.reasons}
+                                                        </td>
+                                                        <td className="py-2 px-3 text-right text-amber-400 font-bold">
+                                                            {inc.walWriteMs} ms
+                                                        </td>
+                                                        <td className="py-2 px-3 text-right text-sky-400">
+                                                            {inc.rangeScanMs} ms
+                                                        </td>
+                                                        <td className="py-2 px-3 text-purple-300 font-sans">
+                                                            {inc.activeCron || "Ad-hoc / Web"}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Chart 1: Latency Trends Over Time */}
                             <div className="p-4 rounded-xl bg-black/25 border border-white/5 flex flex-col gap-3">

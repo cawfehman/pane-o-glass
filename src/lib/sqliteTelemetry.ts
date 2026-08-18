@@ -57,6 +57,8 @@ export interface HistoricalTelemetryPoint {
     walSizeMB: number;
     totalRows: number;
     contentionDetected: boolean;
+    healthStatus: "HEALTHY" | "DEGRADED" | "CRITICAL";
+    degradedReasons?: string | null;
     activeCron?: string | null;
 }
 
@@ -67,11 +69,29 @@ export interface CronExecutionMarker {
     message?: string | null;
 }
 
+export interface HealthIncidentEvent {
+    id: string;
+    timestamp: string;
+    healthStatus: "DEGRADED" | "CRITICAL";
+    reasons: string;
+    pointReadMs: number;
+    rangeScanMs: number;
+    walWriteMs: number;
+    walSizeMB: number;
+    activeCron?: string | null;
+}
+
 export interface HistoricalTelemetryResponse {
     timeframeHours: number;
     snapshots: HistoricalTelemetryPoint[];
     cronEvents: CronExecutionMarker[];
+    incidents: HealthIncidentEvent[];
     summary: {
+        totalSnapshots: number;
+        healthyCount: number;
+        degradedCount: number;
+        criticalCount: number;
+        healthPercentage: number;
         avgPointReadMs: number;
         p95PointReadMs: number;
         avgRangeScanMs: number;
@@ -80,6 +100,47 @@ export interface HistoricalTelemetryResponse {
         p95WalWriteMs: number;
         maxWalSizeMB: number;
         contentionIncidents: number;
+    };
+}
+
+export function classifyHealth(
+    pointReadMs: number, 
+    rangeScanMs: number, 
+    walWriteMs: number, 
+    walSizeBytes: number, 
+    contentionDetected: boolean
+): { healthStatus: "HEALTHY" | "DEGRADED" | "CRITICAL"; degradedReasons: string | null } {
+    const reasons: string[] = [];
+    let status: "HEALTHY" | "DEGRADED" | "CRITICAL" = "HEALTHY";
+
+    if (contentionDetected) {
+        status = "CRITICAL";
+        reasons.push("Lock Contention (SQLITE_BUSY / wait > 1s)");
+    }
+    if (walWriteMs > 1000) {
+        status = "CRITICAL";
+        reasons.push(`Critical Write Latency (${walWriteMs}ms)`);
+    } else if (walWriteMs > 100) {
+        if (status !== "CRITICAL") status = "DEGRADED";
+        reasons.push(`Elevated Write Latency (${walWriteMs}ms)`);
+    }
+
+    if (rangeScanMs > 500) {
+        status = "CRITICAL";
+        reasons.push(`Critical Range Scan Latency (${rangeScanMs}ms)`);
+    } else if (rangeScanMs > 50) {
+        if (status !== "CRITICAL") status = "DEGRADED";
+        reasons.push(`Elevated Range Scan Latency (${rangeScanMs}ms)`);
+    }
+
+    if (walSizeBytes > 100 * 1024 * 1024) {
+        if (status !== "CRITICAL") status = "DEGRADED";
+        reasons.push(`Elevated WAL Journal Size (${(walSizeBytes / (1024 * 1024)).toFixed(1)}MB)`);
+    }
+
+    return {
+        healthStatus: status,
+        degradedReasons: reasons.length > 0 ? reasons.join("; ") : null
     };
 }
 
@@ -369,6 +430,8 @@ export async function recordTelemetrySnapshot(activeCron?: string) {
 
     const totalRows = await prisma.vpnEvent.count().catch(() => 0);
 
+    const classification = classifyHealth(pointReadMs, rangeScanMs, walWriteMs, walSizeBytes, contentionDetected);
+
     const snapshot = await prisma.sqliteTelemetrySnapshot.create({
         data: {
             pointReadMs,
@@ -378,6 +441,8 @@ export async function recordTelemetrySnapshot(activeCron?: string) {
             walSizeBytes,
             totalRows,
             contentionDetected,
+            healthStatus: classification.healthStatus,
+            degradedReasons: classification.degradedReasons,
             activeCron: activeCron || null
         }
     });
@@ -398,13 +463,20 @@ async function maybeAutoRecordSnapshot(currentData: SqliteTelemetryData) {
 
     lastAutoRecordTime = now;
 
-    // Check last snapshot in DB
     const latest = await prisma.sqliteTelemetrySnapshot.findFirst({
         orderBy: { createdAt: "desc" },
         select: { createdAt: true }
     });
 
     if (!latest || (now - latest.createdAt.getTime()) > 5 * 60 * 1000) {
+        const classification = classifyHealth(
+            currentData.benchmarks.pointRead.avg,
+            currentData.benchmarks.indexRangeScan.avg,
+            currentData.benchmarks.walWriteCommit.avg,
+            currentData.storage.walSizeBytes,
+            currentData.benchmarks.contentionDetected
+        );
+
         await prisma.sqliteTelemetrySnapshot.create({
             data: {
                 pointReadMs: currentData.benchmarks.pointRead.avg,
@@ -414,6 +486,8 @@ async function maybeAutoRecordSnapshot(currentData: SqliteTelemetryData) {
                 walSizeBytes: currentData.storage.walSizeBytes,
                 totalRows: currentData.totalRows,
                 contentionDetected: currentData.benchmarks.contentionDetected,
+                healthStatus: classification.healthStatus,
+                degradedReasons: classification.degradedReasons,
                 activeCron: null
             }
         }).catch(() => {});
@@ -421,7 +495,7 @@ async function maybeAutoRecordSnapshot(currentData: SqliteTelemetryData) {
 }
 
 /**
- * Retrieves historical telemetry points and recent background cron runs
+ * Retrieves historical telemetry points, degraded/critical incident counters, and cron executions
  */
 export async function getHistoricalTelemetry(hours = 24): Promise<HistoricalTelemetryResponse> {
     const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
@@ -438,7 +512,6 @@ export async function getHistoricalTelemetry(hours = 24): Promise<HistoricalTele
         })
     ]);
 
-    // If no snapshots exist within range, seed an immediate snapshot
     let finalSnapshots = rawSnapshots;
     if (finalSnapshots.length === 0) {
         const seeded = await recordTelemetrySnapshot();
@@ -455,6 +528,8 @@ export async function getHistoricalTelemetry(hours = 24): Promise<HistoricalTele
         walSizeMB: Number((s.walSizeBytes / (1024 * 1024)).toFixed(2)),
         totalRows: s.totalRows,
         contentionDetected: s.contentionDetected,
+        healthStatus: (s.healthStatus as any) || (s.contentionDetected ? "CRITICAL" : "HEALTHY"),
+        degradedReasons: s.degradedReasons,
         activeCron: s.activeCron
     }));
 
@@ -465,7 +540,29 @@ export async function getHistoricalTelemetry(hours = 24): Promise<HistoricalTele
         message: j.message
     }));
 
-    // Calculate aggregated statistical metrics for the timeframe
+    // Identify all Degraded and Critical incidents in timeframe
+    const incidents: HealthIncidentEvent[] = snapshots
+        .filter(s => s.healthStatus === "DEGRADED" || s.healthStatus === "CRITICAL")
+        .map(s => ({
+            id: s.id,
+            timestamp: s.timestamp,
+            healthStatus: s.healthStatus as "DEGRADED" | "CRITICAL",
+            reasons: s.degradedReasons || (s.healthStatus === "CRITICAL" ? "Critical system threshold exceeded" : "Degraded latency"),
+            pointReadMs: s.pointReadMs,
+            rangeScanMs: s.rangeScanMs,
+            walWriteMs: s.walWriteMs,
+            walSizeMB: s.walSizeMB,
+            activeCron: s.activeCron
+        }))
+        .reverse(); // Most recent first
+
+    // Incident counters
+    const healthyCount = snapshots.filter(s => s.healthStatus === "HEALTHY").length;
+    const degradedCount = snapshots.filter(s => s.healthStatus === "DEGRADED").length;
+    const criticalCount = snapshots.filter(s => s.healthStatus === "CRITICAL").length;
+    const totalSnapshots = snapshots.length;
+    const healthPercentage = totalSnapshots > 0 ? Number(((healthyCount / totalSnapshots) * 100).toFixed(1)) : 100;
+
     const readSamples = snapshots.map(s => s.pointReadMs);
     const scanSamples = snapshots.map(s => s.rangeScanMs);
     const writeSamples = snapshots.map(s => s.walWriteMs);
@@ -481,7 +578,13 @@ export async function getHistoricalTelemetry(hours = 24): Promise<HistoricalTele
         timeframeHours: hours,
         snapshots,
         cronEvents,
+        incidents,
         summary: {
+            totalSnapshots,
+            healthyCount,
+            degradedCount,
+            criticalCount,
+            healthPercentage,
             avgPointReadMs: readMetrics.avg,
             p95PointReadMs: readMetrics.p95,
             avgRangeScanMs: scanMetrics.avg,

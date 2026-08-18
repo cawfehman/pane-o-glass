@@ -9,6 +9,47 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const prisma = new PrismaClient();
 
+function classifyHealth(
+    pointReadMs: number, 
+    rangeScanMs: number, 
+    walWriteMs: number, 
+    walSizeBytes: number, 
+    contentionDetected: boolean
+): { healthStatus: "HEALTHY" | "DEGRADED" | "CRITICAL"; degradedReasons: string | null } {
+    const reasons: string[] = [];
+    let status: "HEALTHY" | "DEGRADED" | "CRITICAL" = "HEALTHY";
+
+    if (contentionDetected) {
+        status = "CRITICAL";
+        reasons.push("Lock Contention (SQLITE_BUSY / wait > 1s)");
+    }
+    if (walWriteMs > 1000) {
+        status = "CRITICAL";
+        reasons.push(`Critical Write Latency (${walWriteMs}ms)`);
+    } else if (walWriteMs > 100) {
+        if (status !== "CRITICAL") status = "DEGRADED";
+        reasons.push(`Elevated Write Latency (${walWriteMs}ms)`);
+    }
+
+    if (rangeScanMs > 500) {
+        status = "CRITICAL";
+        reasons.push(`Critical Range Scan Latency (${rangeScanMs}ms)`);
+    } else if (rangeScanMs > 50) {
+        if (status !== "CRITICAL") status = "DEGRADED";
+        reasons.push(`Elevated Range Scan Latency (${rangeScanMs}ms)`);
+    }
+
+    if (walSizeBytes > 100 * 1024 * 1024) {
+        if (status !== "CRITICAL") status = "DEGRADED";
+        reasons.push(`Elevated WAL Journal Size (${(walSizeBytes / (1024 * 1024)).toFixed(1)}MB)`);
+    }
+
+    return {
+        healthStatus: status,
+        degradedReasons: reasons.length > 0 ? reasons.join("; ") : null
+    };
+}
+
 async function run() {
     const timestamp = new Date().toISOString();
     console.log(`[${timestamp}] Starting SQLite Telemetry Snapshot Collector...`);
@@ -57,8 +98,10 @@ async function run() {
 
         const totalRows = await prisma.vpnEvent.count().catch(() => 0);
 
+        const classification = classifyHealth(pointReadMs, rangeScanMs, walWriteMs, walSizeBytes, contentionDetected);
+
         // Record snapshot
-        const snapshot = await prisma.sqliteTelemetrySnapshot.create({
+        await prisma.sqliteTelemetrySnapshot.create({
             data: {
                 pointReadMs,
                 rangeScanMs,
@@ -67,6 +110,8 @@ async function run() {
                 walSizeBytes,
                 totalRows,
                 contentionDetected,
+                healthStatus: classification.healthStatus,
+                degradedReasons: classification.degradedReasons,
                 activeCron: null
             }
         });
@@ -83,17 +128,17 @@ async function run() {
             create: {
                 name: "Telemetry Collector",
                 lastRun: new Date(),
-                status: "SUCCESS",
-                message: `Read: ${pointReadMs}ms | Scan: ${rangeScanMs}ms | Write: ${walWriteMs}ms | DB: ${(dbSizeBytes/(1024*1024)).toFixed(1)}MB | WAL: ${(walSizeBytes/(1024*1024)).toFixed(1)}MB`
+                status: classification.healthStatus === "CRITICAL" ? "FAILURE" : "SUCCESS",
+                message: `[${classification.healthStatus}] Read: ${pointReadMs}ms | Scan: ${rangeScanMs}ms | Write: ${walWriteMs}ms | DB: ${(dbSizeBytes/(1024*1024)).toFixed(1)}MB | WAL: ${(walSizeBytes/(1024*1024)).toFixed(1)}MB`
             },
             update: {
                 lastRun: new Date(),
-                status: "SUCCESS",
-                message: `Read: ${pointReadMs}ms | Scan: ${rangeScanMs}ms | Write: ${walWriteMs}ms | DB: ${(dbSizeBytes/(1024*1024)).toFixed(1)}MB | WAL: ${(walSizeBytes/(1024*1024)).toFixed(1)}MB`
+                status: classification.healthStatus === "CRITICAL" ? "FAILURE" : "SUCCESS",
+                message: `[${classification.healthStatus}] Read: ${pointReadMs}ms | Scan: ${rangeScanMs}ms | Write: ${walWriteMs}ms | DB: ${(dbSizeBytes/(1024*1024)).toFixed(1)}MB | WAL: ${(walSizeBytes/(1024*1024)).toFixed(1)}MB`
             }
         });
 
-        console.log(`[${timestamp}] Snapshot recorded successfully: Read ${pointReadMs}ms, Scan ${rangeScanMs}ms, Write ${walWriteMs}ms. Pruned ${deleted.count} old snapshots.`);
+        console.log(`[${timestamp}] Snapshot recorded successfully [${classification.healthStatus}]: Read ${pointReadMs}ms, Scan ${rangeScanMs}ms, Write ${walWriteMs}ms. Pruned ${deleted.count} old snapshots.`);
         process.exit(0);
 
     } catch (err: any) {

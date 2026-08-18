@@ -288,10 +288,13 @@ model SqliteTelemetrySnapshot {
   walSizeBytes       Float
   totalRows          Int
   contentionDetected Boolean  @default(false)
+  healthStatus       String   @default("HEALTHY") // "HEALTHY", "DEGRADED", "CRITICAL"
+  degradedReasons    String?
   activeCron         String?
   createdAt          DateTime @default(now())
 
   @@index([createdAt])
+  @@index([healthStatus])
 }
 
 
