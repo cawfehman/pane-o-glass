@@ -116,22 +116,27 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     'notification-center': {
         title: "Corporate Breach Notification Center",
-        version: "1.0.0",
+        version: "2.0.0",
         capabilities: [
-            "Centralized Notification Management: Stage, review, test, approve, and dispatch customized mail-merge security alerts to corporate staff.",
-            "Dynamic Mail Merge Placeholders: Automatically populate employee and breach details using {{Name}}, {{Email}}, {{BreachName}}, {{BreachDate}}, {{BreachDetails}}, {{ExposedCategories}}, and {{AccountStatus}}.",
-            "Visual Rich-Text & HTML Template Hub: Create and customize reusable email templates with 1-click variable insertion buttons and responsive live preview.",
-            "Sandbox Self-Test Simulator: Test any campaign by selecting an actual recipient and safely routing the test email directly to your logged-in administrator inbox.",
-            "Save / Resume Draft Campaigns: Save campaigns in progress, refine recipient lists, switch templates, and resume dispatch at any time.",
+            "Centralized Campaign Management: Stage, review, spot-check, test, approve, and dispatch customized mail-merge security advisories to impacted corporate staff.",
+            "Dynamic Mail Merge & Conditional Logic: Automatically populate employee and incident details using {{Name}}, {{Email}}, {{BreachName}}, {{BreachDate}}, {{BreachDetails}}, {{ExposedCategories}}, {{AccountStatus}}, and {{#if Key}} conditional blocks.",
+            "Visual WYSIWYG & HTML Template Hub: Create and customize reusable templates with rich-text formatting, bullet lists, Cooper Brand Red (#C3002F) styling, and real-time sanitized preview.",
+            "Paginated Spot-Checking & Search: Search and inspect staged recipient lists and delivery logs with custom page limits (10, 15, 25, 50, 100) and instant multi-field query matching.",
+            "1-Click CSV Delivery Export: Download complete delivery logs with recipient emails, names, timestamps, delivery verdicts, and failure error messages for auditing.",
+            "Sandbox Self-Test Simulator: Test any campaign by selecting an actual recipient and safely routing the test email directly to your logged-in administrator inbox (restricted to @cooperhealth.edu).",
+            "Smart Duplicate & Size Guards: Automatic de-duplication of email addresses from uploaded CSVs and browser memory guards against oversized (>5MB) files.",
+            "Campaign Recovery & Retry: 1-click 'Retry Failed' for partial completions and 'Reset & Retry' for stalled dispatch recovery.",
             "Role-Based Self-Approval & Throttled Queue: Authorized security staff (Admin, Systems, Analyst) can review and approve batches, sent with throttled relay delivery.",
             "Direct 1-Click HIBP Integration: Seamlessly stage active accounts from any HIBP Domain Security search directly into the Notification Center."
         ],
         colors: [
             { name: "Amber (Draft)", meaning: "Campaign is currently staged as a draft and awaiting template assignment or sandbox testing.", rgb: "#f59e0b" },
-            { name: "Purple (Test Dispatched)", meaning: "Sandbox test email was safely dispatched to the administrator inbox for review.", rgb: "#a855f7" },
+            { name: "Purple (Sandbox Tested)", meaning: "Sandbox test email was safely dispatched to the administrator inbox for review.", rgb: "#a855f7" },
             { name: "Blue (Sending / In-Flight)", meaning: "Campaign is actively dispatching emails in throttled batches through the corporate relay.", rgb: "#3b82f6" },
+            { name: "Orange (Stalled)", meaning: "Dispatch loop was interrupted or crashed mid-run. Requires operator review and reset.", rgb: "#f97316" },
+            { name: "Amber / Yellow (Completed with Errors)", meaning: "Campaign finished dispatching with some failed deliveries. Failed recipients can be retried.", rgb: "#eab308" },
             { name: "Green (Completed)", meaning: "All staged recipient notification emails were successfully delivered.", rgb: "#22c55e" },
-            { name: "Rose (Failed / Errors)", meaning: "Delivery encountered SMTP relay errors or invalid recipient addresses.", rgb: "#ef4444" }
+            { name: "Rose (Breach Incident)", meaning: "Identifies the source breach or security incident badge on campaign cards and tables.", rgb: "#f43f5e" }
         ]
     },
     'threat-intel': {
