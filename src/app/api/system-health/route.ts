@@ -7,6 +7,7 @@ import os from "os";
 import axios from "axios";
 import * as https from "https";
 import { getRotatingPassword } from "@/lib/rotatingPassword";
+import { getSqliteTelemetry } from "@/lib/sqliteTelemetry";
 
 const execAsync = promisify(exec);
 
@@ -164,6 +165,14 @@ export async function GET() {
             count: s._count.ipAddress
         }));
 
+        // Fetch deep SQLite Database Telemetry & Benchmarks
+        try {
+            metrics.sqlite = await getSqliteTelemetry();
+        } catch (dbErr) {
+            console.error("[Health] Failed to collect SQLite telemetry:", dbErr);
+            metrics.sqlite = null;
+        }
+
         return NextResponse.json(metrics);
 
     } catch (error) {
@@ -178,14 +187,12 @@ function parsePsOutput(output: string) {
     lines.shift(); // Remove header
     return lines.map(line => {
         const parts = line.trim().split(/\s+/);
-        // pid(0), ppid(1), cmd(2 to length-2), %mem(length-2), %cpu(length-1)
         if (parts.length < 5) return null;
 
         const cpu = parts.pop();
         const mem = parts.pop();
         const cmd = parts.slice(2).join(' ');
 
-        // Strip out exceedingly long paths for display
         const displayCmd = cmd.length > 50 ? "..." + cmd.slice(-47) : cmd;
 
         return {
