@@ -11,9 +11,9 @@
     "start": "next start",
     "lint": "next lint",
     "deploy": "git push origin main --follow-tags && git push production main --follow-tags",
-    "deploy:patch": "git add -A && (git diff-index --quiet HEAD || git commit -m \"feat: update telemetry charts and category breakdown\") && npm version patch && npm run deploy",
-    "deploy:minor": "git add -A && (git diff-index --quiet HEAD || git commit -m \"feat: update minor features\") && npm version minor && npm run deploy",
-    "deploy:major": "git add -A && (git diff-index --quiet HEAD || git commit -m \"feat: major release update\") && npm version major && npm run deploy",
+    "deploy:patch": "npm version patch && npm run deploy",
+    "deploy:minor": "npm version minor && npm run deploy",
+    "deploy:major": "npm version major && npm run deploy",
     "test": "playwright test",
     "test:ui": "playwright test --ui",
     "test:setup": "ts-node tests/setup/seed-test-users.ts"
