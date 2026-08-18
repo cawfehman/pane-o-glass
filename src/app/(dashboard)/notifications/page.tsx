@@ -839,7 +839,7 @@ export default function NotificationCenterPage() {
                             </div>
 
                             {/* Recipient Preview Table */}
-                            <div className="overflow-x-auto rounded-md border border-border-color bg-bg-dark max-h-64">
+                            <div className="overflow-x-auto rounded-[10px] border border-border-color bg-bg-dark max-h-64">
                                 <table className="w-full text-left text-xs border-collapse">
                                     <thead className="sticky top-0 bg-bg-surface text-text-secondary shadow-sm">
                                         <tr className="border-b border-border-color">
@@ -1217,7 +1217,7 @@ export default function NotificationCenterPage() {
                         </div>
 
                         {/* Recipients Table */}
-                        <div className="overflow-y-auto flex-1 rounded-md border border-border-color bg-bg-dark min-h-[220px]">
+                        <div className="overflow-y-auto flex-1 rounded-[10px] border border-border-color bg-bg-dark min-h-[220px]">
                             {loadingRecipientsLog ? (
                                 <div className="flex items-center justify-center p-12 text-text-muted text-xs gap-2">
                                     <RefreshCw size={14} className="animate-spin" />

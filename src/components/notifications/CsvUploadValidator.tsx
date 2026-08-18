@@ -228,7 +228,7 @@ export default function CsvUploadValidator({ onStaged }: CsvUploadValidatorProps
                     </div>
 
                     {/* Preview Table */}
-                    <div className="overflow-x-auto rounded-md border border-border-color bg-bg-dark">
+                    <div className="overflow-x-auto rounded-[10px] border border-border-color bg-bg-dark">
                         <table className="w-full text-left text-xs border-collapse">
                             <thead>
                                 <tr className="border-b border-border-color bg-bg-surface text-text-secondary">
