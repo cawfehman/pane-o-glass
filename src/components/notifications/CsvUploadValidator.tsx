@@ -228,26 +228,26 @@ export default function CsvUploadValidator({ onStaged }: CsvUploadValidatorProps
                     </div>
 
                     {/* Preview Table */}
-                    <div className="overflow-x-auto rounded-lg border border-border-color bg-bg-dark">
+                    <div className="overflow-x-auto rounded-md border border-border-color bg-bg-dark">
                         <table className="w-full text-left text-xs border-collapse">
                             <thead>
                                 <tr className="border-b border-border-color bg-bg-surface text-text-secondary">
-                                    <th className="p-2.5">Email</th>
-                                    <th className="p-2.5">Name</th>
-                                    <th className="p-2.5">Breach Name</th>
-                                    <th className="p-2.5">Date</th>
-                                    <th className="p-2.5">Status</th>
+                                    <th className="py-2.5 px-4 font-semibold">Email</th>
+                                    <th className="py-2.5 px-3 font-semibold">Name</th>
+                                    <th className="py-2.5 px-3 font-semibold">Breach Name</th>
+                                    <th className="py-2.5 px-3 font-semibold">Date</th>
+                                    <th className="py-2.5 px-4 font-semibold text-right">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {parsedData.slice(0, 5).map((r, idx) => (
-                                    <tr key={idx} className="border-b border-border-color/50">
-                                        <td className="p-2.5 font-mono text-accent-primary">{r.email}</td>
-                                        <td className="p-2.5 text-text-primary">{r.name || "—"}</td>
-                                        <td className="p-2.5 text-text-secondary">{r.breachName || "—"}</td>
-                                        <td className="p-2.5 text-text-muted">{r.breachDate || "—"}</td>
-                                        <td className="p-2.5">
-                                            <span className="px-2 py-0.5 rounded-full text-[0.65rem] bg-yellow-400 text-black font-black">
+                                    <tr key={idx} className="border-b border-border-color/50 hover:bg-bg-surface/30">
+                                        <td className="py-2.5 px-4 font-mono text-accent-primary">{r.email}</td>
+                                        <td className="py-2.5 px-3 text-text-primary">{r.name || "—"}</td>
+                                        <td className="py-2.5 px-3 text-text-secondary">{r.breachName || "—"}</td>
+                                        <td className="py-2.5 px-3 text-text-muted">{r.breachDate || "—"}</td>
+                                        <td className="py-2.5 px-4 text-right">
+                                            <span className="px-2 py-0.5 rounded text-[0.65rem] bg-yellow-400 text-black font-black uppercase">
                                                 {r.accountStatus}
                                             </span>
                                         </td>
@@ -256,7 +256,7 @@ export default function CsvUploadValidator({ onStaged }: CsvUploadValidatorProps
                             </tbody>
                         </table>
                         {parsedData.length > 5 && (
-                            <div className="p-2 text-center text-xs text-text-muted bg-bg-surface/50">
+                            <div className="py-2 px-4 text-center text-xs text-text-muted bg-bg-surface/50 border-t border-border-color/40">
                                 ... and {parsedData.length - 5} more recipient records ready for staging.
                             </div>
                         )}

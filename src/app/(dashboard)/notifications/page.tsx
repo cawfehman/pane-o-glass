@@ -839,26 +839,26 @@ export default function NotificationCenterPage() {
                             </div>
 
                             {/* Recipient Preview Table */}
-                            <div className="overflow-x-auto rounded-lg border border-border-color bg-bg-dark max-h-64">
+                            <div className="overflow-x-auto rounded-md border border-border-color bg-bg-dark max-h-64">
                                 <table className="w-full text-left text-xs border-collapse">
-                                    <thead className="sticky top-0 bg-bg-surface text-text-secondary">
+                                    <thead className="sticky top-0 bg-bg-surface text-text-secondary shadow-sm">
                                         <tr className="border-b border-border-color">
-                                            <th className="p-2.5">Email</th>
-                                            <th className="p-2.5">Name</th>
-                                            <th className="p-2.5">Breach Name</th>
-                                            <th className="p-2.5">Breach Date</th>
-                                            <th className="p-2.5">Account Status</th>
+                                            <th className="py-2.5 px-4 font-semibold">Email</th>
+                                            <th className="py-2.5 px-3 font-semibold">Name</th>
+                                            <th className="py-2.5 px-3 font-semibold">Breach Name</th>
+                                            <th className="py-2.5 px-3 font-semibold">Breach Date</th>
+                                            <th className="py-2.5 px-4 font-semibold text-right">Account Status</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {wizardData.recipients.slice(0, 15).map((r, idx) => (
-                                            <tr key={idx} className="border-b border-border-color/50">
-                                                <td className="p-2.5 font-mono text-accent-primary">{r.email}</td>
-                                                <td className="p-2.5 text-text-primary">{r.name || "—"}</td>
-                                                <td className="p-2.5 text-text-secondary">{r.breachName || wizardData.breachName || "—"}</td>
-                                                <td className="p-2.5 text-text-muted">{r.breachDate || "—"}</td>
-                                                <td className="p-2.5">
-                                                    <span className="px-2 py-0.5 rounded-full text-[0.65rem] bg-yellow-400 text-black font-black">
+                                            <tr key={idx} className="border-b border-border-color/50 hover:bg-bg-surface/30">
+                                                <td className="py-2.5 px-4 font-mono text-accent-primary">{r.email}</td>
+                                                <td className="py-2.5 px-3 text-text-primary">{r.name || "—"}</td>
+                                                <td className="py-2.5 px-3 text-text-secondary">{r.breachName || wizardData.breachName || "—"}</td>
+                                                <td className="py-2.5 px-3 text-text-muted">{r.breachDate || "—"}</td>
+                                                <td className="py-2.5 px-4 text-right">
+                                                    <span className="px-2 py-0.5 rounded text-[0.65rem] bg-yellow-400 text-black font-black uppercase">
                                                         {r.accountStatus || "Active"}
                                                     </span>
                                                 </td>
@@ -867,7 +867,7 @@ export default function NotificationCenterPage() {
                                     </tbody>
                                 </table>
                                 {wizardData.recipients.length > 15 && (
-                                    <div className="p-2 text-center text-xs text-text-muted bg-bg-surface/50">
+                                    <div className="py-2 px-4 text-center text-xs text-text-muted bg-bg-surface/50 border-t border-border-color/40">
                                         ... and {wizardData.recipients.length - 15} more records staged.
                                     </div>
                                 )}
@@ -1217,7 +1217,7 @@ export default function NotificationCenterPage() {
                         </div>
 
                         {/* Recipients Table */}
-                        <div className="overflow-y-auto flex-1 rounded-lg border border-border-color bg-bg-dark min-h-[220px]">
+                        <div className="overflow-y-auto flex-1 rounded-md border border-border-color bg-bg-dark min-h-[220px]">
                             {loadingRecipientsLog ? (
                                 <div className="flex items-center justify-center p-12 text-text-muted text-xs gap-2">
                                     <RefreshCw size={14} className="animate-spin" />
@@ -1225,13 +1225,13 @@ export default function NotificationCenterPage() {
                                 </div>
                             ) : (
                                 <table className="w-full text-left text-xs border-collapse">
-                                    <thead className="sticky top-0 bg-bg-surface text-text-secondary">
+                                    <thead className="sticky top-0 bg-bg-surface text-text-secondary shadow-sm">
                                         <tr className="border-b border-border-color">
-                                            <th className="p-2.5">Email</th>
-                                            <th className="p-2.5">Name</th>
-                                            <th className="p-2.5">Breach Name</th>
-                                            <th className="p-2.5">Delivery Status</th>
-                                            <th className="p-2.5">Timestamp</th>
+                                            <th className="py-2.5 px-4 font-semibold">Email</th>
+                                            <th className="py-2.5 px-3 font-semibold">Name</th>
+                                            <th className="py-2.5 px-3 font-semibold">Breach Name</th>
+                                            <th className="py-2.5 px-3 font-semibold">Delivery Status</th>
+                                            <th className="py-2.5 px-4 font-semibold text-right">Timestamp</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -1244,11 +1244,11 @@ export default function NotificationCenterPage() {
                                             )
                                             .map((r: any) => (
                                                 <tr key={r.id} className="border-b border-border-color/50 hover:bg-bg-surface/40">
-                                                    <td className="p-2.5 font-mono text-accent-primary">{r.email}</td>
-                                                    <td className="p-2.5 text-text-primary">{r.name || "—"}</td>
-                                                    <td className="p-2.5 text-text-secondary">{r.breachName || viewingRecipientsCampaign.breachName || "—"}</td>
-                                                    <td className="p-2.5">
-                                                        <span className={`px-2 py-0.5 rounded-full text-[0.65rem] font-bold ${
+                                                    <td className="py-2.5 px-4 font-mono text-accent-primary">{r.email}</td>
+                                                    <td className="py-2.5 px-3 text-text-primary">{r.name || "—"}</td>
+                                                    <td className="py-2.5 px-3 text-text-secondary">{r.breachName || viewingRecipientsCampaign.breachName || "—"}</td>
+                                                    <td className="py-2.5 px-3">
+                                                        <span className={`px-2 py-0.5 rounded text-[0.65rem] font-bold ${
                                                             r.status === "SENT" ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" :
                                                             r.status === "TEST_SENT" ? "bg-purple-500/20 text-purple-300 border border-purple-500/30" :
                                                             r.status === "FAILED" ? "bg-rose-500/20 text-rose-400 border border-rose-500/30" :
@@ -1256,13 +1256,13 @@ export default function NotificationCenterPage() {
                                                         }`}>
                                                             {r.status === "TEST_SENT" ? "Sandbox Tested" : r.status}
                                                         </span>
-                                                        {r.error && (
-                                                            <div className="text-[0.65rem] text-rose-400 mt-0.5 line-clamp-1" title={r.error}>
-                                                                {r.error}
+                                                        {r.errorMessage && (
+                                                            <div className="text-[0.65rem] text-rose-400 mt-0.5 line-clamp-1" title={r.errorMessage}>
+                                                                {r.errorMessage}
                                                             </div>
                                                         )}
                                                     </td>
-                                                    <td className="p-2.5 text-text-muted">
+                                                    <td className="py-2.5 px-4 text-text-muted text-right">
                                                         {r.sentAt ? new Date(r.sentAt).toLocaleTimeString() : "—"}
                                                     </td>
                                                 </tr>
