@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import DOMPurify from "dompurify";
+import { sanitizePreviewHtml } from "@/lib/sanitizeHtml";
 import { 
     Save, Sparkles, Code, Eye, Tag, AlertCircle, 
     RotateCcw, Check, Copy, ExternalLink, HelpCircle,
@@ -156,9 +156,7 @@ export default function RichTemplateEditor({
     // NOTE: Sanitize the preview only — the actual outbound email is not sanitized
     // so rich HTML formatting (tables, styles, etc.) is preserved in Outlook.
     const rawPreviewHtml = renderMergedText(bodyHtml, SAMPLE_SIMULATION_VARS);
-    const previewHtml = typeof window !== "undefined"
-        ? DOMPurify.sanitize(rawPreviewHtml, { USE_PROFILES: { html: true } })
-        : rawPreviewHtml;
+    const previewHtml = sanitizePreviewHtml(rawPreviewHtml);
 
     return (
         <form onSubmit={handleSave} className="flex flex-col gap-6">
