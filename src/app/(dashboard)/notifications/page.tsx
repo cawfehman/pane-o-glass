@@ -8,6 +8,7 @@ import {
     ExternalLink, Layers, Search, Filter, KeyRound, AlertCircle, Copy, Lock, ShieldAlert
 } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
+import { PaginationControls } from "@/components/common/PaginationControls";
 import RichTemplateEditor, { TemplateData } from "@/components/notifications/RichTemplateEditor";
 import CsvUploadValidator from "@/components/notifications/CsvUploadValidator";
 import { renderMergedText, TemplateVariables } from "@/lib/templateParser";
@@ -44,6 +45,11 @@ export default function NotificationCenterPage() {
         recipients: [],
     });
 
+    // Wizard pagination & search
+    const [wizardSearch, setWizardSearch] = useState("");
+    const [wizardPage, setWizardPage] = useState(1);
+    const [wizardLimit, setWizardLimit] = useState(15);
+
     // Test send modal / state
     const [testModalCampaign, setTestModalCampaign] = useState<any | null>(null);
     const [targetAdminEmail, setTargetAdminEmail] = useState("");
@@ -59,6 +65,8 @@ export default function NotificationCenterPage() {
     const [viewingRecipientsCampaign, setViewingRecipientsCampaign] = useState<any | null>(null);
     const [loadingRecipientsLog, setLoadingRecipientsLog] = useState(false);
     const [recipientSearch, setRecipientSearch] = useState("");
+    const [logPage, setLogPage] = useState(1);
+    const [logLimit, setLogLimit] = useState(25);
 
     // Fetch initial campaigns & templates
     useEffect(() => {
@@ -825,21 +833,42 @@ export default function NotificationCenterPage() {
                         </div>
                     ) : (
                         <div className="flex flex-col gap-3">
-                            <div className="flex items-center justify-between">
-                                <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary">
-                                    Staged Recipients ({wizardData.recipients.length})
-                                </label>
-                                <button
-                                    type="button"
-                                    onClick={() => setWizardData(prev => ({ ...prev, recipients: [] }))}
-                                    className="text-xs text-rose-400 hover:underline cursor-pointer"
-                                >
-                                    Clear & Re-upload CSV
-                                </button>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-3">
+                                    <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary">
+                                        Staged Recipients ({wizardData.recipients.length})
+                                    </label>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <div className="relative">
+                                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" />
+                                        <input
+                                            type="text"
+                                            value={wizardSearch}
+                                            onChange={(e) => {
+                                                setWizardSearch(e.target.value);
+                                                setWizardPage(1);
+                                            }}
+                                            placeholder="Spot check search..."
+                                            className="pl-8 pr-3 py-1 bg-bg-dark border border-border-color rounded-lg text-xs text-text-primary outline-none focus:border-accent-primary w-48 sm:w-60"
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setWizardData(prev => ({ ...prev, recipients: [] }));
+                                            setWizardSearch("");
+                                            setWizardPage(1);
+                                        }}
+                                        className="text-xs text-rose-400 hover:underline cursor-pointer"
+                                    >
+                                        Clear & Re-upload CSV
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Recipient Preview Table */}
-                            <div className="overflow-x-auto rounded-[10px] border border-border-color bg-bg-dark max-h-64">
+                            <div className="overflow-x-auto rounded-[10px] border border-border-color bg-bg-dark max-h-72">
                                 <table className="w-full text-left text-xs border-collapse">
                                     <thead className="sticky top-0 bg-bg-surface text-text-secondary shadow-sm">
                                         <tr className="border-b border-border-color">
@@ -851,27 +880,80 @@ export default function NotificationCenterPage() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {wizardData.recipients.slice(0, 15).map((r, idx) => (
-                                            <tr key={idx} className="border-b border-border-color/50 hover:bg-bg-surface/30">
-                                                <td className="py-2.5 px-4 font-mono text-accent-primary">{r.email}</td>
-                                                <td className="py-2.5 px-3 text-text-primary">{r.name || "—"}</td>
-                                                <td className="py-2.5 px-3 text-text-secondary">{r.breachName || wizardData.breachName || "—"}</td>
-                                                <td className="py-2.5 px-3 text-text-muted">{r.breachDate || "—"}</td>
-                                                <td className="py-2.5 px-4 text-right">
-                                                    <span className="px-2 py-0.5 rounded text-[0.65rem] bg-yellow-400 text-black font-black uppercase">
-                                                        {r.accountStatus || "Active"}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {(() => {
+                                            const filtered = (wizardData.recipients || []).filter((r: any) => {
+                                                if (!wizardSearch.trim()) return true;
+                                                const q = wizardSearch.toLowerCase();
+                                                return (
+                                                    r.email.toLowerCase().includes(q) ||
+                                                    (r.name && r.name.toLowerCase().includes(q)) ||
+                                                    (r.breachName && r.breachName.toLowerCase().includes(q)) ||
+                                                    (r.accountStatus && r.accountStatus.toLowerCase().includes(q))
+                                                );
+                                            });
+                                            const paginated = filtered.slice(
+                                                (wizardPage - 1) * wizardLimit,
+                                                wizardPage * wizardLimit
+                                            );
+
+                                            if (paginated.length === 0) {
+                                                return (
+                                                    <tr>
+                                                        <td colSpan={5} className="py-8 text-center text-text-muted text-xs">
+                                                            {wizardSearch ? `No staged recipients match "${wizardSearch}".` : "No recipients staged."}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            }
+
+                                            return paginated.map((r, idx) => (
+                                                <tr key={idx} className="border-b border-border-color/50 hover:bg-bg-surface/30">
+                                                    <td className="py-2.5 px-4 font-mono text-accent-primary">{r.email}</td>
+                                                    <td className="py-2.5 px-3 text-text-primary">{r.name || "—"}</td>
+                                                    <td className="py-2.5 px-3 text-text-secondary">{r.breachName || wizardData.breachName || "—"}</td>
+                                                    <td className="py-2.5 px-3 text-text-muted">{r.breachDate || "—"}</td>
+                                                    <td className="py-2.5 px-4 text-right">
+                                                        <span className="px-2 py-0.5 rounded text-[0.65rem] bg-yellow-400 text-black font-black uppercase">
+                                                            {r.accountStatus || "Active"}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ));
+                                        })()}
                                     </tbody>
                                 </table>
-                                {wizardData.recipients.length > 15 && (
-                                    <div className="py-2 px-4 text-center text-xs text-text-muted bg-bg-surface/50 border-t border-border-color/40">
-                                        ... and {wizardData.recipients.length - 15} more records staged.
-                                    </div>
-                                )}
                             </div>
+
+                            {/* Wizard Pagination Controls */}
+                            {wizardData.recipients.length > 0 && (() => {
+                                const filteredCount = (wizardData.recipients || []).filter((r: any) => {
+                                    if (!wizardSearch.trim()) return true;
+                                    const q = wizardSearch.toLowerCase();
+                                    return (
+                                        r.email.toLowerCase().includes(q) ||
+                                        (r.name && r.name.toLowerCase().includes(q)) ||
+                                        (r.breachName && r.breachName.toLowerCase().includes(q)) ||
+                                        (r.accountStatus && r.accountStatus.toLowerCase().includes(q))
+                                    );
+                                }).length;
+
+                                return (
+                                    <div className="pt-1">
+                                        <PaginationControls
+                                            totalRecords={filteredCount}
+                                            page={wizardPage}
+                                            limit={wizardLimit}
+                                            limitOptions={[10, 15, 25, 50, 100]}
+                                            onPageChange={setWizardPage}
+                                            onLimitChange={(l) => {
+                                                setWizardLimit(l);
+                                                setWizardPage(1);
+                                            }}
+                                            showLimitSelector={true}
+                                        />
+                                    </div>
+                                );
+                            })()}
                         </div>
                     )}
 
@@ -1235,14 +1317,30 @@ export default function NotificationCenterPage() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {(viewingRecipientsCampaign.recipients || [])
-                                            .filter((r: any) => 
+                                        {(() => {
+                                            const filtered = (viewingRecipientsCampaign.recipients || []).filter((r: any) => 
                                                 !recipientSearch || 
                                                 r.email.toLowerCase().includes(recipientSearch.toLowerCase()) || 
                                                 (r.name && r.name.toLowerCase().includes(recipientSearch.toLowerCase())) ||
-                                                (r.status && r.status.toLowerCase().includes(recipientSearch.toLowerCase()))
-                                            )
-                                            .map((r: any) => (
+                                                (r.status && r.status.toLowerCase().includes(recipientSearch.toLowerCase())) ||
+                                                (r.breachName && r.breachName.toLowerCase().includes(recipientSearch.toLowerCase()))
+                                            );
+                                            const paginated = filtered.slice(
+                                                (logPage - 1) * logLimit,
+                                                logPage * logLimit
+                                            );
+
+                                            if (paginated.length === 0) {
+                                                return (
+                                                    <tr>
+                                                        <td colSpan={5} className="py-8 text-center text-text-muted text-xs">
+                                                            {recipientSearch ? `No delivery records match "${recipientSearch}".` : "No recipient records found."}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            }
+
+                                            return paginated.map((r: any) => (
                                                 <tr key={r.id} className="border-b border-border-color/50 hover:bg-bg-surface/40">
                                                     <td className="py-2.5 px-4 font-mono text-accent-primary">{r.email}</td>
                                                     <td className="py-2.5 px-3 text-text-primary">{r.name || "—"}</td>
@@ -1266,21 +1364,51 @@ export default function NotificationCenterPage() {
                                                         {r.sentAt ? new Date(r.sentAt).toLocaleTimeString() : "—"}
                                                     </td>
                                                 </tr>
-                                            ))}
+                                            ));
+                                        })()}
                                     </tbody>
                                 </table>
                             )}
                         </div>
 
-                        <div className="flex justify-end pt-2 border-t border-border-color">
-                            <button
-                                type="button"
-                                onClick={() => setViewingRecipientsCampaign(null)}
-                                className="btn-secondary px-4 py-2 text-xs font-semibold cursor-pointer"
-                            >
-                                Close
-                            </button>
-                        </div>
+                        {/* Delivery Log Pagination Footer */}
+                        {(() => {
+                            const filteredCount = (viewingRecipientsCampaign.recipients || []).filter((r: any) => 
+                                !recipientSearch || 
+                                r.email.toLowerCase().includes(recipientSearch.toLowerCase()) || 
+                                (r.name && r.name.toLowerCase().includes(recipientSearch.toLowerCase())) ||
+                                (r.status && r.status.toLowerCase().includes(recipientSearch.toLowerCase())) ||
+                                (r.breachName && r.breachName.toLowerCase().includes(recipientSearch.toLowerCase()))
+                            ).length;
+
+                            return (
+                                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border-color">
+                                    <div className="flex-1 min-w-[280px]">
+                                        {filteredCount > 0 && (
+                                            <PaginationControls
+                                                totalRecords={filteredCount}
+                                                page={logPage}
+                                                limit={logLimit}
+                                                limitOptions={[10, 25, 50, 100]}
+                                                onPageChange={setLogPage}
+                                                onLimitChange={(l) => {
+                                                    setLogLimit(l);
+                                                    setLogPage(1);
+                                                }}
+                                                showLimitSelector={true}
+                                            />
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setViewingRecipientsCampaign(null)}
+                                        className="btn-secondary px-4 py-2 text-xs font-semibold cursor-pointer ml-auto"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             )}
