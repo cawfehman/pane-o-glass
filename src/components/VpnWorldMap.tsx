@@ -139,7 +139,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
     useEffect(() => {
         const checkAndEnrich = async () => {
-            if (!showUsStates || isEnriching) return;
+            if (isEnriching) return;
 
             // Collect all active US IPs (including null country codes — those are likely domestic)
             const activeTunnels = successfulIps.filter(evt => {
@@ -162,7 +162,7 @@ export function VpnWorldMap({ successfulIps = [], failedIps = [], recentEvents =
 
             if (uncached.length > 0) {
                 setIsEnriching(true);
-                console.log(`[Enrichment] US view active. Resolving ${uncached.length} uncached IPs in bulk...`);
+                console.log(`[Enrichment] Resolving ${uncached.length} uncached VPN IPs in bulk...`);
                 
                 try {
                     const response = await fetch("/api/vpn/enrich-batch", {

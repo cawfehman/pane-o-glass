@@ -155,63 +155,29 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
         }
 
         if (lookupList.length > 0) {
-            // iplocate POST batch query structure: POST https://iplocate.io/api/batch?apikey=...
-            const url = `https://iplocate.io/api/batch${apiKey ? `?apikey=${apiKey}` : ""}`;
-            
-            const response = await fetch(url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(lookupList)
-            });
+            // Process lookupList in chunks of 50 to strictly respect API batch boundaries
+            const CHUNK_SIZE = 50;
+            const chunks: string[][] = [];
+            for (let i = 0; i < lookupList.length; i += CHUNK_SIZE) {
+                chunks.push(lookupList.slice(i, i + CHUNK_SIZE));
+            }
 
-            if (response.ok) {
-                const data = await response.json();
+            for (const chunk of chunks) {
+                const url = `https://iplocate.io/api/batch${apiKey ? `?apikey=${apiKey}` : ""}`;
                 
-                // Save resolved results in parallel to cache
-                await Promise.all(Object.keys(data).map(async (ip) => {
-                    const info = data[ip];
-                    if (info && info.country_code) {
-                        await prisma.ipLookupCache.upsert({
-                            where: { ip },
-                            create: {
-                                ip,
-                                latitude: info.latitude,
-                                longitude: info.longitude,
-                                countryCode: info.country_code,
-                                city: info.city,
-                                subdivision: info.subdivision,
-                                rawJson: JSON.stringify(info)
-                            },
-                            update: {
-                                latitude: info.latitude,
-                                longitude: info.longitude,
-                                countryCode: info.country_code,
-                                city: info.city,
-                                subdivision: info.subdivision,
-                                rawJson: JSON.stringify(info)
-                            }
-                        });
-                        results[ip] = info;
-                    }
-                }));
+                try {
+                    const response = await fetch(url, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(chunk)
+                    });
 
-                const totalQueriesPerformed = Object.keys(data).length;
-                await logAudit(
-                    "IPLOCATE_API_QUERY",
-                    `Executed batch lookup for ${totalQueriesPerformed} IPs. Daily usage since 00:00 UTC: ${dailyCountBefore + totalQueriesPerformed} queries.`
-                );
-            } else {
-                console.warn(`[iplocate] Batch API failed (Status: ${response.status}). Falling back to sequential single lookups...`);
-                
-                for (const ip of lookupList) {
-                    try {
-                        const singleUrl = `https://iplocate.io/api/lookup/${ip}${apiKey ? `?apikey=${apiKey}` : ""}`;
-                        // sequential throttle delay to stay within rate limits
-                        await new Promise(r => setTimeout(r, 20));
+                    if (response.ok) {
+                        const data = await response.json();
                         
-                        const singleRes = await fetch(singleUrl);
-                        if (singleRes.ok) {
-                            const info = await singleRes.json();
+                        // Save resolved results in parallel to cache
+                        await Promise.all(Object.keys(data).map(async (ip) => {
+                            const info = data[ip];
                             if (info && info.country_code) {
                                 await prisma.ipLookupCache.upsert({
                                     where: { ip },
@@ -235,23 +201,62 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                                 });
                                 results[ip] = info;
                             }
-                        } else {
-                            console.error(`[iplocate] Sequential fallback failed for ${ip}:`, singleRes.status);
-                            const staleCached = cachedMap.get(ip);
-                            if (staleCached) {
-                                results[ip] = JSON.parse(staleCached.rawJson);
+                        }));
+
+                        const totalQueriesPerformed = Object.keys(data).length;
+                        await logAudit(
+                            "IPLOCATE_API_QUERY",
+                            `Executed batch lookup for ${totalQueriesPerformed} IPs. Daily usage since 00:00 UTC: ${dailyCountBefore + totalQueriesPerformed} queries.`
+                        );
+                    } else {
+                        console.warn(`[iplocate] Batch API failed for chunk (Status: ${response.status}). Falling back to sequential single lookups...`);
+                        
+                        for (const ip of chunk) {
+                            try {
+                                const singleUrl = `https://iplocate.io/api/lookup/${ip}${apiKey ? `?apikey=${apiKey}` : ""}`;
+                                await new Promise(r => setTimeout(r, 20));
+                                
+                                const singleRes = await fetch(singleUrl);
+                                if (singleRes.ok) {
+                                    const info = await singleRes.json();
+                                    if (info && info.country_code) {
+                                        await prisma.ipLookupCache.upsert({
+                                            where: { ip },
+                                            create: {
+                                                ip,
+                                                latitude: info.latitude,
+                                                longitude: info.longitude,
+                                                countryCode: info.country_code,
+                                                city: info.city,
+                                                subdivision: info.subdivision,
+                                                rawJson: JSON.stringify(info)
+                                            },
+                                            update: {
+                                                latitude: info.latitude,
+                                                longitude: info.longitude,
+                                                countryCode: info.country_code,
+                                                city: info.city,
+                                                subdivision: info.subdivision,
+                                                rawJson: JSON.stringify(info)
+                                            }
+                                        });
+                                        results[ip] = info;
+                                    }
+                                } else {
+                                    console.error(`[iplocate] Sequential fallback failed for ${ip}:`, singleRes.status);
+                                    const staleCached = cachedMap.get(ip);
+                                    if (staleCached) {
+                                        results[ip] = JSON.parse(staleCached.rawJson);
+                                    }
+                                }
+                            } catch (err) {
+                                console.error(`[iplocate] Error in sequential fallback for ${ip}:`, err);
                             }
                         }
-                    } catch (err) {
-                        console.error(`[iplocate] Error in sequential fallback for ${ip}:`, err);
                     }
+                } catch (chunkErr) {
+                    console.error("[iplocate] Error executing chunk batch lookup:", chunkErr);
                 }
-                
-                const totalQueriesPerformed = Object.keys(results).filter(ip => lookupList.includes(ip)).length;
-                await logAudit(
-                    "IPLOCATE_API_QUERY",
-                    `Executed sequential lookups for ${totalQueriesPerformed} IPs (Batch API fallback). Daily usage since 00:00 UTC: ${dailyCountBefore + totalQueriesPerformed} queries.`
-                );
             }
         } else if (uncachedIps.length > 0 && !apiKey) {
             // Log the simulated geocoding runs under IPLOCATE_API_QUERY as well
