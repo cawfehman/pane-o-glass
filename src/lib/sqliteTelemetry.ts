@@ -47,6 +47,42 @@ export interface SqliteTelemetryData {
     healthRecommendations: string[];
 }
 
+export interface HistoricalTelemetryPoint {
+    id: string;
+    timestamp: string;
+    pointReadMs: number;
+    rangeScanMs: number;
+    walWriteMs: number;
+    dbSizeMB: number;
+    walSizeMB: number;
+    totalRows: number;
+    contentionDetected: boolean;
+    activeCron?: string | null;
+}
+
+export interface CronExecutionMarker {
+    name: string;
+    timestamp: string;
+    status: string;
+    message?: string | null;
+}
+
+export interface HistoricalTelemetryResponse {
+    timeframeHours: number;
+    snapshots: HistoricalTelemetryPoint[];
+    cronEvents: CronExecutionMarker[];
+    summary: {
+        avgPointReadMs: number;
+        p95PointReadMs: number;
+        avgRangeScanMs: number;
+        p95RangeScanMs: number;
+        avgWalWriteMs: number;
+        p95WalWriteMs: number;
+        maxWalSizeMB: number;
+        contentionIncidents: number;
+    };
+}
+
 function calculatePercentiles(samples: number[]): PercentileMetric {
     if (!samples || samples.length === 0) {
         return { avg: 0, p95: 0, peak: 0, min: 0, samples: 0 };
@@ -94,7 +130,7 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
     const dbSizeBytes = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
     const walSizeBytes = fs.existsSync(walPath) ? fs.statSync(walPath).size : 0;
 
-    // 2. Query lightweight engine PRAGMAs (page_count, freelist_count, journal_mode, busy_timeout)
+    // 2. Query lightweight engine PRAGMAs
     let journalMode = "unknown";
     let busyTimeoutMs = 0;
     let pageCount = 0;
@@ -132,7 +168,7 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
 
     const fragmentationPct = pageCount > 0 ? Number(((freelistCount / pageCount) * 100).toFixed(2)) : 0;
 
-    // 3. Fast Table Row Counts (Executed concurrently)
+    // 3. Fast Table Row Counts
     const [
         vpnCount,
         auditCount,
@@ -172,8 +208,7 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
         sharePct: totalRows > 0 ? Number(((t.count / totalRows) * 100).toFixed(1)) : 0
     })).sort((a, b) => b.count - a.count);
 
-    // 4. Fast Micro-Benchmarks (Low sample count to prevent any latency)
-    // Point Read Benchmark (3 iterations)
+    // 4. Fast Micro-Benchmarks
     const pointReadSamples: number[] = [];
     for (let i = 0; i < 3; i++) {
         const t0 = performance.now();
@@ -182,7 +217,6 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
     }
     const pointRead = calculatePercentiles(pointReadSamples);
 
-    // Range Scan Benchmark (2 iterations)
     const rangeScanSamples: number[] = [];
     for (let i = 0; i < 2; i++) {
         const t0 = performance.now();
@@ -195,7 +229,6 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
     }
     const indexRangeScan = calculatePercentiles(rangeScanSamples);
 
-    // WAL Write Probe (1 iteration)
     const writeSamples: number[] = [];
     let contentionDetected = false;
     const t0 = performance.now();
@@ -282,5 +315,181 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
     cachedTelemetry = result;
     lastCacheTime = Date.now();
 
+    // In the background (non-blocking), auto-record snapshot if older than 5 minutes
+    maybeAutoRecordSnapshot(result).catch(() => {});
+
     return result;
+}
+
+/**
+ * Records a point-in-time telemetry snapshot to SqliteTelemetrySnapshot table.
+ * Automatically prunes historical snapshots older than 14 days.
+ */
+export async function recordTelemetrySnapshot(activeCron?: string) {
+    const candidates = [
+        path.resolve(process.cwd(), "prisma/dev.db"),
+        path.resolve(process.cwd(), "prisma/prisma/dev.db"),
+        path.resolve(process.cwd(), "dev.db")
+    ];
+    const dbPath = candidates.find(p => fs.existsSync(p)) || candidates[0];
+    const walPath = `${dbPath}-wal`;
+
+    const dbSizeBytes = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
+    const walSizeBytes = fs.existsSync(walPath) ? fs.statSync(walPath).size : 0;
+
+    // Point Read Probe
+    const t0Read = performance.now();
+    await prisma.user.findFirst({ select: { id: true } }).catch(() => null);
+    const pointReadMs = Number((performance.now() - t0Read).toFixed(2));
+
+    // Range Scan Probe
+    const t0Scan = performance.now();
+    await prisma.vpnEvent.findMany({
+        take: 25,
+        orderBy: { createdAt: "desc" },
+        select: { id: true }
+    }).catch(() => []);
+    const rangeScanMs = Number((performance.now() - t0Scan).toFixed(2));
+
+    // Write Probe
+    const t0Write = performance.now();
+    let contentionDetected = false;
+    try {
+        await prisma.healthProbe.create({
+            data: { ipAddress: "127.0.0.1" }
+        });
+        const elapsed = performance.now() - t0Write;
+        if (elapsed > 1000) contentionDetected = true;
+    } catch (e: any) {
+        if (String(e?.message).includes("database is locked") || String(e?.message).includes("SQLITE_BUSY")) {
+            contentionDetected = true;
+        }
+    }
+    const walWriteMs = Number((performance.now() - t0Write).toFixed(2));
+
+    const totalRows = await prisma.vpnEvent.count().catch(() => 0);
+
+    const snapshot = await prisma.sqliteTelemetrySnapshot.create({
+        data: {
+            pointReadMs,
+            rangeScanMs,
+            walWriteMs,
+            dbSizeBytes,
+            walSizeBytes,
+            totalRows,
+            contentionDetected,
+            activeCron: activeCron || null
+        }
+    });
+
+    // Prune snapshots older than 14 days
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    await prisma.sqliteTelemetrySnapshot.deleteMany({
+        where: { createdAt: { lt: fourteenDaysAgo } }
+    }).catch(() => {});
+
+    return snapshot;
+}
+
+let lastAutoRecordTime = 0;
+async function maybeAutoRecordSnapshot(currentData: SqliteTelemetryData) {
+    const now = Date.now();
+    if (now - lastAutoRecordTime < 5 * 60 * 1000) return; // Only once per 5 minutes
+
+    lastAutoRecordTime = now;
+
+    // Check last snapshot in DB
+    const latest = await prisma.sqliteTelemetrySnapshot.findFirst({
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true }
+    });
+
+    if (!latest || (now - latest.createdAt.getTime()) > 5 * 60 * 1000) {
+        await prisma.sqliteTelemetrySnapshot.create({
+            data: {
+                pointReadMs: currentData.benchmarks.pointRead.avg,
+                rangeScanMs: currentData.benchmarks.indexRangeScan.avg,
+                walWriteMs: currentData.benchmarks.walWriteCommit.avg,
+                dbSizeBytes: currentData.storage.dbSizeBytes,
+                walSizeBytes: currentData.storage.walSizeBytes,
+                totalRows: currentData.totalRows,
+                contentionDetected: currentData.benchmarks.contentionDetected,
+                activeCron: null
+            }
+        }).catch(() => {});
+    }
+}
+
+/**
+ * Retrieves historical telemetry points and recent background cron runs
+ */
+export async function getHistoricalTelemetry(hours = 24): Promise<HistoricalTelemetryResponse> {
+    const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+    const [rawSnapshots, cronJobs] = await Promise.all([
+        prisma.sqliteTelemetrySnapshot.findMany({
+            where: { createdAt: { gte: cutoff } },
+            orderBy: { createdAt: "asc" },
+            take: 500
+        }),
+        prisma.backgroundJob.findMany({
+            where: { lastRun: { gte: cutoff } },
+            orderBy: { lastRun: "asc" }
+        })
+    ]);
+
+    // If no snapshots exist within range, seed an immediate snapshot
+    let finalSnapshots = rawSnapshots;
+    if (finalSnapshots.length === 0) {
+        const seeded = await recordTelemetrySnapshot();
+        finalSnapshots = [seeded];
+    }
+
+    const snapshots: HistoricalTelemetryPoint[] = finalSnapshots.map(s => ({
+        id: s.id,
+        timestamp: s.createdAt.toISOString(),
+        pointReadMs: Number(s.pointReadMs.toFixed(2)),
+        rangeScanMs: Number(s.rangeScanMs.toFixed(2)),
+        walWriteMs: Number(s.walWriteMs.toFixed(2)),
+        dbSizeMB: Number((s.dbSizeBytes / (1024 * 1024)).toFixed(2)),
+        walSizeMB: Number((s.walSizeBytes / (1024 * 1024)).toFixed(2)),
+        totalRows: s.totalRows,
+        contentionDetected: s.contentionDetected,
+        activeCron: s.activeCron
+    }));
+
+    const cronEvents: CronExecutionMarker[] = cronJobs.map(j => ({
+        name: j.name,
+        timestamp: j.lastRun.toISOString(),
+        status: j.status,
+        message: j.message
+    }));
+
+    // Calculate aggregated statistical metrics for the timeframe
+    const readSamples = snapshots.map(s => s.pointReadMs);
+    const scanSamples = snapshots.map(s => s.rangeScanMs);
+    const writeSamples = snapshots.map(s => s.walWriteMs);
+
+    const readMetrics = calculatePercentiles(readSamples);
+    const scanMetrics = calculatePercentiles(scanSamples);
+    const writeMetrics = calculatePercentiles(writeSamples);
+
+    const maxWalSizeMB = snapshots.reduce((max, s) => Math.max(max, s.walSizeMB), 0);
+    const contentionIncidents = snapshots.filter(s => s.contentionDetected).length;
+
+    return {
+        timeframeHours: hours,
+        snapshots,
+        cronEvents,
+        summary: {
+            avgPointReadMs: readMetrics.avg,
+            p95PointReadMs: readMetrics.p95,
+            avgRangeScanMs: scanMetrics.avg,
+            p95RangeScanMs: scanMetrics.p95,
+            avgWalWriteMs: writeMetrics.avg,
+            p95WalWriteMs: writeMetrics.p95,
+            maxWalSizeMB,
+            contentionIncidents
+        }
+    };
 }

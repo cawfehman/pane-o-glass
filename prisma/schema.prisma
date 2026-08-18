@@ -279,3 +279,19 @@ model CampaignRecipient {
   @@index([email])
 }
 
+model SqliteTelemetrySnapshot {
+  id                 String   @id @default(cuid())
+  pointReadMs        Float
+  rangeScanMs        Float
+  walWriteMs         Float
+  dbSizeBytes        Float
+  walSizeBytes       Float
+  totalRows          Int
+  contentionDetected Boolean  @default(false)
+  activeCron         String?
+  createdAt          DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+

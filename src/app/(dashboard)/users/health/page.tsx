@@ -12,14 +12,34 @@ import {
     Layers, 
     Activity, 
     RefreshCw,
-    ShieldAlert
+    TrendingUp,
+    Calendar,
+    BarChart3
 } from "lucide-react";
+import { 
+    AreaChart, 
+    Area, 
+    LineChart, 
+    Line, 
+    XAxis, 
+    YAxis, 
+    CartesianGrid, 
+    Tooltip, 
+    ResponsiveContainer, 
+    Legend,
+    ReferenceLine
+} from "recharts";
 
 export default function SystemHealthPage() {
     const [metrics, setMetrics] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [refreshing, setRefreshing] = useState(false);
+
+    // Historical Telemetry State
+    const [timeframe, setTimeframe] = useState<string>("24h");
+    const [historyData, setHistoryData] = useState<any>(null);
+    const [historyLoading, setHistoryLoading] = useState<boolean>(false);
 
     const fetchMetrics = () => {
         setRefreshing(true);
@@ -40,9 +60,32 @@ export default function SystemHealthPage() {
             });
     };
 
+    const fetchHistory = (tf = timeframe) => {
+        setHistoryLoading(true);
+        fetch(`/api/system-health/history?timeframe=${tf}&t=${Date.now()}`)
+            .then(res => {
+                if (!res.ok) throw new Error("Failed to load historical telemetry");
+                return res.json();
+            })
+            .then(data => {
+                setHistoryData(data);
+                setHistoryLoading(false);
+            })
+            .catch(err => {
+                console.error("History fetch error:", err);
+                setHistoryLoading(false);
+            });
+    };
+
     useEffect(() => {
         fetchMetrics();
+        fetchHistory("24h");
     }, []);
+
+    const handleTimeframeChange = (newTf: string) => {
+        setTimeframe(newTf);
+        fetchHistory(newTf);
+    };
 
     if (loading) return <div className="p-6 text-center">Loading live system metrics...</div>;
     if (error) return <div className="p-6 text-accent-secondary">Error: {error}</div>;
@@ -71,6 +114,83 @@ export default function SystemHealthPage() {
 
     const sqlite = metrics.sqlite;
 
+    // Format chart date labels
+    const formatTimestamp = (ts: string) => {
+        const d = new Date(ts);
+        if (timeframe === "1h" || timeframe === "6h" || timeframe === "12h") {
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+        return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:00`;
+    };
+
+    // Custom Tooltip for Latency Chart
+    const CustomLatencyTooltip = ({ active, payload, label }: any) => {
+        if (active && payload && payload.length) {
+            const data = payload[0].payload;
+            return (
+                <div className="p-3 bg-bg-surface/95 border border-border-color rounded-xl shadow-2xl backdrop-blur-md text-xs font-mono">
+                    <p className="font-sans font-bold text-text-primary text-[0.8rem] border-b border-border-color pb-1 mb-2">
+                        {new Date(data.timestamp).toLocaleString()}
+                    </p>
+                    <div className="flex flex-col gap-1">
+                        <div className="flex justify-between gap-4 text-sky-400">
+                            <span>Range Scan:</span>
+                            <span className="font-bold">{data.rangeScanMs} ms</span>
+                        </div>
+                        <div className="flex justify-between gap-4 text-amber-400">
+                            <span>WAL Write / Commit:</span>
+                            <span className="font-bold">{data.walWriteMs} ms</span>
+                        </div>
+                        <div className="flex justify-between gap-4 text-emerald-400">
+                            <span>Point Read:</span>
+                            <span className="font-bold">{data.pointReadMs} ms</span>
+                        </div>
+                        {data.contentionDetected && (
+                            <div className="mt-1 pt-1 border-t border-red-500/30 text-red-400 font-bold flex items-center gap-1">
+                                ⚠️ Lock Contention Detected
+                            </div>
+                        )}
+                        {data.activeCron && (
+                            <div className="mt-1 pt-1 border-t border-purple-500/30 text-purple-300 font-sans text-[0.7rem]">
+                                ⚙️ Running: <span className="font-bold">{data.activeCron}</span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+        return null;
+    };
+
+    // Custom Tooltip for Storage Chart
+    const CustomStorageTooltip = ({ active, payload }: any) => {
+        if (active && payload && payload.length) {
+            const data = payload[0].payload;
+            return (
+                <div className="p-3 bg-bg-surface/95 border border-border-color rounded-xl shadow-2xl backdrop-blur-md text-xs font-mono">
+                    <p className="font-sans font-bold text-text-primary text-[0.8rem] border-b border-border-color pb-1 mb-2">
+                        {new Date(data.timestamp).toLocaleString()}
+                    </p>
+                    <div className="flex flex-col gap-1">
+                        <div className="flex justify-between gap-4 text-blue-400">
+                            <span>Database Size:</span>
+                            <span className="font-bold">{data.dbSizeMB} MB</span>
+                        </div>
+                        <div className="flex justify-between gap-4 text-amber-400">
+                            <span>WAL Journal:</span>
+                            <span className="font-bold">{data.walSizeMB} MB</span>
+                        </div>
+                        <div className="flex justify-between gap-4 text-purple-400">
+                            <span>Total Rows:</span>
+                            <span className="font-bold">{data.totalRows.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+        return null;
+    };
+
     return (
         <div className="internal-scroll-layout">
              <div className="shrink-0 flex justify-between items-center mb-6 flex-wrap gap-4">
@@ -79,13 +199,16 @@ export default function SystemHealthPage() {
                         <div className="flex items-center gap-3">
                             <h1 className="m-0">System Health</h1>
                             <button
-                                onClick={fetchMetrics}
-                                disabled={refreshing}
+                                onClick={() => {
+                                    fetchMetrics();
+                                    fetchHistory(timeframe);
+                                }}
+                                disabled={refreshing || historyLoading}
                                 className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-text-secondary hover:text-text-primary border border-white/10 transition-colors flex items-center gap-1.5 text-xs font-semibold"
                                 title="Refresh all system diagnostics"
                             >
-                                <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
-                                {refreshing ? "Testing..." : "Refresh"}
+                                <RefreshCw size={14} className={refreshing || historyLoading ? "animate-spin" : ""} />
+                                {refreshing || historyLoading ? "Testing..." : "Refresh"}
                             </button>
                         </div>
                         <p className="text-text-muted mt-1">{metrics.osType} {metrics.osRelease} | Uptime: {hours}h {minutes}m</p>
@@ -239,10 +362,10 @@ export default function SystemHealthPage() {
                         <div className="flex flex-col gap-3">
                             <div className="flex justify-between items-center">
                                 <h3 className="text-sm font-bold text-text-secondary uppercase tracking-wider m-0 flex items-center gap-2">
-                                    <Clock size={15} className="text-accent-primary" /> Query Latency & Benchmark Percentiles (p95 / Peak)
+                                    <Clock size={15} className="text-accent-primary" /> Real-Time Latency & Percentiles
                                 </h3>
                                 <span className="text-[0.7rem] text-text-muted font-mono">
-                                    Micro-bench execution time: {sqlite.benchmarks.benchmarkDurationMs}ms
+                                    Diagnostic run: {sqlite.benchmarks.benchmarkDurationMs}ms
                                 </span>
                             </div>
 
@@ -277,7 +400,7 @@ export default function SystemHealthPage() {
                                         <tr>
                                             <td className="py-2.5 px-3.5 font-sans font-medium text-text-primary">
                                                 <div>Time-Series Index Range Scan</div>
-                                                <div className="text-[0.68rem] text-text-muted font-mono">prisma.vpnEvent.findMany(take: 50, order: desc)</div>
+                                                <div className="text-[0.68rem] text-text-muted font-mono">prisma.vpnEvent.findMany(take: 25, order: desc)</div>
                                             </td>
                                             <td className="py-2.5 px-3.5 text-right">{sqlite.benchmarks.indexRangeScan.avg} ms</td>
                                             <td className="py-2.5 px-3.5 text-right font-bold text-blue-400">{sqlite.benchmarks.indexRangeScan.p95} ms</td>
@@ -308,6 +431,226 @@ export default function SystemHealthPage() {
                                         </tr>
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+
+                        {/* ========================================================================= */}
+                        {/* Historical Telemetry Time-Series & Cron Correlation Suite */}
+                        {/* ========================================================================= */}
+                        <div className="flex flex-col gap-4 border-t border-border-color pt-5">
+                            <div className="flex justify-between items-center flex-wrap gap-3">
+                                <div className="flex items-center gap-2">
+                                    <TrendingUp size={18} className="text-accent-primary" />
+                                    <h3 className="text-base font-bold text-text-primary m-0">Historical Telemetry & Cron Correlation</h3>
+                                </div>
+
+                                {/* Timeframe Selector */}
+                                <div className="flex items-center gap-1.5 bg-black/30 p-1 rounded-xl border border-white/5 text-xs font-semibold">
+                                    {["1h", "6h", "24h", "7d", "14d"].map((tf) => (
+                                        <button
+                                            key={tf}
+                                            onClick={() => handleTimeframeChange(tf)}
+                                            className={`px-3 py-1 rounded-lg transition-all ${
+                                                timeframe === tf 
+                                                    ? "bg-accent-primary text-white font-bold shadow-md" 
+                                                    : "text-text-secondary hover:text-text-primary hover:bg-white/5"
+                                            }`}
+                                        >
+                                            {tf.toUpperCase()}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Chart 1: Latency Trends Over Time */}
+                            <div className="p-4 rounded-xl bg-black/25 border border-white/5 flex flex-col gap-3">
+                                <div className="flex justify-between items-center flex-wrap gap-2">
+                                    <div>
+                                        <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider m-0">
+                                            Query Latency & WAL Commit Timeline
+                                        </h4>
+                                        <p className="text-[0.7rem] text-text-muted m-0 mt-0.5">
+                                            Correlate write latency spikes with background cron executions
+                                        </p>
+                                    </div>
+                                    {historyData?.summary && (
+                                        <div className="flex items-center gap-4 text-xs font-mono">
+                                            <span className="text-sky-400">p95 Scan: <strong className="text-text-primary">{historyData.summary.p95RangeScanMs}ms</strong></span>
+                                            <span className="text-amber-400">p95 Write: <strong className="text-text-primary">{historyData.summary.p95WalWriteMs}ms</strong></span>
+                                            <span className="text-emerald-400">p95 Read: <strong className="text-text-primary">{historyData.summary.p95PointReadMs}ms</strong></span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="h-[220px] w-full">
+                                    {historyData && historyData.snapshots && historyData.snapshots.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <AreaChart data={historyData.snapshots} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                                <defs>
+                                                    <linearGradient id="scanGrad" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.3}/>
+                                                        <stop offset="95%" stopColor="#38bdf8" stopOpacity={0}/>
+                                                    </linearGradient>
+                                                    <linearGradient id="writeGrad" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
+                                                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                                <XAxis 
+                                                    dataKey="timestamp" 
+                                                    tickFormatter={formatTimestamp} 
+                                                    stroke="#64748b" 
+                                                    fontSize={10} 
+                                                    tickLine={false}
+                                                />
+                                                <YAxis 
+                                                    stroke="#64748b" 
+                                                    fontSize={10} 
+                                                    tickLine={false}
+                                                    unit="ms"
+                                                />
+                                                <Tooltip content={<CustomLatencyTooltip />} />
+                                                <Legend 
+                                                    wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }}
+                                                    iconType="circle"
+                                                />
+                                                <Area 
+                                                    type="monotone" 
+                                                    dataKey="rangeScanMs" 
+                                                    name="Range Scan (ms)" 
+                                                    stroke="#38bdf8" 
+                                                    fillOpacity={1} 
+                                                    fill="url(#scanGrad)" 
+                                                    strokeWidth={2}
+                                                />
+                                                <Area 
+                                                    type="monotone" 
+                                                    dataKey="walWriteMs" 
+                                                    name="WAL Write / Commit (ms)" 
+                                                    stroke="#f59e0b" 
+                                                    fillOpacity={1} 
+                                                    fill="url(#writeGrad)" 
+                                                    strokeWidth={2}
+                                                />
+                                                <Line 
+                                                    type="monotone" 
+                                                    dataKey="pointReadMs" 
+                                                    name="Point Read (ms)" 
+                                                    stroke="#34d399" 
+                                                    dot={false}
+                                                    strokeWidth={1.5}
+                                                />
+                                            </AreaChart>
+                                        </ResponsiveContainer>
+                                    ) : (
+                                        <div className="h-full flex items-center justify-center text-xs text-text-muted">
+                                            No historical telemetry recorded yet. Click Refresh to capture a snapshot.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Chart 2 & Cron Correlation Grid */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                {/* Storage & WAL Growth Chart */}
+                                <div className="p-4 rounded-xl bg-black/25 border border-white/5 flex flex-col gap-3">
+                                    <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider m-0">
+                                        Database & WAL Storage Growth
+                                    </h4>
+                                    <div className="h-[180px] w-full">
+                                        {historyData && historyData.snapshots && historyData.snapshots.length > 0 ? (
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <AreaChart data={historyData.snapshots} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                                    <defs>
+                                                        <linearGradient id="dbGrad" x1="0" y1="0" x2="0" y2="1">
+                                                            <stop offset="5%" stopColor="#818cf8" stopOpacity={0.3}/>
+                                                            <stop offset="95%" stopColor="#818cf8" stopOpacity={0}/>
+                                                        </linearGradient>
+                                                        <linearGradient id="walGrad" x1="0" y1="0" x2="0" y2="1">
+                                                            <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3}/>
+                                                            <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                                    <XAxis 
+                                                        dataKey="timestamp" 
+                                                        tickFormatter={formatTimestamp} 
+                                                        stroke="#64748b" 
+                                                        fontSize={10} 
+                                                        tickLine={false}
+                                                    />
+                                                    <YAxis 
+                                                        stroke="#64748b" 
+                                                        fontSize={10} 
+                                                        tickLine={false}
+                                                        unit="MB"
+                                                    />
+                                                    <Tooltip content={<CustomStorageTooltip />} />
+                                                    <Legend 
+                                                        wrapperStyle={{ fontSize: '11px', paddingTop: '5px' }}
+                                                        iconType="circle"
+                                                    />
+                                                    <Area 
+                                                        type="monotone" 
+                                                        dataKey="dbSizeMB" 
+                                                        name="Main DB (MB)" 
+                                                        stroke="#818cf8" 
+                                                        fillOpacity={1} 
+                                                        fill="url(#dbGrad)" 
+                                                        strokeWidth={2}
+                                                    />
+                                                    <Area 
+                                                        type="monotone" 
+                                                        dataKey="walSizeMB" 
+                                                        name="WAL Journal (MB)" 
+                                                        stroke="#f43f5e" 
+                                                        fillOpacity={1} 
+                                                        fill="url(#walGrad)" 
+                                                        strokeWidth={2}
+                                                    />
+                                                </AreaChart>
+                                            </ResponsiveContainer>
+                                        ) : (
+                                            <div className="h-full flex items-center justify-center text-xs text-text-muted">
+                                                No storage history recorded yet.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Active Background Cron Events Table */}
+                                <div className="p-4 rounded-xl bg-black/25 border border-white/5 flex flex-col gap-3">
+                                    <div className="flex justify-between items-center">
+                                        <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider m-0">
+                                            Recent Background Job Execution Markers
+                                        </h4>
+                                        <span className="text-[0.7rem] text-text-muted">Last executions</span>
+                                    </div>
+
+                                    <div className="overflow-y-auto max-h-[180px] flex flex-col gap-2">
+                                        {historyData?.cronEvents && historyData.cronEvents.length > 0 ? (
+                                            historyData.cronEvents.map((job: any, idx: number) => (
+                                                <div key={idx} className="flex justify-between items-center p-2 rounded-lg bg-white/[0.02] border border-white/5 text-xs">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={job.status === "SUCCESS" ? "text-emerald-400" : "text-rose-400"}>
+                                                            {job.status === "SUCCESS" ? "🟢" : "🔴"}
+                                                        </span>
+                                                        <span className="font-bold text-text-primary">{job.name}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-3 font-mono text-[0.72rem] text-text-muted">
+                                                        <span>{new Date(job.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                                                        <span className="px-1.5 py-0.5 rounded bg-white/5 text-text-secondary text-[0.68rem]">{job.status}</span>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="text-xs text-text-muted text-center py-6">
+                                                No recent cron runs in this timeframe.
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -433,7 +776,8 @@ export default function SystemHealthPage() {
                                     const expectedIntervals: Record<string, number> = {
                                         "Firewall Guardian": 2 * 60 * 1000,
                                         "Graylog VPN Sync": 30 * 60 * 1000,
-                                        "Audit Log Cleanup": 24 * 60 * 60 * 1000
+                                        "Audit Log Cleanup": 24 * 60 * 60 * 1000,
+                                        "Telemetry Collector": 5 * 60 * 1000
                                     };
                                     
                                     const lastRunTime = new Date(job.lastRun).getTime();
