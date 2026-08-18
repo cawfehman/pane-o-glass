@@ -51,6 +51,8 @@ model AuditLog {
   details   String
   ipAddress String?
   createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 model HealthProbe {
@@ -117,6 +119,8 @@ model VpnEvent {
   ipCountryCode String?
   createdAt     DateTime @default(now())
 
+  @@index([createdAt])
+  @@index([username])
   @@index([status, createdAt])
   @@index([sourceIp])
   @@index([ipAsn])
