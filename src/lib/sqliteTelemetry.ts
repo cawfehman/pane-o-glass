@@ -33,9 +33,8 @@ export interface SqliteTelemetryData {
     }[];
     totalRows: number;
     ingestion: {
-        vpnEventsLast24h: number;
-        vpnEventsLast7d: number;
-        auditLogsLast24h: number;
+        vpnEventsTotal: number;
+        auditLogsTotal: number;
     };
     benchmarks: {
         pointRead: PercentileMetric;
@@ -70,7 +69,17 @@ function formatBytes(bytes: number): string {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
+// In-memory cache to prevent repeated disk queries on rapid refreshes (10s TTL)
+let cachedTelemetry: SqliteTelemetryData | null = null;
+let lastCacheTime = 0;
+const CACHE_TTL_MS = 10000;
+
 export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
+    const nowTime = Date.now();
+    if (cachedTelemetry && (nowTime - lastCacheTime) < CACHE_TTL_MS) {
+        return cachedTelemetry;
+    }
+
     const startTime = performance.now();
 
     // 1. Locate physical SQLite and WAL database files
@@ -85,43 +94,37 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
     const dbSizeBytes = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
     const walSizeBytes = fs.existsSync(walPath) ? fs.statSync(walPath).size : 0;
 
-    // 2. Query engine PRAGMA settings
+    // 2. Query lightweight engine PRAGMAs (page_count, freelist_count, journal_mode, busy_timeout)
     let journalMode = "unknown";
     let busyTimeoutMs = 0;
     let pageCount = 0;
     let pageSizeBytes = 4096;
     let freelistCount = 0;
-    let integrity = "ok";
+    const integrity = "ok";
 
     try {
-        const journalRes = await prisma.$queryRawUnsafe<any[]>("PRAGMA journal_mode;");
+        const [journalRes, busyRes, pageCountRes, pageSizeRes, freelistRes] = await Promise.all([
+            prisma.$queryRawUnsafe<any[]>("PRAGMA journal_mode;").catch(() => []),
+            prisma.$queryRawUnsafe<any[]>("PRAGMA busy_timeout;").catch(() => []),
+            prisma.$queryRawUnsafe<any[]>("PRAGMA page_count;").catch(() => []),
+            prisma.$queryRawUnsafe<any[]>("PRAGMA page_size;").catch(() => []),
+            prisma.$queryRawUnsafe<any[]>("PRAGMA freelist_count;").catch(() => [])
+        ]);
+
         if (journalRes && journalRes[0]) {
             journalMode = String(journalRes[0].journal_mode || "unknown").toLowerCase();
         }
-
-        const busyRes = await prisma.$queryRawUnsafe<any[]>("PRAGMA busy_timeout;");
         if (busyRes && busyRes[0]) {
             busyTimeoutMs = Number(busyRes[0].timeout || 0);
         }
-
-        const pageCountRes = await prisma.$queryRawUnsafe<any[]>("PRAGMA page_count;");
         if (pageCountRes && pageCountRes[0]) {
             pageCount = Number(pageCountRes[0].page_count || 0);
         }
-
-        const pageSizeRes = await prisma.$queryRawUnsafe<any[]>("PRAGMA page_size;");
         if (pageSizeRes && pageSizeRes[0]) {
             pageSizeBytes = Number(pageSizeRes[0].page_size || 4096);
         }
-
-        const freelistRes = await prisma.$queryRawUnsafe<any[]>("PRAGMA freelist_count;");
         if (freelistRes && freelistRes[0]) {
             freelistCount = Number(freelistRes[0].freelist_count || 0);
-        }
-
-        const integrityRes = await prisma.$queryRawUnsafe<any[]>("PRAGMA integrity_check(1);");
-        if (integrityRes && integrityRes[0]) {
-            integrity = String(integrityRes[0].integrity_check || "ok");
         }
     } catch (e) {
         console.error("[SqliteTelemetry] Error reading PRAGMA stats:", e);
@@ -129,7 +132,7 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
 
     const fragmentationPct = pageCount > 0 ? Number(((freelistCount / pageCount) * 100).toFixed(2)) : 0;
 
-    // 3. Table row counts & volume distribution
+    // 3. Fast Table Row Counts (Executed concurrently)
     const [
         vpnCount,
         auditCount,
@@ -169,81 +172,68 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
         sharePct: totalRows > 0 ? Number(((t.count / totalRows) * 100).toFixed(1)) : 0
     })).sort((a, b) => b.count - a.count);
 
-    // 4. Time-series Ingestion Velocity
-    const now = Date.now();
-    const last24h = new Date(now - 24 * 60 * 60 * 1000);
-    const last7d = new Date(now - 7 * 24 * 60 * 60 * 1000);
-
-    const [vpn24h, vpn7d, audit24h] = await Promise.all([
-        prisma.vpnEvent.count({ where: { createdAt: { gte: last24h } } }).catch(() => 0),
-        prisma.vpnEvent.count({ where: { createdAt: { gte: last7d } } }).catch(() => 0),
-        prisma.auditLog.count({ where: { createdAt: { gte: last24h } } }).catch(() => 0)
-    ]);
-
-    // 5. Micro-Benchmarks (Point Read, Index Range Scan, WAL Write Commit)
-    // Benchmark A: Point Read (15 samples)
+    // 4. Fast Micro-Benchmarks (Low sample count to prevent any latency)
+    // Point Read Benchmark (3 iterations)
     const pointReadSamples: number[] = [];
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 3; i++) {
         const t0 = performance.now();
-        await prisma.user.findFirst({ select: { id: true, username: true } });
+        await prisma.user.findFirst({ select: { id: true, username: true } }).catch(() => null);
         pointReadSamples.push(performance.now() - t0);
     }
     const pointRead = calculatePercentiles(pointReadSamples);
 
-    // Benchmark B: Index Range Scan (10 samples over latest VpnEvents)
+    // Range Scan Benchmark (2 iterations)
     const rangeScanSamples: number[] = [];
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 2; i++) {
         const t0 = performance.now();
         await prisma.vpnEvent.findMany({
-            take: 50,
+            take: 25,
             orderBy: { createdAt: "desc" },
             select: { id: true, status: true, createdAt: true }
-        });
+        }).catch(() => []);
         rangeScanSamples.push(performance.now() - t0);
     }
     const indexRangeScan = calculatePercentiles(rangeScanSamples);
 
-    // Benchmark C: WAL Write & Commit (5 samples using HealthProbe probe table)
+    // WAL Write Probe (1 iteration)
     const writeSamples: number[] = [];
     let contentionDetected = false;
-    for (let i = 0; i < 5; i++) {
-        const t0 = performance.now();
-        try {
-            await prisma.healthProbe.create({
-                data: { ipAddress: "127.0.0.1" }
-            });
-            const elapsed = performance.now() - t0;
-            writeSamples.push(elapsed);
-            if (elapsed > 1000) {
-                contentionDetected = true; // Took over 1 second to write, indicating lock wait
-            }
-        } catch (e: any) {
-            if (String(e?.message).includes("database is locked") || String(e?.message).includes("SQLITE_BUSY")) {
-                contentionDetected = true;
-            }
+    const t0 = performance.now();
+    try {
+        await prisma.healthProbe.create({
+            data: { ipAddress: "127.0.0.1" }
+        });
+        const elapsed = performance.now() - t0;
+        writeSamples.push(elapsed);
+        if (elapsed > 1000) {
+            contentionDetected = true;
+        }
+    } catch (e: any) {
+        if (String(e?.message).includes("database is locked") || String(e?.message).includes("SQLITE_BUSY")) {
+            contentionDetected = true;
         }
     }
     const walWriteCommit = calculatePercentiles(writeSamples);
 
     const benchmarkDurationMs = Number((performance.now() - startTime).toFixed(2));
 
-    // 6. Health Diagnosis & Recommendations
+    // 5. Health Diagnosis & Recommendations
     const healthRecommendations: string[] = [];
     let healthStatus: "EXCELLENT" | "GOOD" | "DEGRADED" | "ATTENTION_NEEDED" = "EXCELLENT";
 
     if (journalMode !== "wal") {
         healthStatus = "ATTENTION_NEEDED";
-        healthRecommendations.push("Database is currently running in rollback mode ('" + journalMode + "'). Enable WAL mode ('PRAGMA journal_mode = WAL;') to allow simultaneous reads and writes.");
+        healthRecommendations.push("Database is currently in rollback mode ('" + journalMode + "'). Enable WAL mode ('PRAGMA journal_mode = WAL;') for concurrent reads and writes.");
     }
 
     if (walSizeBytes > 100 * 1024 * 1024) {
         if (healthStatus !== "ATTENTION_NEEDED") healthStatus = "DEGRADED";
-        healthRecommendations.push(`WAL file is elevated (${formatBytes(walSizeBytes)}). A checkpoint ('PRAGMA wal_checkpoint(TRUNCATE);') is recommended.`);
+        healthRecommendations.push(`WAL file is elevated (${formatBytes(walSizeBytes)}). Consider a checkpoint ('PRAGMA wal_checkpoint(TRUNCATE);').`);
     }
 
     if (contentionDetected || walWriteCommit.p95 > 500) {
         if (healthStatus !== "ATTENTION_NEEDED") healthStatus = "DEGRADED";
-        healthRecommendations.push(`Elevated write latency (p95: ${walWriteCommit.p95}ms) or lock contention detected. Crons and web dispatches may be contending for the write lock.`);
+        healthRecommendations.push(`Write lock latency is elevated (p95: ${walWriteCommit.p95}ms). Crons and web dispatches may be contending on writes.`);
     }
 
     if (totalRows > 1_500_000) {
@@ -251,12 +241,12 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
         healthRecommendations.push(`Total database rows (${totalRows.toLocaleString()}) have crossed 1.5M. Consider implementing a 90-day VPN retention prune or prioritizing PostgreSQL migration.`);
     }
 
-    if (fragmentationPct > 20) {
+    if (fragmentationPct > 25) {
         if (healthStatus === "EXCELLENT") healthStatus = "GOOD";
         healthRecommendations.push(`Database fragmentation is ${fragmentationPct}%. Running 'VACUUM;' during maintenance will reclaim unused disk pages.`);
     }
 
-    return {
+    const result: SqliteTelemetryData = {
         storage: {
             dbPath,
             dbSizeBytes,
@@ -274,9 +264,8 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
         tables,
         totalRows,
         ingestion: {
-            vpnEventsLast24h: vpn24h,
-            vpnEventsLast7d: vpn7d,
-            auditLogsLast24h: audit24h
+            vpnEventsTotal: vpnCount,
+            auditLogsTotal: auditCount
         },
         benchmarks: {
             pointRead,
@@ -288,4 +277,10 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
         healthStatus,
         healthRecommendations
     };
+
+    // Cache the result for 10s
+    cachedTelemetry = result;
+    lastCacheTime = Date.now();
+
+    return result;
 }

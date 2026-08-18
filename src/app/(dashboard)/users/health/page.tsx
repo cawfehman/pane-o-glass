@@ -223,14 +223,14 @@ export default function SystemHealthPage() {
 
                             <div className="p-4 rounded-xl bg-black/20 border border-white/5 flex flex-col justify-between">
                                 <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-2">
-                                    <span>24h VPN Ingestion</span>
+                                    <span>VPN Event Volume</span>
                                     <Activity size={16} className="text-emerald-400" />
                                 </div>
                                 <div className="text-2xl font-extrabold text-text-primary font-mono">
-                                    {sqlite.ingestion.vpnEventsLast24h.toLocaleString()}
+                                    {sqlite.ingestion.vpnEventsTotal.toLocaleString()}
                                 </div>
                                 <div className="text-[0.72rem] text-text-muted mt-1.5">
-                                    7-Day Volume: <span className="text-text-secondary font-mono">{sqlite.ingestion.vpnEventsLast7d.toLocaleString()}</span>
+                                    Audit Logs: <span className="text-text-secondary font-mono">{sqlite.ingestion.auditLogsTotal.toLocaleString()}</span>
                                 </div>
                             </div>
                         </div>

@@ -55,7 +55,7 @@ export async function GET() {
                                 "X-Requested-By": "cli"
                             },
                             httpsAgent: agent,
-                            timeout: 5000
+                            timeout: 2000
                         }),
                         axios.get(`${url}/api/system/journal`, {
                             headers: {
@@ -64,7 +64,7 @@ export async function GET() {
                                 "X-Requested-By": "cli"
                             },
                             httpsAgent: agent,
-                            timeout: 5000
+                            timeout: 2000
                         }).catch(() => null)
                     ]);
 
