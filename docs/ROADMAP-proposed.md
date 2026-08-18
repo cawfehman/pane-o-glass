@@ -18,55 +18,83 @@ This document reorganizes goals by **risk reduction and operator value**, marks 
 
 ---
 
-## 0. In flight (do not lose track)
+## 0. Recently Completed & Shipped Tranches
 
-### IronPort / OG Graylog telemetry
+### 0.1 Corporate Breach Notification Center (v2.0)
 | | |
-|--|--|
-| **Status** | In flight (`feature/ironport-dashboard`) |
+|---|---|
+| **Status** | `Done` (Shipped Aug 2026) |
+| **Effort** | L |
+| **Why** | Eliminate manual mail-merge overhead and provide a secure, audited pipeline for employee breach notifications. |
+| **Capabilities** | • Visual WYSIWYG & HTML dual-mode template editor with Cooper Brand Red (`#C3002F`) & conditional blocks (`{{#if}}`).<br>• Staged campaign workflow: `DRAFT` ➔ `TEST_SENT` ➔ `APPROVED` ➔ `SENDING` ➔ `COMPLETED` / `COMPLETED_WITH_ERRORS` / `STALLED`.<br>• Sandbox self-test simulator strictly restricted to internal `@cooperhealth.edu` addresses.<br>• 1-Click HIBP Domain query handoff to stage breached accounts directly.<br>• CSV validator with 5MB size cap, email deduplication, and paginated spot-checking.<br>• Client-side delivery log CSV export.<br>• Fail-closed SMTP relay with crash-recovery (`↺ Reset & Retry` & `Retry Failed`).<br>• Zero-dependency native DOM HTML sanitizer for preview pane. |
+
+### 0.2 IronPort / OG Graylog Telemetry Dashboard
+| | |
+|---|---|
+| **Status** | `Done` (Shipped Aug 2026) |
 | **Effort** | M–L |
-| **Why** | Same product motion as VPN/firewall: pull messy enterprise logs into one analyst UI. |
-| **Done when** | Stats + investigate search ship behind RBAC (`ironport` permission), env documented, TLS path decided (insecure agent temporary or CA-backed). |
+| **Why** | Pull enterprise email security telemetry into a unified analyst pane. |
+| **Capabilities** | • Real-time inbound/outbound volume, queue delays, URL rewrites, and antivirus/AMP verdicts.<br>• Appliance load distribution tracking for ESA01 and ESA02.<br>• Ad-hoc Lucene search across raw Cisco IronPort syslog streams.<br>• Complete MID lifecycle thread tracing.<br>• Protected behind role-based access control (`ironport` permission). |
+
+### 0.3 VPN Geolocation Engine & Map Overhaul
+| | |
+|---|---|
+| **Status** | `Done` (Shipped Aug 2026) |
+| **Effort** | S–M |
+| **Why** | Fix centroid stacking (119+ connections in Kansas) and provide real-time connection mapping. |
+| **Capabilities** | • Batch chunking (50 IPs/chunk) for `iplocate.io` API limits.<br>• Increased batch enrichment ceiling to 500 IPs.<br>• Automatic background geocoding on initial map load in both World and US States views.<br>• Cached 390+ unique VPN connection endpoints (tri-state area). |
+
+### 0.4 Production SQLite WAL Mode Hardening
+| | |
+|---|---|
+| **Status** | `Done` (Shipped Aug 2026) |
+| **Effort** | S |
+| **Evidence** | `PRAGMA journal_mode = WAL;` enabled live on production host `infosecutil02`. Eliminated reader/writer locking bottlenecks. |
 
 ---
 
-## 1. Already done or nearly done (verify, then close)
+## 1. Verified & Housekeeping Tranches
 
 ### 1.1 Audit log cleanup as a background job
 | | |
-|--|--|
-| **Status** | Done (verify in prod) |
+|---|---|
+| **Status** | `Done` |
 | **Effort** | S |
 | **Evidence** | `scripts/cron/audit-cleanup.ts`; `logAudit` no longer prunes on write. |
-| **Done when** | Production crontab/systemd timer runs cleanup daily; System Health shows last success. |
 
 ### 1.2 Baseline rate limiting
 | | |
-|--|--|
-| **Status** | Partial |
-| **Effort** | S to document; M to harden login |
+|---|---|
+| **Status** | `Done` (In-Memory) |
+| **Effort** | S |
 | **Evidence** | In-memory limiter in `src/lib/rate-limit.ts`, applied in `src/proxy.ts` (auth ~50/min, API ~200/min). |
-| **Done when** | Limits documented; login failures also counted/audited; decision recorded: single-node memory is enough (see Redis note below). |
 
 ---
 
-## 2. Platform foundation (proposed “6.0”)
+## 2. Platform Foundation (Proposed “6.0”)
 
-Goal of this tranche: **stop fighting the infrastructure** so feature work is safer.
+Goal of this tranche: **eliminate concurrency bottlenecks and harden security credentials**.
 
-### 2.1 PostgreSQL migration
+### 2.1 PostgreSQL Migration
 | | |
-|--|--|
-| **Status** | Planned |
+|---|---|
+| **Status** | `Planned` (Priority: High due to Write Contention) |
 | **Effort** | L |
-| **Why** | SQLite single-writer + concurrent crons (VPN sync, Guardian, shun snapshots, audit) → lock contention / Prisma timeouts. |
-| **Approach** | Provision Postgres → Prisma provider swap → migrate schema → transfer hot tables (`VpnEvent`, shun/guardian history, audit) → repoint app + crons → keep SQLite backup until confidence. Prefer explicit data move over “let crons refill” for forensic tables. |
-| **Done when** | App + all prod crons use Postgres under concurrent load with no lock timeouts; rollback path documented. |
-| **Depends on** | Nothing hard; do before heavy new write-heavy features. |
+| **Why** | Prod `VpnEvent` has crossed **1.06M rows (328 MB)**. Background crons (`sync-vpn-logs`, `auto-unshun`, `shun-snapshot`, `ironport`) + live web actions (campaign dispatching, CSV staging) all contend for a single SQLite write lock. |
+| **Approach** | Provision Postgres ➔ Update Prisma provider (`provider = "postgresql"`) ➔ Run schema push/migrations ➔ Transfer hot tables (`VpnEvent`, `AuditLog`, `IpLookupCache`, `ShunDatabaseIp`, `CampaignRecipient`) ➔ Cut over app & cron workers. |
+| **Done when** | Concurrent cron log ingestion and user campaign dispatching execute with zero lock latency. |
 
-### 2.2 Shared internal HTTPS / trust store (TLS)
+### 2.2 VPN Telemetry Retention / Pruning Cron (Interim Optimization)
 | | |
-|--|--|
+|---|---|
+| **Status** | `Planned` (Quick Win) |
+| **Effort** | S |
+| **Why** | `VpnEvent` grows by ~350,000 rows/month (~100 MB/mo). Since raw syslogs live in Graylog, pruning events older than 90 days keeps SQLite capped at ~150 MB until Postgres migration. |
+| **Done when** | Weekly prune of records older than 90 days. |
+
+### 2.3 Shared Internal HTTPS / Trust Store (TLS)
+| | |
+|---|---|
 | **Status** | Planned |
 | **Effort** | M |
 | **Why** | Dozens of `rejectUnauthorized: false` copies; MitM risk on ISE, Graylog, Vectra, VPN collectors, etc. |
@@ -74,9 +102,9 @@ Goal of this tranche: **stop fighting the infrastructure** so feature work is sa
 | **Done when** | No unconditional `rejectUnauthorized: false` in `src/` or `scripts/cron/`; internal CA documented in ops runbook. |
 | **Depends on** | Access to org Root/Issuing CA PEM. |
 
-### 2.3 Secrets via Delinea (production)
+### 2.4 Secrets via Delinea (Production)
 | | |
-|--|--|
+|---|---|
 | **Status** | Planned |
 | **Effort** | L |
 | **Why** | Long-lived secrets in `.env` on disk; no rotation story. |
@@ -84,9 +112,9 @@ Goal of this tranche: **stop fighting the infrastructure** so feature work is sa
 | **Done when** | Prod box has no plaintext API passwords in `.env` for ISE/AD/firewall/Graylog/HIBP/Umbrella; rotation tested. |
 | **Depends on** | Delinea API access + network path from app host. |
 
-### 2.4 Replace rotating wordlist credentials
+### 2.5 Replace Rotating Wordlist Credentials
 | | |
-|--|--|
+|---|---|
 | **Status** | Planned |
 | **Effort** | M |
 | **Why** | ~230-word / 2-minute password for machine surfaces (`vpn/events`, system-health) is guessable offline. |
@@ -94,9 +122,9 @@ Goal of this tranche: **stop fighting the infrastructure** so feature work is sa
 | **Done when** | Wordlist module unused in prod paths; tokens rotatable and audited. |
 | **Depends on** | Soft: nicer with Delinea, not required. |
 
-### 2.5 Input validation standard (IPs first)
+### 2.6 Input Validation Standard (IPs first)
 | | |
-|--|--|
+|---|---|
 | **Status** | Planned |
 | **Effort** | S–M |
 | **Why** | Manual IP entry / future webhooks without validation corrupt data or open injection edge cases. |
@@ -105,32 +133,32 @@ Goal of this tranche: **stop fighting the infrastructure** so feature work is sa
 
 ---
 
-## 3. Product enhancements (proposed “6.x”)
+## 3. Product Enhancements (Proposed “6.x”)
 
 Order by **desk time saved / leverage**, not coolness.
 
-### 3.1 External shun / enrichment lookup API
+### 3.1 External Shun / Enrichment Lookup API
 | | |
-|--|--|
+|---|---|
 | **Status** | Planned |
 | **Effort** | M |
 | **Why** | Other tools re-query IPLocate or reinvent shun context; Pane-O-Glass already centralizes this. |
 | **Approach** | `GET /api/v1/shun-database/lookup/:ip` (or POST batch); API key auth; stable JSON contract. |
 | **Done when** | Documented endpoint + at least one external consumer or curl runbook; rate-limited. |
-| **Depends on** | Soft: Postgres if traffic is high; API keys (2.4). |
+| **Depends on** | Soft: Postgres if traffic is high; API keys (2.5). |
 
-### 3.2 Threat intel: GreyNoise (+ optional Shodan)
+### 3.2 Threat Intel: GreyNoise (+ optional Shodan)
 | | |
-|--|--|
+|---|---|
 | **Status** | Planned |
 | **Effort** | M (GreyNoise) · M (Shodan) |
 | **Why** | Faster triage: “internet noise vs targeted” (GreyNoise); optional attack surface (Shodan). |
 | **Approach** | Backend fetchers + Threat Intel UI + reuse on IP popovers (shun/VPN). Start GreyNoise; add Shodan if budget/value clear. |
 | **Done when** | Analyst can enrich an IP without leaving the app; keys in secrets path. |
 
-### 3.3 Microsoft Defender for Endpoint (host pivot)
+### 3.3 Microsoft Defender for Endpoint (Host Pivot)
 | | |
-|--|--|
+|---|---|
 | **Status** | Planned |
 | **Effort** | XL |
 | **Why** | Network pane without host timeline still forces a portal hop. |
@@ -138,9 +166,9 @@ Order by **desk time saved / leverage**, not coolness.
 | **Done when** | From a VPN/ISE identity, one click to host activity summary. |
 | **Depends on** | Azure AD app + security review; not a side bullet of 6.0. |
 
-### 3.4 Server-side user preferences
+### 3.4 Server-Side User Preferences
 | | |
-|--|--|
+|---|---|
 | **Status** | Planned |
 | **Effort** | M |
 | **Why** | Theme, shun columns, VPN row counts live in `localStorage` → lost across machines. |
@@ -149,75 +177,80 @@ Order by **desk time saved / leverage**, not coolness.
 
 ---
 
-## 4. Parked (explicit non-goals for now)
+## 4. Parked (Explicit Non-Goals for Now)
 
-### Social media IOC scanning (X / Twitter)
+### Social Media IOC Scanning (X / Twitter)
 | | |
-|--|--|
+|---|---|
 | **Status** | Parked |
 | **Why park** | API/ToS fragility, noise, maintenance tax; poor fit next to reliable log panes. |
 | **Revisit if** | Leadership mandates OSINT automation; prefer “paste IOC list → match internal logs” first. |
 
 ---
 
-## 5. Housekeeping (anytime; high ROI for clarity)
+## 5. Housekeeping (High ROI for Clarity)
 
-Not glamorous; keeps the pane glass instead of fog.
-
-| Item | Effort | Done when |
-|------|--------|-----------|
-| Commit this roadmap family into the git repo (`docs/`) | S | Visible in clone / PRs |
-| README matches product (name, version story, real tools list) | S | New admin can install from README alone |
-| Script taxonomy: `cron` (prod) vs `lab`/`discovery` (not deployed) | S–M | `build:scripts` only ships prod crons |
-| Ignore / remove lab artifacts from deploy path (`fix*.js`, samples, `tsc-errors*`, huge CSVs) | S | Cleaner tree; no surprise multi‑MB deploys |
-| CSS/build story documented (why compiled Tailwind is committed, single pipeline) | S | No more “padding via inline style” fire drills without a root-cause note |
-| Typed session helper (`role`, permissions) instead of `(session.user as any)` | S–M | New tools don’t re-cast |
-| Job observability: every cron updates `BackgroundJob` + retention for noisy tables | M | Health page trustworthy |
-| USER role intent decision | S | Either real limited tools or documented “restricted analyst only” |
+| Item | Effort | Done when | Status |
+|---|---|---|---|
+| Commit this roadmap family into the git repo (`docs/`) | S | Visible in clone / PRs | `Done` |
+| Clean deploy scripts (`package.json`) to standard npm versioning | S | `npm run deploy:patch` runs without legacy strings | `Done` |
+| Zero-dependency client HTML sanitizer (`src/lib/sanitizeHtml.ts`) | S | Prevents XSS without brittle CJS/Turbopack breakage | `Done` |
+| In-App Tool Help Documentation updated to v2.0 | S | Covers Notification Center, pagination, recovery statuses | `Done` |
+| Retention cron for `VpnEvent` (90-day sliding window) | S | Weekly prune of records older than 90 days | `Planned` |
+| Script taxonomy: `cron` (prod) vs `lab`/`discovery` | S–M | `build:scripts` only ships prod crons | `Planned` |
+| Typed session helper (`role`, permissions) instead of `(session.user as any)` | S–M | New tools don’t re-cast | `Planned` |
 
 ---
 
-## 6. Suggested sequencing
+## 6. Suggested Sequencing
 
 ```text
-Now ──► Finish IronPort (0)
-     ──► Close 1.x verify items
-     ──► 2.2 TLS helper (unblocks clean IronPort/ISE clients)
-     ──► 2.1 Postgres if lock contention is painful in prod
-     ──► 2.4 API keys  ·  2.5 IP validation  ·  5 housekeeping (parallel)
+Shipped (Aug 2026) ──► Corporate Breach Notification Center (v2.0)
+                   ──► IronPort / OG Graylog Dashboard
+                   ──► VPN Geolocation Engine Fix & Auto-Enrichment
+                   ──► Production SQLite WAL Mode Enabled (infosecutil02)
 
-Then ──► 3.1 Shun lookup API  and/or  3.2 GreyNoise
-     ──► 2.3 Delinea when secrets project can be scheduled
-     ──► 3.4 Preferences when UI friction hurts
-     ──► 3.3 Defender as its own project
+Next Up (Tranche 1) ──► 2.2 VPN 90-Day Retention / Pruning Cron (Keep SQLite lean)
+                    ──► 2.1 PostgreSQL Migration Planning (Eliminate write contention)
+                    ──► 2.3 Shared Internal TLS / CA Helper
+
+Next Up (Tranche 2) ──► 2.5 API Service Tokens / Kill Wordlist Auth
+                    ──► 3.1 External Shun Lookup API
+                    ──► 3.2 GreyNoise Threat Intel Integration
+
+Future Verticals    ──► 2.4 Delinea Secret Server Integration
+                    ──► 3.3 Microsoft Defender for Endpoint Pivot
 ```
-
-**If only three investments this quarter:**
-
-1. Postgres (if prod contention is real) **or** TLS shared helper (if not — cheaper security win).  
-2. Finish/verify rate limit + kill rotating wordlist on exposed machine APIs.  
-3. One product surface: IronPort ship **or** shun lookup API **or** GreyNoise.
 
 ---
 
-## 7. Mapping vs original roadmap
+## 7. Mapping vs Original Roadmap
 
-| Original item | This proposal |
-|---------------|----------------|
-| PostgreSQL | Keep — platform 2.1, first-class |
-| Delinea | Keep — 2.3, after or parallel to TLS |
-| Enforce TLS | Keep — 2.2, expanded with shared helper design |
-| Global rate limiting | Reframe — Partial; harden, don’t re-buy Redis unless multi-node |
-| Rotating passwords | Keep — 2.4, prefer API keys over TOTP for machines |
-| Audit cleanup → cron | Close — verify prod schedule |
-| External shun API | Keep — 3.1 |
-| Defender | Keep — 3.3 as XL vertical |
-| Shodan & GreyNoise | Keep — 3.2, GreyNoise first |
-| Social media IOCs | Park |
-| Strict IP validation | Keep — 2.5 |
-| Roaming preferences | Keep — 3.4, lower priority |
-| *(missing)* IronPort | Added — §0 |
-| *(missing)* Housekeeping | Added — §5 |
+| Original Item | Status in This Roadmap |
+|---|---|
+| **Corporate Breach Notification Center** | `Done` (§0.1) |
+| **IronPort Telemetry** | `Done` (§0.2) |
+| **VPN Geolocation Engine** | `Done` (§0.3) |
+| **Production SQLite WAL Mode** | `Done` (§0.4) |
+| **PostgreSQL Migration** | `Planned` (§2.1 — High Priority for Write Contention) |
+| **VPN 90-Day Retention Cron** | `Planned` (§2.2 — Short-term Quick Win) |
+| **Enforce Internal TLS** | `Planned` (§2.3) |
+| **Delinea Secret Server** | `Planned` (§2.4) |
+| **Replace Rotating Wordlist Passwords** | `Planned` (§2.5) |
+| **External Shun Lookup API** | `Planned` (§3.1) |
+| **GreyNoise Threat Intel** | `Planned` (§3.2) |
+| **Microsoft Defender Pivot** | `Planned` (§3.3 — XL Vertical) |
+| **Server-Side User Preferences** | `Planned` (§3.4) |
+| **Social Media IOCs** | `Parked` (§4) |
+
+---
+
+## Changelog
+
+| Date | Note |
+|---|---|
+| 2026-08-18 | Updated roadmap with shipped deliverables (Notification Center v2.0, IronPort Dashboard, VPN Geo Engine, SQLite WAL hardening). Prioritized Postgres & Retention for write contention mitigation. |
+| 2026-08-06 | Initial comparison draft from codebase review + original roadmap. |
 
 ---
 
@@ -271,12 +304,3 @@ Full explanation of cert chain, `NODE_EXTRA_CA_CERTS`, and agent lifetime: see d
 | **Multiple Node workers / multiple hosts** | Shared store needed → Redis or equivalent (Upstash is hosted Redis). |
 | **No multi-node plan** | Do **not** add Redis only for rate limits — ops cost without benefit. |
 
-Original roadmap’s “upstash/ratelimit or Redis” is fine as a **future** option; it is not required to “complete” rate limiting for a single-box internal app.
-
----
-
-## Changelog
-
-| Date | Note |
-|------|------|
-| 2026-08-06 | Initial comparison draft from codebase review + original roadmap. |
