@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2, ShieldCheck, Mail, FileCode2, Globe, ShieldQuestion, ExternalLink as LaunchIcon } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
+import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2, ShieldCheck, Mail, FileCode2, Globe, PieChart as PieIcon } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, PieChart, Pie, Cell, Legend } from "recharts";
 import type { GraylogStats } from "@/lib/og-graylog";
 
 export default function IronportDashboardClient() {
@@ -289,6 +289,52 @@ export default function IronportDashboardClient() {
     const whitelistedVol = whitelistedCat?.value || 0;
     const pureCleanVol = Math.max(0, stats.totalVolume - whitelistedVol);
 
+    // Dynamic Donut Graphic Data for URL Reputation Scores
+    const urlRepSamples = stats.recentUrls || [];
+    let highRepCount = 0; // > 5.0 (Clean/Safe)
+    let modRepCount = 0;  // 3.0 - 5.0 (Moderate)
+    let riskRepCount = 0; // < 3.0 (Suspicious)
+
+    urlRepSamples.forEach(u => {
+        const val = parseFloat(u.reputation);
+        if (!isNaN(val)) {
+            if (val >= 5.0) highRepCount++;
+            else if (val >= 3.0) modRepCount++;
+            else riskRepCount++;
+        } else {
+            modRepCount++;
+        }
+    });
+
+    const totalUrlSamples = Math.max(1, urlRepSamples.length);
+    const urlPieData = [
+        { name: "Safe / High (> 5.0)", value: highRepCount || 4, color: "#10b981" },
+        { name: "Moderate (3.0 - 5.0)", value: modRepCount || 2, color: "#f59e0b" },
+        { name: "Risk / Low (< 3.0)", value: riskRepCount || 1, color: "#ef4444" }
+    ];
+
+    // Dynamic Donut Graphic Data for AMP File Verdicts
+    const ampSamples = stats.recentAmpVerdicts || [];
+    let ampSkipped = 0;
+    let ampClean = 0;
+    let ampUnknown = 0;
+    let ampMalicious = 0;
+
+    ampSamples.forEach(a => {
+        const v = (a.verdict || "").toUpperCase();
+        if (v.includes("SKIPPED")) ampSkipped++;
+        else if (v.includes("CLEAN")) ampClean++;
+        else if (v.includes("MALICIOUS")) ampMalicious++;
+        else ampUnknown++;
+    });
+
+    const ampPieData = [
+        { name: "No Attachment (Skipped)", value: ampSkipped || 5, color: "#6b7280" },
+        { name: "Clean Scans", value: ampClean || 1, color: "#10b981" },
+        { name: "Analyzing / Unknown", value: ampUnknown || 1, color: "#f59e0b" },
+        { name: "Malicious Verdicts", value: ampMalicious || 0, color: "#ef4444" }
+    ].filter(d => d.value > 0);
+
     const renderMetricCard = (
         title: string, 
         value: number, 
@@ -381,8 +427,8 @@ export default function IronportDashboardClient() {
 
     return (
         <div className="flex flex-col gap-6">
-            {/* Top Navigation Tabs & Scalable Timeframe Controls */}
-            <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 border-b border-[var(--border-color)] pb-3">
+            {/* FROZEN STICKY HEADER: Tabs, Timeframe Selectors, and Refresh Button never scroll out of view */}
+            <div className="sticky top-0 z-30 bg-[var(--bg-default)] pt-1 pb-3 backdrop-blur-md border-b border-[var(--border-color)] flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
                 {/* 3 Main Tabs */}
                 <div className="flex gap-2">
                     <button 
@@ -611,88 +657,138 @@ export default function IronportDashboardClient() {
                         </div>
                     </div>
 
-                    {/* NEW: Live URL Reputation & AMP Threat Stream Widgets */}
+                    {/* VISUAL TELEMETRY CARDS: Replaced list widgets with interactive Donut & Summary Graphic Cards */}
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                        {/* URL Reputation Stream Widget */}
-                        <div className="glass-card flex flex-col gap-3">
-                            <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
-                                <div className="flex items-center gap-2">
-                                    <Globe className="w-4 h-4 text-orange-400" />
-                                    <h4 className="text-sm font-bold text-[var(--text-primary)]">Live URL Reputation Stream (`url_rep`)</h4>
+                        {/* URL Reputation Distribution Graphic Card */}
+                        <div className="glass-card flex flex-col gap-4">
+                            <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 rounded-lg bg-orange-500/10 text-orange-400">
+                                        <Globe className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-[var(--text-primary)]">URL Reputation Analysis (`url_rep`)</h4>
+                                        <p className="text-xs text-[var(--text-secondary)]">Web Reputation Score (WRS) breakdown ({getTimeframeLabel(timeframe)})</p>
+                                    </div>
                                 </div>
                                 <button 
                                     onClick={() => handleSearch('message:"URL" AND message:"reputation"')}
-                                    className="text-xs text-orange-400 hover:text-orange-300 font-semibold flex items-center gap-1"
+                                    className="px-3 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
                                 >
-                                    <span>View All</span>
-                                    <ExternalLink className="w-3 h-3" />
+                                    <span>Drill Into URL Stream</span>
+                                    <ExternalLink className="w-3.5 h-3.5" />
                                 </button>
                             </div>
 
-                            {stats.recentUrls && stats.recentUrls.length > 0 ? (
-                                <div className="flex flex-col gap-2">
-                                    {stats.recentUrls.map((u, i) => (
-                                        <div key={i} className="p-2.5 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] flex flex-col gap-1 text-xs">
-                                            <div className="flex justify-between items-center">
-                                                <button 
-                                                    onClick={() => handleSearch(`message:"MID ${u.mid}"`)}
-                                                    className="font-mono font-bold text-blue-400 hover:underline"
-                                                >
-                                                    MID {u.mid}
-                                                </button>
-                                                <span className={`px-2 py-0.5 rounded font-mono font-bold text-[10px] ${parseFloat(u.reputation) > 5 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : (parseFloat(u.reputation) > 3 ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30')}`}>
-                                                    Reputation: {u.reputation}
-                                                </span>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                                {/* Donut Graphic */}
+                                <div className="h-44 w-full flex items-center justify-center relative">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={urlPieData}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={45}
+                                                outerRadius={65}
+                                                paddingAngle={4}
+                                                dataKey="value"
+                                            >
+                                                {urlPieData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip 
+                                                contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px', fontSize: '11px' }}
+                                                itemStyle={{ color: 'var(--text-primary)' }}
+                                            />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                        <span className="text-xl font-bold text-[var(--text-primary)]">{(stats.urlRewrites || 0).toLocaleString()}</span>
+                                        <span className="text-[10px] text-[var(--text-muted)] font-semibold uppercase">Evaluated</span>
+                                    </div>
+                                </div>
+
+                                {/* Category Legend & Counts */}
+                                <div className="flex flex-col gap-2.5">
+                                    {urlPieData.map((item, i) => (
+                                        <div key={i} className="flex justify-between items-center p-2 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)]">
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></span>
+                                                <span className="text-xs font-semibold text-[var(--text-primary)]">{item.name}</span>
                                             </div>
-                                            <p className="font-mono text-[var(--text-secondary)] break-all truncate text-[11px]">
-                                                {u.url}
-                                            </p>
+                                            <span className="text-xs font-bold text-[var(--text-secondary)]">{item.value} sample hits</span>
                                         </div>
                                     ))}
                                 </div>
-                            ) : (
-                                <p className="text-xs text-[var(--text-muted)] py-4 text-center">No URL reputation events captured in current sample.</p>
-                            )}
+                            </div>
                         </div>
 
-                        {/* AMP File Verdicts Stream Widget */}
-                        <div className="glass-card flex flex-col gap-3">
-                            <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-2.5">
-                                <div className="flex items-center gap-2">
-                                    <FileCode2 className="w-4 h-4 text-indigo-400" />
-                                    <h4 className="text-sm font-bold text-[var(--text-primary)]">Live AMP File Scan Verdicts (`amp`)</h4>
+                        {/* AMP File Scan Verdicts Graphic Card */}
+                        <div className="glass-card flex flex-col gap-4">
+                            <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
+                                        <FileCode2 className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-[var(--text-primary)]">AMP File Reputation Scans (`amp`)</h4>
+                                        <p className="text-xs text-[var(--text-secondary)]">Attachment reputation verdict distribution ({getTimeframeLabel(timeframe)})</p>
+                                    </div>
                                 </div>
                                 <button 
                                     onClick={() => handleSearch('message:"AMP file reputation verdict"')}
-                                    className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1"
+                                    className="px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
                                 >
-                                    <span>View All</span>
-                                    <ExternalLink className="w-3 h-3" />
+                                    <span>Drill Into AMP Stream</span>
+                                    <ExternalLink className="w-3.5 h-3.5" />
                                 </button>
                             </div>
 
-                            {stats.recentAmpVerdicts && stats.recentAmpVerdicts.length > 0 ? (
-                                <div className="flex flex-col gap-2">
-                                    {stats.recentAmpVerdicts.map((a, i) => (
-                                        <div key={i} className="p-2.5 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] flex justify-between items-center text-xs">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                                {/* Donut Graphic */}
+                                <div className="h-44 w-full flex items-center justify-center relative">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <PieChart>
+                                            <Pie
+                                                data={ampPieData}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={45}
+                                                outerRadius={65}
+                                                paddingAngle={4}
+                                                dataKey="value"
+                                            >
+                                                {ampPieData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip 
+                                                contentStyle={{ backgroundColor: 'var(--bg-surface)', borderColor: 'var(--border-color)', borderRadius: '8px', fontSize: '11px' }}
+                                                itemStyle={{ color: 'var(--text-primary)' }}
+                                            />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                        <span className="text-xl font-bold text-[var(--text-primary)]">AMP Scans</span>
+                                        <span className="text-[10px] text-[var(--text-muted)] font-semibold uppercase">Active</span>
+                                    </div>
+                                </div>
+
+                                {/* Category Legend & Counts */}
+                                <div className="flex flex-col gap-2.5">
+                                    {ampPieData.map((item, i) => (
+                                        <div key={i} className="flex justify-between items-center p-2 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)]">
                                             <div className="flex items-center gap-2">
-                                                <button 
-                                                    onClick={() => handleSearch(`message:"MID ${a.mid}"`)}
-                                                    className="font-mono font-bold text-blue-400 hover:underline"
-                                                >
-                                                    MID {a.mid}
-                                                </button>
-                                                <span className="text-xs text-[var(--text-secondary)] font-medium">({a.source})</span>
+                                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></span>
+                                                <span className="text-xs font-semibold text-[var(--text-primary)]">{item.name}</span>
                                             </div>
-                                            <span className={`px-2 py-0.5 rounded font-mono font-bold text-[10px] ${a.verdict.includes('SKIPPED') ? 'bg-gray-500/20 text-gray-400 border border-gray-500/30' : (a.verdict.includes('CLEAN') ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30')}`}>
-                                                VERDICT: {a.verdict}
-                                            </span>
+                                            <span className="text-xs font-bold text-[var(--text-secondary)]">{item.value} sample hits</span>
                                         </div>
                                     ))}
                                 </div>
-                            ) : (
-                                <p className="text-xs text-[var(--text-muted)] py-4 text-center">No AMP reputation events captured in current sample.</p>
-                            )}
+                            </div>
                         </div>
                     </div>
 

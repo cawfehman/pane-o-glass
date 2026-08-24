@@ -384,6 +384,9 @@
   .z-20 {
     z-index: 20;
   }
+  .z-30 {
+    z-index: 30;
+  }
   .z-40 {
     z-index: 40;
   }
@@ -611,6 +614,9 @@
   }
   .h-28 {
     height: calc(var(--spacing) * 28);
+  }
+  .h-44 {
+    height: calc(var(--spacing) * 44);
   }
   .h-48 {
     height: calc(var(--spacing) * 48);
@@ -2239,9 +2245,6 @@
   .pb-2 {
     padding-bottom: calc(var(--spacing) * 2);
   }
-  .pb-2\.5 {
-    padding-bottom: calc(var(--spacing) * 2.5);
-  }
   .pb-3 {
     padding-bottom: calc(var(--spacing) * 3);
   }
@@ -3240,12 +3243,6 @@
     }
     .hover\:text-accent-primary:hover {
       color: var(--color-accent-primary);
-    }
-    .hover\:text-indigo-300:hover {
-      color: var(--color-indigo-300);
-    }
-    .hover\:text-orange-300:hover {
-      color: var(--color-orange-300);
     }
     .hover\:text-red-400:hover {
       color: var(--color-red-400);
