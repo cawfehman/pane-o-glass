@@ -66,22 +66,25 @@ export async function GET(req: Request) {
                 await (prisma as any).ironportHourlyStat.deleteMany({});
                 // Fall through to live Graylog query below
             } else {
-                // Fetch live whitelisted category histogram, per-ESA breakdown, and telemetry samples
+                // Fetch live whitelisted category histogram, per-ESA breakdown, and 100% full dataset aggregations
                 let whitelistedSeries: any[] = [];
                 let whitelistedTotal = 0;
                 let esaBreakdown;
                 let telemetrySamples;
+                let fullAggregations;
 
                 try {
-                    const [wHist, esaData, tSamples] = await Promise.all([
+                    const [wHist, esaData, tSamples, fAgg] = await Promise.all([
                         client.getHistogram('message:"Whitelisted Addresses"', rangeSeconds),
                         client.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
-                        client.getRecentTelemetrySamples(rangeSeconds)
+                        client.getRecentTelemetrySamples(rangeSeconds),
+                        client.get100PercentFullDatasetAggregations(rangeSeconds)
                     ]);
                     whitelistedSeries = wHist.series;
                     whitelistedTotal = wHist.total;
                     esaBreakdown = esaData;
                     telemetrySamples = tSamples;
+                    fullAggregations = fAgg;
 
                     // Ensure top card delayedMessages & totalVolume match exact sum of ESA01 + ESA02 direct receiver numbers!
                     if (esaBreakdown) {
@@ -126,6 +129,8 @@ export async function GET(req: Request) {
                     esaBreakdown,
                     recentUrls: telemetrySamples?.recentUrls || [],
                     recentAmpVerdicts: telemetrySamples?.recentAmpVerdicts || [],
+                    fullUrlCategories: fullAggregations?.fullUrlCategories || [],
+                    fullAmpCategories: fullAggregations?.fullAmpCategories || [],
                     fromCache: true
                 });
             }

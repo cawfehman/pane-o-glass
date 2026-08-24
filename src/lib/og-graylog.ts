@@ -40,6 +40,14 @@ export interface GraylogAmpSample {
     source: string;
 }
 
+export interface GraylogFullCategoryStats {
+    name: string;
+    count: number;
+    percentage: string;
+    color: string;
+    filterQuery: string;
+}
+
 export interface GraylogStats {
     rangeSeconds: number;
     volumeQuery: string;
@@ -55,6 +63,8 @@ export interface GraylogStats {
     esaBreakdown?: GraylogEsaBreakdown;
     recentUrls?: GraylogUrlSample[];
     recentAmpVerdicts?: GraylogAmpSample[];
+    fullUrlCategories?: GraylogFullCategoryStats[];
+    fullAmpCategories?: GraylogFullCategoryStats[];
 }
 
 export class OgGraylogClient {
@@ -226,7 +236,75 @@ export class OgGraylogClient {
     }
 
     /**
-     * Fetches recent URL reputation samples and AMP verdicts for dashboard telemetry cards.
+     * Fetches 100% full dataset stream aggregations across millions of events in Graylog without sampling.
+     */
+    async get100PercentFullDatasetAggregations(rangeSeconds: number = 86400): Promise<{ fullUrlCategories: GraylogFullCategoryStats[], fullAmpCategories: GraylogFullCategoryStats[] }> {
+        const urlQueries = [
+            { name: "Clean / Safe (High Score > 5.0)", query: 'message:"URL" AND (message:"reputation 5." OR message:"reputation 6." OR message:"reputation 7." OR message:"reputation 8." OR message:"reputation 9." OR message:"reputation 10.")', color: "#10b981" },
+            { name: "Neutral (Moderate Score 3.0-5.0)", query: 'message:"URL" AND (message:"reputation 3." OR message:"reputation 4.")', color: "#f59e0b" },
+            { name: "Risky / Threat (Low Score < 3.0)", query: 'message:"URL" AND message:"reputation" AND NOT (message:"reputation 3." OR message:"reputation 4." OR message:"reputation 5." OR message:"reputation 6." OR message:"reputation 7." OR message:"reputation 8." OR message:"reputation 9." OR message:"reputation 10.")', color: "#ef4444" }
+        ];
+
+        const ampQueries = [
+            { name: "No Attachment (Skipped)", query: 'message:"AMP file reputation verdict : SKIPPED"', color: "#6b7280" },
+            { name: "Clean File Scans", query: 'message:"AMP file reputation verdict : CLEAN"', color: "#10b981" },
+            { name: "Analyzing / Unknown", query: 'message:"AMP file reputation verdict : UNKNOWN" OR message:"FILE UNKNOWN"', color: "#f59e0b" },
+            { name: "Malicious File Verdicts", query: 'message:"AMP file reputation verdict : MALICIOUS"', color: "#ef4444" }
+        ];
+
+        const fetchCount = async (query: string): Promise<number> => {
+            try {
+                const params = new URLSearchParams({
+                    query: query,
+                    range: rangeSeconds.toString(),
+                    filter: `streams:${this.streamId}`,
+                    limit: "1"
+                });
+                const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
+                const res = await axios.get(url, {
+                    httpsAgent,
+                    headers: { "Authorization": this.authHeader, "Accept": "application/json", "X-Requested-By": "cli" },
+                    timeout: 8000
+                });
+                return res.data.total_results || 0;
+            } catch (e) {
+                return 0;
+            }
+        };
+
+        const [
+            urlHighCount, urlModCount, urlLowCount,
+            ampSkippedCount, ampCleanCount, ampUnknownCount, ampMaliciousCount
+        ] = await Promise.all([
+            fetchCount(urlQueries[0].query),
+            fetchCount(urlQueries[1].query),
+            fetchCount(urlQueries[2].query),
+            fetchCount(ampQueries[0].query),
+            fetchCount(ampQueries[1].query),
+            fetchCount(ampQueries[2].query),
+            fetchCount(ampQueries[3].query)
+        ]);
+
+        const totalUrl = Math.max(1, urlHighCount + urlModCount + urlLowCount);
+        const fullUrlCategories: GraylogFullCategoryStats[] = [
+            { name: "Clean / Safe (High Score > 5.0)", count: urlHighCount, percentage: `${((urlHighCount / totalUrl) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: urlQueries[0].query },
+            { name: "Neutral (Moderate Score 3.0-5.0)", count: urlModCount, percentage: `${((urlModCount / totalUrl) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: urlQueries[1].query },
+            { name: "Risky / Threat (Low Score < 3.0)", count: urlLowCount, percentage: `${((urlLowCount / totalUrl) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: urlQueries[2].query }
+        ];
+
+        const totalAmp = Math.max(1, ampSkippedCount + ampCleanCount + ampUnknownCount + ampMaliciousCount);
+        const fullAmpCategories: GraylogFullCategoryStats[] = [
+            { name: "No Attachment (Skipped)", count: ampSkippedCount, percentage: `${((ampSkippedCount / totalAmp) * 100).toFixed(1)}%`, color: "#6b7280", filterQuery: ampQueries[0].query },
+            { name: "Clean File Scans", count: ampCleanCount, percentage: `${((ampCleanCount / totalAmp) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: ampQueries[1].query },
+            { name: "Analyzing / Unknown", count: ampUnknownCount, percentage: `${((ampUnknownCount / totalAmp) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: ampQueries[2].query },
+            { name: "Malicious File Verdicts", count: ampMaliciousCount, percentage: `${((ampMaliciousCount / totalAmp) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: ampQueries[3].query }
+        ];
+
+        return { fullUrlCategories, fullAmpCategories };
+    }
+
+    /**
+     * Fetches recent URL reputation samples and AMP verdicts for log inspection.
      */
     async getRecentTelemetrySamples(rangeSeconds: number = 86400): Promise<{ recentUrls: GraylogUrlSample[], recentAmpVerdicts: GraylogAmpSample[] }> {
         const [urlHits, ampHits] = await Promise.all([
@@ -267,7 +345,6 @@ export class OgGraylogClient {
 
     /**
      * Fetches all stats required for the IronPort dashboard, targeting real ESA policy streams and per-appliance breakdowns.
-     * Direct ESA receiver delay query filters out central SMA management logs so ESA01 + ESA02 delays add up 100% to the top card total!
      */
     async getDashboardStats(rangeSeconds: number = 86400, volumeQuery: string = 'message:"inbound table"'): Promise<GraylogStats> {
         const esaDelayQuery = 'message:"Info: Delayed:" AND (source:esa* OR message:esa*)';
@@ -279,7 +356,8 @@ export class OgGraylogClient {
             malwareData,
             whitelistedData,
             esaBreakdown,
-            telemetrySamples
+            telemetrySamples,
+            fullDatasetAggregations
         ] = await Promise.all([
             this.getHistogram(volumeQuery, rangeSeconds),
             this.getHistogram(esaDelayQuery, rangeSeconds),
@@ -287,7 +365,8 @@ export class OgGraylogClient {
             this.getHistogram('message:"interim AV verdict using" AND NOT message:"CLEAN"', rangeSeconds),
             this.getHistogram('message:"Whitelisted Addresses"', rangeSeconds),
             this.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
-            this.getRecentTelemetrySamples(rangeSeconds)
+            this.getRecentTelemetrySamples(rangeSeconds),
+            this.get100PercentFullDatasetAggregations(rangeSeconds)
         ]);
 
         // Ensure totalVolume equals exact sum of ESA01 + ESA02 appliance volumes for 100% mathematical match
@@ -329,7 +408,9 @@ export class OgGraylogClient {
             inboundCategories,
             esaBreakdown,
             recentUrls: telemetrySamples.recentUrls,
-            recentAmpVerdicts: telemetrySamples.recentAmpVerdicts
+            recentAmpVerdicts: telemetrySamples.recentAmpVerdicts,
+            fullUrlCategories: fullDatasetAggregations.fullUrlCategories,
+            fullAmpCategories: fullDatasetAggregations.fullAmpCategories
         };
     }
 }
