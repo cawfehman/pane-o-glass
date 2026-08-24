@@ -172,23 +172,26 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     ironport: {
         title: "Cisco IronPort Email Security Telemetry",
-        version: "1.3.0",
+        version: "1.4.0",
         capabilities: [
             "Monitor real-time inbound/outbound email telemetry aligned 1:1 with Cisco SMA Mail Flow Summary categories.",
-            "Track Clean Delivered Mail (messages passing all security filters), Whitelisted & Graymail, URL Rewrites, and Malware Verdicts & Queue Delays.",
+            "Correlate Cisco Email Threat Defense (ETD) alerts post-delivery with 1-click RFC Message-ID header tracing.",
+            "Parse AMP File Reputation verdicts (SKIPPED, CLEAN, MALICIOUS) and URL Reputation rules in real time.",
+            "Track Clean Delivered Mail, Whitelisted & Graymail, URL Rewrites, and Malware Verdicts & Queue Delays.",
             "Monitor ESA appliance health and load distribution across ESA01 (esa01.cooperhealth.edu) and ESA02 (esa02.cooperhealth.edu).",
             "Filter telemetry dynamically across scalable timeframes (1h, 6h, 12h, 24h, 3d, 7d).",
             "Render smooth continuous numeric time-series trends comparing Total Inbound Mail against Whitelisted Senders Policy.",
-            "Perform ad-hoc Lucene searches across raw Cisco IronPort ESA syslog streams with quick-filter chips.",
+            "Perform ad-hoc Lucene searches across raw syslog streams with 1-click quick-filter chips for Message-ID, URL Reputation, and AMP logs.",
             "Parse delay reasons (e.g. 4.1.0 Too many recipients) automatically with warning highlights.",
-            "Trace complete email thread lifecycles by clicking any Message ID (MID) badge."
+            "Trace complete email thread lifecycles by clicking any Message ID (MID) or Message-ID header badge."
         ],
         colors: [
             { name: "Emerald Green (Clean Delivered)", meaning: "Clean inbound emails passing all security, reputation, & spam filters cleanly.", rgb: "#10b981" },
             { name: "Purple (Whitelisted & Graymail)", meaning: "Inbound messages allowed via Whitelisted Addresses policy or Graymail Engine.", rgb: "#a855f7" },
             { name: "Orange (URL Rewrites & Proxy)", meaning: "URLs matched by web reputation rules and redirected through Cisco Security Proxy.", rgb: "#f97316" },
             { name: "Red (Malware Verdicts & Delays)", meaning: "Non-clean Sophos/McAfee/AMP malware verdicts and receiver queue delays.", rgb: "#ef4444" },
-            { name: "Cyan (ESA01) / Indigo (ESA02)", meaning: "Per-appliance traffic share and queue status for ESA01 and ESA02.", rgb: "#06b6d4" }
+            { name: "Cyan (Msg-ID / ESA01)", meaning: "Message-ID headers for ETD correlation & ESA01 appliance traffic.", rgb: "#06b6d4" },
+            { name: "Indigo (AMP / ESA02)", meaning: "AMP file reputation logs & ESA02 appliance traffic.", rgb: "#6366f1" }
         ],
         backgroundJobs: [
             "Graylog Stream 5d7ff82fb209026ab43e167b: Absolute non-overlapping time-series ingestion.",
