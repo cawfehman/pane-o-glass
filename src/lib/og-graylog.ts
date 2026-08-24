@@ -25,6 +25,21 @@ export interface GraylogEsaBreakdown {
     esa02Delays: number;
 }
 
+export interface GraylogUrlSample {
+    mid: string;
+    url: string;
+    reputation: string;
+    timestamp: string;
+    source: string;
+}
+
+export interface GraylogAmpSample {
+    mid: string;
+    verdict: string;
+    timestamp: string;
+    source: string;
+}
+
 export interface GraylogStats {
     rangeSeconds: number;
     volumeQuery: string;
@@ -38,6 +53,8 @@ export interface GraylogStats {
     malwareAlertsChart: GraylogHistogramData[];
     inboundCategories: GraylogCategoryBreakdown[];
     esaBreakdown?: GraylogEsaBreakdown;
+    recentUrls?: GraylogUrlSample[];
+    recentAmpVerdicts?: GraylogAmpSample[];
 }
 
 export class OgGraylogClient {
@@ -74,7 +91,7 @@ export class OgGraylogClient {
         } else if (rangeSeconds <= 86400) {
             bucketCount = 24; // 1-hour resolution for 24h
         } else if (rangeSeconds <= 259200) {
-            bucketCount = 36; // 2-hour resolution for 3d
+            bucketCount = 36; // 3-hour resolution for 3d
         } else {
             bucketCount = 28; // 6-hour resolution for 7d
         }
@@ -209,6 +226,46 @@ export class OgGraylogClient {
     }
 
     /**
+     * Fetches recent URL reputation samples and AMP verdicts for dashboard telemetry cards.
+     */
+    async getRecentTelemetrySamples(rangeSeconds: number = 86400): Promise<{ recentUrls: GraylogUrlSample[], recentAmpVerdicts: GraylogAmpSample[] }> {
+        const [urlHits, ampHits] = await Promise.all([
+            this.searchMessages('message:"URL" AND message:"reputation"', 6, rangeSeconds).catch(() => []),
+            this.searchMessages('message:"AMP file reputation verdict"', 6, rangeSeconds).catch(() => [])
+        ]);
+
+        const recentUrls: GraylogUrlSample[] = urlHits.map((h: any) => {
+            const raw = h.message.message || "";
+            const midMatch = raw.match(/MID (\d+)/);
+            const urlMatch = raw.match(/URL (https?:\/\/\S+)/i);
+            const repMatch = raw.match(/reputation ([\d\.]+)/i);
+
+            return {
+                mid: midMatch ? midMatch[1] : "",
+                url: urlMatch ? urlMatch[1] : raw,
+                reputation: repMatch ? repMatch[1] : "-",
+                timestamp: h.message.timestamp,
+                source: h.message.source ? h.message.source.split('.')[0] : "esa"
+            };
+        }).filter((u: GraylogUrlSample) => u.mid && u.url);
+
+        const recentAmpVerdicts: GraylogAmpSample[] = ampHits.map((h: any) => {
+            const raw = h.message.message || "";
+            const midMatch = raw.match(/MID (\d+)/);
+            const verdictMatch = raw.match(/AMP file reputation verdict\s*:\s*([^,]+)/i);
+
+            return {
+                mid: midMatch ? midMatch[1] : "",
+                verdict: verdictMatch ? verdictMatch[1].trim() : "UNKNOWN",
+                timestamp: h.message.timestamp,
+                source: h.message.source ? h.message.source.split('.')[0] : "esa"
+            };
+        }).filter((a: GraylogAmpSample) => a.mid);
+
+        return { recentUrls, recentAmpVerdicts };
+    }
+
+    /**
      * Fetches all stats required for the IronPort dashboard, targeting real ESA policy streams and per-appliance breakdowns.
      * Direct ESA receiver delay query filters out central SMA management logs so ESA01 + ESA02 delays add up 100% to the top card total!
      */
@@ -221,14 +278,16 @@ export class OgGraylogClient {
             urlRewritesData,
             malwareData,
             whitelistedData,
-            esaBreakdown
+            esaBreakdown,
+            telemetrySamples
         ] = await Promise.all([
             this.getHistogram(volumeQuery, rangeSeconds),
             this.getHistogram(esaDelayQuery, rangeSeconds),
             this.getHistogram('message:"Action: URL redirected to Cisco Security proxy"', rangeSeconds),
             this.getHistogram('message:"interim AV verdict using" AND NOT message:"CLEAN"', rangeSeconds),
             this.getHistogram('message:"Whitelisted Addresses"', rangeSeconds),
-            this.getEsaApplianceBreakdown(rangeSeconds, volumeQuery)
+            this.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
+            this.getRecentTelemetrySamples(rangeSeconds)
         ]);
 
         // Ensure totalVolume equals exact sum of ESA01 + ESA02 appliance volumes for 100% mathematical match
@@ -268,7 +327,9 @@ export class OgGraylogClient {
             malwareAlerts: malwareData.total,
             malwareAlertsChart: malwareData.series,
             inboundCategories,
-            esaBreakdown
+            esaBreakdown,
+            recentUrls: telemetrySamples.recentUrls,
+            recentAmpVerdicts: telemetrySamples.recentAmpVerdicts
         };
     }
 }

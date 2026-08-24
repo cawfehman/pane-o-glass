@@ -66,19 +66,22 @@ export async function GET(req: Request) {
                 await (prisma as any).ironportHourlyStat.deleteMany({});
                 // Fall through to live Graylog query below
             } else {
-                // Fetch live whitelisted category histogram and per-ESA breakdown
+                // Fetch live whitelisted category histogram, per-ESA breakdown, and telemetry samples
                 let whitelistedSeries: any[] = [];
                 let whitelistedTotal = 0;
                 let esaBreakdown;
+                let telemetrySamples;
 
                 try {
-                    const [wHist, esaData] = await Promise.all([
+                    const [wHist, esaData, tSamples] = await Promise.all([
                         client.getHistogram('message:"Whitelisted Addresses"', rangeSeconds),
-                        client.getEsaApplianceBreakdown(rangeSeconds, volumeQuery)
+                        client.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
+                        client.getRecentTelemetrySamples(rangeSeconds)
                     ]);
                     whitelistedSeries = wHist.series;
                     whitelistedTotal = wHist.total;
                     esaBreakdown = esaData;
+                    telemetrySamples = tSamples;
 
                     // Ensure top card delayedMessages & totalVolume match exact sum of ESA01 + ESA02 direct receiver numbers!
                     if (esaBreakdown) {
@@ -121,6 +124,8 @@ export async function GET(req: Request) {
                     malwareAlertsChart,
                     inboundCategories,
                     esaBreakdown,
+                    recentUrls: telemetrySamples?.recentUrls || [],
+                    recentAmpVerdicts: telemetrySamples?.recentAmpVerdicts || [],
                     fromCache: true
                 });
             }

@@ -35,11 +35,13 @@
     --color-teal-500: oklch(70.4% 0.14 182.503);
     --color-cyan-400: oklch(78.9% 0.154 211.53);
     --color-cyan-500: oklch(71.5% 0.143 215.221);
+    --color-cyan-600: oklch(60.9% 0.126 221.723);
     --color-sky-400: oklch(74.6% 0.16 232.661);
     --color-blue-100: oklch(93.2% 0.032 255.585);
     --color-blue-400: oklch(70.7% 0.165 254.624);
     --color-blue-500: oklch(62.3% 0.214 259.815);
     --color-blue-600: oklch(54.6% 0.245 262.881);
+    --color-indigo-300: oklch(78.5% 0.115 274.713);
     --color-indigo-400: oklch(67.3% 0.182 276.935);
     --color-indigo-500: oklch(58.5% 0.233 277.117);
     --color-purple-300: oklch(82.7% 0.119 306.383);
@@ -1182,6 +1184,12 @@
   .border-\[var\(--accent-primary\)\] {
     border-color: var(--accent-primary);
   }
+  .border-\[var\(--accent-primary\)\]\/40 {
+    border-color: var(--accent-primary);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--accent-primary) 40%, transparent);
+    }
+  }
   .border-\[var\(--border-color\)\] {
     border-color: var(--border-color);
   }
@@ -1788,6 +1796,12 @@
       background-color: color-mix(in oklab, var(--color-cyan-500) 10%, transparent);
     }
   }
+  .bg-cyan-500\/20 {
+    background-color: color-mix(in srgb, oklch(71.5% 0.143 215.221) 20%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-cyan-500) 20%, transparent);
+    }
+  }
   .bg-emerald-500\/10 {
     background-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 10%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -2224,6 +2238,9 @@
   }
   .pb-2 {
     padding-bottom: calc(var(--spacing) * 2);
+  }
+  .pb-2\.5 {
+    padding-bottom: calc(var(--spacing) * 2.5);
   }
   .pb-3 {
     padding-bottom: calc(var(--spacing) * 3);
@@ -3113,6 +3130,9 @@
         background-color: color-mix(in oklab, var(--color-cyan-500) 20%, transparent);
       }
     }
+    .hover\:bg-cyan-600:hover {
+      background-color: var(--color-cyan-600);
+    }
     .hover\:bg-emerald-500\/10:hover {
       background-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 10%, transparent);
     }
@@ -3220,6 +3240,12 @@
     }
     .hover\:text-accent-primary:hover {
       color: var(--color-accent-primary);
+    }
+    .hover\:text-indigo-300:hover {
+      color: var(--color-indigo-300);
+    }
+    .hover\:text-orange-300:hover {
+      color: var(--color-orange-300);
     }
     .hover\:text-red-400:hover {
       color: var(--color-red-400);
@@ -3356,6 +3382,9 @@
     }
     .md\:inline {
       display: inline;
+    }
+    .md\:w-64 {
+      width: calc(var(--spacing) * 64);
     }
     .md\:w-auto {
       width: auto;
