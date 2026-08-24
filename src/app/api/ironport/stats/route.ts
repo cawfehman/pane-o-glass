@@ -80,9 +80,12 @@ export async function GET(req: Request) {
                     whitelistedTotal = wHist.total;
                     esaBreakdown = esaData;
 
-                    // Ensure top card delayedMessages matches exact sum of ESA01 + ESA02 direct receiver delays!
+                    // Ensure top card delayedMessages & totalVolume match exact sum of ESA01 + ESA02 direct receiver numbers!
                     if (esaBreakdown) {
                         delayedMessages = esaBreakdown.esa01Delays + esaBreakdown.esa02Delays;
+                        if (esaBreakdown.esa01Volume + esaBreakdown.esa02Volume > 0) {
+                            totalVolume = esaBreakdown.esa01Volume + esaBreakdown.esa02Volume;
+                        }
                     }
                 } catch (e) {
                     // Fallback

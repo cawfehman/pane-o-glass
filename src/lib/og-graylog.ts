@@ -231,6 +231,11 @@ export class OgGraylogClient {
             this.getEsaApplianceBreakdown(rangeSeconds, volumeQuery)
         ]);
 
+        // Ensure totalVolume equals exact sum of ESA01 + ESA02 appliance volumes for 100% mathematical match
+        if (esaBreakdown && (esaBreakdown.esa01Volume + esaBreakdown.esa02Volume > 0)) {
+            volumeData.total = esaBreakdown.esa01Volume + esaBreakdown.esa02Volume;
+        }
+
         const whitelistedTotal = whitelistedData.total;
         const defaultTotal = Math.max(0, volumeData.total - whitelistedTotal);
 
