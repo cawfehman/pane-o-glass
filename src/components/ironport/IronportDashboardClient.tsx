@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2, ShieldCheck } from "lucide-react";
+import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2, ShieldCheck, Mail, FileCode2, Globe } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import type { GraylogStats } from "@/lib/og-graylog";
 
@@ -79,10 +79,6 @@ export default function IronportDashboardClient() {
         }
     };
 
-    const handleMidClick = (mid: string) => {
-        handleSearch(`message:"MID ${mid}"`);
-    };
-
     const handleTabChange = (newTab: "inbound" | "outbound" | "investigate") => {
         setActiveTab(newTab);
         if (newTab !== "investigate") {
@@ -127,13 +123,31 @@ export default function IronportDashboardClient() {
         });
     };
 
-    // Extract MID and delayed reasons from IronPort syslog headers
+    // Advanced Syslog Parser: extracts MID, Message-ID, Subject, Delay Reasons, URLs, and AMP Verdicts
     const parseMessage = (msg: string) => {
-        let mid = null;
+        let mid: string | null = null;
         const midMatch = msg.match(/MID (\d+)/);
         if (midMatch) mid = midMatch[1];
 
-        let delayReason = null;
+        let messageId: string | null = null;
+        const msgIdMatch = msg.match(/Message-ID '(<.*?>|.*?)'/i);
+        if (msgIdMatch) messageId = msgIdMatch[1];
+
+        let subject: string | null = null;
+        const subjMatch = msg.match(/Subject '(.*?)'/i);
+        if (subjMatch) subject = subjMatch[1];
+
+        let extractedUrl: string | null = null;
+        const urlMatch = msg.match(/URL (https?:\/\/\S+)/i);
+        if (urlMatch) extractedUrl = urlMatch[1];
+
+        let ampVerdict: string | null = null;
+        if (msg.includes("AMP file reputation verdict")) {
+            const verdictMatch = msg.match(/AMP file reputation verdict\s*:\s*([^,]+)/i);
+            if (verdictMatch) ampVerdict = verdictMatch[1].trim();
+        }
+
+        let delayReason: string | null = null;
         const isDelaySyslog = msg.includes("Info: Delayed:") || msg.match(/ESA_mail_logs:\s*Info:\s*Delayed:/i);
 
         if (isDelaySyslog || msg.includes("Delayed:")) {
@@ -145,7 +159,7 @@ export default function IronportDashboardClient() {
             }
         }
 
-        return { mid, delayReason, isDelaySyslog };
+        return { mid, messageId, subject, extractedUrl, ampVerdict, delayReason, isDelaySyslog };
     };
 
     const getTimeframeLabel = (seconds: number) => {
@@ -560,11 +574,32 @@ export default function IronportDashboardClient() {
                                 <Filter className="w-5 h-5" />
                             </div>
                             <div>
-                                <h4 className="text-sm font-bold text-[var(--text-primary)]">Inbound Incident Drill-Downs</h4>
-                                <p className="text-xs text-[var(--text-secondary)] mt-0.5">Filter raw log streams directly by inbound category for {getTimeframeLabel(timeframe)}.</p>
+                                <h4 className="text-sm font-bold text-[var(--text-primary)]">Inbound Incident Drill-Downs & ETD Correlation</h4>
+                                <p className="text-xs text-[var(--text-secondary)] mt-0.5">Filter raw log streams directly by inbound category or correlate RFC Message-ID headers for {getTimeframeLabel(timeframe)}.</p>
                             </div>
                         </div>
                         <div className="flex gap-2 flex-wrap w-full md:w-auto">
+                            <button 
+                                onClick={() => handleSearch('message:"Message-ID" OR message:"Subject"')}
+                                className="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-500 border border-cyan-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
+                            >
+                                <Mail className="w-3.5 h-3.5" />
+                                Message-ID Logs
+                            </button>
+                            <button 
+                                onClick={() => handleSearch('message:"URL" OR message:"url_rep"')}
+                                className="px-3 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 border border-orange-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
+                            >
+                                <Globe className="w-3.5 h-3.5" />
+                                URL Reputation Logs
+                            </button>
+                            <button 
+                                onClick={() => handleSearch('message:"AMP" OR message:"amp"')}
+                                className="px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 border border-indigo-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
+                            >
+                                <FileCode2 className="w-3.5 h-3.5" />
+                                AMP File Logs
+                            </button>
                             <button 
                                 onClick={() => handleSearch('message:"inbound table"')}
                                 className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 border border-blue-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
@@ -578,27 +613,6 @@ export default function IronportDashboardClient() {
                             >
                                 <Inbox className="w-3.5 h-3.5" />
                                 Whitelisted Senders ({whitelistedVol.toLocaleString()})
-                            </button>
-                            <button 
-                                onClick={() => handleSearch('message:"Info: Delayed:"')}
-                                className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
-                            >
-                                <MailWarning className="w-3.5 h-3.5" />
-                                Delays ({stats.delayedMessages.toLocaleString()})
-                            </button>
-                            <button 
-                                onClick={() => handleSearch('message:"Action: URL redirected to Cisco Security proxy"')}
-                                className="px-3 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 border border-orange-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
-                            >
-                                <Link2 className="w-3.5 h-3.5" />
-                                URL Rewrites ({(stats.urlRewrites || (stats as any).phishingAlerts || 0).toLocaleString()})
-                            </button>
-                            <button 
-                                onClick={() => handleSearch('message:"interim AV verdict using" AND NOT message:"CLEAN"')}
-                                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
-                            >
-                                <ShieldAlert className="w-3.5 h-3.5" />
-                                Malware ({stats.malwareAlerts.toLocaleString()})
                             </button>
                         </div>
                     </div>
@@ -846,7 +860,7 @@ export default function IronportDashboardClient() {
                                     type="text"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder='Search Graylog Lucene (e.g. message:"inbound table" OR message:"outbound table" OR message:"Info: Delayed:" OR message:"MID 12345")'
+                                    placeholder='Search Graylog Lucene (e.g. message:"Message-ID" OR message:"Subject" OR message:"URL" OR message:"AMP" OR message:"MID 12345")'
                                     className="w-full pl-10 pr-4 py-3 bg-[var(--bg-default)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] font-mono text-sm"
                                 />
                             </div>
@@ -861,13 +875,13 @@ export default function IronportDashboardClient() {
                         </form>
                         <div className="flex gap-2 mt-4 flex-wrap items-center">
                             <span className="text-xs text-[var(--text-muted)] uppercase tracking-wider font-bold mr-2 flex items-center h-8">Quick Filters:</span>
+                            <button onClick={() => handleSearch('message:"Message-ID" OR message:"Subject"')} className="px-3 py-1 bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-md text-xs font-semibold transition-colors flex items-center gap-1"><Mail className="w-3 h-3" /> Message-ID / Subject Logs</button>
+                            <button onClick={() => handleSearch('message:"URL" OR message:"url_rep"')} className="px-3 py-1 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 border border-orange-500/30 rounded-md text-xs font-semibold transition-colors flex items-center gap-1"><Globe className="w-3 h-3" /> URL Reputation Logs</button>
+                            <button onClick={() => handleSearch('message:"AMP" OR message:"amp"')} className="px-3 py-1 bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-md text-xs font-semibold transition-colors flex items-center gap-1"><FileCode2 className="w-3 h-3" /> AMP File Logs</button>
                             <button onClick={() => handleSearch('message:"inbound table"')} className="px-3 py-1 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 border border-blue-500/30 rounded-md text-xs font-semibold transition-colors flex items-center gap-1"><Inbox className="w-3 h-3" /> Inbound Mail</button>
                             <button onClick={() => handleSearch('message:"outbound table"')} className="px-3 py-1 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 border border-blue-500/30 rounded-md text-xs font-semibold transition-colors flex items-center gap-1"><Send className="w-3 h-3" /> Outbound Mail</button>
                             <button onClick={() => handleSearch('source:esa01* OR message:esa01*')} className="px-3 py-1 bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-md text-xs font-semibold transition-colors">ESA01 Only</button>
                             <button onClick={() => handleSearch('source:esa02* OR message:esa02*')} className="px-3 py-1 bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20 border border-indigo-500/30 rounded-md text-xs font-semibold transition-colors">ESA02 Only</button>
-                            <button onClick={() => handleSearch('message:"Info: Delayed:"')} className="px-3 py-1 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 border border-amber-500/30 rounded-md text-xs font-semibold transition-colors">Delayed Messages</button>
-                            <button onClick={() => handleSearch('message:"Action: URL redirected to Cisco Security proxy"')} className="px-3 py-1 bg-orange-500/10 text-orange-500 hover:bg-orange-500/20 border border-orange-500/30 rounded-md text-xs font-semibold transition-colors">URL Rewrites</button>
-                            <button onClick={() => handleSearch('message:"interim AV verdict using" AND NOT message:"CLEAN"')} className="px-3 py-1 bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/30 rounded-md text-xs font-semibold transition-colors">Malware Verdicts</button>
                         </div>
                     </div>
 
@@ -887,7 +901,7 @@ export default function IronportDashboardClient() {
                                         Local Browser Time (Eastern)
                                     </span>
                                 </div>
-                                <span className="text-xs text-[var(--text-muted)]">Click any MID badge to isolate the complete thread</span>
+                                <span className="text-xs text-[var(--text-muted)]">Click any MID badge or Message-ID badge to isolate the complete thread</span>
                             </div>
                             <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
                                 <table className="w-full text-left border-collapse">
@@ -895,7 +909,7 @@ export default function IronportDashboardClient() {
                                         <tr>
                                             <th className="p-3 text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] border-b border-[var(--border-color)]">Date & Time</th>
                                             <th className="p-3 text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] border-b border-[var(--border-color)]">Appliance</th>
-                                            <th className="p-3 text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] border-b border-[var(--border-color)]">MID</th>
+                                            <th className="p-3 text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] border-b border-[var(--border-color)]">Identifiers / Headers</th>
                                             <th className="p-3 text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] border-b border-[var(--border-color)]">Syslog Message Payload</th>
                                         </tr>
                                     </thead>
@@ -903,7 +917,7 @@ export default function IronportDashboardClient() {
                                         {searchResults.map((hit, idx) => {
                                             const msgObj = hit.message;
                                             const rawMsg = msgObj.message || "";
-                                            const { mid, delayReason, isDelaySyslog } = parseMessage(rawMsg);
+                                            const { mid, messageId, subject, extractedUrl, ampVerdict, delayReason, isDelaySyslog } = parseMessage(rawMsg);
                                             
                                             return (
                                                 <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
@@ -913,21 +927,41 @@ export default function IronportDashboardClient() {
                                                     <td className="p-3 text-xs text-[var(--text-secondary)] whitespace-nowrap align-top font-medium">
                                                         {msgObj.source?.split('.')[0] || "unknown"}
                                                     </td>
-                                                    <td className="p-3 align-top">
-                                                        {mid ? (
+                                                    <td className="p-3 align-top flex flex-col gap-1">
+                                                        {mid && (
                                                             <button 
                                                                 onClick={() => handleSearch(`message:"MID ${mid}"`)}
-                                                                className="text-xs px-2 py-0.5 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 border border-blue-500/30 rounded font-mono font-bold transition-colors"
+                                                                className="text-xs px-2 py-0.5 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 border border-blue-500/30 rounded font-mono font-bold transition-colors text-left inline-block w-fit"
                                                                 title={`Click to trace full message thread for MID ${mid}`}
                                                             >
                                                                 MID {mid}
                                                             </button>
-                                                        ) : (
+                                                        )}
+                                                        {messageId && (
+                                                            <button 
+                                                                onClick={() => handleSearch(`"${messageId}"`)}
+                                                                className="text-[11px] px-2 py-0.5 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 border border-cyan-500/30 rounded font-mono font-semibold transition-colors text-left truncate max-w-[220px] inline-block"
+                                                                title={`Click to search post-delivery ETD correlation for Message-ID ${messageId}`}
+                                                            >
+                                                                Msg-ID: {messageId}
+                                                            </button>
+                                                        )}
+                                                        {subject && (
+                                                            <span className="text-[11px] text-[var(--text-secondary)] font-medium italic truncate max-w-[220px]">
+                                                                Subject: "{subject}"
+                                                            </span>
+                                                        )}
+                                                        {!mid && !messageId && !subject && (
                                                             <span className="text-xs text-[var(--text-muted)]">-</span>
                                                         )}
                                                     </td>
                                                     <td className="p-3 text-xs font-mono text-[var(--text-secondary)] break-all align-top leading-relaxed">
-                                                        {isDelaySyslog && delayReason ? (
+                                                        {ampVerdict && (
+                                                            <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold mb-1 border ${ampVerdict.includes('SKIPPED') ? 'bg-gray-500/20 text-gray-400 border-gray-500/30' : (ampVerdict.includes('CLEAN') ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30')}`}>
+                                                                AMP VERDICT: {ampVerdict}
+                                                            </span>
+                                                        )}
+                                                        {isDelaySyslog && delayReason && (
                                                             <div>
                                                                 <span className="inline-block px-2 py-0.5 bg-amber-500/20 text-amber-500 rounded text-xs font-bold mb-1 border border-amber-500/30">
                                                                     DELAY REASON: {delayReason}
@@ -935,8 +969,9 @@ export default function IronportDashboardClient() {
                                                                 <br/>
                                                                 <span className="opacity-90">{rawMsg}</span>
                                                             </div>
-                                                        ) : (
-                                                            rawMsg
+                                                        )}
+                                                        {!isDelaySyslog && (
+                                                            <span>{rawMsg}</span>
                                                         )}
                                                     </td>
                                                 </tr>
