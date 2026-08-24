@@ -289,11 +289,11 @@ export default function IronportDashboardClient() {
     const whitelistedVol = whitelistedCat?.value || 0;
     const pureCleanVol = Math.max(0, stats.totalVolume - whitelistedVol);
 
-    // Dynamic Donut Graphic Data for URL Reputation Scores
+    // Dynamic Donut Graphic Data for URL Web Reputation Scores (WRS)
     const urlRepSamples = stats.recentUrls || [];
-    let highRepCount = 0; // > 5.0 (Clean/Safe)
-    let modRepCount = 0;  // 3.0 - 5.0 (Moderate)
-    let riskRepCount = 0; // < 3.0 (Suspicious)
+    let highRepCount = 0; // Score > 5.0 (Clean / Safe)
+    let modRepCount = 0;  // Score 3.0 - 5.0 (Neutral / Moderate)
+    let riskRepCount = 0; // Score < 3.0 (Risky / Low Score)
 
     urlRepSamples.forEach(u => {
         const val = parseFloat(u.reputation);
@@ -307,13 +307,17 @@ export default function IronportDashboardClient() {
     });
 
     const totalUrlSamples = Math.max(1, urlRepSamples.length);
+    const highPct = ((highRepCount / totalUrlSamples) * 100).toFixed(0);
+    const modPct = ((modRepCount / totalUrlSamples) * 100).toFixed(0);
+    const riskPct = ((riskRepCount / totalUrlSamples) * 100).toFixed(0);
+
     const urlPieData = [
-        { name: "Safe / High (> 5.0)", value: highRepCount || 4, color: "#10b981" },
-        { name: "Moderate (3.0 - 5.0)", value: modRepCount || 2, color: "#f59e0b" },
-        { name: "Risk / Low (< 3.0)", value: riskRepCount || 1, color: "#ef4444" }
+        { name: "Clean / Safe (High Score > 5.0)", value: highRepCount || 4, percent: `${highPct}%`, color: "#10b981", filter: 'message:"URL" AND message:"reputation"' },
+        { name: "Neutral (Moderate Score 3.0-5.0)", value: modRepCount || 2, percent: `${modPct}%`, color: "#f59e0b", filter: 'message:"URL" AND message:"reputation"' },
+        { name: "Risky / Threat (Low Score < 3.0)", value: riskRepCount || 1, percent: `${riskPct}%`, color: "#ef4444", filter: 'message:"URL" AND message:"reputation"' }
     ];
 
-    // Dynamic Donut Graphic Data for AMP File Verdicts
+    // Dynamic Donut Graphic Data for AMP File Scans
     const ampSamples = stats.recentAmpVerdicts || [];
     let ampSkipped = 0;
     let ampClean = 0;
@@ -328,11 +332,12 @@ export default function IronportDashboardClient() {
         else ampUnknown++;
     });
 
+    const totalAmpSamples = Math.max(1, ampSamples.length);
     const ampPieData = [
-        { name: "No Attachment (Skipped)", value: ampSkipped || 5, color: "#6b7280" },
-        { name: "Clean Scans", value: ampClean || 1, color: "#10b981" },
-        { name: "Analyzing / Unknown", value: ampUnknown || 1, color: "#f59e0b" },
-        { name: "Malicious Verdicts", value: ampMalicious || 0, color: "#ef4444" }
+        { name: "No Attachment (Skipped)", value: ampSkipped || 5, percent: `${((ampSkipped / totalAmpSamples)*100).toFixed(0)}%`, color: "#6b7280" },
+        { name: "Clean File Scans", value: ampClean || 1, percent: `${((ampClean / totalAmpSamples)*100).toFixed(0)}%`, color: "#10b981" },
+        { name: "Analyzing / Unknown", value: ampUnknown || 1, percent: `${((ampUnknown / totalAmpSamples)*100).toFixed(0)}%`, color: "#f59e0b" },
+        { name: "Malicious File Verdicts", value: ampMalicious || 0, percent: `${((ampMalicious / totalAmpSamples)*100).toFixed(0)}%`, color: "#ef4444" }
     ].filter(d => d.value > 0);
 
     const renderMetricCard = (
@@ -657,7 +662,7 @@ export default function IronportDashboardClient() {
                         </div>
                     </div>
 
-                    {/* VISUAL TELEMETRY CARDS: Replaced list widgets with interactive Donut & Summary Graphic Cards */}
+                    {/* UNAMBIGUOUS VISUAL TELEMETRY CARDS: Explicit WRS reputation labels and percentages */}
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                         {/* URL Reputation Distribution Graphic Card */}
                         <div className="glass-card flex flex-col gap-4">
@@ -668,7 +673,7 @@ export default function IronportDashboardClient() {
                                     </div>
                                     <div>
                                         <h4 className="text-sm font-bold text-[var(--text-primary)]">URL Reputation Analysis (`url_rep`)</h4>
-                                        <p className="text-xs text-[var(--text-secondary)]">Web Reputation Score (WRS) breakdown ({getTimeframeLabel(timeframe)})</p>
+                                        <p className="text-xs text-[var(--text-secondary)]">Cisco Web Reputation Score (WRS): <span className="text-[var(--accent-primary)] font-semibold">High Score = Clean | Low Score = Risky</span></p>
                                     </div>
                                 </div>
                                 <button 
@@ -710,16 +715,20 @@ export default function IronportDashboardClient() {
                                     </div>
                                 </div>
 
-                                {/* Category Legend & Counts */}
+                                {/* Unambiguous Category Legend with 1-Click Filters */}
                                 <div className="flex flex-col gap-2.5">
                                     {urlPieData.map((item, i) => (
-                                        <div key={i} className="flex justify-between items-center p-2 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)]">
+                                        <button 
+                                            key={i} 
+                                            onClick={() => handleSearch(item.filter)}
+                                            className="flex justify-between items-center p-2 rounded-lg bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)] transition-colors text-left group"
+                                        >
                                             <div className="flex items-center gap-2">
-                                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></span>
-                                                <span className="text-xs font-semibold text-[var(--text-primary)]">{item.name}</span>
+                                                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }}></span>
+                                                <span className="text-xs font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent-primary)] transition-colors">{item.name}</span>
                                             </div>
-                                            <span className="text-xs font-bold text-[var(--text-secondary)]">{item.value} sample hits</span>
-                                        </div>
+                                            <span className="text-xs font-bold text-[var(--text-secondary)] bg-[var(--bg-surface)] px-2 py-0.5 rounded border border-[var(--border-color)]">{item.percent}</span>
+                                        </button>
                                     ))}
                                 </div>
                             </div>
@@ -776,16 +785,20 @@ export default function IronportDashboardClient() {
                                     </div>
                                 </div>
 
-                                {/* Category Legend & Counts */}
+                                {/* Category Legend & Percentages */}
                                 <div className="flex flex-col gap-2.5">
                                     {ampPieData.map((item, i) => (
-                                        <div key={i} className="flex justify-between items-center p-2 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)]">
+                                        <button 
+                                            key={i} 
+                                            onClick={() => handleSearch('message:"AMP file reputation verdict"')}
+                                            className="flex justify-between items-center p-2 rounded-lg bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)] transition-colors text-left group"
+                                        >
                                             <div className="flex items-center gap-2">
-                                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></span>
-                                                <span className="text-xs font-semibold text-[var(--text-primary)]">{item.name}</span>
+                                                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }}></span>
+                                                <span className="text-xs font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent-primary)] transition-colors">{item.name}</span>
                                             </div>
-                                            <span className="text-xs font-bold text-[var(--text-secondary)]">{item.value} sample hits</span>
-                                        </div>
+                                            <span className="text-xs font-bold text-[var(--text-secondary)] bg-[var(--bg-surface)] px-2 py-0.5 rounded border border-[var(--border-color)]">{item.percent}</span>
+                                        </button>
                                     ))}
                                 </div>
                             </div>
