@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2 } from "lucide-react";
+import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2, ShieldCheck } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from "recharts";
 import type { GraylogStats } from "@/lib/og-graylog";
 
@@ -260,6 +260,11 @@ export default function IronportDashboardClient() {
     const esa01Percent = ((esa01Vol / totalEsaVol) * 100).toFixed(1);
     const esa02Percent = ((esa02Vol / totalEsaVol) * 100).toFixed(1);
 
+    // Whitelisted vs Standard Clean Mail calculation for SMA alignment
+    const whitelistedCat = (stats.inboundCategories || []).find(c => c.name.includes("Whitelisted"));
+    const whitelistedVol = whitelistedCat?.value || 0;
+    const pureCleanVol = Math.max(0, stats.totalVolume - whitelistedVol);
+
     const renderMetricCard = (
         title: string, 
         value: number, 
@@ -417,41 +422,41 @@ export default function IronportDashboardClient() {
                 <>
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
                         {renderMetricCard(
-                            "Inbound Clean Mail", 
-                            stats.totalVolume, 
-                            <Inbox className="w-5 h-5" />, 
-                            "text-blue-500", 
+                            "Clean Delivered Mail", 
+                            pureCleanVol, 
+                            <ShieldCheck className="w-5 h-5" />, 
+                            "text-emerald-500", 
                             stats.totalVolumeChart,
-                            'Counts inbound clean mail evaluations in Graylog (message:"inbound table"). Matches Cisco IronPort GUI Inbound Clean Mail reporting.'
+                            'Matches Cisco SMA "Clean Messages" category: Inbound emails passing ALL security, reputation, & spam filters cleanly.'
                         )}
 
                         {renderMetricCard(
-                            "Delayed / Queue Issues", 
-                            stats.delayedMessages, 
-                            <MailWarning className="w-5 h-5" />, 
-                            "text-amber-500", 
-                            stats.delayedMessagesChart,
-                            'Counts actual IronPort ESA queue delays (message:"Info: Delayed:"). Click to drill down into delay reasons.',
-                            () => handleSearch('message:"Info: Delayed:"')
+                            "Whitelisted & Graymail", 
+                            whitelistedVol, 
+                            <Inbox className="w-5 h-5" />, 
+                            "text-purple-500", 
+                            whitelistedCat?.chart || stats.totalVolumeChart,
+                            'Matches Cisco SMA "Other / Graymail" category: Allowed via Whitelisted Addresses policy stream or Graymail engine.',
+                            () => handleSearch('message:"Whitelisted Addresses"')
                         )}
 
                         {renderMetricCard(
-                            "URL Rewrites", 
+                            "URL Rewrites & Threat Proxy", 
                             stats.urlRewrites || (stats as any).phishingAlerts || 0, 
                             <Link2 className="w-5 h-5" />, 
                             "text-orange-500", 
                             stats.urlRewritesChart || (stats as any).phishingAlertsChart || [],
-                            'Counts URLs matched by reputation rules and redirected through Cisco Security Proxy (message:"Action: URL redirected to Cisco Security proxy"). Click to investigate.',
+                            'Counts URLs matched by web reputation rules and redirected through Cisco Security Proxy (message:"Action: URL redirected to Cisco Security proxy").',
                             () => handleSearch('message:"Action: URL redirected to Cisco Security proxy"')
                         )}
 
                         {renderMetricCard(
-                            "Malware Detections", 
-                            stats.malwareAlerts, 
+                            "Malware Verdicts & Delays", 
+                            stats.malwareAlerts + stats.delayedMessages, 
                             <ShieldAlert className="w-5 h-5" />, 
                             "text-red-500", 
                             stats.malwareAlertsChart,
-                            'Counts non-clean Antivirus (McAfee/Sophos) or Cisco AMP verdicts. Click to investigate.',
+                            'Matches Cisco SMA "Threat Messages" & Delays: Non-clean Sophos/McAfee/AMP malware verdicts and receiver queue delays.',
                             () => handleSearch('message:"interim AV verdict using" AND NOT message:"CLEAN"')
                         )}
                     </div>
@@ -465,7 +470,7 @@ export default function IronportDashboardClient() {
                                 </div>
                                 <div>
                                     <h4 className="text-sm font-bold text-[var(--text-primary)]">ESA Appliance Health & Load Distribution</h4>
-                                    <p className="text-xs text-[var(--text-secondary)]">Traffic balance and queue status for {getTimeframeLabel(timeframe)}</p>
+                                    <p className="text-xs text-[var(--text-secondary)]">Traffic balance and queue status for {getTimeframeLabel(timeframe)} (Total Evaluated: {stats.totalVolume.toLocaleString()})</p>
                                 </div>
                             </div>
                             <span className="text-xs px-2.5 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-md font-semibold flex items-center gap-1.5">
@@ -565,14 +570,14 @@ export default function IronportDashboardClient() {
                                 className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-500 border border-blue-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
                             >
                                 <Inbox className="w-3.5 h-3.5" />
-                                All Inbound Mail
+                                All Inbound Mail ({stats.totalVolume.toLocaleString()})
                             </button>
                             <button 
                                 onClick={() => handleSearch('message:"Whitelisted Addresses"')}
                                 className="px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-500 border border-purple-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5"
                             >
                                 <Inbox className="w-3.5 h-3.5" />
-                                Whitelisted Senders
+                                Whitelisted Senders ({whitelistedVol.toLocaleString()})
                             </button>
                             <button 
                                 onClick={() => handleSearch('message:"Info: Delayed:"')}
@@ -911,7 +916,7 @@ export default function IronportDashboardClient() {
                                                     <td className="p-3 align-top">
                                                         {mid ? (
                                                             <button 
-                                                                onClick={() => handleMidClick(mid)}
+                                                                onClick={() => handleSearch(`message:"MID ${mid}"`)}
                                                                 className="text-xs px-2 py-0.5 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 border border-blue-500/30 rounded font-mono font-bold transition-colors"
                                                                 title={`Click to trace full message thread for MID ${mid}`}
                                                             >
