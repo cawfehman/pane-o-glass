@@ -73,14 +73,12 @@ export class CiscoEtdService {
                 const raw = h.message.message || "";
                 const midMatch = raw.match(/MID (\d+)/);
                 const msgIdMatch = raw.match(/Message ID:\s*<([^>]+)>/i) || raw.match(/Message-?ID:?\s*<([^>]+)>/i) || raw.match(/<([a-zA-Z0-9_\-\.\+]+@[a-zA-Z0-9_\-\.]+)/i);
-                const senderMatch = raw.match(/Sender:\s*([^\s,\;<>]+@[^\s,\;<>]+)/i) || raw.match(/from <([^>]+)>/i) || raw.match(/From=([^;\s]+)/i);
-                const rcptMatch = raw.match(/To:\s*([^\s,\;<>]+@[^\s,\;<>]+)/i) || raw.match(/Recipient:\s*([^\s,;]+)/i);
-                const subjMatch = raw.match(/Subject:\s*(.+)/i) || raw.match(/Subject\s+"([^"]+)"/i);
                 const uuidMatch = raw.match(/_any=([a-fA-F0-9\-]{36})/i) || raw.match(/([a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12})/);
+                const startDateMatch = raw.match(/startDate=([^&%\s]+)/i);
 
-                const mid = h.message.esa_mid || (midMatch ? midMatch[1] : undefined);
-                const messageId = h.message.esa_rfc_message_id || (msgIdMatch ? `<${msgIdMatch[1]}>` : (mid ? `MID-${mid}` : h._id));
-                const key = messageId || mid || h._id;
+                const alertMid = h.message.esa_mid || (midMatch ? midMatch[1] : undefined);
+                const messageId = h.message.esa_rfc_message_id || (msgIdMatch ? `<${msgIdMatch[1]}>` : (alertMid ? `MID-${alertMid}` : h._id));
+                const key = messageId || alertMid || h._id;
 
                 const rawLower = raw.toLowerCase();
                 let verdictType: "RETROSPECTIVE_SCAM" | "RETROSPECTIVE_PHISH" | "RETROSPECTIVE_MALWARE" | "RETROSPECTIVE_OTHER" = "RETROSPECTIVE_SCAM";
@@ -106,25 +104,44 @@ export class CiscoEtdService {
                 const uuid = uuidMatch ? uuidMatch[1] : "8ebe1b5d-e893-48e3-8546-41154ad4ae56";
                 const ciscoCmdUrl = `https://portal.cmd.cisco.com/messages?_any=${uuid}&dateOption=CUSTOM`;
 
-                const recTime = h.message.timestamp || new Date().toISOString();
-                const remTime = new Date().toISOString();
-                const exposureDeltaMinutes = Math.max(1, Math.round((new Date(remTime).getTime() - new Date(recTime).getTime()) / 60000));
+                const alertTimeStr = h.message.timestamp || new Date().toISOString();
+                let startDateIso = startDateMatch ? decodeURIComponent(startDateMatch[1]) : null;
+                
+                // If startDateIso was double encoded or raw URL encoded
+                if (startDateIso && startDateIso.includes("%")) {
+                    try { startDateIso = decodeURIComponent(startDateIso); } catch (e) {}
+                }
 
-                const senderVal = senderMatch ? senderMatch[1] : (h.message.esa_mail_from && !h.message.esa_mail_from.includes("amazonses") ? h.message.esa_mail_from : "ETD Alert Service (Cisco Cloud)");
-                const rcptVal = rcptMatch ? rcptMatch[1] : (h.message.esa_rcpt_to || "Alerts-CiscoETD@cooperhealth.edu");
-                const subjVal = subjMatch ? subjMatch[1].trim() : "Retrospective Verdict Applied";
+                const alertMs = new Date(alertTimeStr).getTime();
+                const arrivalMs = (startDateIso && !isNaN(new Date(startDateIso).getTime())) ? new Date(startDateIso).getTime() : alertMs;
+                const exposureDeltaMinutes = Math.max(1, Math.round(Math.abs(alertMs - arrivalMs) / 60000));
+
+                // Clean up display strings so alert distribution lists & alert services aren't shown as the threat sender/recipient
+                let senderVal = h.message.esa_mail_from || "";
+                let rcptVal = h.message.esa_rcpt_to || "";
+                let subjVal = h.message.esa_subject || "";
+
+                if (!senderVal || senderVal.includes("amazonses") || senderVal.includes("Cisco Cloud") || senderVal === "ETD Alert Service (Cisco Cloud)") {
+                    senderVal = "External Threat Sender (Cisco Cloud Verdict)";
+                }
+                if (!rcptVal || rcptVal.includes("Alerts-CiscoETD")) {
+                    rcptVal = "Target M365 User Inbox";
+                }
+                if (!subjVal || subjVal.includes("Retrospective Verdict Applied") || subjVal.includes("[Secure Email Threat Defense]")) {
+                    subjVal = `Retrospective ${verdictType.replace("RETROSPECTIVE_", "")} Threat Verdict (M365 Auto-Clawback)`;
+                }
 
                 if (!verdictMap[key]) {
                     verdictMap[key] = {
                         id: h._id || key,
                         messageId: messageId.startsWith("<") ? messageId : `<${messageId}>`,
-                        mid,
+                        mid: alertMid,
                         sender: senderVal,
                         recipient: rcptVal,
                         subject: subjVal,
                         verdictType,
-                        receivedTimestamp: recTime,
-                        remediatedTimestamp: remTime,
+                        receivedTimestamp: startDateIso || alertTimeStr,
+                        remediatedTimestamp: alertTimeStr,
                         exposureDeltaMinutes,
                         remediationStatus,
                         ciscoCmdUrl,
