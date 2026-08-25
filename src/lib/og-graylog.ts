@@ -267,6 +267,34 @@ export class OgGraylogClient {
     }
 
     /**
+     * Searches raw messages in Graylog using an absolute ISO time window.
+     */
+    async searchAbsoluteMessages(query: string, fromIso: string, toIso: string, limit: number = 100): Promise<any[]> {
+        const params = new URLSearchParams({
+            query: query,
+            from: fromIso,
+            to: toIso,
+            filter: `streams:${this.streamId}`,
+            limit: limit.toString(),
+            sort: "timestamp:desc"
+        });
+
+        const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/absolute?${params.toString()}`;
+
+        const res = await axios.get(url, {
+            httpsAgent,
+            headers: {
+                "Authorization": this.authHeader,
+                "Accept": "application/json",
+                "X-Requested-By": "cli"
+            },
+            timeout: 12000
+        });
+
+        return res.data.messages || [];
+    }
+
+    /**
      * Helper method to enrich MID records with Subject, Sender, Recipient, and ETD/ESA Remediation status via batch Lucene queries.
      */
     private async enrichMidsWithEnvelopeHeaders(

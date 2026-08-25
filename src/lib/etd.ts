@@ -104,14 +104,18 @@ export class CiscoEtdService {
                 const uuid = uuidMatch ? uuidMatch[1] : "8ebe1b5d-e893-48e3-8546-41154ad4ae56";
                 const ciscoCmdUrl = `https://portal.cmd.cisco.com/messages?_any=${uuid}&dateOption=CUSTOM`;
 
-                const alertTimeStr = h.message.timestamp || new Date().toISOString();
-                let startDateIso = startDateMatch ? decodeURIComponent(startDateMatch[1]) : null;
-                
-                // If startDateIso was double encoded or raw URL encoded
-                if (startDateIso && startDateIso.includes("%")) {
-                    try { startDateIso = decodeURIComponent(startDateIso); } catch (e) {}
-                }
+                let startDateIso = null;
+                try {
+                    let decoded = raw;
+                    try { decoded = decodeURIComponent(decoded); } catch (e) {}
+                    try { decoded = decodeURIComponent(decoded); } catch (e) {}
+                    const m = decoded.match(/startDate=([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z?)/i);
+                    if (m && !isNaN(new Date(m[1]).getTime())) {
+                        startDateIso = m[1];
+                    }
+                } catch (e) {}
 
+                const alertTimeStr = h.message.timestamp || new Date().toISOString();
                 const alertMs = new Date(alertTimeStr).getTime();
                 const arrivalMs = (startDateIso && !isNaN(new Date(startDateIso).getTime())) ? new Date(startDateIso).getTime() : alertMs;
                 const exposureDeltaMinutes = Math.max(1, Math.round(Math.abs(alertMs - arrivalMs) / 60000));
@@ -153,11 +157,33 @@ export class CiscoEtdService {
 
             // Perform candidate envelope correlation search for each verdict to extract real threat headers
             for (const v of Object.values(verdictMap)) {
+                let threatArrivalMs = (v.receivedTimestamp && !isNaN(new Date(v.receivedTimestamp).getTime())) ? new Date(v.receivedTimestamp).getTime() : 0;
                 const alertTimeMs = new Date(v.remediatedTimestamp).getTime();
-                const threatArrivalMs = (v.receivedTimestamp && !isNaN(new Date(v.receivedTimestamp).getTime())) ? new Date(v.receivedTimestamp).getTime() : alertTimeMs;
 
-                const fromIso = new Date(threatArrivalMs - 180000).toISOString();
-                const toIso = new Date(threatArrivalMs + 60000).toISOString();
+                // Step 1: If threatArrivalMs was missing from main alert line, search alert MID logs for URL startDate
+                if (!threatArrivalMs && v.mid) {
+                    try {
+                        const midLogs = await this.ogClient.searchMessages(`message:"MID ${v.mid}"`, 200, rangeSeconds);
+                        for (const ml of midLogs) {
+                            let mraw = ml.message.message || "";
+                            try { mraw = decodeURIComponent(mraw); } catch (e) {}
+                            try { mraw = decodeURIComponent(mraw); } catch (e) {}
+                            const mm = mraw.match(/startDate=([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z?)/i);
+                            if (mm && !isNaN(new Date(mm[1]).getTime())) {
+                                v.receivedTimestamp = mm[1];
+                                threatArrivalMs = new Date(mm[1]).getTime();
+                                break;
+                            }
+                        }
+                    } catch (e) {}
+                }
+
+                if (!threatArrivalMs) {
+                    threatArrivalMs = alertTimeMs - 120000;
+                }
+
+                const fromIso = new Date(threatArrivalMs - 120000).toISOString();
+                const toIso = new Date(threatArrivalMs + 30000).toISOString();
 
                 try {
                     const searchHits = await this.ogClient.searchAbsoluteMessages('message:"Subject \\"" AND NOT message:"[Secure Email Threat Defense]"', fromIso, toIso, 150);
@@ -180,19 +206,25 @@ export class CiscoEtdService {
                         candidateList.sort((a, b) => Math.abs(new Date(a.timestamp).getTime() - threatArrivalMs) - Math.abs(new Date(b.timestamp).getTime() - threatArrivalMs));
                         const match = candidateList[0];
 
-                        const envHits = await this.ogClient.searchMessages(`message:"MID ${match.mid}"`, 30, rangeSeconds);
+                        const envHits = await this.ogClient.searchMessages(`message:"MID ${match.mid}"`, 100, rangeSeconds);
                         let origSender = "";
                         let origRecipient = "";
                         let rfcMsgId = "";
 
                         envHits.forEach((em: any) => {
                             const eraw = em.message.message || "";
-                            const senderMatch = eraw.match(/from <([^>]+)>/i) || eraw.match(/From:\s*<([^>]+)>/i) || eraw.match(/From=([^\s;]+)/i);
-                            const rcptMatch = eraw.match(/To:\s*<([^>]+)>/i) || eraw.match(/To:\s*(\S+)/i);
+                            const senderMatch = eraw.match(/From:\s*<([^>]+)>/i) || eraw.match(/from <([^>]+)>/i) || eraw.match(/From=([^\s;]+)/i) || eraw.match(/mailfrom identity ([^\s]+)/i);
+                            const rcptMatch = eraw.match(/To:\s*<([^>]+)>/i) || eraw.match(/To:\s*([^\s;]+)/i) || eraw.match(/rcptto identity ([^\s]+)/i);
                             const msgIdMatch = eraw.match(/Message-ID\s*'([^']+)'/i) || eraw.match(/Message-ID:\s*<([^>]+)>/i);
 
-                            if (senderMatch && !senderMatch[1].includes("amazonses")) origSender = senderMatch[1];
-                            if (rcptMatch && !rcptMatch[1].includes("Alerts-CiscoETD")) origRecipient = rcptMatch[1];
+                            if (senderMatch && !senderMatch[1].includes("amazonses") && !senderMatch[1].includes("Alerts-CiscoETD")) {
+                                const cleanSender = senderMatch[1].replace(/[<>]/g, '').trim();
+                                if (cleanSender && !cleanSender.includes("ETD Alert Service")) origSender = cleanSender;
+                            }
+                            if (rcptMatch && !rcptMatch[1].includes("Alerts-CiscoETD")) {
+                                const cleanRcpt = rcptMatch[1].replace(/[<>]/g, '').trim();
+                                if (cleanRcpt && cleanRcpt !== "Not") origRecipient = cleanRcpt;
+                            }
                             if (msgIdMatch) rfcMsgId = msgIdMatch[1].startsWith("<") ? msgIdMatch[1] : `<${msgIdMatch[1]}>`;
                         });
 
