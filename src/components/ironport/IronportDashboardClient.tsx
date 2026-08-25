@@ -799,9 +799,8 @@ export default function IronportDashboardClient() {
                     </div>
 
                     {/* PER-MESSAGE COMPOSITE URL THREAT SCORE WIDGET */}
-                    {stats.topMessageThreats && stats.topMessageThreats.length > 0 && (
-                        <div className="glass-card bg-[var(--bg-surface)] p-5 border border-[var(--border-color)] rounded-xl flex flex-col gap-4">
-                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-[var(--border-color)] pb-3">
+                    <div className="glass-card bg-[var(--bg-surface)] p-5 border border-[var(--border-color)] rounded-xl flex flex-col gap-4">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-[var(--border-color)] pb-3">
                                 <div className="flex items-center gap-2.5">
                                     <div className="p-2 rounded-lg bg-red-500/10 text-red-400">
                                         <ShieldAlert className="w-5 h-5" />
@@ -898,7 +897,6 @@ export default function IronportDashboardClient() {
                                 </table>
                             </div>
                         </div>
-                    )}
 
                     {/* Quick Inbound Drill-Down Banner */}
                     <div className="glass-card bg-[var(--bg-surface)] p-4 border border-[var(--border-color)] rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
