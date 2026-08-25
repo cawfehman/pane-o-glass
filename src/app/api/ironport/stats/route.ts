@@ -76,14 +76,20 @@ export async function GET(req: Request) {
                 let telemetrySamples;
                 let fullAggregations;
                 let topMsgThreats: any[] = [];
+                let ampIocsList: any[] = [];
+                let spoofingAlertsList: any[] = [];
+                let targetRecipientsList: any[] = [];
 
                 try {
-                    const [wHist, esaData, tSamples, fAgg, tThreats] = await Promise.all([
+                    const [wHist, esaData, tSamples, fAgg, tThreats, ampList, spfList, rcptList] = await Promise.all([
                         client.getHistogram('message:"Whitelisted Addresses"', rangeSeconds),
                         client.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
                         client.getRecentTelemetrySamples(rangeSeconds),
                         client.get100PercentFullDatasetAggregations(rangeSeconds),
-                        client.getTopMessageThreatAggregations(rangeSeconds, 8)
+                        client.getTopMessageThreatAggregations(rangeSeconds, 8),
+                        client.getAmpIocAggregations(rangeSeconds, 8),
+                        client.getSpoofingAuthAggregations(rangeSeconds, 8),
+                        client.getTargetRecipientAggregations(rangeSeconds, 8)
                     ]);
                     whitelistedSeries = wHist.series;
                     whitelistedTotal = wHist.total;
@@ -91,6 +97,9 @@ export async function GET(req: Request) {
                     telemetrySamples = tSamples;
                     fullAggregations = fAgg;
                     topMsgThreats = tThreats;
+                    ampIocsList = ampList;
+                    spoofingAlertsList = spfList;
+                    targetRecipientsList = rcptList;
 
                     // Ensure top card delayedMessages & totalVolume match exact sum of ESA01 + ESA02 direct receiver numbers!
                     if (esaBreakdown) {
@@ -138,6 +147,9 @@ export async function GET(req: Request) {
                     fullUrlCategories: fullAggregations?.fullUrlCategories || [],
                     fullAmpCategories: fullAggregations?.fullAmpCategories || [],
                     topMessageThreats: topMsgThreats || [],
+                    ampIocs: ampIocsList || [],
+                    spoofingAlerts: spoofingAlertsList || [],
+                    targetRecipients: targetRecipientsList || [],
                     fromCache: true
                 }, {
                     headers: {

@@ -63,6 +63,40 @@ export interface GraylogMessageThreatAggregation {
     source: string;
 }
 
+export interface GraylogAmpIocAggregation {
+    sha256?: string;
+    filename: string;
+    verdict: string;
+    sender?: string;
+    recipient?: string;
+    mid: string;
+    count: number;
+    timestamp: string;
+}
+
+export interface GraylogSpoofingAuthAggregation {
+    ip: string;
+    sender?: string;
+    recipient?: string;
+    subject?: string;
+    spfVerdict?: string;
+    dkimVerdict?: string;
+    dmarcVerdict?: string;
+    mid: string;
+    count: number;
+    timestamp: string;
+}
+
+export interface GraylogTargetRecipientAggregation {
+    recipient: string;
+    threatCount: number;
+    worstWrsScore: number;
+    topSender?: string;
+    primaryThreatType: "MALICIOUS_LINK" | "MALWARE_ATTACHMENT" | "SUSPECT_URL";
+    riskTier: "CRITICAL" | "HIGH" | "MODERATE";
+    latestTimestamp: string;
+}
+
 export interface GraylogStats {
     rangeSeconds: number;
     volumeQuery: string;
@@ -81,6 +115,9 @@ export interface GraylogStats {
     fullUrlCategories?: GraylogFullCategoryStats[];
     fullAmpCategories?: GraylogFullCategoryStats[];
     topMessageThreats?: GraylogMessageThreatAggregation[];
+    ampIocs?: GraylogAmpIocAggregation[];
+    spoofingAlerts?: GraylogSpoofingAuthAggregation[];
+    targetRecipients?: GraylogTargetRecipientAggregation[];
 }
 
 export class OgGraylogClient {
@@ -367,6 +404,154 @@ export class OgGraylogClient {
     }
 
     /**
+     * Aggregates AMP attachment scans into IOC Threat Hunting records.
+     */
+    async getAmpIocAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogAmpIocAggregation[]> {
+        try {
+            const ampHits = await this.searchMessages('_exists_:esa_amp_file_verdict OR message:"AMP file reputation verdict"', 100, rangeSeconds);
+            const shaMap: Record<string, GraylogAmpIocAggregation> = {};
+
+            ampHits.forEach((h: any) => {
+                const raw = h.message.message || "";
+                const shaMatch = raw.match(/SHA-256:\s*([a-fA-F0-9]{64})/i);
+                const fileMatch = raw.match(/filename\s*['"]([^'"]+)['"]/i) || raw.match(/file\s*['"]([^'"]+)['"]/i);
+                const verdictMatch = raw.match(/AMP file reputation verdict\s*:\s*([^,\s]+)/i);
+                const midMatch = raw.match(/MID (\d+)/);
+
+                const sha = h.message.esa_amp_sha256 || (shaMatch ? shaMatch[1] : undefined);
+                const filename = h.message.esa_amp_file_name || (fileMatch ? fileMatch[1] : "Attachment");
+                const verdict = h.message.esa_amp_file_verdict || (verdictMatch ? verdictMatch[1] : "UNKNOWN");
+                const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
+
+                const key = sha || `${filename}_${mid}`;
+
+                if (!shaMap[key]) {
+                    shaMap[key] = {
+                        sha256: sha,
+                        filename,
+                        verdict,
+                        sender: h.message.esa_mail_from,
+                        recipient: h.message.esa_rcpt_to,
+                        mid,
+                        count: 0,
+                        timestamp: h.message.timestamp
+                    };
+                }
+
+                shaMap[key].count += 1;
+            });
+
+            const list = Object.values(shaMap);
+            list.sort((a, b) => (b.verdict === "MALICIOUS" ? 1 : 0) - (a.verdict === "MALICIOUS" ? 1 : 0));
+            return list.slice(0, limit);
+        } catch (e) {
+            return [];
+        }
+    }
+
+    /**
+     * Aggregates SPF / DKIM / DMARC authentication failures for spoofing detection.
+     */
+    async getSpoofingAuthAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogSpoofingAuthAggregation[]> {
+        try {
+            const authHits = await this.searchMessages('message:"SPF:" OR message:"DKIM:" OR message:"DMARC:" OR _exists_:esa_spf_verdict', 100, rangeSeconds);
+            const ipMap: Record<string, GraylogSpoofingAuthAggregation> = {};
+
+            authHits.forEach((h: any) => {
+                const raw = h.message.message || "";
+                const ipMatch = raw.match(/Connecting IP:\s*([\d\.]+)/i) || raw.match(/IP\s+([\d\.]+)/i);
+                const spfMatch = raw.match(/SPF:\s*(\S+)/i);
+                const dkimMatch = raw.match(/DKIM:\s*(\S+)/i);
+                const dmarcMatch = raw.match(/DMARC:\s*(\S+)/i);
+                const midMatch = raw.match(/MID (\d+)/);
+
+                const ip = h.message.esa_sending_ip || (ipMatch ? ipMatch[1] : "Connecting MTA");
+                const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
+
+                if (!ipMap[ip]) {
+                    ipMap[ip] = {
+                        ip,
+                        sender: h.message.esa_mail_from,
+                        recipient: h.message.esa_rcpt_to,
+                        subject: h.message.esa_subject,
+                        spfVerdict: h.message.esa_spf_verdict || (spfMatch ? spfMatch[1] : undefined),
+                        dkimVerdict: h.message.esa_dkim_verdict || (dkimMatch ? dkimMatch[1] : undefined),
+                        dmarcVerdict: h.message.esa_dmarc_verdict || (dmarcMatch ? dmarcMatch[1] : undefined),
+                        mid,
+                        count: 0,
+                        timestamp: h.message.timestamp
+                    };
+                }
+
+                ipMap[ip].count += 1;
+            });
+
+            return Object.values(ipMap).slice(0, limit);
+        } catch (e) {
+            return [];
+        }
+    }
+
+    /**
+     * Aggregates target recipients receiving high-risk URLs or malicious attachments.
+     */
+    async getTargetRecipientAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogTargetRecipientAggregation[]> {
+        try {
+            const threatHits = await this.searchMessages('esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR message:"reputation -"', 100, rangeSeconds);
+            const rcptMap: Record<string, GraylogTargetRecipientAggregation> = {};
+
+            threatHits.forEach((h: any) => {
+                const raw = h.message.message || "";
+                const toMatch = raw.match(/To:\s*<([^>]+)>/i) || raw.match(/To:\s*(\S+)/i);
+                const repMatch = raw.match(/reputation ([\-\d\.]+)/i);
+
+                const rcpt = h.message.esa_rcpt_to || (toMatch ? toMatch[1] : undefined);
+                if (!rcpt) return;
+
+                let score = 0.0;
+                if (h.message.esa_url_rep_score !== undefined) {
+                    score = parseFloat(h.message.esa_url_rep_score);
+                } else if (repMatch) {
+                    score = parseFloat(repMatch[1]);
+                }
+
+                if (!rcptMap[rcpt]) {
+                    rcptMap[rcpt] = {
+                        recipient: rcpt,
+                        threatCount: 0,
+                        worstWrsScore: score,
+                        topSender: h.message.esa_mail_from,
+                        primaryThreatType: score <= -6.0 ? "MALICIOUS_LINK" : "SUSPECT_URL",
+                        riskTier: "MODERATE",
+                        latestTimestamp: h.message.timestamp
+                    };
+                }
+
+                rcptMap[rcpt].threatCount += 1;
+                if (score < rcptMap[rcpt].worstWrsScore) {
+                    rcptMap[rcpt].worstWrsScore = score;
+                }
+            });
+
+            const list = Object.values(rcptMap).map(r => {
+                if (r.threatCount >= 5 || r.worstWrsScore <= -6.0) {
+                    r.riskTier = "CRITICAL";
+                } else if (r.threatCount >= 2 || r.worstWrsScore <= -3.0) {
+                    r.riskTier = "HIGH";
+                } else {
+                    r.riskTier = "MODERATE";
+                }
+                return r;
+            });
+
+            list.sort((a, b) => b.threatCount - a.threatCount);
+            return list.slice(0, limit);
+        } catch (e) {
+            return [];
+        }
+    }
+
+    /**
      * Fetches 100% official Cisco WRS score aggregations across 5 non-overlapping tiers:
      * 1. Clean / Established (Score +3.0 to +10.0) -> Emerald Green (#10b981)
      * 2. Neutral / Uncategorized (Score 0.0 to +2.9) -> Blue (#3b82f6)
@@ -505,7 +690,10 @@ export class OgGraylogClient {
             esaBreakdown,
             telemetrySamples,
             fullDatasetAggregations,
-            topMessageThreats
+            topMessageThreats,
+            ampIocs,
+            spoofingAlerts,
+            targetRecipients
         ] = await Promise.all([
             this.getHistogram(volumeQuery, rangeSeconds),
             this.getHistogram(esaDelayQuery, rangeSeconds),
@@ -515,7 +703,10 @@ export class OgGraylogClient {
             this.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
             this.getRecentTelemetrySamples(rangeSeconds),
             this.get100PercentFullDatasetAggregations(rangeSeconds),
-            this.getTopMessageThreatAggregations(rangeSeconds, 8)
+            this.getTopMessageThreatAggregations(rangeSeconds, 8),
+            this.getAmpIocAggregations(rangeSeconds, 8),
+            this.getSpoofingAuthAggregations(rangeSeconds, 8),
+            this.getTargetRecipientAggregations(rangeSeconds, 8)
         ]);
 
         // Ensure totalVolume equals exact sum of ESA01 + ESA02 appliance volumes for 100% mathematical match
@@ -560,7 +751,10 @@ export class OgGraylogClient {
             recentAmpVerdicts: telemetrySamples.recentAmpVerdicts,
             fullUrlCategories: fullDatasetAggregations.fullUrlCategories,
             fullAmpCategories: fullDatasetAggregations.fullAmpCategories,
-            topMessageThreats
+            topMessageThreats,
+            ampIocs,
+            spoofingAlerts,
+            targetRecipients
         };
     }
 }

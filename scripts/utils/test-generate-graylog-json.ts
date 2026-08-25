@@ -1,0 +1,255 @@
+import fs from "fs";
+
+const extractorsJson = {
+  "extractors": [
+    {
+      "title": "ESA Message ID",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_mid",
+      "extractor_config": {
+        "regex_value": "MID (\\d+)"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA Incoming Connection ID",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_icid",
+      "extractor_config": {
+        "regex_value": "ICID (\\d+)"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA Delivery Connection ID",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_dcid",
+      "extractor_config": {
+        "regex_value": "DCID (\\d+)"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA Sender From Email",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_mail_from",
+      "extractor_config": {
+        "regex_value": "From:\\s*<([^>]+)>"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA Recipient To Email",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_rcpt_to",
+      "extractor_config": {
+        "regex_value": "To:\\s*<([^>]+)>"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA Subject Line",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_subject",
+      "extractor_config": {
+        "regex_value": "Subject\\s*['\"]?([^'\"]+)['\"]?"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA RFC Message ID",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_rfc_message_id",
+      "extractor_config": {
+        "regex_value": "Message-ID\\s*['\"]?<([^>]+)>['\"]?"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA Connecting IP",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_sending_ip",
+      "extractor_config": {
+        "regex_value": "Connecting IP:\\s*([\\d\\.]+)"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA URL Rep score",
+      "extractor_type": "regex",
+      "converters": [
+        {
+          "type": "numeric",
+          "config": {}
+        }
+      ],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_url_rep_score",
+      "extractor_config": {
+        "regex_value": "(?:has reputation|reputation)\\s+([\\-\\d\\.]+)"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA AMP Verdict",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_amp_file_verdict",
+      "extractor_config": {
+        "regex_value": "AMP file reputation verdict\\s*:\\s*([^,\\s]+)"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA AMP Attachment File Name",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_amp_file_name",
+      "extractor_config": {
+        "regex_value": "filename\\s*['\"]([^'\"]+)['\"]"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA AMP Attachment SHA256",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_amp_sha256",
+      "extractor_config": {
+        "regex_value": "SHA-256:\\s*([a-fA-F0-9]{64})"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA SPF Verdict",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_spf_verdict",
+      "extractor_config": {
+        "regex_value": "SPF:\\s*(\\S+)"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA DKIM Verdict",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_dkim_verdict",
+      "extractor_config": {
+        "regex_value": "DKIM:\\s*(\\S+)"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA DMARC Verdict",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_dmarc_verdict",
+      "extractor_config": {
+        "regex_value": "DMARC:\\s*(\\S+)"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA Matching Policy",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_policy",
+      "extractor_config": {
+        "regex_value": "policy\\s+([A-Za-z0-9_\\-]+)"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    },
+    {
+      "title": "ESA Cisco Action",
+      "extractor_type": "regex",
+      "converters": [],
+      "order": 0,
+      "cursor_strategy": "copy",
+      "source_field": "message",
+      "target_field": "esa_cisco_action",
+      "extractor_config": {
+        "regex_value": "Action: (.*)"
+      },
+      "condition_type": "regex",
+      "condition_value": "^esa0[12]."
+    }
+  ],
+  "version": "4.2.13"
+};
+
+const str = JSON.stringify(extractorsJson, null, 2);
+console.log("JSON valid length:", str.length);
+fs.writeFileSync("graylog_extractors_import.json", str);
+console.log("Saved to graylog_extractors_import.json");
