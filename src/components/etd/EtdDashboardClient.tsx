@@ -52,6 +52,33 @@ export function EtdDashboardClient() {
         setCurrentPage(1);
     }, [filterCategory, searchFilter, timeframe]);
 
+    const handleExportCsv = () => {
+        if (!stats || !stats.verdicts || stats.verdicts.length === 0) return;
+        const headers = ["Message ID", "Gateway MID", "Received UTC", "Verdict Type", "Subject", "Sender", "Target Recipient", "Exposure Delta (Mins)", "Remediation Status", "Cisco CMD Link"];
+        const rows = stats.verdicts.map(v => [
+            `"${v.messageId}"`,
+            `"${v.mid || ''}"`,
+            `"${v.receivedTimestamp}"`,
+            `"${v.verdictType}"`,
+            `"${v.subject.replace(/"/g, '""')}"`,
+            `"${v.sender.replace(/"/g, '""')}"`,
+            `"${v.recipient.replace(/"/g, '""')}"`,
+            `"${v.exposureDeltaMinutes}"`,
+            `"${v.remediationStatus}"`,
+            `"${v.ciscoCmdUrl}"`
+        ]);
+
+        const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `Cisco_ETD_Retrospective_Threat_Report_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const formatDateTime = (isoStr: string) => {
         if (!isoStr) return "";
         const date = new Date(isoStr);
@@ -168,6 +195,16 @@ export function EtdDashboardClient() {
                                     </button>
                                 ))}
                             </div>
+
+                            <button
+                                onClick={handleExportCsv}
+                                disabled={!stats || !stats.verdicts || stats.verdicts.length === 0}
+                                className="px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                                title="Export Executive CSV Threat Report"
+                            >
+                                <FileText size={14} />
+                                <span>Export Executive CSV</span>
+                            </button>
 
                             <button 
                                 onClick={() => fetchEtdStats(timeframe)}
@@ -361,6 +398,17 @@ export function EtdDashboardClient() {
                                                 </td>
                                                 <td className="py-2.5 px-3 text-right">
                                                     <div className="flex items-center justify-end gap-1.5">
+                                                        {v.exposureDeltaMinutes >= 15 && (
+                                                            <Link
+                                                                href={`/notifications?template=RETROSPECTIVE_ADVISORY&target=${encodeURIComponent(v.recipient)}`}
+                                                                className="px-2 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded font-semibold text-[11px] transition-colors flex items-center gap-1"
+                                                                title="Stage employee for Security Advisory or password reset in Notification Center"
+                                                            >
+                                                                <Send size={12} />
+                                                                <span>Stage Advisory</span>
+                                                            </Link>
+                                                        )}
+
                                                         {v.mid && (
                                                             <Link
                                                                 href={`/queries/ironport?query=MID+${v.mid}`}
