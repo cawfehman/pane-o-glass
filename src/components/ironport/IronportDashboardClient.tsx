@@ -1108,9 +1108,11 @@ export default function IronportDashboardClient() {
                             <div>
                                 <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
                                     Attachment Malware & AMP IOC Hunting Center
-                                    <span className="text-[10px] px-2 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded font-mono font-semibold">Cisco AMP & File SHA256</span>
+                                    <span className="text-[10px] px-2 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded font-mono font-semibold">
+                                        Timeframe: {getTimeframeLabel(timeframe)}
+                                    </span>
                                 </h4>
-                                <p className="text-xs text-[var(--text-secondary)] mt-0.5">Tracks scanned attachment filenames, AMP reputation verdicts, and SHA256 hashes for threat hunting.</p>
+                                <p className="text-xs text-[var(--text-secondary)] mt-0.5">Tracks scanned attachment filenames, AMP reputation verdicts, and SHA256 hashes for {getTimeframeLabel(timeframe)}.</p>
                             </div>
                         </div>
                         <button 
@@ -1200,9 +1202,11 @@ export default function IronportDashboardClient() {
                             <div>
                                 <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
                                     SPF / DKIM / DMARC Spoofing & Firewall Shun Center
-                                    <span className="text-[10px] px-2 py-0.5 bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded font-mono font-semibold">Cisco ASA Shun Integrated</span>
+                                    <span className="text-[10px] px-2 py-0.5 bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded font-mono font-semibold">
+                                        Timeframe: {getTimeframeLabel(timeframe)}
+                                    </span>
                                 </h4>
-                                <p className="text-xs text-[var(--text-secondary)] mt-0.5">Detects spoofed external email senders failing authentication protocols and enables 1-click IP shunning.</p>
+                                <p className="text-xs text-[var(--text-secondary)] mt-0.5">Detects spoofed external email senders failing authentication protocols for {getTimeframeLabel(timeframe)}.</p>
                             </div>
                         </div>
                         <button 
@@ -1228,11 +1232,7 @@ export default function IronportDashboardClient() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-[var(--border-color)] text-xs">
-                                {(stats.spoofingAlerts && stats.spoofingAlerts.length > 0 ? stats.spoofingAlerts : [
-                                    { ip: "198.51.100.45", sender: "ceo-update@cooperhealth.edu", recipient: "cfo@cooperhealth.edu", spfVerdict: "Fail", dkimVerdict: "Fail", dmarcVerdict: "Reject", mid: "286944146", count: 8, timestamp: new Date().toISOString() },
-                                    { ip: "203.0.113.88", sender: "hr-benefits@cooperhealth.edu", recipient: "staff-all@cooperhealth.edu", spfVerdict: "SoftFail", dkimVerdict: "None", dmarcVerdict: "Quarantine", mid: "286944138", count: 4, timestamp: new Date().toISOString() },
-                                    { ip: "192.0.2.14", sender: "it-support@cooperhealth.edu", recipient: "helpdesk@cooperhealth.edu", spfVerdict: "Fail", dkimVerdict: "Fail", dmarcVerdict: "Quarantine", mid: "286944151", count: 2, timestamp: new Date().toISOString() }
-                                ] as any[]).map((s, idx) => (
+                                {(stats.spoofingAlerts && stats.spoofingAlerts.length > 0 ? stats.spoofingAlerts : [] as any[]).map((s, idx) => (
                                     <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
                                         <td className="py-2.5 px-3 font-mono font-bold text-purple-400">
                                             {s.ip}
@@ -1286,9 +1286,11 @@ export default function IronportDashboardClient() {
                             <div>
                                 <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
                                     High-Target Employee / VIP Risk Matrix
-                                    <span className="text-[10px] px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded font-mono font-semibold">User Threat Aggregation</span>
+                                    <span className="text-[10px] px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded font-mono font-semibold">
+                                        Timeframe: {getTimeframeLabel(timeframe)}
+                                    </span>
                                 </h4>
-                                <p className="text-xs text-[var(--text-secondary)] mt-0.5">Identifies internal employees receiving the highest volume of malicious links and malware attachments.</p>
+                                <p className="text-xs text-[var(--text-secondary)] mt-0.5">Identifies internal employees receiving the highest volume of malicious links for {getTimeframeLabel(timeframe)}.</p>
                             </div>
                         </div>
                         <button 
@@ -1313,11 +1315,7 @@ export default function IronportDashboardClient() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-[var(--border-color)] text-xs">
-                                {(stats.targetRecipients && stats.targetRecipients.length > 0 ? stats.targetRecipients : [
-                                    { recipient: "cfo@cooperhealth.edu", riskTier: "CRITICAL", threatCount: 14, worstWrsScore: -8.2, topSender: "phish-payroll@external.com", primaryThreatType: "MALICIOUS_LINK", latestTimestamp: new Date().toISOString() },
-                                    { recipient: "accounts-payable@cooperhealth.edu", riskTier: "HIGH", threatCount: 6, worstWrsScore: -4.5, topSender: "billing-invoice@suspicious-host.net", primaryThreatType: "SUSPECT_URL", latestTimestamp: new Date().toISOString() },
-                                    { recipient: "executive-assistant@cooperhealth.edu", riskTier: "MODERATE", threatCount: 2, worstWrsScore: -2.1, topSender: "newsletter-track@marketing.org", primaryThreatType: "SUSPECT_URL", latestTimestamp: new Date().toISOString() }
-                                ] as any[]).map((r, idx) => {
+                                {(stats.targetRecipients && stats.targetRecipients.length > 0 ? stats.targetRecipients : [] as any[]).map((r, idx) => {
                                     let tStyle = "bg-amber-500/15 text-amber-400 border-amber-500/30";
                                     if (r.riskTier === "CRITICAL") tStyle = "bg-red-500/20 text-red-400 border-red-500/40 font-bold animate-pulse";
                                     else if (r.riskTier === "HIGH") tStyle = "bg-orange-500/15 text-orange-400 border-orange-500/40 font-semibold";
@@ -1369,9 +1367,11 @@ export default function IronportDashboardClient() {
                             <div>
                                 <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
                                     Cisco ETD Post-Delivery Removal Readout
-                                    <span className="text-[10px] px-2 py-0.5 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded font-mono font-semibold">Read-Only Telemetry</span>
+                                    <span className="text-[10px] px-2 py-0.5 bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded font-mono font-semibold">
+                                        Timeframe: {getTimeframeLabel(timeframe)}
+                                    </span>
                                 </h4>
-                                <p className="text-xs text-[var(--text-secondary)] mt-0.5">Monitors emails delivered to user inboxes that were subsequently clawed back or auto-remediated by ETD.</p>
+                                <p className="text-xs text-[var(--text-secondary)] mt-0.5">Monitors emails delivered to user inboxes that were subsequently clawed back for {getTimeframeLabel(timeframe)}.</p>
                             </div>
                         </div>
                         <button 

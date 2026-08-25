@@ -265,6 +265,58 @@ export class OgGraylogClient {
     }
 
     /**
+     * Helper method to enrich MID records with Subject, Sender, and Recipient envelope headers via batch Lucene queries.
+     */
+    private async enrichMidsWithEnvelopeHeaders(
+        midItems: Array<{ mid: string; sender?: string; recipient?: string; subject?: string }>,
+        rangeSeconds: number = 86400
+    ) {
+        const targetMids = Array.from(new Set(midItems.map(i => i.mid).filter(Boolean)));
+        if (targetMids.length === 0) return;
+
+        const midTerms = targetMids.map(m => `"${m}"`).join(" OR ");
+        const batchQuery = `(esa_mid:(${midTerms}) OR message:(${midTerms})) AND NOT message:"URL"`;
+
+        try {
+            const envelopeLogs = await this.searchMessages(batchQuery, 300, rangeSeconds);
+            const midHeaderMap: Record<string, { sender?: string; recipient?: string; subject?: string }> = {};
+            targetMids.forEach(m => { midHeaderMap[m] = {}; });
+
+            envelopeLogs.forEach((h: any) => {
+                const raw = h.message.message || "";
+                const midMatch = raw.match(/MID (\d+)/);
+                const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
+                if (!mid || !midHeaderMap[mid]) return;
+
+                const fromMatch = raw.match(/From:?\s*=?\s*["']?[^<]*["']?\s*<([^>]+)>/i) || raw.match(/bytes from <([^>]+)>/i) || raw.match(/From:\s*(\S+)/i);
+                const toMatch = raw.match(/To:?\s*=?\s*["']?[^<]*["']?\s*<([^>]+)>/i) || raw.match(/To:\s*(\S+)/i);
+                const subjMatch = raw.match(/Subject\s*['"]([^'"]+)['"]/i) || raw.match(/Subject\s*:?\s*(.+)/i);
+
+                if (!midHeaderMap[mid].sender && (h.message.esa_mail_from || fromMatch)) {
+                    midHeaderMap[mid].sender = h.message.esa_mail_from || (fromMatch ? fromMatch[1] : undefined);
+                }
+                if (!midHeaderMap[mid].recipient && (h.message.esa_rcpt_to || toMatch)) {
+                    midHeaderMap[mid].recipient = h.message.esa_rcpt_to || (toMatch ? toMatch[1] : undefined);
+                }
+                if (!midHeaderMap[mid].subject && (h.message.esa_subject || subjMatch)) {
+                    midHeaderMap[mid].subject = h.message.esa_subject || (subjMatch ? subjMatch[1].trim() : undefined);
+                }
+            });
+
+            midItems.forEach(item => {
+                const headers = midHeaderMap[item.mid];
+                if (headers) {
+                    if (!item.sender && headers.sender) item.sender = headers.sender;
+                    if (!item.recipient && headers.recipient) item.recipient = headers.recipient;
+                    if (!item.subject && headers.subject) item.subject = headers.subject;
+                }
+            });
+        } catch (e) {
+            // Ignore secondary lookup errors
+        }
+    }
+
+    /**
      * Fetches per-appliance counts for ESA01 and ESA02.
      */
     async getEsaApplianceBreakdown(rangeSeconds: number = 86400, volumeQuery: string = 'message:"inbound table"'): Promise<GraylogEsaBreakdown> {
@@ -290,13 +342,13 @@ export class OgGraylogClient {
 
     /**
      * Aggregates URL telemetry by Message ID (esa_mid) and calculates composite risk levels per email.
-     * Uses 2-step batch lookup to fetch Subject, Sender, and Recipient envelope headers across all log lines.
+     * Uses clean 2-step batch lookup to fetch Subject, Sender, and Recipient envelope headers across all log lines.
      */
     async getTopMessageThreatAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogMessageThreatAggregation[]> {
         try {
             const [riskyHits, generalHits] = await Promise.all([
-                this.searchMessages('esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL")', 120, rangeSeconds).catch(() => []),
-                this.searchMessages('_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")', 120, rangeSeconds).catch(() => [])
+                this.searchMessages('esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL")', 150, rangeSeconds).catch(() => []),
+                this.searchMessages('_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")', 150, rangeSeconds).catch(() => [])
             ]);
 
             const allHits = [...riskyHits, ...generalHits];
@@ -349,38 +401,10 @@ export class OgGraylogClient {
                 }
             });
 
-            // STEP 2: Batch lookup envelope details (Sender, Recipient, Subject) for the target MIDs
-            const targetMids = Object.keys(midMap);
-            if (targetMids.length > 0) {
-                const batchQuery = targetMids.slice(0, 30).map(m => `esa_mid:"${m}" OR message:"MID ${m}"`).join(" OR ");
-                try {
-                    const envelopeLogs = await this.searchMessages(batchQuery, 200, rangeSeconds);
-                    envelopeLogs.forEach((h: any) => {
-                        const raw = h.message.message || "";
-                        const midMatch = raw.match(/MID (\d+)/);
-                        const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
-                        if (!mid || !midMap[mid]) return;
+            const aggregatedList = Object.values(midMap);
+            await this.enrichMidsWithEnvelopeHeaders(aggregatedList, rangeSeconds);
 
-                        const fromMatch = raw.match(/From:\s*<([^>]+)>/i) || raw.match(/From:\s*(\S+)/i);
-                        const toMatch = raw.match(/To:\s*<([^>]+)>/i) || raw.match(/To:\s*(\S+)/i);
-                        const subjMatch = raw.match(/Subject\s*['"]([^'"]+)['"]/i) || raw.match(/Subject\s*:?\s*(.+)/i);
-
-                        if (!midMap[mid].subject && (h.message.esa_subject || subjMatch)) {
-                            midMap[mid].subject = h.message.esa_subject || (subjMatch ? subjMatch[1].trim() : undefined);
-                        }
-                        if (!midMap[mid].sender && (h.message.esa_mail_from || fromMatch)) {
-                            midMap[mid].sender = h.message.esa_mail_from || (fromMatch ? fromMatch[1] : undefined);
-                        }
-                        if (!midMap[mid].recipient && (h.message.esa_rcpt_to || toMatch)) {
-                            midMap[mid].recipient = h.message.esa_rcpt_to || (toMatch ? toMatch[1] : undefined);
-                        }
-                    });
-                } catch (e) {
-                    // Ignore secondary lookup errors
-                }
-            }
-
-            const aggregatedList = Object.values(midMap).map(m => {
+            aggregatedList.forEach(m => {
                 if (m.worstScore <= -6.0) {
                     m.threatLevel = "CRITICAL";
                 } else if (m.worstScore <= -3.0) {
@@ -392,7 +416,6 @@ export class OgGraylogClient {
                 } else {
                     m.threatLevel = "CLEAN";
                 }
-                return m;
             });
 
             // Sort by worstScore ascending (most dangerous negative scores first)
@@ -408,7 +431,7 @@ export class OgGraylogClient {
      */
     async getAmpIocAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogAmpIocAggregation[]> {
         try {
-            const ampHits = await this.searchMessages('_exists_:esa_amp_file_verdict OR message:"AMP file reputation verdict"', 100, rangeSeconds);
+            const ampHits = await this.searchMessages('_exists_:esa_amp_file_verdict OR message:"AMP file reputation verdict"', 120, rangeSeconds);
             const shaMap: Record<string, GraylogAmpIocAggregation> = {};
 
             ampHits.forEach((h: any) => {
@@ -442,6 +465,8 @@ export class OgGraylogClient {
             });
 
             const list = Object.values(shaMap);
+            await this.enrichMidsWithEnvelopeHeaders(list, rangeSeconds);
+
             list.sort((a, b) => (b.verdict === "MALICIOUS" ? 1 : 0) - (a.verdict === "MALICIOUS" ? 1 : 0));
             return list.slice(0, limit);
         } catch (e) {
@@ -454,7 +479,7 @@ export class OgGraylogClient {
      */
     async getSpoofingAuthAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogSpoofingAuthAggregation[]> {
         try {
-            const authHits = await this.searchMessages('message:"SPF:" OR message:"DKIM:" OR message:"DMARC:" OR _exists_:esa_spf_verdict', 100, rangeSeconds);
+            const authHits = await this.searchMessages('message:"SPF:" OR message:"DKIM:" OR message:"DMARC:" OR _exists_:esa_spf_verdict', 120, rangeSeconds);
             const ipMap: Record<string, GraylogSpoofingAuthAggregation> = {};
 
             authHits.forEach((h: any) => {
@@ -486,7 +511,9 @@ export class OgGraylogClient {
                 ipMap[ip].count += 1;
             });
 
-            return Object.values(ipMap).slice(0, limit);
+            const list = Object.values(ipMap);
+            await this.enrichMidsWithEnvelopeHeaders(list, rangeSeconds);
+            return list.slice(0, limit);
         } catch (e) {
             return [];
         }
@@ -497,7 +524,7 @@ export class OgGraylogClient {
      */
     async getTargetRecipientAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogTargetRecipientAggregation[]> {
         try {
-            const threatHits = await this.searchMessages('esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR message:"reputation -"', 100, rangeSeconds);
+            const threatHits = await this.searchMessages('esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR message:"reputation -"', 150, rangeSeconds);
             const rcptMap: Record<string, GraylogTargetRecipientAggregation> = {};
 
             threatHits.forEach((h: any) => {
