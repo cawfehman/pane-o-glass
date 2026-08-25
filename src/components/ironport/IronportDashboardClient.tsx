@@ -798,11 +798,15 @@ export default function IronportDashboardClient() {
                                 </thead>
                                 <tbody className="divide-y divide-[var(--border-color)] text-xs">
                                     {(() => {
-                                        let rawList = (stats.topMessageThreats && stats.topMessageThreats.length > 0 ? stats.topMessageThreats : [
+                                        let rawList = stats?.topMessageThreats ? stats.topMessageThreats : [
                                             { mid: "286944146", subject: "Urgent: Verification of Wire Transfer Request", sender: "security-alert@external-secure.com", recipient: "finance-dept@cooperhealth.edu", threatLevel: "CRITICAL", worstScore: -7.5, priorityScore: 7.5, remediationStatus: "DELIVERED_TO_INBOX", riskyUrlCount: 3, totalUrls: 14, primaryThreatUrl: "http://malicious-phish-domain.com/login", timestamp: new Date().toISOString(), source: "esa01" },
                                             { mid: "286944138", subject: "Important Document Pending Review", sender: "support@document-review-portal.net", recipient: "executive-assistant@cooperhealth.edu", threatLevel: "RISKY", worstScore: -3.8, priorityScore: 3.8, remediationStatus: "PURGED_BY_ETD", riskyUrlCount: 1, totalUrls: 22, primaryThreatUrl: "https://suspicious-checkout-link.net/pay", timestamp: new Date().toISOString(), source: "esa02" },
                                             { mid: "286944151", subject: "Marketing Newsletter - Weekly Summary", sender: "newsletters@marketing-digest.org", recipient: "staff-all@cooperhealth.edu", threatLevel: "LOW_SUSPECT", worstScore: -1.2, priorityScore: 1.2, remediationStatus: "QUARANTINED_BY_ESA", riskyUrlCount: 1, totalUrls: 8, primaryThreatUrl: "https://unverified-tracking-pixel.org/img", timestamp: new Date().toISOString(), source: "esa01" }
-                                        ] as any[]);
+                                        ] as any[];
+
+                                        if (stats?.topMessageThreats) {
+                                            rawList = stats.topMessageThreats;
+                                        }
 
                                         if (threatStatusFilter === "active_only") {
                                             rawList = rawList.filter(m => m.remediationStatus === "DELIVERED_TO_INBOX" || !m.remediationStatus);
@@ -821,6 +825,16 @@ export default function IronportDashboardClient() {
                                         const totalPages = Math.max(1, Math.ceil(sortedList.length / itemsPerPage));
                                         const safePage = Math.min(threatCurrentPage, totalPages);
                                         const paginatedList = sortedList.slice((safePage - 1) * itemsPerPage, safePage * itemsPerPage);
+
+                                        if (paginatedList.length === 0) {
+                                            return (
+                                                <tr>
+                                                    <td colSpan={8} className="py-8 text-center text-[var(--text-muted)] italic">
+                                                        No evaluated high-risk threat messages found matching current filter criteria.
+                                                    </td>
+                                                </tr>
+                                            );
+                                        }
 
                                         return (
                                             <>
@@ -901,7 +915,7 @@ export default function IronportDashboardClient() {
 
                         {/* High-Risk Table Pagination Footer */}
                         {(() => {
-                            let rawList = (stats?.topMessageThreats && stats.topMessageThreats.length > 0 ? stats.topMessageThreats : []);
+                            let rawList = stats?.topMessageThreats ? stats.topMessageThreats : [];
                             if (threatStatusFilter === "active_only") {
                                 rawList = rawList.filter(m => m.remediationStatus === "DELIVERED_TO_INBOX" || !m.remediationStatus);
                             }

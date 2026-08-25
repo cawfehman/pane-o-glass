@@ -362,11 +362,9 @@ export class OgGraylogClient {
         volumeQuery: string = 'message:"inbound table"'
     ): Promise<GraylogMessageThreatAggregation[]> {
         try {
-            const scopePrefix = volumeQuery ? `(${volumeQuery}) AND ` : '';
-
             const [riskyHits, generalHits] = await Promise.all([
-                this.searchMessages(`${scopePrefix}(esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL"))`, 600, rangeSeconds).catch(() => []),
-                this.searchMessages(`${scopePrefix}(_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation"))`, 300, rangeSeconds).catch(() => [])
+                this.searchMessages(`esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL")`, 600, rangeSeconds).catch(() => []),
+                this.searchMessages(`_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")`, 300, rangeSeconds).catch(() => [])
             ]);
 
             const allHits = [...riskyHits, ...generalHits];
@@ -470,8 +468,7 @@ export class OgGraylogClient {
         volumeQuery: string = 'message:"inbound table"'
     ): Promise<GraylogAmpIocAggregation[]> {
         try {
-            const scopePrefix = volumeQuery ? `(${volumeQuery}) AND ` : '';
-            const ampHits = await this.searchMessages(`${scopePrefix}(_exists_:esa_amp_file_verdict OR message:"AMP file reputation verdict")`, 120, rangeSeconds);
+            const ampHits = await this.searchMessages(`_exists_:esa_amp_file_verdict OR message:"AMP file reputation verdict"`, 120, rangeSeconds);
             const shaMap: Record<string, GraylogAmpIocAggregation> = {};
 
             ampHits.forEach((h: any) => {
@@ -523,8 +520,7 @@ export class OgGraylogClient {
         volumeQuery: string = 'message:"inbound table"'
     ): Promise<GraylogSpoofingAuthAggregation[]> {
         try {
-            const scopePrefix = volumeQuery ? `(${volumeQuery}) AND ` : '';
-            const authHits = await this.searchMessages(`${scopePrefix}(message:"SPF:" OR message:"DKIM:" OR message:"DMARC:" OR _exists_:esa_spf_verdict)`, 120, rangeSeconds);
+            const authHits = await this.searchMessages(`message:"SPF:" OR message:"DKIM:" OR message:"DMARC:" OR _exists_:esa_spf_verdict`, 120, rangeSeconds);
             const ipMap: Record<string, GraylogSpoofingAuthAggregation> = {};
 
             authHits.forEach((h: any) => {
@@ -573,8 +569,7 @@ export class OgGraylogClient {
         volumeQuery: string = 'message:"inbound table"'
     ): Promise<GraylogTargetRecipientAggregation[]> {
         try {
-            const scopePrefix = volumeQuery ? `(${volumeQuery}) AND ` : '';
-            const threatHits = await this.searchMessages(`${scopePrefix}(esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR message:"reputation -")`, 150, rangeSeconds);
+            const threatHits = await this.searchMessages(`esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR message:"reputation -"`, 150, rangeSeconds);
             const rcptMap: Record<string, GraylogTargetRecipientAggregation> = {};
 
             threatHits.forEach((h: any) => {
