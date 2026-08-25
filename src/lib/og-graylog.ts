@@ -236,7 +236,8 @@ export class OgGraylogClient {
     }
 
     /**
-     * Fetches 100% full dataset stream aggregations using fast sub-second Lucene queries (< 500ms).
+     * Fetches 100% full dataset stream aggregations with DUAL-COMPATIBILITY:
+     * Seamlessly queries BOTH newly extracted fields (wrs_score, amp_verdict) AND unparsed syslog text!
      */
     async get100PercentFullDatasetAggregations(rangeSeconds: number = 86400): Promise<{ fullUrlCategories: GraylogFullCategoryStats[], fullAmpCategories: GraylogFullCategoryStats[] }> {
         const fetchCount = async (query: string): Promise<number> => {
@@ -259,6 +260,7 @@ export class OgGraylogClient {
             }
         };
 
+        // Dual-compatibility queries: Check extracted fields first, fallback to message text
         const [
             totalRepCount,
             proxyRewriteCount,
@@ -267,12 +269,12 @@ export class OgGraylogClient {
             ampCleanCount,
             ampMaliciousCount
         ] = await Promise.all([
-            fetchCount('message:"has reputation"'),
-            fetchCount('message:"URL redirected to Cisco Security proxy"'),
-            fetchCount('message:"AMP file reputation verdict : SKIPPED"'),
-            fetchCount('message:"AMP file reputation verdict : UNKNOWN" OR message:"FILE UNKNOWN"'),
-            fetchCount('message:"AMP file reputation verdict : CLEAN"'),
-            fetchCount('message:"AMP file reputation verdict : MALICIOUS"')
+            fetchCount('(_exists_:wrs_score) OR message:"has reputation"'),
+            fetchCount('(cisco_action:"URL redirected to Cisco Security proxy") OR message:"URL redirected to Cisco Security proxy"'),
+            fetchCount('(amp_verdict:SKIPPED) OR message:"AMP file reputation verdict : SKIPPED"'),
+            fetchCount('(amp_verdict:UNKNOWN) OR message:"AMP file reputation verdict : UNKNOWN" OR message:"FILE UNKNOWN"'),
+            fetchCount('(amp_verdict:CLEAN) OR message:"AMP file reputation verdict : CLEAN"'),
+            fetchCount('(amp_verdict:MALICIOUS) OR message:"AMP file reputation verdict : MALICIOUS"')
         ]);
 
         const totalUrl = Math.max(1, totalRepCount);
@@ -281,16 +283,16 @@ export class OgGraylogClient {
         const evalPct = ((evalCount / totalUrl) * 100).toFixed(1);
 
         const fullUrlCategories: GraylogFullCategoryStats[] = [
-            { name: "Cisco Security Proxy Rewrites (WRS Triggered)", count: proxyRewriteCount, percentage: `${proxyPct}%`, color: "#ef4444", filterQuery: 'message:"URL redirected to Cisco Security proxy"' },
-            { name: "Standard Evaluated WRS Links (Passed Proxy)", count: evalCount, percentage: `${evalPct}%`, color: "#10b981", filterQuery: 'message:"has reputation"' }
+            { name: "Cisco Security Proxy Rewrites (WRS Triggered)", count: proxyRewriteCount, percentage: `${proxyPct}%`, color: "#ef4444", filterQuery: 'cisco_action:"URL redirected to Cisco Security proxy" OR message:"URL redirected to Cisco Security proxy"' },
+            { name: "Standard Evaluated WRS Links (Passed Proxy)", count: evalCount, percentage: `${evalPct}%`, color: "#10b981", filterQuery: '_exists_:wrs_score OR message:"has reputation"' }
         ];
 
         const totalAmp = Math.max(1, ampSkippedCount + ampUnknownCount + ampCleanCount + ampMaliciousCount);
         const fullAmpCategories: GraylogFullCategoryStats[] = [
-            { name: "No Attachment (Skipped)", count: ampSkippedCount, percentage: `${((ampSkippedCount / totalAmp) * 100).toFixed(1)}%`, color: "#6b7280", filterQuery: 'message:"AMP file reputation verdict : SKIPPED"' },
-            { name: "Analyzing / Unknown", count: ampUnknownCount, percentage: `${((ampUnknownCount / totalAmp) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: 'message:"AMP file reputation verdict : UNKNOWN"' },
-            { name: "Clean File Scans", count: ampCleanCount, percentage: `${((ampCleanCount / totalAmp) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: 'message:"AMP file reputation verdict : CLEAN"' },
-            { name: "Malicious File Verdicts", count: ampMaliciousCount, percentage: `${((ampMaliciousCount / totalAmp) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: 'message:"AMP file reputation verdict : MALICIOUS"' }
+            { name: "No Attachment (Skipped)", count: ampSkippedCount, percentage: `${((ampSkippedCount / totalAmp) * 100).toFixed(1)}%`, color: "#6b7280", filterQuery: 'amp_verdict:SKIPPED OR message:"AMP file reputation verdict : SKIPPED"' },
+            { name: "Analyzing / Unknown", count: ampUnknownCount, percentage: `${((ampUnknownCount / totalAmp) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: 'amp_verdict:UNKNOWN OR message:"AMP file reputation verdict : UNKNOWN"' },
+            { name: "Clean File Scans", count: ampCleanCount, percentage: `${((ampCleanCount / totalAmp) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: 'amp_verdict:CLEAN OR message:"AMP file reputation verdict : CLEAN"' },
+            { name: "Malicious File Verdicts", count: ampMaliciousCount, percentage: `${((ampMaliciousCount / totalAmp) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: 'amp_verdict:MALICIOUS OR message:"AMP file reputation verdict : MALICIOUS"' }
         ];
 
         return { fullUrlCategories, fullAmpCategories };
@@ -312,9 +314,9 @@ export class OgGraylogClient {
             const repMatch = raw.match(/reputation ([\-\d\.]+)/i);
 
             return {
-                mid: midMatch ? midMatch[1] : "",
+                mid: h.message.cisco_mid || (midMatch ? midMatch[1] : ""),
                 url: urlMatch ? urlMatch[1] : raw,
-                reputation: repMatch ? repMatch[1] : "-",
+                reputation: h.message.wrs_score ? h.message.wrs_score.toString() : (repMatch ? repMatch[1] : "-"),
                 timestamp: h.message.timestamp,
                 source: h.message.source ? h.message.source.split('.')[0] : "esa"
             };
@@ -326,8 +328,8 @@ export class OgGraylogClient {
             const verdictMatch = raw.match(/AMP file reputation verdict\s*:\s*([^,]+)/i);
 
             return {
-                mid: midMatch ? midMatch[1] : "",
-                verdict: verdictMatch ? verdictMatch[1].trim() : "UNKNOWN",
+                mid: h.message.cisco_mid || (midMatch ? midMatch[1] : ""),
+                verdict: h.message.amp_verdict || (verdictMatch ? verdictMatch[1].trim() : "UNKNOWN"),
                 timestamp: h.message.timestamp,
                 source: h.message.source ? h.message.source.split('.')[0] : "esa"
             };
