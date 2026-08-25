@@ -342,13 +342,19 @@ export class OgGraylogClient {
 
     /**
      * Aggregates URL telemetry by Message ID (esa_mid) and calculates composite risk levels per email.
-     * Uses clean 2-step batch lookup to fetch Subject, Sender, and Recipient envelope headers across all log lines.
+     * Strictly scopes to the active flow stream (e.g. Inbound vs Outbound).
      */
-    async getTopMessageThreatAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogMessageThreatAggregation[]> {
+    async getTopMessageThreatAggregations(
+        rangeSeconds: number = 86400, 
+        limit: number = 10,
+        volumeQuery: string = 'message:"inbound table"'
+    ): Promise<GraylogMessageThreatAggregation[]> {
         try {
+            const scopePrefix = volumeQuery ? `(${volumeQuery}) AND ` : '';
+
             const [riskyHits, generalHits] = await Promise.all([
-                this.searchMessages('esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL")', 150, rangeSeconds).catch(() => []),
-                this.searchMessages('_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")', 150, rangeSeconds).catch(() => [])
+                this.searchMessages(`${scopePrefix}(esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL"))`, 150, rangeSeconds).catch(() => []),
+                this.searchMessages(`${scopePrefix}(_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation"))`, 150, rangeSeconds).catch(() => [])
             ]);
 
             const allHits = [...riskyHits, ...generalHits];
@@ -429,9 +435,14 @@ export class OgGraylogClient {
     /**
      * Aggregates AMP attachment scans into IOC Threat Hunting records.
      */
-    async getAmpIocAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogAmpIocAggregation[]> {
+    async getAmpIocAggregations(
+        rangeSeconds: number = 86400, 
+        limit: number = 10,
+        volumeQuery: string = 'message:"inbound table"'
+    ): Promise<GraylogAmpIocAggregation[]> {
         try {
-            const ampHits = await this.searchMessages('_exists_:esa_amp_file_verdict OR message:"AMP file reputation verdict"', 120, rangeSeconds);
+            const scopePrefix = volumeQuery ? `(${volumeQuery}) AND ` : '';
+            const ampHits = await this.searchMessages(`${scopePrefix}(_exists_:esa_amp_file_verdict OR message:"AMP file reputation verdict")`, 120, rangeSeconds);
             const shaMap: Record<string, GraylogAmpIocAggregation> = {};
 
             ampHits.forEach((h: any) => {
@@ -477,9 +488,14 @@ export class OgGraylogClient {
     /**
      * Aggregates SPF / DKIM / DMARC authentication failures for spoofing detection.
      */
-    async getSpoofingAuthAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogSpoofingAuthAggregation[]> {
+    async getSpoofingAuthAggregations(
+        rangeSeconds: number = 86400, 
+        limit: number = 10,
+        volumeQuery: string = 'message:"inbound table"'
+    ): Promise<GraylogSpoofingAuthAggregation[]> {
         try {
-            const authHits = await this.searchMessages('message:"SPF:" OR message:"DKIM:" OR message:"DMARC:" OR _exists_:esa_spf_verdict', 120, rangeSeconds);
+            const scopePrefix = volumeQuery ? `(${volumeQuery}) AND ` : '';
+            const authHits = await this.searchMessages(`${scopePrefix}(message:"SPF:" OR message:"DKIM:" OR message:"DMARC:" OR _exists_:esa_spf_verdict)`, 120, rangeSeconds);
             const ipMap: Record<string, GraylogSpoofingAuthAggregation> = {};
 
             authHits.forEach((h: any) => {
@@ -522,9 +538,14 @@ export class OgGraylogClient {
     /**
      * Aggregates target recipients receiving high-risk URLs or malicious attachments.
      */
-    async getTargetRecipientAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogTargetRecipientAggregation[]> {
+    async getTargetRecipientAggregations(
+        rangeSeconds: number = 86400, 
+        limit: number = 10,
+        volumeQuery: string = 'message:"inbound table"'
+    ): Promise<GraylogTargetRecipientAggregation[]> {
         try {
-            const threatHits = await this.searchMessages('esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR message:"reputation -"', 150, rangeSeconds);
+            const scopePrefix = volumeQuery ? `(${volumeQuery}) AND ` : '';
+            const threatHits = await this.searchMessages(`${scopePrefix}(esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR message:"reputation -")`, 150, rangeSeconds);
             const rcptMap: Record<string, GraylogTargetRecipientAggregation> = {};
 
             threatHits.forEach((h: any) => {
@@ -730,10 +751,10 @@ export class OgGraylogClient {
             this.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
             this.getRecentTelemetrySamples(rangeSeconds),
             this.get100PercentFullDatasetAggregations(rangeSeconds),
-            this.getTopMessageThreatAggregations(rangeSeconds, 8),
-            this.getAmpIocAggregations(rangeSeconds, 8),
-            this.getSpoofingAuthAggregations(rangeSeconds, 8),
-            this.getTargetRecipientAggregations(rangeSeconds, 8)
+            this.getTopMessageThreatAggregations(rangeSeconds, 8, volumeQuery),
+            this.getAmpIocAggregations(rangeSeconds, 8, volumeQuery),
+            this.getSpoofingAuthAggregations(rangeSeconds, 8, volumeQuery),
+            this.getTargetRecipientAggregations(rangeSeconds, 8, volumeQuery)
         ]);
 
         // Ensure totalVolume equals exact sum of ESA01 + ESA02 appliance volumes for 100% mathematical match
