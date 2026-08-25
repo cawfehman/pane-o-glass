@@ -236,17 +236,13 @@ export class OgGraylogClient {
     }
 
     /**
-     * Fetches 100% full dataset stream aggregations across millions of events in Graylog targeting exact Cisco WRS score ranges (-10.0 to +10.0).
+     * Fetches 100% full dataset stream aggregations across millions of events in Graylog using exact non-ambiguous score queries.
      */
     async get100PercentFullDatasetAggregations(rangeSeconds: number = 86400): Promise<{ fullUrlCategories: GraylogFullCategoryStats[], fullAmpCategories: GraylogFullCategoryStats[] }> {
-        // Cisco WRS Score Ranges:
-        // Negative / Risky: WRS < 0.0 (query: message:"reputation -")
-        // Neutral / Uncategorized: WRS 0.0 - 5.9
-        // Clean / Established: WRS >= 6.0
         const urlQueries = [
-            { name: "Negative WRS / Rewritten (Score < 0.0)", query: 'message:"URL" AND message:"reputation -"', color: "#ef4444" },
-            { name: "Neutral / Uncategorized (Score 0.0 - 5.9)", query: 'message:"URL" AND (message:"reputation 0." OR message:"reputation 1." OR message:"reputation 2." OR message:"reputation 3." OR message:"reputation 4." OR message:"reputation 5.")', color: "#f59e0b" },
-            { name: "Clean / Established (Score >= 6.0)", query: 'message:"URL" AND (message:"reputation 6." OR message:"reputation 7." OR message:"reputation 8." OR message:"reputation 9." OR message:"reputation 10.")', color: "#10b981" }
+            { name: "Clean / Established (Score > 3.0)", query: 'message:"has reputation" AND (message:"reputation 3." OR message:"reputation 4." OR message:"reputation 5." OR message:"reputation 6." OR message:"reputation 7." OR message:"reputation 8." OR message:"reputation 9." OR message:"reputation 10.")', color: "#10b981" },
+            { name: "Uncategorized / Neutral (Score 0.0 - 3.0)", query: 'message:"has reputation" AND (message:"reputation 0." OR message:"reputation 1." OR message:"reputation 2.")', color: "#f59e0b" },
+            { name: "Risky / Threat Proxy (Action Rewritten)", query: 'message:"URL redirected to Cisco Security proxy"', color: "#ef4444" }
         ];
 
         const ampQueries = [
@@ -277,7 +273,7 @@ export class OgGraylogClient {
         };
 
         const [
-            urlNegCount, urlNeuCount, urlPosCount,
+            urlCleanCount, urlNeuCount, urlRiskCount,
             ampSkippedCount, ampUnknownCount, ampCleanCount, ampMaliciousCount
         ] = await Promise.all([
             fetchCount(urlQueries[0].query),
@@ -289,11 +285,11 @@ export class OgGraylogClient {
             fetchCount(ampQueries[3].query)
         ]);
 
-        const totalUrl = Math.max(1, urlNegCount + urlNeuCount + urlPosCount);
+        const totalUrl = Math.max(1, urlCleanCount + urlNeuCount + urlRiskCount);
         const fullUrlCategories: GraylogFullCategoryStats[] = [
-            { name: "Negative WRS / Rewritten (Score < 0.0)", count: urlNegCount, percentage: `${((urlNegCount / totalUrl) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: urlQueries[0].query },
-            { name: "Neutral / Uncategorized (Score 0.0 - 5.9)", count: urlNeuCount, percentage: `${((urlNeuCount / totalUrl) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: urlQueries[1].query },
-            { name: "Clean / Established (Score >= 6.0)", count: urlPosCount, percentage: `${((urlPosCount / totalUrl) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: urlQueries[2].query }
+            { name: "Clean / Established (Score > 3.0)", count: urlCleanCount, percentage: `${((urlCleanCount / totalUrl) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: urlQueries[0].query },
+            { name: "Uncategorized / Neutral (Score 0.0-3.0)", count: urlNeuCount, percentage: `${((urlNeuCount / totalUrl) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: urlQueries[1].query },
+            { name: "Risky / Threat Proxy (Action Rewritten)", count: urlRiskCount, percentage: `${((urlRiskCount / totalUrl) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: urlQueries[2].query }
         ];
 
         const totalAmp = Math.max(1, ampSkippedCount + ampUnknownCount + ampCleanCount + ampMaliciousCount);

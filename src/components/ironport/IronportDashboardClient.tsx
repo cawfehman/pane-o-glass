@@ -299,9 +299,9 @@ export default function IronportDashboardClient() {
             filter: c.filterQuery
         }))
         : [
-            { name: "Negative WRS / Rewritten (Score < 0.0)", value: 4385439, percent: "99.9%", color: "#ef4444", filter: 'message:"URL" AND message:"reputation -"' },
-            { name: "Neutral / Uncategorized (Score 0.0 - 5.9)", value: 347, percent: "0.1%", color: "#f59e0b", filter: 'message:"URL" AND (message:"reputation 0." OR message:"reputation 1.")' },
-            { name: "Clean / Established (Score >= 6.0)", value: 0, percent: "0.0%", color: "#10b981", filter: 'message:"URL" AND message:"reputation 6."' }
+            { name: "Clean / Established (Score > 3.0)", value: 283, percent: "6.4%", color: "#10b981", filter: 'message:"has reputation" AND (message:"reputation 3." OR message:"reputation 5.")' },
+            { name: "Uncategorized / Neutral (Score 0.0 - 3.0)", value: 4102, percent: "93.6%", color: "#f59e0b", filter: 'message:"has reputation" AND message:"reputation 0.0"' },
+            { name: "Risky / Threat Proxy (Action Rewritten)", value: 120, percent: "0.2%", color: "#ef4444", filter: 'message:"URL redirected to Cisco Security proxy"' }
         ];
 
     // 100% Full-Dataset Donut Graphic Data for AMP File Reputation Scans across all events
