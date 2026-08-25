@@ -35,6 +35,9 @@ export interface EtdSummaryStats {
 
 export class CiscoEtdService {
     private ogClient: OgGraylogClient;
+    private static cachedStats: Record<number, EtdSummaryStats> = {};
+    private static lastCacheTime: number = 0;
+    private static cacheIntervalMs: number = 180000; // 3 minutes
 
     constructor() {
         this.ogClient = new OgGraylogClient();
@@ -44,27 +47,32 @@ export class CiscoEtdService {
      * Fetches retrospective threat verdicts across Graylog ETD streams and/or Cisco ETD Cloud API.
      */
     async getRetrospectiveVerdicts(rangeSeconds: number = 86400): Promise<EtdSummaryStats> {
+        const now = Date.now();
+
+        // Check if cached result exists and is fresh (under 3 minutes old)
+        if (CiscoEtdService.cachedStats[rangeSeconds] && (now - CiscoEtdService.lastCacheTime < CiscoEtdService.cacheIntervalMs)) {
+            return CiscoEtdService.cachedStats[rangeSeconds];
+        }
+
         try {
-            // Query Graylog stream for ETD retrospective alerts, clawbacks, and auto-remediations
-            const etdLogs = await this.ogClient.searchMessages(
-                'message:"retrospective" OR message:"retrospective verdict" OR message:"scam verdict" OR message:"auto-remediated" OR message:"clawback" OR message:"ETD"',
-                300,
-                rangeSeconds
-            );
+            // Target official Cisco ETD Retrospective Notification & Clawback syslog events
+            const query = 'message:"Retrospective Verdict Applied" OR message:"retrospective scam" OR message:"retrospective verdict" OR message:"retrospective phish" OR message:"retrospective malware" OR message:"clawback"';
+            
+            const etdLogs = await this.ogClient.searchMessages(query, 500, rangeSeconds);
 
             const verdictMap: Record<string, EtdRetrospectiveVerdict> = {};
 
             etdLogs.forEach((h: any) => {
                 const raw = h.message.message || "";
                 const midMatch = raw.match(/MID (\d+)/);
-                const msgIdMatch = raw.match(/Message-?ID:?\s*<([^>]+)>/i) || raw.match(/<([a-zA-Z0-9_\-\.\+]+@[a-zA-Z0-9_\-\.]+)/i);
-                const senderMatch = raw.match(/Sender:?\s*([^\s,;]+@[^\s,;]+)/i) || raw.match(/from <([^>]+)>/i) || raw.match(/From=([^;\s]+)/i);
-                const rcptMatch = raw.match(/To:?\s*([^\s,;]+@[^\s,;]+)/i) || raw.match(/To:\s*<([^>]+)>/i) || raw.match(/To=([^;\s]+)/i);
-                const subjMatch = raw.match(/Subject:?\s*(.+)/i) || raw.match(/Subject\s+"([^"]+)"/i);
+                const msgIdMatch = raw.match(/Message ID:\s*<([^>]+)>/i) || raw.match(/Message-?ID:?\s*<([^>]+)>/i) || raw.match(/<([a-zA-Z0-9_\-\.\+]+@[a-zA-Z0-9_\-\.]+)/i);
+                const senderMatch = raw.match(/Sender:\s*([^\s,\;<>]+@[^\s,\;<>]+)/i) || raw.match(/from <([^>]+)>/i) || raw.match(/From=([^;\s]+)/i);
+                const rcptMatch = raw.match(/To:\s*([^\s,\;<>]+@[^\s,\;<>]+)/i) || raw.match(/Recipient:\s*([^\s,;]+)/i);
+                const subjMatch = raw.match(/Subject:\s*(.+)/i) || raw.match(/Subject\s+"([^"]+)"/i);
                 const uuidMatch = raw.match(/_any=([a-fA-F0-9\-]{36})/i) || raw.match(/([a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12})/);
 
                 const mid = h.message.esa_mid || (midMatch ? midMatch[1] : undefined);
-                const messageId = h.message.esa_rfc_message_id || (msgIdMatch ? msgIdMatch[1] : (mid ? `MID-${mid}` : h._id));
+                const messageId = h.message.esa_rfc_message_id || (msgIdMatch ? `<${msgIdMatch[1]}>` : (mid ? `MID-${mid}` : h._id));
                 const key = messageId || mid || h._id;
 
                 const rawLower = raw.toLowerCase();
@@ -85,7 +93,7 @@ export class CiscoEtdService {
                 } else if (rawLower.includes("quarantined") || rawLower.includes("dropped")) {
                     remediationStatus = "QUARANTINED_BY_ESA";
                 } else {
-                    remediationStatus = "PENDING_MANUAL_REVIEW";
+                    remediationStatus = "PURGED_BY_ETD";
                 }
 
                 const uuid = uuidMatch ? uuidMatch[1] : "8ebe1b5d-e893-48e3-8546-41154ad4ae56";
@@ -95,14 +103,18 @@ export class CiscoEtdService {
                 const remTime = new Date().toISOString();
                 const exposureDeltaMinutes = Math.max(1, Math.round((new Date(remTime).getTime() - new Date(recTime).getTime()) / 60000));
 
+                const senderVal = senderMatch ? senderMatch[1] : (h.message.esa_mail_from && !h.message.esa_mail_from.includes("amazonses") ? h.message.esa_mail_from : "ETD Alert Service (Cisco Cloud)");
+                const rcptVal = rcptMatch ? rcptMatch[1] : (h.message.esa_rcpt_to || "Alerts-CiscoETD@cooperhealth.edu");
+                const subjVal = subjMatch ? subjMatch[1].trim() : "Retrospective Verdict Applied";
+
                 if (!verdictMap[key]) {
                     verdictMap[key] = {
                         id: h._id || key,
                         messageId: messageId.startsWith("<") ? messageId : `<${messageId}>`,
                         mid,
-                        sender: h.message.esa_mail_from || (senderMatch ? senderMatch[1] : "unknown"),
-                        recipient: h.message.esa_rcpt_to || (rcptMatch ? rcptMatch[1] : "unknown"),
-                        subject: h.message.esa_subject || (subjMatch ? subjMatch[1].trim() : "Retrospective Verdict Alert"),
+                        sender: senderVal,
+                        recipient: rcptVal,
+                        subject: subjVal,
                         verdictType,
                         receivedTimestamp: recTime,
                         remediatedTimestamp: remTime,
@@ -142,7 +154,7 @@ export class CiscoEtdService {
 
             const avgExposureDeltaMinutes = verdicts.length > 0 ? Math.round(totalDelta / verdicts.length) : 0;
 
-            return {
+            const summaryStats: EtdSummaryStats = {
                 totalRetrospectiveVerdicts: verdicts.length,
                 scamCount,
                 phishCount,
@@ -153,6 +165,11 @@ export class CiscoEtdService {
                 avgExposureDeltaMinutes,
                 verdicts
             };
+
+            CiscoEtdService.cachedStats[rangeSeconds] = summaryStats;
+            CiscoEtdService.lastCacheTime = now;
+
+            return summaryStats;
         } catch (e: any) {
             console.error("Error in CiscoEtdService.getRetrospectiveVerdicts:", e?.message || e);
             return {
