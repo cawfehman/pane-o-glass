@@ -471,9 +471,10 @@ export const helpData: Record<string, TooltipDetails> = {
             { name: "🟨 High Exposure Delta (>15 Mins)", meaning: "User had over 15 minutes of exposure before clawback occurred. Recommend security advisory.", rgb: "#f59e0b" }
         ],
         shortcuts: [
+            "Click [Export Executive CSV] to generate an audit-ready CSV report of all retrospective threat verdicts.",
             "Click [Trace MID in Graylog] on any incident to launch full internal syslog thread analysis.",
             "Click [Open Cisco CMD Portal] for direct deep-link to the official Cisco ETD incident record.",
-            "Click [Stage User Advisory] to send high-exposure users directly into the Notification Center."
+            "Click [Stage Advisory] on high-exposure incidents to send exposed users directly into the Notification Center."
         ],
         backgroundJobs: [
             "Cisco ETD Service: Outbound polling to Cisco CMD/ETD API & internal Graylog retrospective stream parsing.",
