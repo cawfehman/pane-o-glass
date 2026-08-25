@@ -236,12 +236,12 @@ export class OgGraylogClient {
     }
 
     /**
-     * Fetches 100% granular WRS score aggregations supporting BOTH new Float indices and historical String indices:
-     * 1. Clean / Trusted (Score >= 5.0)
-     * 2. Neutral / Established (Score 3.0 - 4.9)
-     * 3. Uncategorized (Score 0.0 - 2.9)
-     * 4. Suspect / Low Reputation (Score -0.1 to -4.9)
-     * 5. Malicious / Critical Threat (Score <= -5.0)
+     * Fetches 100% official Cisco WRS score aggregations across 5 non-overlapping tiers:
+     * 1. Clean / Established (Score +3.0 to +10.0) -> Emerald Green (#10b981)
+     * 2. Neutral / Uncategorized (Score 0.0 to +2.9) -> Blue (#3b82f6)
+     * 3. Low Suspect (Score -0.1 to -2.9) -> Amber (#f59e0b)
+     * 4. Risky / Threat (Score -3.0 to -5.9) -> Orange (#f97316)
+     * 5. Malicious / Critical Block (Score -6.0 to -10.0) -> Deep Red (#ef4444)
      */
     async get100PercentFullDatasetAggregations(rangeSeconds: number = 86400): Promise<{ fullUrlCategories: GraylogFullCategoryStats[], fullAmpCategories: GraylogFullCategoryStats[] }> {
         const fetchCount = async (query: string): Promise<number> => {
@@ -264,18 +264,17 @@ export class OgGraylogClient {
             }
         };
 
-        // Dual Float + Historical String Compatible Queries
-        const cleanFilter = 'esa_url_rep_score:[5.0 TO 10.0] OR esa_url_rep_score:/[5-9]\\..*/ OR esa_url_rep_score:"10.0"';
-        const neuFilter = 'esa_url_rep_score:[3.0 TO 4.9] OR esa_url_rep_score:/[3-4]\\..*/';
-        const uncatFilter = 'esa_url_rep_score:[0.0 TO 2.9] OR esa_url_rep_score:/[0-2]\\..*/';
-        const susFilter = 'esa_url_rep_score:[-4.9 TO -0.1] OR esa_url_rep_score:/-[0-4]\\..*/';
-        const malFilter = 'esa_url_rep_score:[-10.0 TO -5.0] OR esa_url_rep_score:/-[5-9]\\..*/ OR esa_url_rep_score:"-10.0"';
+        const cleanFilter = 'esa_url_rep_score:[3.0 TO 10.0] OR esa_url_rep_score:/[3-9]\\..*/ OR esa_url_rep_score:"10.0"';
+        const neuFilter = 'esa_url_rep_score:[0.0 TO 2.9] OR esa_url_rep_score:/[0-2]\\..*/';
+        const lowSuspectFilter = 'esa_url_rep_score:[-2.9 TO -0.1] OR esa_url_rep_score:/-[0-2]\\..*/';
+        const riskyFilter = 'esa_url_rep_score:[-5.9 TO -3.0] OR esa_url_rep_score:/-[3-5]\\..*/';
+        const malFilter = 'esa_url_rep_score:[-10.0 TO -6.0] OR esa_url_rep_score:/-[6-9]\\..*/ OR esa_url_rep_score:"-10.0"';
 
         const [
             urlCleanCount,
             urlNeuCount,
-            urlUncatCount,
-            urlSuspectCount,
+            urlLowSuspectCount,
+            urlRiskyCount,
             urlMaliciousCount,
             ampSkippedCount,
             ampUnknownCount,
@@ -284,8 +283,8 @@ export class OgGraylogClient {
         ] = await Promise.all([
             fetchCount(cleanFilter),
             fetchCount(neuFilter),
-            fetchCount(uncatFilter),
-            fetchCount(susFilter),
+            fetchCount(lowSuspectFilter),
+            fetchCount(riskyFilter),
             fetchCount(malFilter),
             fetchCount('(esa_amp_file_verdict:SKIPPED) OR message:"AMP file reputation verdict : SKIPPED"'),
             fetchCount('(esa_amp_file_verdict:UNKNOWN) OR message:"AMP file reputation verdict : UNKNOWN" OR message:"FILE UNKNOWN"'),
@@ -293,14 +292,14 @@ export class OgGraylogClient {
             fetchCount('(esa_amp_file_verdict:MALICIOUS) OR message:"AMP file reputation verdict : MALICIOUS"')
         ]);
 
-        const totalUrl = Math.max(1, urlCleanCount + urlNeuCount + urlUncatCount + urlSuspectCount + urlMaliciousCount);
+        const totalUrl = Math.max(1, urlCleanCount + urlNeuCount + urlLowSuspectCount + urlRiskyCount + urlMaliciousCount);
 
         const fullUrlCategories: GraylogFullCategoryStats[] = [
-            { name: "Clean / Trusted (Score >= 5.0)", count: urlCleanCount, percentage: `${((urlCleanCount / totalUrl) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: cleanFilter },
-            { name: "Neutral / Established (Score 3.0 - 4.9)", count: urlNeuCount, percentage: `${((urlNeuCount / totalUrl) * 100).toFixed(1)}%`, color: "#3b82f6", filterQuery: neuFilter },
-            { name: "Uncategorized / Standard (Score 0.0 - 2.9)", count: urlUncatCount, percentage: `${((urlUncatCount / totalUrl) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: uncatFilter },
-            { name: "Suspect / Low Reputation (Score -0.1 to -4.9)", count: urlSuspectCount, percentage: `${((urlSuspectCount / totalUrl) * 100).toFixed(1)}%`, color: "#f97316", filterQuery: susFilter },
-            { name: "Malicious / Critical Threat (Score <= -5.0)", count: urlMaliciousCount, percentage: `${((urlMaliciousCount / totalUrl) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: malFilter }
+            { name: "Clean / Established (Score +3.0 to +10.0)", count: urlCleanCount, percentage: `${((urlCleanCount / totalUrl) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: cleanFilter },
+            { name: "Neutral / Uncategorized (Score 0.0 to +2.9)", count: urlNeuCount, percentage: `${((urlNeuCount / totalUrl) * 100).toFixed(1)}%`, color: "#3b82f6", filterQuery: neuFilter },
+            { name: "Low Suspect (Score -0.1 to -2.9)", count: urlLowSuspectCount, percentage: `${((urlLowSuspectCount / totalUrl) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: lowSuspectFilter },
+            { name: "Risky / Policy Trigger (Score -3.0 to -5.9)", count: urlRiskyCount, percentage: `${((urlRiskyCount / totalUrl) * 100).toFixed(1)}%`, color: "#f97316", filterQuery: riskyFilter },
+            { name: "Malicious / Critical Block (Score -6.0 to -10.0)", count: urlMaliciousCount, percentage: `${((urlMaliciousCount / totalUrl) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: malFilter }
         ];
 
         const totalAmp = Math.max(1, ampSkippedCount + ampUnknownCount + ampCleanCount + ampMaliciousCount);

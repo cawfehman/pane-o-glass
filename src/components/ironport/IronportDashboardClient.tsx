@@ -305,11 +305,11 @@ export default function IronportDashboardClient() {
             filter: c.filterQuery
         }))
         : [
-            { name: "Clean / Trusted (Score >= 5.0)", value: 85828, percent: "23.3%", color: "#10b981", filter: 'esa_url_rep_score:[5.0 TO 10.0] OR esa_url_rep_score:/[5-9]\\..*/ OR esa_url_rep_score:"10.0"' },
-            { name: "Neutral / Established (Score 3.0 - 4.9)", value: 184000, percent: "49.9%", color: "#3b82f6", filter: 'esa_url_rep_score:[3.0 TO 4.9] OR esa_url_rep_score:/[3-4]\\..*/' },
-            { name: "Uncategorized / Standard (Score 0.0 - 2.9)", value: 84122, percent: "22.8%", color: "#f59e0b", filter: 'esa_url_rep_score:[0.0 TO 2.9] OR esa_url_rep_score:/[0-2]\\..*/' },
-            { name: "Suspect / Low Reputation (Score -0.1 to -4.9)", value: 10488, percent: "2.8%", color: "#f97316", filter: 'esa_url_rep_score:[-4.9 TO -0.1] OR esa_url_rep_score:/-[0-4]\\..*/' },
-            { name: "Malicious / Critical Threat (Score <= -5.0)", value: 4312, percent: "1.2%", color: "#ef4444", filter: 'esa_url_rep_score:[-10.0 TO -5.0] OR esa_url_rep_score:/-[5-9]\\..*/ OR esa_url_rep_score:"-10.0"' }
+            { name: "Clean / Established (Score +3.0 to +10.0)", value: 345092, percent: "71.9%", color: "#10b981", filter: 'esa_url_rep_score:[3.0 TO 10.0] OR esa_url_rep_score:/[3-9]\\..*/ OR esa_url_rep_score:"10.0"' },
+            { name: "Neutral / Uncategorized (Score 0.0 to +2.9)", value: 117892, percent: "24.6%", color: "#3b82f6", filter: 'esa_url_rep_score:[0.0 TO 2.9] OR esa_url_rep_score:/[0-2]\\..*/' },
+            { name: "Low Suspect (Score -0.1 to -2.9)", value: 7818, percent: "1.6%", color: "#f59e0b", filter: 'esa_url_rep_score:[-2.9 TO -0.1] OR esa_url_rep_score:/-[0-2]\\..*/' },
+            { name: "Risky / Policy Trigger (Score -3.0 to -5.9)", value: 4745, percent: "1.0%", color: "#f97316", filter: 'esa_url_rep_score:[-5.9 TO -3.0] OR esa_url_rep_score:/-[3-5]\\..*/' },
+            { name: "Malicious / Critical Block (Score -6.0 to -10.0)", value: 4479, percent: "0.9%", color: "#ef4444", filter: 'esa_url_rep_score:[-10.0 TO -6.0] OR esa_url_rep_score:/-[6-9]\\..*/ OR esa_url_rep_score:"-10.0"' }
         ];
 
     // 100% Full-Dataset Donut Graphic Data for AMP File Reputation Scans across all events
