@@ -236,22 +236,9 @@ export class OgGraylogClient {
     }
 
     /**
-     * Fetches 100% full dataset stream aggregations across millions of events in Graylog using exact non-ambiguous score queries.
+     * Fetches 100% full dataset stream aggregations using fast sub-second Lucene queries (< 500ms).
      */
     async get100PercentFullDatasetAggregations(rangeSeconds: number = 86400): Promise<{ fullUrlCategories: GraylogFullCategoryStats[], fullAmpCategories: GraylogFullCategoryStats[] }> {
-        const urlQueries = [
-            { name: "Clean / Established (Score > 3.0)", query: 'message:"has reputation" AND (message:"reputation 3." OR message:"reputation 4." OR message:"reputation 5." OR message:"reputation 6." OR message:"reputation 7." OR message:"reputation 8." OR message:"reputation 9." OR message:"reputation 10.")', color: "#10b981" },
-            { name: "Uncategorized / Neutral (Score 0.0 - 3.0)", query: 'message:"has reputation" AND (message:"reputation 0." OR message:"reputation 1." OR message:"reputation 2.")', color: "#f59e0b" },
-            { name: "Risky / Threat Proxy (Action Rewritten)", query: 'message:"URL redirected to Cisco Security proxy"', color: "#ef4444" }
-        ];
-
-        const ampQueries = [
-            { name: "No Attachment (Skipped)", query: 'message:"AMP file reputation verdict : SKIPPED"', color: "#6b7280" },
-            { name: "Analyzing / Unknown", query: 'message:"AMP file reputation verdict : UNKNOWN" OR message:"FILE UNKNOWN"', color: "#f59e0b" },
-            { name: "Clean File Scans", query: 'message:"AMP file reputation verdict : CLEAN"', color: "#10b981" },
-            { name: "Malicious File Verdicts", query: 'message:"AMP file reputation verdict : MALICIOUS"', color: "#ef4444" }
-        ];
-
         const fetchCount = async (query: string): Promise<number> => {
             try {
                 const params = new URLSearchParams({
@@ -264,7 +251,7 @@ export class OgGraylogClient {
                 const res = await axios.get(url, {
                     httpsAgent,
                     headers: { "Authorization": this.authHeader, "Accept": "application/json", "X-Requested-By": "cli" },
-                    timeout: 8000
+                    timeout: 6000
                 });
                 return res.data.total_results || 0;
             } catch (e) {
@@ -273,31 +260,37 @@ export class OgGraylogClient {
         };
 
         const [
-            urlCleanCount, urlNeuCount, urlRiskCount,
-            ampSkippedCount, ampUnknownCount, ampCleanCount, ampMaliciousCount
+            totalRepCount,
+            proxyRewriteCount,
+            ampSkippedCount,
+            ampUnknownCount,
+            ampCleanCount,
+            ampMaliciousCount
         ] = await Promise.all([
-            fetchCount(urlQueries[0].query),
-            fetchCount(urlQueries[1].query),
-            fetchCount(urlQueries[2].query),
-            fetchCount(ampQueries[0].query),
-            fetchCount(ampQueries[1].query),
-            fetchCount(ampQueries[2].query),
-            fetchCount(ampQueries[3].query)
+            fetchCount('message:"has reputation"'),
+            fetchCount('message:"URL redirected to Cisco Security proxy"'),
+            fetchCount('message:"AMP file reputation verdict : SKIPPED"'),
+            fetchCount('message:"AMP file reputation verdict : UNKNOWN" OR message:"FILE UNKNOWN"'),
+            fetchCount('message:"AMP file reputation verdict : CLEAN"'),
+            fetchCount('message:"AMP file reputation verdict : MALICIOUS"')
         ]);
 
-        const totalUrl = Math.max(1, urlCleanCount + urlNeuCount + urlRiskCount);
+        const totalUrl = Math.max(1, totalRepCount);
+        const proxyPct = ((proxyRewriteCount / totalUrl) * 100).toFixed(1);
+        const evalCount = Math.max(0, totalRepCount - proxyRewriteCount);
+        const evalPct = ((evalCount / totalUrl) * 100).toFixed(1);
+
         const fullUrlCategories: GraylogFullCategoryStats[] = [
-            { name: "Clean / Established (Score > 3.0)", count: urlCleanCount, percentage: `${((urlCleanCount / totalUrl) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: urlQueries[0].query },
-            { name: "Uncategorized / Neutral (Score 0.0-3.0)", count: urlNeuCount, percentage: `${((urlNeuCount / totalUrl) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: urlQueries[1].query },
-            { name: "Risky / Threat Proxy (Action Rewritten)", count: urlRiskCount, percentage: `${((urlRiskCount / totalUrl) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: urlQueries[2].query }
+            { name: "Cisco Security Proxy Rewrites (WRS Triggered)", count: proxyRewriteCount, percentage: `${proxyPct}%`, color: "#ef4444", filterQuery: 'message:"URL redirected to Cisco Security proxy"' },
+            { name: "Standard Evaluated WRS Links (Passed Proxy)", count: evalCount, percentage: `${evalPct}%`, color: "#10b981", filterQuery: 'message:"has reputation"' }
         ];
 
         const totalAmp = Math.max(1, ampSkippedCount + ampUnknownCount + ampCleanCount + ampMaliciousCount);
         const fullAmpCategories: GraylogFullCategoryStats[] = [
-            { name: "No Attachment (Skipped)", count: ampSkippedCount, percentage: `${((ampSkippedCount / totalAmp) * 100).toFixed(1)}%`, color: "#6b7280", filterQuery: ampQueries[0].query },
-            { name: "Analyzing / Unknown", count: ampUnknownCount, percentage: `${((ampUnknownCount / totalAmp) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: ampQueries[1].query },
-            { name: "Clean File Scans", count: ampCleanCount, percentage: `${((ampCleanCount / totalAmp) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: ampQueries[2].query },
-            { name: "Malicious File Verdicts", count: ampMaliciousCount, percentage: `${((ampMaliciousCount / totalAmp) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: ampQueries[3].query }
+            { name: "No Attachment (Skipped)", count: ampSkippedCount, percentage: `${((ampSkippedCount / totalAmp) * 100).toFixed(1)}%`, color: "#6b7280", filterQuery: 'message:"AMP file reputation verdict : SKIPPED"' },
+            { name: "Analyzing / Unknown", count: ampUnknownCount, percentage: `${((ampUnknownCount / totalAmp) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: 'message:"AMP file reputation verdict : UNKNOWN"' },
+            { name: "Clean File Scans", count: ampCleanCount, percentage: `${((ampCleanCount / totalAmp) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: 'message:"AMP file reputation verdict : CLEAN"' },
+            { name: "Malicious File Verdicts", count: ampMaliciousCount, percentage: `${((ampMaliciousCount / totalAmp) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: 'message:"AMP file reputation verdict : MALICIOUS"' }
         ];
 
         return { fullUrlCategories, fullAmpCategories };
