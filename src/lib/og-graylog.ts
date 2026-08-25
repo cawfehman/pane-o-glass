@@ -51,6 +51,9 @@ export interface GraylogFullCategoryStats {
 export interface GraylogMessageThreatAggregation {
     mid: string;
     messageId?: string;
+    subject?: string;
+    sender?: string;
+    recipient?: string;
     totalUrls: number;
     worstScore: number;
     riskyUrlCount: number;
@@ -254,8 +257,8 @@ export class OgGraylogClient {
     async getTopMessageThreatAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogMessageThreatAggregation[]> {
         try {
             const [riskyHits, generalHits] = await Promise.all([
-                this.searchMessages('esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL")', 100, rangeSeconds).catch(() => []),
-                this.searchMessages('_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")', 100, rangeSeconds).catch(() => [])
+                this.searchMessages('esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL")', 120, rangeSeconds).catch(() => []),
+                this.searchMessages('_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")', 120, rangeSeconds).catch(() => [])
             ]);
 
             const allHits = [...riskyHits, ...generalHits];
@@ -266,6 +269,10 @@ export class OgGraylogClient {
                 const midMatch = raw.match(/MID (\d+)/);
                 const urlMatch = raw.match(/URL (https?:\/\/\S+)/i);
                 const repMatch = raw.match(/reputation ([\-\d\.]+)/i);
+
+                const fromMatch = raw.match(/From:\s*<([^>]+)>/i) || raw.match(/From:\s*(\S+)/i);
+                const toMatch = raw.match(/To:\s*<([^>]+)>/i) || raw.match(/To:\s*(\S+)/i);
+                const subjMatch = raw.match(/Subject\s*['"]([^'"]+)['"]/i) || raw.match(/Subject\s*:?\s*(.+)/i);
 
                 const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
                 if (!mid) return;
@@ -283,6 +290,9 @@ export class OgGraylogClient {
                     midMap[mid] = {
                         mid,
                         messageId: h.message.esa_rfc_message_id || "",
+                        subject: h.message.esa_subject || (subjMatch ? subjMatch[1].trim() : undefined),
+                        sender: h.message.esa_mail_from || (fromMatch ? fromMatch[1] : undefined),
+                        recipient: h.message.esa_rcpt_to || (toMatch ? toMatch[1] : undefined),
                         totalUrls: 0,
                         worstScore: score,
                         riskyUrlCount: 0,
@@ -291,6 +301,16 @@ export class OgGraylogClient {
                         timestamp: h.message.timestamp,
                         source: h.message.source ? h.message.source.split('.')[0] : "esa"
                     };
+                }
+
+                if (!midMap[mid].subject && (h.message.esa_subject || subjMatch)) {
+                    midMap[mid].subject = h.message.esa_subject || (subjMatch ? subjMatch[1].trim() : undefined);
+                }
+                if (!midMap[mid].sender && (h.message.esa_mail_from || fromMatch)) {
+                    midMap[mid].sender = h.message.esa_mail_from || (fromMatch ? fromMatch[1] : undefined);
+                }
+                if (!midMap[mid].recipient && (h.message.esa_rcpt_to || toMatch)) {
+                    midMap[mid].recipient = h.message.esa_rcpt_to || (toMatch ? toMatch[1] : undefined);
                 }
 
                 midMap[mid].totalUrls += 1;

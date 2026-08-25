@@ -586,18 +586,20 @@ export default function IronportDashboardClient() {
                                 <thead>
                                     <tr className="border-b border-[var(--border-color)] text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
                                         <th className="py-2 px-3">Message MID</th>
-                                        <th className="py-2 px-3">Composite Threat Level</th>
-                                        <th className="py-2 px-3">Worst URL Score</th>
-                                        <th className="py-2 px-3">Risky / Total URLs</th>
+                                        <th className="py-2 px-3">Subject Line</th>
+                                        <th className="py-2 px-3">Sender & Recipient Envelope</th>
+                                        <th className="py-2 px-3">Composite Threat</th>
+                                        <th className="py-2 px-3">Worst Score</th>
+                                        <th className="py-2 px-3">Risky URLs</th>
                                         <th className="py-2 px-3">Primary Threat URL Preview</th>
                                         <th className="py-2 px-3 text-right">Correlation Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[var(--border-color)] text-xs">
                                     {(stats.topMessageThreats && stats.topMessageThreats.length > 0 ? stats.topMessageThreats : [
-                                        { mid: "286944146", threatLevel: "CRITICAL", worstScore: -7.5, riskyUrlCount: 3, totalUrls: 14, primaryThreatUrl: "http://malicious-phish-domain.com/login", timestamp: new Date().toISOString(), source: "esa01" },
-                                        { mid: "286944138", threatLevel: "RISKY", worstScore: -3.8, riskyUrlCount: 1, totalUrls: 22, primaryThreatUrl: "https://suspicious-checkout-link.net/pay", timestamp: new Date().toISOString(), source: "esa02" },
-                                        { mid: "286944151", threatLevel: "LOW_SUSPECT", worstScore: -1.2, riskyUrlCount: 1, totalUrls: 8, primaryThreatUrl: "https://unverified-tracking-pixel.org/img", timestamp: new Date().toISOString(), source: "esa01" }
+                                        { mid: "286944146", subject: "Urgent: Verification of Wire Transfer Request", sender: "security-alert@external-secure.com", recipient: "finance-dept@cooperhealth.edu", threatLevel: "CRITICAL", worstScore: -7.5, riskyUrlCount: 3, totalUrls: 14, primaryThreatUrl: "http://malicious-phish-domain.com/login", timestamp: new Date().toISOString(), source: "esa01" },
+                                        { mid: "286944138", subject: "Important Document Pending Review", sender: "support@document-review-portal.net", recipient: "executive-assistant@cooperhealth.edu", threatLevel: "RISKY", worstScore: -3.8, riskyUrlCount: 1, totalUrls: 22, primaryThreatUrl: "https://suspicious-checkout-link.net/pay", timestamp: new Date().toISOString(), source: "esa02" },
+                                        { mid: "286944151", subject: "Marketing Newsletter - Weekly Summary", sender: "newsletters@marketing-digest.org", recipient: "staff-all@cooperhealth.edu", threatLevel: "LOW_SUSPECT", worstScore: -1.2, riskyUrlCount: 1, totalUrls: 8, primaryThreatUrl: "https://unverified-tracking-pixel.org/img", timestamp: new Date().toISOString(), source: "esa01" }
                                     ] as any[]).map((m, idx) => {
                                         let badgeStyle = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
                                         let label = "CLEAN";
@@ -618,7 +620,7 @@ export default function IronportDashboardClient() {
 
                                         return (
                                             <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
-                                                <td className="py-2.5 px-3 font-mono font-bold text-blue-400">
+                                                <td className="py-2.5 px-3 font-mono font-bold text-blue-400 shrink-0">
                                                     <button 
                                                         onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
                                                         className="hover:underline text-left"
@@ -626,6 +628,14 @@ export default function IronportDashboardClient() {
                                                     >
                                                         MID {m.mid}
                                                     </button>
+                                                </td>
+                                                <td className="py-2.5 px-3 font-semibold text-[var(--text-primary)] max-w-[200px] truncate" title={m.subject || "No Subject Header"}>
+                                                    {m.subject || <span className="text-[var(--text-muted)] italic font-normal">No Subject Header</span>}
+                                                </td>
+                                                <td className="py-2.5 px-3 font-mono text-[11px] max-w-[220px] truncate">
+                                                    <span className="text-cyan-400" title={`Sender: ${m.sender || 'unknown'}`}>{m.sender || 'unknown'}</span>
+                                                    <span className="text-[var(--text-muted)] mx-1">➔</span>
+                                                    <span className="text-indigo-300" title={`Recipient: ${m.recipient || 'unknown'}`}>{m.recipient || 'unknown'}</span>
                                                 </td>
                                                 <td className="py-2.5 px-3">
                                                     <span className={`text-[11px] px-2 py-0.5 rounded border font-mono ${badgeStyle}`}>
