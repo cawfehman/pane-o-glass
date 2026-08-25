@@ -37,7 +37,7 @@ export class CiscoEtdService {
     private ogClient: OgGraylogClient;
     private static cachedStats: Record<number, EtdSummaryStats> = {};
     private static lastCacheTime: number = 0;
-    private static cacheIntervalMs: number = 180000; // 3 minutes
+    private static cacheIntervalMs: number = 10000; // 10 seconds
 
     constructor() {
         this.ogClient = new OgGraylogClient();
@@ -56,7 +56,7 @@ export class CiscoEtdService {
     async getRetrospectiveVerdicts(rangeSeconds: number = 86400): Promise<EtdSummaryStats> {
         const now = Date.now();
 
-        // Check if cached result exists and is fresh (under 3 minutes old)
+        // Check if cached result exists and is fresh (under 10 seconds old)
         if (CiscoEtdService.cachedStats[rangeSeconds] && (now - CiscoEtdService.lastCacheTime < CiscoEtdService.cacheIntervalMs)) {
             return CiscoEtdService.cachedStats[rangeSeconds];
         }
@@ -156,16 +156,14 @@ export class CiscoEtdService {
                 const alertTimeMs = new Date(v.remediatedTimestamp).getTime();
                 const threatArrivalMs = (v.receivedTimestamp && !isNaN(new Date(v.receivedTimestamp).getTime())) ? new Date(v.receivedTimestamp).getTime() : alertTimeMs;
 
+                const fromIso = new Date(threatArrivalMs - 180000).toISOString();
+                const toIso = new Date(threatArrivalMs + 60000).toISOString();
+
                 try {
-                    const searchHits = await this.ogClient.searchMessages('message:"Subject \\"" AND NOT message:"[Secure Email Threat Defense]"', 200, Math.ceil((Date.now() - (threatArrivalMs - 300000)) / 1000));
-                    
-                    const filteredHits = searchHits.filter((sh: any) => {
-                        const st = new Date(sh.message.timestamp).getTime();
-                        return st >= (threatArrivalMs - 180000) && st <= (threatArrivalMs + 60000);
-                    });
+                    const searchHits = await this.ogClient.searchAbsoluteMessages('message:"Subject \\"" AND NOT message:"[Secure Email Threat Defense]"', fromIso, toIso, 150);
 
                     const candidatesMap: Record<string, { mid: string; subject: string; timestamp: string }> = {};
-                    filteredHits.forEach((sh: any) => {
+                    searchHits.forEach((sh: any) => {
                         const rawMsg = sh.message.message || "";
                         const midMatch = rawMsg.match(/MID (\d+)/);
                         const subjMatch = rawMsg.match(/Subject\s+"([^"]+)"/i);
