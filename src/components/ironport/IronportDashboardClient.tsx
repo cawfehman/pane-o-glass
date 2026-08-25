@@ -28,6 +28,11 @@ export default function IronportDashboardClient() {
     // Dedicated ETD Message-ID input state
     const [etdInput, setEtdInput] = useState("");
 
+    // Threat sorting, status filtering, and executive report states
+    const [threatSortMode, setThreatSortMode] = useState<"priority" | "worst" | "recent">("priority");
+    const [threatStatusFilter, setThreatStatusFilter] = useState<"all" | "active_only">("all");
+    const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+
     const getVolumeQueryForTab = (tab: "inbound" | "outbound" | "investigate") => {
         return tab === "outbound" ? 'message:"outbound table"' : 'message:"inbound table"';
     };
@@ -613,26 +618,71 @@ export default function IronportDashboardClient() {
 
                     {/* PER-MESSAGE COMPOSITE URL THREAT SCORE WIDGET */}
                     <div className="glass-card bg-[var(--bg-surface)] p-5 border border-[var(--border-color)] rounded-xl flex flex-col gap-4">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-[var(--border-color)] pb-3">
+                        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3 border-b border-[var(--border-color)] pb-3">
                             <div className="flex items-center gap-2.5">
                                 <div className="p-2 rounded-lg bg-red-500/10 text-red-400">
                                     <ShieldAlert className="w-5 h-5" />
                                 </div>
                                 <div>
                                     <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-                                        Top High-Risk Messages (Composite URL Threat Score)
-                                        <span className="text-[10px] px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded font-mono font-semibold">Per-Message Risk Engine</span>
+                                        Top High-Risk Messages (Priority & Triage Engine)
+                                        <span className="text-[10px] px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded font-mono font-semibold">Decayed Risk Index</span>
                                     </h4>
-                                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">Evaluates all URLs within an email body to isolate messages carrying high-risk embedded links.</p>
+                                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">Ranks messages using Severity × Recency weighting to keep fresh threats actionable while tracking historic incidents.</p>
                                 </div>
                             </div>
-                            <button 
-                                onClick={() => handleSearch('_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")')}
-                                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0"
-                            >
-                                <span>Drill Into All Evaluated Messages</span>
-                                <ExternalLink className="w-3.5 h-3.5" />
-                            </button>
+
+                            <div className="flex items-center gap-2.5 flex-wrap w-full xl:w-auto justify-between xl:justify-end">
+                                {/* Status Filter Toggle */}
+                                <div className="flex items-center bg-[var(--bg-default)] border border-[var(--border-color)] rounded-lg p-1">
+                                    <button 
+                                        onClick={() => setThreatStatusFilter("all")}
+                                        className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${threatStatusFilter === "all" ? "bg-[var(--accent-primary)] text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+                                    >
+                                        All Incidents
+                                    </button>
+                                    <button 
+                                        onClick={() => setThreatStatusFilter("active_only")}
+                                        className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${threatStatusFilter === "active_only" ? "bg-emerald-500 text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+                                        title="Hide messages purged by ETD or quarantined by ESA"
+                                    >
+                                        Active Inboxes Only
+                                    </button>
+                                </div>
+
+                                {/* Sorting Controls */}
+                                <div className="flex items-center bg-[var(--bg-default)] border border-[var(--border-color)] rounded-lg p-1">
+                                    <button 
+                                        onClick={() => setThreatSortMode("priority")}
+                                        className={`px-2 py-1 text-xs font-bold rounded transition-colors flex items-center gap-1 ${threatSortMode === "priority" ? "bg-orange-500 text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+                                        title="Sort by Composite Priority Index (Severity x Recency)"
+                                    >
+                                        🔥 Priority Index
+                                    </button>
+                                    <button 
+                                        onClick={() => setThreatSortMode("worst")}
+                                        className={`px-2 py-1 text-xs font-bold rounded transition-colors flex items-center gap-1 ${threatSortMode === "worst" ? "bg-red-500 text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+                                        title="Sort strictly by absolute worst WRS reputation score"
+                                    >
+                                        🔴 Worst Score
+                                    </button>
+                                    <button 
+                                        onClick={() => setThreatSortMode("recent")}
+                                        className={`px-2 py-1 text-xs font-bold rounded transition-colors flex items-center gap-1 ${threatSortMode === "recent" ? "bg-blue-500 text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+                                        title="Sort strictly by newest timestamp"
+                                    >
+                                        ⚡ Most Recent
+                                    </button>
+                                </div>
+
+                                <button 
+                                    onClick={() => setIsReportModalOpen(true)}
+                                    className="px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
+                                >
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span>Weekly Executive Report</span>
+                                </button>
+                            </div>
                         </div>
 
                         <div className="overflow-x-auto">
@@ -642,95 +692,99 @@ export default function IronportDashboardClient() {
                                         <th className="py-2 px-3">Message MID</th>
                                         <th className="py-2 px-3">Subject Line</th>
                                         <th className="py-2 px-3">Sender & Recipient Envelope</th>
-                                        <th className="py-2 px-3">Composite Threat</th>
-                                        <th className="py-2 px-3">Worst Score</th>
-                                        <th className="py-2 px-3">Risky URLs</th>
+                                        <th className="py-2 px-3">Remediation Status</th>
+                                        <th className="py-2 px-3">WRS Score</th>
+                                        <th className="py-2 px-3">Priority Index</th>
                                         <th className="py-2 px-3">Primary Threat URL Preview</th>
                                         <th className="py-2 px-3 text-right">Correlation Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[var(--border-color)] text-xs">
-                                    {(stats.topMessageThreats && stats.topMessageThreats.length > 0 ? stats.topMessageThreats : [
-                                        { mid: "286944146", subject: "Urgent: Verification of Wire Transfer Request", sender: "security-alert@external-secure.com", recipient: "finance-dept@cooperhealth.edu", threatLevel: "CRITICAL", worstScore: -7.5, riskyUrlCount: 3, totalUrls: 14, primaryThreatUrl: "http://malicious-phish-domain.com/login", timestamp: new Date().toISOString(), source: "esa01" },
-                                        { mid: "286944138", subject: "Important Document Pending Review", sender: "support@document-review-portal.net", recipient: "executive-assistant@cooperhealth.edu", threatLevel: "RISKY", worstScore: -3.8, riskyUrlCount: 1, totalUrls: 22, primaryThreatUrl: "https://suspicious-checkout-link.net/pay", timestamp: new Date().toISOString(), source: "esa02" },
-                                        { mid: "286944151", subject: "Marketing Newsletter - Weekly Summary", sender: "newsletters@marketing-digest.org", recipient: "staff-all@cooperhealth.edu", threatLevel: "LOW_SUSPECT", worstScore: -1.2, riskyUrlCount: 1, totalUrls: 8, primaryThreatUrl: "https://unverified-tracking-pixel.org/img", timestamp: new Date().toISOString(), source: "esa01" }
-                                    ] as any[]).map((m, idx) => {
-                                        let badgeStyle = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
-                                        let label = "CLEAN";
+                                    {(() => {
+                                        let rawList = (stats.topMessageThreats && stats.topMessageThreats.length > 0 ? stats.topMessageThreats : [
+                                            { mid: "286944146", subject: "Urgent: Verification of Wire Transfer Request", sender: "security-alert@external-secure.com", recipient: "finance-dept@cooperhealth.edu", threatLevel: "CRITICAL", worstScore: -7.5, priorityScore: 7.5, remediationStatus: "DELIVERED_TO_INBOX", riskyUrlCount: 3, totalUrls: 14, primaryThreatUrl: "http://malicious-phish-domain.com/login", timestamp: new Date().toISOString(), source: "esa01" },
+                                            { mid: "286944138", subject: "Important Document Pending Review", sender: "support@document-review-portal.net", recipient: "executive-assistant@cooperhealth.edu", threatLevel: "RISKY", worstScore: -3.8, priorityScore: 3.8, remediationStatus: "PURGED_BY_ETD", riskyUrlCount: 1, totalUrls: 22, primaryThreatUrl: "https://suspicious-checkout-link.net/pay", timestamp: new Date().toISOString(), source: "esa02" },
+                                            { mid: "286944151", subject: "Marketing Newsletter - Weekly Summary", sender: "newsletters@marketing-digest.org", recipient: "staff-all@cooperhealth.edu", threatLevel: "LOW_SUSPECT", worstScore: -1.2, priorityScore: 1.2, remediationStatus: "QUARANTINED_BY_ESA", riskyUrlCount: 1, totalUrls: 8, primaryThreatUrl: "https://unverified-tracking-pixel.org/img", timestamp: new Date().toISOString(), source: "esa01" }
+                                        ] as any[]);
 
-                                        if (m.threatLevel === "CRITICAL") {
-                                            badgeStyle = "bg-red-500/15 text-red-400 border-red-500/40 font-bold animate-pulse";
-                                            label = "CRITICAL THREAT";
-                                        } else if (m.threatLevel === "RISKY") {
-                                            badgeStyle = "bg-orange-500/15 text-orange-400 border-orange-500/40 font-bold";
-                                            label = "POLICY RISKY";
-                                        } else if (m.threatLevel === "LOW_SUSPECT") {
-                                            badgeStyle = "bg-amber-500/15 text-amber-400 border-amber-500/30 font-semibold";
-                                            label = "LOW SUSPECT";
-                                        } else if (m.threatLevel === "NEUTRAL") {
-                                            badgeStyle = "bg-blue-500/10 text-blue-400 border-blue-500/30";
-                                            label = "NEUTRAL";
+                                        if (threatStatusFilter === "active_only") {
+                                            rawList = rawList.filter(m => m.remediationStatus === "DELIVERED_TO_INBOX" || !m.remediationStatus);
                                         }
 
-                                        return (
-                                            <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
-                                                <td className="py-2.5 px-3 font-mono font-bold text-blue-400 shrink-0">
-                                                    <button 
-                                                        onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
-                                                        className="hover:underline text-left"
-                                                        title={`Click to trace full message thread for MID ${m.mid}`}
-                                                    >
-                                                        MID {m.mid}
-                                                    </button>
-                                                </td>
-                                                <td className="py-2 px-3 font-semibold text-[var(--text-primary)] max-w-[220px] truncate" title={m.subject ? `Subject: ${m.subject}` : "No Subject Header"}>
-                                                    {m.subject || <span className="text-[var(--text-muted)] italic font-normal">No Subject Header</span>}
-                                                </td>
-                                                <td className="py-2 px-3 font-mono text-xs max-w-[240px]">
-                                                    <div 
-                                                        className="flex items-center gap-1.5 truncate text-cyan-400 font-semibold"
-                                                        title={`Full Sender (From): ${m.sender || 'unknown'}`}
-                                                    >
-                                                        <span className="text-[9px] uppercase font-bold text-cyan-400/90 px-1 rounded bg-cyan-500/10 border border-cyan-500/20 shrink-0">FROM</span>
-                                                        <span className="truncate">{m.sender || 'unknown'}</span>
-                                                    </div>
-                                                    <div 
-                                                        className="flex items-center gap-1.5 truncate text-indigo-300 mt-0.5"
-                                                        title={`Full Recipient (To): ${m.recipient || 'unknown'}`}
-                                                    >
-                                                        <span className="text-[9px] uppercase font-bold text-indigo-400/90 px-1 rounded bg-indigo-500/10 border border-indigo-500/20 shrink-0">TO</span>
-                                                        <span className="truncate">{m.recipient || 'unknown'}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="py-2.5 px-3">
-                                                    <span className={`text-[11px] px-2 py-0.5 rounded border font-mono ${badgeStyle}`}>
-                                                        {label}
-                                                    </span>
-                                                </td>
-                                                <td className="py-2.5 px-3 font-mono font-bold">
-                                                    <span className={m.worstScore < 0 ? (m.worstScore <= -5.0 ? "text-red-400" : "text-orange-400") : "text-[var(--text-secondary)]"}>
-                                                        {m.worstScore.toFixed(1)}
-                                                    </span>
-                                                </td>
-                                                <td className="py-2.5 px-3 font-mono text-[var(--text-secondary)]">
-                                                    <span className={m.riskyUrlCount > 0 ? "text-orange-400 font-bold" : ""}>
-                                                        {m.riskyUrlCount}
-                                                    </span> / {m.totalUrls} URLs
-                                                </td>
-                                                <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--text-primary)] max-w-[220px] truncate" title={`Full Target URL: ${m.primaryThreatUrl}`}>
-                                                    {m.primaryThreatUrl}
-                                                </td>
-                                                <td className="py-2.5 px-3 text-right">
-                                                    <button 
-                                                        onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
-                                                        className="px-2.5 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded font-semibold text-[11px] transition-colors"
-                                                    >
-                                                        Trace MID {m.mid}
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
+                                        const sortedList = [...rawList];
+                                        if (threatSortMode === "priority") {
+                                            sortedList.sort((a, b) => (b.priorityScore || Math.abs(b.worstScore)) - (a.priorityScore || Math.abs(a.worstScore)));
+                                        } else if (threatSortMode === "worst") {
+                                            sortedList.sort((a, b) => a.worstScore - b.worstScore);
+                                        } else if (threatSortMode === "recent") {
+                                            sortedList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+                                        }
+
+                                        return sortedList.map((m, idx) => {
+                                            let remBadge = <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono font-bold flex items-center gap-1 w-fit"><Inbox size={10} /> INBOX ACTIVE</span>;
+
+                                            if (m.remediationStatus === "PURGED_BY_ETD") {
+                                                remBadge = <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-mono font-bold flex items-center gap-1 w-fit"><Mail size={10} /> PURGED BY ETD</span>;
+                                            } else if (m.remediationStatus === "QUARANTINED_BY_ESA") {
+                                                remBadge = <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/30 font-mono font-bold flex items-center gap-1 w-fit"><ShieldCheck size={10} /> QUARANTINED</span>;
+                                            }
+
+                                            return (
+                                                <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
+                                                    <td className="py-2.5 px-3 font-mono font-bold text-blue-400 shrink-0">
+                                                        <button 
+                                                            onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
+                                                            className="hover:underline text-left"
+                                                            title={`Click to trace full message thread for MID ${m.mid}`}
+                                                        >
+                                                            MID {m.mid}
+                                                        </button>
+                                                    </td>
+                                                    <td className="py-2 px-3 font-semibold text-[var(--text-primary)] max-w-[220px] truncate" title={m.subject ? `Subject: ${m.subject}` : "No Subject Header"}>
+                                                        {m.subject || <span className="text-[var(--text-muted)] italic font-normal">No Subject Header</span>}
+                                                    </td>
+                                                    <td className="py-2 px-3 font-mono text-xs max-w-[240px]">
+                                                        <div 
+                                                            className="flex items-center gap-1.5 truncate text-cyan-400 font-semibold"
+                                                            title={`Full Sender (From): ${m.sender || 'unknown'}`}
+                                                        >
+                                                            <span className="text-[9px] uppercase font-bold text-cyan-400/90 px-1 rounded bg-cyan-500/10 border border-cyan-500/20 shrink-0">FROM</span>
+                                                            <span className="truncate">{m.sender || 'unknown'}</span>
+                                                        </div>
+                                                        <div 
+                                                            className="flex items-center gap-1.5 truncate text-indigo-300 mt-0.5"
+                                                            title={`Full Recipient (To): ${m.recipient || 'unknown'}`}
+                                                        >
+                                                            <span className="text-[9px] uppercase font-bold text-indigo-400/90 px-1 rounded bg-indigo-500/10 border border-indigo-500/20 shrink-0">TO</span>
+                                                            <span className="truncate">{m.recipient || 'unknown'}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-2.5 px-3">
+                                                        {remBadge}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 font-mono font-bold">
+                                                        <span className={m.worstScore < 0 ? (m.worstScore <= -5.0 ? "text-red-400" : "text-orange-400") : "text-[var(--text-secondary)]"}>
+                                                            {m.worstScore.toFixed(1)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-2.5 px-3 font-mono font-extrabold text-amber-400">
+                                                        {m.priorityScore !== undefined ? m.priorityScore.toFixed(1) : Math.abs(m.worstScore).toFixed(1)}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--text-primary)] max-w-[200px] truncate" title={`Full Target URL: ${m.primaryThreatUrl}`}>
+                                                        {m.primaryThreatUrl}
+                                                    </td>
+                                                    <td className="py-2.5 px-3 text-right">
+                                                        <button 
+                                                            onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
+                                                            className="px-2.5 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded font-semibold text-[11px] transition-colors"
+                                                        >
+                                                            Trace MID {m.mid}
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        });
+                                    })()}
                                 </tbody>
                             </table>
                         </div>
@@ -1747,6 +1801,132 @@ export default function IronportDashboardClient() {
                             <p>Enter a search query or use a quick filter above to investigate raw Graylog logs.</p>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* EXECUTIVE WEEKLY THREAT REPORT MODAL */}
+            {isReportModalOpen && (
+                <div 
+                    className="fixed inset-0 bg-black/85 backdrop-blur-md z-[999] flex items-center justify-center p-4 md:p-8"
+                    onClick={() => setIsReportModalOpen(false)}
+                >
+                    <div 
+                        className="bg-gradient-to-b from-[#1e1e24] to-[#121215] border border-white/15 rounded-2xl w-full max-w-4xl p-6 md:p-8 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.9)] relative animate-[fadeIn_0.2s_ease-out] flex flex-col max-h-[90vh]"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button
+                            onClick={() => setIsReportModalOpen(false)}
+                            className="absolute top-6 right-6 bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-secondary)] p-2 rounded-xl hover:bg-white/10 hover:text-[var(--text-primary)] transition-all"
+                        >
+                            <X size={20} />
+                        </button>
+
+                        <div className="flex items-start gap-4 mb-5 pr-12">
+                            <div className="p-3.5 rounded-2xl bg-purple-500/15 border border-purple-500/30 text-purple-400 shrink-0 shadow-[0_0_20px_rgba(168,85,247,0.25)]">
+                                <FileText size={32} />
+                            </div>
+                            <div>
+                                <h2 className="m-0 text-2xl font-extrabold text-[var(--text-primary)] tracking-tight">
+                                    Weekly Executive Email Threat Summary Report
+                                </h2>
+                                <p className="text-xs font-bold text-[var(--text-secondary)] mt-1 uppercase tracking-wider">
+                                    Cisco IronPort, AMP & ETD Telemetry • Timeframe: {getTimeframeLabel(timeframe)}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto pr-3 custom-scrollbar flex flex-col gap-5">
+                            {/* Summary Metrics Cards */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="p-4 rounded-xl bg-[var(--bg-default)] border border-[var(--border-color)]">
+                                    <p className="text-xs font-bold text-[var(--text-secondary)] uppercase">Total Inbound Mail Evaluated</p>
+                                    <p className="text-2xl font-extrabold text-blue-400 mt-1">{stats?.totalVolume.toLocaleString() || "0"}</p>
+                                    <p className="text-xs text-[var(--text-muted)] mt-1">Across ESA01 & ESA02</p>
+                                </div>
+                                <div className="p-4 rounded-xl bg-[var(--bg-default)] border border-[var(--border-color)]">
+                                    <p className="text-xs font-bold text-[var(--text-secondary)] uppercase">Critical Phish & Malware Verdicts</p>
+                                    <p className="text-2xl font-extrabold text-red-400 mt-1">{stats?.topMessageThreats?.filter(t => t.worstScore <= -5.0).length || "0"}</p>
+                                    <p className="text-xs text-[var(--text-muted)] mt-1">High-Severity Incidents</p>
+                                </div>
+                                <div className="p-4 rounded-xl bg-[var(--bg-default)] border border-[var(--border-color)]">
+                                    <p className="text-xs font-bold text-[var(--text-secondary)] uppercase">ETD & ESA Remediated / Purged</p>
+                                    <p className="text-2xl font-extrabold text-cyan-400 mt-1">{stats?.topMessageThreats?.filter(t => t.remediationStatus && t.remediationStatus !== "DELIVERED_TO_INBOX").length || "0"}</p>
+                                    <p className="text-xs text-[var(--text-muted)] mt-1">Successfully Neutralized</p>
+                                </div>
+                            </div>
+
+                            {/* Detailed Incident List */}
+                            <div>
+                                <h4 className="text-sm font-bold text-[var(--text-primary)] mb-3">Evaluated High-Risk Email Incidents ({getTimeframeLabel(timeframe)})</h4>
+                                <div className="overflow-x-auto border border-[var(--border-color)] rounded-xl bg-[var(--bg-default)]">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="border-b border-[var(--border-color)] text-[11px] font-bold text-[var(--text-muted)] uppercase">
+                                                <th className="p-3">MID</th>
+                                                <th className="p-3">Subject</th>
+                                                <th className="p-3">Sender / Recipient</th>
+                                                <th className="p-3">Status</th>
+                                                <th className="p-3">WRS Score</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-[var(--border-color)] text-xs">
+                                            {(stats?.topMessageThreats || []).map((m, i) => (
+                                                <tr key={i} className="hover:bg-white/5">
+                                                    <td className="p-3 font-mono font-bold text-blue-400">MID {m.mid}</td>
+                                                    <td className="p-3 font-semibold max-w-[200px] truncate">{m.subject || "No Subject"}</td>
+                                                    <td className="p-3 font-mono text-[11px]">
+                                                        <div className="text-cyan-400 truncate">{m.sender || "unknown"}</div>
+                                                        <div className="text-indigo-300 truncate">➔ {m.recipient || "unknown"}</div>
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold ${m.remediationStatus === "PURGED_BY_ETD" ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30" : (m.remediationStatus === "QUARANTINED_BY_ESA" ? "bg-purple-500/20 text-purple-400 border border-purple-500/30" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30")}`}>
+                                                            {m.remediationStatus || "INBOX ACTIVE"}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-3 font-mono font-bold text-red-400">{m.worstScore.toFixed(1)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="mt-5 pt-4 border-t border-[var(--border-color)] flex justify-between items-center text-xs">
+                            <span className="text-[var(--text-muted)] font-mono">Generated by Pane-O-Glass Security Operations</span>
+                            <button 
+                                onClick={() => {
+                                    const csvRows = [
+                                        ["MID", "Subject", "Sender", "Recipient", "WRS Score", "Priority Index", "Remediation Status", "Target URL", "Timestamp"],
+                                        ...(stats?.topMessageThreats || []).map(m => [
+                                            m.mid,
+                                            `"${(m.subject || '').replace(/"/g, '""')}"`,
+                                            `"${m.sender || ''}"`,
+                                            `"${m.recipient || ''}"`,
+                                            m.worstScore,
+                                            m.priorityScore || Math.abs(m.worstScore),
+                                            m.remediationStatus || "DELIVERED_TO_INBOX",
+                                            `"${m.primaryThreatUrl || ''}"`,
+                                            m.timestamp
+                                        ])
+                                    ];
+                                    const csvContent = "data:text/csv;charset=utf-8," + csvRows.map(e => e.join(",")).join("\n");
+                                    const encodedUri = encodeURI(csvContent);
+                                    const link = document.createElement("a");
+                                    link.setAttribute("href", encodedUri);
+                                    link.setAttribute("download", `Weekly_IronPort_Threat_Report_${Date.now()}.csv`);
+                                    document.body.appendChild(link);
+                                    link.click();
+                                    document.body.removeChild(link);
+                                }}
+                                className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white font-bold rounded-lg text-xs transition-all shadow-md flex items-center gap-1.5"
+                            >
+                                <FileText size={14} />
+                                Export Executive CSV Report
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

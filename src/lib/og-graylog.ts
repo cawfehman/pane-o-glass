@@ -59,6 +59,8 @@ export interface GraylogMessageThreatAggregation {
     riskyUrlCount: number;
     primaryThreatUrl: string;
     threatLevel: "CRITICAL" | "RISKY" | "LOW_SUSPECT" | "NEUTRAL" | "CLEAN";
+    priorityScore: number;
+    remediationStatus: "DELIVERED_TO_INBOX" | "PURGED_BY_ETD" | "QUARANTINED_BY_ESA" | "BLOCKED_POLICY";
     timestamp: string;
     source: string;
 }
@@ -265,10 +267,10 @@ export class OgGraylogClient {
     }
 
     /**
-     * Helper method to enrich MID records with Subject, Sender, and Recipient envelope headers via batch Lucene queries.
+     * Helper method to enrich MID records with Subject, Sender, Recipient, and ETD/ESA Remediation status via batch Lucene queries.
      */
     private async enrichMidsWithEnvelopeHeaders(
-        midItems: Array<{ mid: string; sender?: string; recipient?: string; subject?: string }>,
+        midItems: Array<any>,
         rangeSeconds: number = 86400
     ) {
         const targetMids = Array.from(new Set(midItems.map(i => i.mid).filter(Boolean)));
@@ -279,7 +281,7 @@ export class OgGraylogClient {
 
         try {
             const envelopeLogs = await this.searchMessages(batchQuery, 300, rangeSeconds);
-            const midHeaderMap: Record<string, { sender?: string; recipient?: string; subject?: string }> = {};
+            const midHeaderMap: Record<string, { sender?: string; recipient?: string; subject?: string; status?: string }> = {};
             targetMids.forEach(m => { midHeaderMap[m] = {}; });
 
             envelopeLogs.forEach((h: any) => {
@@ -301,6 +303,16 @@ export class OgGraylogClient {
                 if (!midHeaderMap[mid].subject && (h.message.esa_subject || subjMatch)) {
                     midHeaderMap[mid].subject = h.message.esa_subject || (subjMatch ? subjMatch[1].trim() : undefined);
                 }
+
+                // Remediation & ETD Status Check
+                const rawLower = raw.toLowerCase();
+                if (rawLower.includes("etd") || rawLower.includes("auto-remediated") || rawLower.includes("clawback") || rawLower.includes("purged")) {
+                    midHeaderMap[mid].status = "PURGED_BY_ETD";
+                } else if (rawLower.includes("quarantined") || rawLower.includes("dropped") || rawLower.includes("policy drop")) {
+                    if (midHeaderMap[mid].status !== "PURGED_BY_ETD") {
+                        midHeaderMap[mid].status = "QUARANTINED_BY_ESA";
+                    }
+                }
             });
 
             midItems.forEach(item => {
@@ -309,6 +321,7 @@ export class OgGraylogClient {
                     if (!item.sender && headers.sender) item.sender = headers.sender;
                     if (!item.recipient && headers.recipient) item.recipient = headers.recipient;
                     if (!item.subject && headers.subject) item.subject = headers.subject;
+                    if (headers.status) item.remediationStatus = headers.status;
                 }
             });
         } catch (e) {
@@ -341,12 +354,11 @@ export class OgGraylogClient {
     }
 
     /**
-     * Aggregates URL telemetry by Message ID (esa_mid) and calculates composite risk levels per email.
-     * Strictly scopes to the active flow stream (e.g. Inbound vs Outbound).
+     * Aggregates URL telemetry by Message ID (esa_mid) and calculates composite risk levels & Priority Index per email.
      */
     async getTopMessageThreatAggregations(
         rangeSeconds: number = 86400, 
-        limit: number = 10,
+        limit: number = 12,
         volumeQuery: string = 'message:"inbound table"'
     ): Promise<GraylogMessageThreatAggregation[]> {
         try {
@@ -390,6 +402,8 @@ export class OgGraylogClient {
                         riskyUrlCount: 0,
                         primaryThreatUrl: url,
                         threatLevel: "CLEAN",
+                        priorityScore: 0.0,
+                        remediationStatus: "DELIVERED_TO_INBOX",
                         timestamp: h.message.timestamp,
                         source: h.message.source ? h.message.source.split('.')[0] : "esa"
                     };
@@ -422,18 +436,25 @@ export class OgGraylogClient {
                 } else {
                     m.threatLevel = "CLEAN";
                 }
+
+                // Calculate Recency Weight Multiplier for Priority Score
+                const ageHours = (Date.now() - new Date(m.timestamp).getTime()) / (1000 * 3600);
+                let recencyWeight = 1.0;
+                if (ageHours > 120) {
+                    recencyWeight = 0.4;
+                } else if (ageHours > 72) {
+                    recencyWeight = 0.6;
+                } else if (ageHours > 24) {
+                    recencyWeight = 0.8;
+                } else if (ageHours > 12) {
+                    recencyWeight = 0.95;
+                }
+
+                m.priorityScore = parseFloat((Math.abs(m.worstScore) * recencyWeight).toFixed(2));
             });
 
-            // Sort deterministically: worst WRS score ascending (most dangerous first), then risky URL count descending, then timestamp descending
-            aggregatedList.sort((a, b) => {
-                if (a.worstScore !== b.worstScore) {
-                    return a.worstScore - b.worstScore;
-                }
-                if (a.riskyUrlCount !== b.riskyUrlCount) {
-                    return b.riskyUrlCount - a.riskyUrlCount;
-                }
-                return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-            });
+            // Default Sort: Priority Index (Severity x Recency) descending
+            aggregatedList.sort((a, b) => b.priorityScore - a.priorityScore);
             return aggregatedList.slice(0, limit);
         } catch (e) {
             return [];
@@ -608,12 +629,7 @@ export class OgGraylogClient {
     }
 
     /**
-     * Fetches 100% official Cisco WRS score aggregations across 5 non-overlapping tiers:
-     * 1. Clean / Established (Score +3.0 to +10.0) -> Emerald Green (#10b981)
-     * 2. Neutral / Uncategorized (Score 0.0 to +2.9) -> Blue (#3b82f6)
-     * 3. Low Suspect (Score -0.1 to -2.9) -> Amber (#f59e0b)
-     * 4. Risky / Threat (Score -3.0 to -5.9) -> Orange (#f97316)
-     * 5. Malicious / Critical Block (Score -6.0 to -10.0) -> Deep Red (#ef4444)
+     * Fetches 100% official Cisco WRS score aggregations across 5 non-overlapping tiers.
      */
     async get100PercentFullDatasetAggregations(rangeSeconds: number = 86400): Promise<{ fullUrlCategories: GraylogFullCategoryStats[], fullAmpCategories: GraylogFullCategoryStats[] }> {
         const fetchCount = async (query: string): Promise<number> => {
@@ -759,13 +775,12 @@ export class OgGraylogClient {
             this.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
             this.getRecentTelemetrySamples(rangeSeconds),
             this.get100PercentFullDatasetAggregations(rangeSeconds),
-            this.getTopMessageThreatAggregations(rangeSeconds, 8, volumeQuery),
-            this.getAmpIocAggregations(rangeSeconds, 8, volumeQuery),
-            this.getSpoofingAuthAggregations(rangeSeconds, 8, volumeQuery),
-            this.getTargetRecipientAggregations(rangeSeconds, 8, volumeQuery)
+            this.getTopMessageThreatAggregations(rangeSeconds, 12, volumeQuery),
+            this.getAmpIocAggregations(rangeSeconds, 10, volumeQuery),
+            this.getSpoofingAuthAggregations(rangeSeconds, 10, volumeQuery),
+            this.getTargetRecipientAggregations(rangeSeconds, 10, volumeQuery)
         ]);
 
-        // Ensure totalVolume equals exact sum of ESA01 + ESA02 appliance volumes for 100% mathematical match
         if (esaBreakdown && (esaBreakdown.esa01Volume + esaBreakdown.esa02Volume > 0)) {
             volumeData.total = esaBreakdown.esa01Volume + esaBreakdown.esa02Volume;
         }
