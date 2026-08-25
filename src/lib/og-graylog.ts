@@ -48,6 +48,18 @@ export interface GraylogFullCategoryStats {
     filterQuery: string;
 }
 
+export interface GraylogMessageThreatAggregation {
+    mid: string;
+    messageId?: string;
+    totalUrls: number;
+    worstScore: number;
+    riskyUrlCount: number;
+    primaryThreatUrl: string;
+    threatLevel: "CRITICAL" | "RISKY" | "LOW_SUSPECT" | "NEUTRAL" | "CLEAN";
+    timestamp: string;
+    source: string;
+}
+
 export interface GraylogStats {
     rangeSeconds: number;
     volumeQuery: string;
@@ -65,6 +77,7 @@ export interface GraylogStats {
     recentAmpVerdicts?: GraylogAmpSample[];
     fullUrlCategories?: GraylogFullCategoryStats[];
     fullAmpCategories?: GraylogFullCategoryStats[];
+    topMessageThreats?: GraylogMessageThreatAggregation[];
 }
 
 export class OgGraylogClient {
@@ -236,6 +249,81 @@ export class OgGraylogClient {
     }
 
     /**
+     * Aggregates URL telemetry by Message ID (esa_mid) and calculates composite risk levels per email.
+     */
+    async getTopMessageThreatAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogMessageThreatAggregation[]> {
+        try {
+            const messages = await this.searchMessages('_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")', 150, rangeSeconds);
+            const midMap: Record<string, GraylogMessageThreatAggregation> = {};
+
+            messages.forEach((h: any) => {
+                const raw = h.message.message || "";
+                const midMatch = raw.match(/MID (\d+)/);
+                const urlMatch = raw.match(/URL (https?:\/\/\S+)/i);
+                const repMatch = raw.match(/reputation ([\-\d\.]+)/i);
+
+                const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
+                if (!mid) return;
+
+                let score = 0.0;
+                if (h.message.esa_url_rep_score !== undefined) {
+                    score = parseFloat(h.message.esa_url_rep_score);
+                } else if (repMatch) {
+                    score = parseFloat(repMatch[1]);
+                }
+
+                const url = urlMatch ? urlMatch[1] : raw;
+
+                if (!midMap[mid]) {
+                    midMap[mid] = {
+                        mid,
+                        messageId: h.message.esa_rfc_message_id || "",
+                        totalUrls: 0,
+                        worstScore: score,
+                        riskyUrlCount: 0,
+                        primaryThreatUrl: url,
+                        threatLevel: "CLEAN",
+                        timestamp: h.message.timestamp,
+                        source: h.message.source ? h.message.source.split('.')[0] : "esa"
+                    };
+                }
+
+                midMap[mid].totalUrls += 1;
+
+                if (score < midMap[mid].worstScore) {
+                    midMap[mid].worstScore = score;
+                    midMap[mid].primaryThreatUrl = url;
+                }
+
+                if (score < 0) {
+                    midMap[mid].riskyUrlCount += 1;
+                }
+            });
+
+            const aggregatedList = Object.values(midMap).map(m => {
+                if (m.worstScore <= -6.0) {
+                    m.threatLevel = "CRITICAL";
+                } else if (m.worstScore <= -3.0) {
+                    m.threatLevel = "RISKY";
+                } else if (m.worstScore < 0.0) {
+                    m.threatLevel = "LOW_SUSPECT";
+                } else if (m.worstScore < 3.0) {
+                    m.threatLevel = "NEUTRAL";
+                } else {
+                    m.threatLevel = "CLEAN";
+                }
+                return m;
+            });
+
+            // Sort by worstScore ascending (most dangerous negative scores first)
+            aggregatedList.sort((a, b) => a.worstScore - b.worstScore);
+            return aggregatedList.slice(0, limit);
+        } catch (e) {
+            return [];
+        }
+    }
+
+    /**
      * Fetches 100% official Cisco WRS score aggregations across 5 non-overlapping tiers:
      * 1. Clean / Established (Score +3.0 to +10.0) -> Emerald Green (#10b981)
      * 2. Neutral / Uncategorized (Score 0.0 to +2.9) -> Blue (#3b82f6)
@@ -373,7 +461,8 @@ export class OgGraylogClient {
             whitelistedData,
             esaBreakdown,
             telemetrySamples,
-            fullDatasetAggregations
+            fullDatasetAggregations,
+            topMessageThreats
         ] = await Promise.all([
             this.getHistogram(volumeQuery, rangeSeconds),
             this.getHistogram(esaDelayQuery, rangeSeconds),
@@ -382,7 +471,8 @@ export class OgGraylogClient {
             this.getHistogram('message:"Whitelisted Addresses"', rangeSeconds),
             this.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
             this.getRecentTelemetrySamples(rangeSeconds),
-            this.get100PercentFullDatasetAggregations(rangeSeconds)
+            this.get100PercentFullDatasetAggregations(rangeSeconds),
+            this.getTopMessageThreatAggregations(rangeSeconds, 8)
         ]);
 
         // Ensure totalVolume equals exact sum of ESA01 + ESA02 appliance volumes for 100% mathematical match
@@ -426,7 +516,8 @@ export class OgGraylogClient {
             recentUrls: telemetrySamples.recentUrls,
             recentAmpVerdicts: telemetrySamples.recentAmpVerdicts,
             fullUrlCategories: fullDatasetAggregations.fullUrlCategories,
-            fullAmpCategories: fullDatasetAggregations.fullAmpCategories
+            fullAmpCategories: fullDatasetAggregations.fullAmpCategories,
+            topMessageThreats
         };
     }
 }
