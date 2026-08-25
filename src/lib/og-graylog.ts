@@ -236,12 +236,12 @@ export class OgGraylogClient {
     }
 
     /**
-     * Fetches 100% granular WRS score aggregations with clean, non-ambiguous Lucene drill-down filters:
-     * 1. Clean / Trusted (Score >= 5.0) -> esa_url_rep_score:[5.0 TO 10.0]
-     * 2. Neutral / Established (Score 3.0 - 4.9) -> esa_url_rep_score:[3.0 TO 4.9]
-     * 3. Uncategorized (Score 0.0 - 2.9) -> esa_url_rep_score:[0.0 TO 2.9]
-     * 4. Suspect / Low Reputation (Score -0.1 to -4.9) -> esa_url_rep_score:[-4.9 TO -0.1]
-     * 5. Malicious / Critical Threat (Score <= -5.0) -> esa_url_rep_score:[-10.0 TO -5.0]
+     * Fetches 100% granular WRS score aggregations across 5 distinct tiers:
+     * 1. Clean / Trusted (Score >= 5.0) -> Emerald Green (#10b981)
+     * 2. Neutral / Established (Score 3.0 - 4.9) -> Blue (#3b82f6)
+     * 3. Uncategorized (Score 0.0 - 2.9) -> Amber (#f59e0b)
+     * 4. Suspect / Low Reputation (Score -0.1 to -4.9) -> Orange (#f97316)
+     * 5. Malicious / Critical Threat (Score <= -5.0) -> Deep Red (#ef4444)
      */
     async get100PercentFullDatasetAggregations(rangeSeconds: number = 86400): Promise<{ fullUrlCategories: GraylogFullCategoryStats[], fullAmpCategories: GraylogFullCategoryStats[] }> {
         const fetchCount = async (query: string): Promise<number> => {
@@ -264,6 +264,10 @@ export class OgGraylogClient {
             }
         };
 
+        // Precise queries avoiding Elasticsearch string alphabetical range bugs
+        const malFilter = 'esa_url_rep_score:/-[5-9]\\..*/ OR esa_url_rep_score:"-10.0" OR (message:"has reputation" AND (message:"reputation -5." OR message:"reputation -6." OR message:"reputation -7." OR message:"reputation -8." OR message:"reputation -9." OR message:"reputation -10."))';
+        const susFilter = 'esa_url_rep_score:/-[0-4]\\..*/ OR (message:"has reputation" AND (message:"reputation -0." OR message:"reputation -1." OR message:"reputation -2." OR message:"reputation -3." OR message:"reputation -4."))';
+
         const [
             urlCleanCount,
             urlNeuCount,
@@ -278,8 +282,8 @@ export class OgGraylogClient {
             fetchCount('esa_url_rep_score:[5.0 TO 10.0] OR (message:"has reputation" AND (message:"reputation 5." OR message:"reputation 6." OR message:"reputation 7." OR message:"reputation 8." OR message:"reputation 9." OR message:"reputation 10."))'),
             fetchCount('esa_url_rep_score:[3.0 TO 4.9] OR (message:"has reputation" AND (message:"reputation 3." OR message:"reputation 4."))'),
             fetchCount('esa_url_rep_score:[0.0 TO 2.9] OR message:"reputation 0.0" OR (message:"has reputation" AND (message:"reputation 0." OR message:"reputation 1." OR message:"reputation 2."))'),
-            fetchCount('esa_url_rep_score:[-4.9 TO -0.1] OR (NOT _exists_:esa_url_rep_score AND (message:"reputation -1." OR message:"reputation -2." OR message:"reputation -3." OR message:"reputation -4."))'),
-            fetchCount('esa_url_rep_score:[-10.0 TO -5.0] OR (NOT _exists_:esa_url_rep_score AND (message:"reputation -5." OR message:"reputation -6." OR message:"reputation -7." OR message:"reputation -8." OR message:"reputation -9." OR message:"reputation -10."))'),
+            fetchCount(susFilter),
+            fetchCount(malFilter),
             fetchCount('(esa_amp_file_verdict:SKIPPED) OR message:"AMP file reputation verdict : SKIPPED"'),
             fetchCount('(esa_amp_file_verdict:UNKNOWN) OR message:"AMP file reputation verdict : UNKNOWN" OR message:"FILE UNKNOWN"'),
             fetchCount('(esa_amp_file_verdict:CLEAN) OR message:"AMP file reputation verdict : CLEAN"'),
@@ -292,8 +296,8 @@ export class OgGraylogClient {
             { name: "Clean / Trusted (Score >= 5.0)", count: urlCleanCount, percentage: `${((urlCleanCount / totalUrl) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: 'esa_url_rep_score:[5.0 TO 10.0]' },
             { name: "Neutral / Established (Score 3.0 - 4.9)", count: urlNeuCount, percentage: `${((urlNeuCount / totalUrl) * 100).toFixed(1)}%`, color: "#3b82f6", filterQuery: 'esa_url_rep_score:[3.0 TO 4.9]' },
             { name: "Uncategorized / Standard (Score 0.0 - 2.9)", count: urlUncatCount, percentage: `${((urlUncatCount / totalUrl) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: 'esa_url_rep_score:[0.0 TO 2.9]' },
-            { name: "Suspect / Low Reputation (Score -0.1 to -4.9)", count: urlSuspectCount, percentage: `${((urlSuspectCount / totalUrl) * 100).toFixed(1)}%`, color: "#f97316", filterQuery: 'esa_url_rep_score:[-4.9 TO -0.1]' },
-            { name: "Malicious / Critical Threat (Score <= -5.0)", count: urlMaliciousCount, percentage: `${((urlMaliciousCount / totalUrl) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: 'esa_url_rep_score:[-10.0 TO -5.0]' }
+            { name: "Suspect / Low Reputation (Score -0.1 to -4.9)", count: urlSuspectCount, percentage: `${((urlSuspectCount / totalUrl) * 100).toFixed(1)}%`, color: "#f97316", filterQuery: susFilter },
+            { name: "Malicious / Critical Threat (Score <= -5.0)", count: urlMaliciousCount, percentage: `${((urlMaliciousCount / totalUrl) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: malFilter }
         ];
 
         const totalAmp = Math.max(1, ampSkippedCount + ampUnknownCount + ampCleanCount + ampMaliciousCount);

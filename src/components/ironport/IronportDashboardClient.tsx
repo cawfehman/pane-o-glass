@@ -308,8 +308,8 @@ export default function IronportDashboardClient() {
             { name: "Clean / Trusted (Score >= 5.0)", value: 79, percent: "0.0%", color: "#10b981", filter: "esa_url_rep_score:[5.0 TO 10.0]" },
             { name: "Neutral / Established (Score 3.0 - 4.9)", value: 119084, percent: "11.5%", color: "#3b82f6", filter: "esa_url_rep_score:[3.0 TO 4.9]" },
             { name: "Uncategorized / Standard (Score 0.0 - 2.9)", value: 916858, percent: "88.3%", color: "#f59e0b", filter: "esa_url_rep_score:[0.0 TO 2.9]" },
-            { name: "Suspect / Low Reputation (Score -0.1 to -4.9)", value: 97, percent: "0.0%", color: "#f97316", filter: "esa_url_rep_score:[-4.9 TO -0.1]" },
-            { name: "Malicious / Critical Threat (Score <= -5.0)", value: 2802, percent: "0.3%", color: "#ef4444", filter: "esa_url_rep_score:[-10.0 TO -5.0]" }
+            { name: "Suspect / Low Reputation (Score -0.1 to -4.9)", value: 97, percent: "0.0%", color: "#f97316", filter: 'esa_url_rep_score:/-[0-4]\\..*/ OR (message:"has reputation" AND (message:"reputation -1." OR message:"reputation -2."))' },
+            { name: "Malicious / Critical Threat (Score <= -5.0)", value: 2802, percent: "0.3%", color: "#ef4444", filter: 'esa_url_rep_score:/-[5-9]\\..*/ OR esa_url_rep_score:"-10.0" OR (message:"has reputation" AND (message:"reputation -5." OR message:"reputation -6."))' }
         ];
 
     // 100% Full-Dataset Donut Graphic Data for AMP File Reputation Scans across all events
