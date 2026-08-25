@@ -146,6 +146,86 @@ export default function IronportDashboardClient() {
         });
     };
 
+    // Syntax Highlighting Engine for Raw Syslog Payload Text
+    const renderHighlightedSyslog = (text: string) => {
+        if (!text) return null;
+
+        const tokenRegex = /(MID \d+)|(https?:\/\/\S+)|(reputation\s+[\-\d\.]+)|(Action:\s*[^,]+)|(matched\s+policy\s+[^\s,]+)|([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})|(\b(?:\d{1,3}\.){3}\d{1,3}\b)/gi;
+
+        const parts = [];
+        let lastIdx = 0;
+        let match: RegExpExecArray | null;
+
+        while ((match = tokenRegex.exec(text)) !== null) {
+            if (match.index > lastIdx) {
+                parts.push(<span key={`text-${lastIdx}`}>{text.substring(lastIdx, match.index)}</span>);
+            }
+
+            const fullMatch = match[0];
+            const midMatch = match[1];
+            const urlMatch = match[2];
+            const repMatch = match[3];
+            const actionMatch = match[4];
+            const policyMatch = match[5];
+            const emailMatch = match[6];
+            const ipMatch = match[7];
+
+            if (midMatch) {
+                parts.push(
+                    <span key={`mid-${match.index}`} className="px-1.5 py-0.5 mx-0.5 rounded bg-blue-500/20 text-blue-400 font-mono font-bold border border-blue-500/30">
+                        {fullMatch}
+                    </span>
+                );
+            } else if (urlMatch) {
+                parts.push(
+                    <a key={`url-${match.index}`} href={fullMatch} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300 underline font-mono bg-amber-500/10 px-1 mx-0.5 rounded transition-colors break-all">
+                        {fullMatch}
+                    </a>
+                );
+            } else if (repMatch) {
+                const scoreVal = parseFloat(fullMatch.replace(/reputation\s*/i, ''));
+                const isNegative = !isNaN(scoreVal) && scoreVal < 0;
+                parts.push(
+                    <span key={`rep-${match.index}`} className={`px-1.5 py-0.5 mx-0.5 rounded font-mono font-extrabold border ${isNegative ? 'bg-red-500/20 text-red-400 border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.2)]' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>
+                        {fullMatch}
+                    </span>
+                );
+            } else if (actionMatch) {
+                parts.push(
+                    <span key={`act-${match.index}`} className="px-1.5 py-0.5 mx-0.5 rounded bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/30">
+                        {fullMatch}
+                    </span>
+                );
+            } else if (policyMatch) {
+                parts.push(
+                    <span key={`pol-${match.index}`} className="px-1.5 py-0.5 mx-0.5 rounded bg-cyan-500/15 text-cyan-300 font-semibold border border-cyan-500/30">
+                        {fullMatch}
+                    </span>
+                );
+            } else if (emailMatch) {
+                parts.push(
+                    <span key={`email-${match.index}`} className="text-teal-300 font-mono font-semibold bg-teal-500/10 px-1 mx-0.5 rounded border border-teal-500/20">
+                        {fullMatch}
+                    </span>
+                );
+            } else if (ipMatch) {
+                parts.push(
+                    <span key={`ip-${match.index}`} className="text-yellow-400 font-mono font-semibold bg-yellow-500/10 px-1 mx-0.5 rounded">
+                        {fullMatch}
+                    </span>
+                );
+            }
+
+            lastIdx = tokenRegex.lastIndex;
+        }
+
+        if (lastIdx < text.length) {
+            parts.push(<span key={`text-${lastIdx}`}>{text.substring(lastIdx)}</span>);
+        }
+
+        return parts;
+    };
+
     // Advanced Syslog Parser: reads Graylog Extractor Fields directly or falls back to regex
     const parseMessage = (msgObj: any) => {
         const msg = typeof msgObj === 'string' ? msgObj : (msgObj?.message || "");
@@ -1853,11 +1933,11 @@ export default function IronportDashboardClient() {
                                                                     DELAY REASON: {delayReason}
                                                                 </span>
                                                                 <br/>
-                                                                <span className="opacity-90">{rawMsg}</span>
+                                                                <span className="opacity-90">{renderHighlightedSyslog(rawMsg)}</span>
                                                             </div>
                                                         )}
                                                         {!isDelaySyslog && (
-                                                            <span>{rawMsg}</span>
+                                                            <span>{renderHighlightedSyslog(rawMsg)}</span>
                                                         )}
                                                     </td>
                                                 </tr>
