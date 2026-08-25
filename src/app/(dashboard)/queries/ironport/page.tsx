@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Metadata } from "next";
 import { Mail } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
@@ -21,7 +22,13 @@ export default function IronportPage() {
             </div>
             
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6">
-                <IronportDashboardClient />
+                <Suspense fallback={
+                    <div className="p-8 text-center text-sm font-semibold text-[var(--text-secondary)]">
+                        Loading IronPort Telemetry...
+                    </div>
+                }>
+                    <IronportDashboardClient />
+                </Suspense>
             </div>
         </div>
     );

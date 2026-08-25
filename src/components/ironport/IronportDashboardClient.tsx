@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react";
 import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2, ShieldCheck, Mail, FileCode2, Globe, PieChart as PieIcon } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, PieChart, Pie, Cell, Legend } from "recharts";
+import { useSearchParams } from "next/navigation";
 import type { GraylogStats } from "@/lib/og-graylog";
 
 export default function IronportDashboardClient() {
+    const searchParams = useSearchParams();
     const [stats, setStats] = useState<GraylogStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -35,8 +37,21 @@ export default function IronportDashboardClient() {
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
     useEffect(() => {
-        setThreatCurrentPage(1);
-    }, [threatSortMode, threatStatusFilter, timeframe, activeTab]);
+        const queryParam = searchParams.get("query");
+        const tabParam = searchParams.get("tab");
+        if (queryParam || tabParam === "investigate") {
+            setActiveTab("investigate");
+            if (queryParam) {
+                setSearchQuery(queryParam);
+                handleSearch(queryParam);
+            }
+        } else {
+            fetchStats(timeframe, activeTab);
+        }
+
+        const interval = setInterval(() => fetchStats(timeframe, activeTab), 300000);
+        return () => clearInterval(interval);
+    }, [searchParams, timeframe]);
 
     const getVolumeQueryForTab = (tab: "inbound" | "outbound" | "investigate") => {
         return tab === "outbound" ? 'message:"outbound table"' : 'message:"inbound table"';

@@ -151,6 +151,64 @@ export class CiscoEtdService {
                 }
             });
 
+            // Perform candidate envelope correlation search for each verdict to extract real threat headers
+            for (const v of Object.values(verdictMap)) {
+                const alertTimeMs = new Date(v.remediatedTimestamp).getTime();
+                const threatArrivalMs = (v.receivedTimestamp && !isNaN(new Date(v.receivedTimestamp).getTime())) ? new Date(v.receivedTimestamp).getTime() : alertTimeMs;
+
+                try {
+                    const searchHits = await this.ogClient.searchMessages('message:"Subject \\"" AND NOT message:"[Secure Email Threat Defense]"', 200, Math.ceil((Date.now() - (threatArrivalMs - 300000)) / 1000));
+                    
+                    const filteredHits = searchHits.filter((sh: any) => {
+                        const st = new Date(sh.message.timestamp).getTime();
+                        return st >= (threatArrivalMs - 180000) && st <= (threatArrivalMs + 60000);
+                    });
+
+                    const candidatesMap: Record<string, { mid: string; subject: string; timestamp: string }> = {};
+                    filteredHits.forEach((sh: any) => {
+                        const rawMsg = sh.message.message || "";
+                        const midMatch = rawMsg.match(/MID (\d+)/);
+                        const subjMatch = rawMsg.match(/Subject\s+"([^"]+)"/i);
+                        if (midMatch && subjMatch) {
+                            const tmid = midMatch[1];
+                            if (!candidatesMap[tmid]) {
+                                candidatesMap[tmid] = { mid: tmid, subject: subjMatch[1], timestamp: sh.message.timestamp };
+                            }
+                        }
+                    });
+
+                    const candidateList = Object.values(candidatesMap);
+                    if (candidateList.length > 0) {
+                        candidateList.sort((a, b) => Math.abs(new Date(a.timestamp).getTime() - threatArrivalMs) - Math.abs(new Date(b.timestamp).getTime() - threatArrivalMs));
+                        const match = candidateList[0];
+
+                        const envHits = await this.ogClient.searchMessages(`message:"MID ${match.mid}"`, 30, rangeSeconds);
+                        let origSender = "";
+                        let origRecipient = "";
+                        let rfcMsgId = "";
+
+                        envHits.forEach((em: any) => {
+                            const eraw = em.message.message || "";
+                            const senderMatch = eraw.match(/from <([^>]+)>/i) || eraw.match(/From:\s*<([^>]+)>/i) || eraw.match(/From=([^\s;]+)/i);
+                            const rcptMatch = eraw.match(/To:\s*<([^>]+)>/i) || eraw.match(/To:\s*(\S+)/i);
+                            const msgIdMatch = eraw.match(/Message-ID\s*'([^']+)'/i) || eraw.match(/Message-ID:\s*<([^>]+)>/i);
+
+                            if (senderMatch && !senderMatch[1].includes("amazonses")) origSender = senderMatch[1];
+                            if (rcptMatch && !rcptMatch[1].includes("Alerts-CiscoETD")) origRecipient = rcptMatch[1];
+                            if (msgIdMatch) rfcMsgId = msgIdMatch[1].startsWith("<") ? msgIdMatch[1] : `<${msgIdMatch[1]}>`;
+                        });
+
+                        v.mid = match.mid;
+                        if (origSender) v.sender = origSender;
+                        if (origRecipient) v.recipient = origRecipient;
+                        if (match.subject) v.subject = match.subject;
+                        if (rfcMsgId) v.messageId = rfcMsgId;
+                        v.receivedTimestamp = match.timestamp;
+                        v.exposureDeltaMinutes = Math.max(1, Math.round(Math.abs(alertTimeMs - new Date(match.timestamp).getTime()) / 60000));
+                    }
+                } catch (e2) {}
+            }
+
             const verdicts = Object.values(verdictMap);
 
             // Sort verdicts by received timestamp descending

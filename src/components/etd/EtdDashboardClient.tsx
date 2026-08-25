@@ -411,9 +411,9 @@ export function EtdDashboardClient() {
 
                                                         {v.mid && (
                                                             <Link
-                                                                href={`/queries/ironport?query=MID+${v.mid}`}
+                                                                href={`/queries/ironport?tab=investigate&query=MID+${v.mid}`}
                                                                 className="px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded font-semibold text-[11px] transition-colors flex items-center gap-1"
-                                                                title="Trace MID in IronPort Graylog stream"
+                                                                title="Switch to IronPort Investigate & Logs tab and trace MID"
                                                             >
                                                                 Trace MID
                                                             </Link>
