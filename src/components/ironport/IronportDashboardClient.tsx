@@ -972,8 +972,14 @@ export default function IronportDashboardClient() {
                                                             <td className="py-2.5 px-3 font-mono font-extrabold text-amber-400">
                                                                 {m.priorityScore !== undefined ? m.priorityScore.toFixed(1) : Math.abs(m.worstScore).toFixed(1)}
                                                             </td>
-                                                            <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--text-primary)] max-w-[200px] truncate" title={`Full Target URL: ${m.primaryThreatUrl}`}>
-                                                                {m.primaryThreatUrl}
+                                                            <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--text-primary)] max-w-[220px] truncate" title={`Full Target URL: ${m.primaryThreatUrl}`}>
+                                                                {m.primaryThreatUrl.startsWith("http") ? (
+                                                                    <a href={m.primaryThreatUrl} target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:underline">
+                                                                        {m.primaryThreatUrl}
+                                                                    </a>
+                                                                ) : (
+                                                                    <span className="text-[var(--text-muted)] italic font-normal text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-default)] border border-[var(--border-color)]">{m.primaryThreatUrl}</span>
+                                                                )}
                                                             </td>
                                                             <td className="py-2.5 px-3 text-right">
                                                                 <button 

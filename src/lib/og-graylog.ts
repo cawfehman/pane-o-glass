@@ -277,10 +277,11 @@ export class OgGraylogClient {
         if (targetMids.length === 0) return;
 
         const midTerms = targetMids.map(m => `"${m}"`).join(" OR ");
-        const batchQuery = `(esa_mid:(${midTerms}) OR message:(${midTerms})) AND NOT message:"URL"`;
+        const batchQuery = `(esa_mid:(${midTerms}) OR message:(${midTerms}))`;
 
         try {
-            const envelopeLogs = await this.searchMessages(batchQuery, 300, rangeSeconds);
+            // Use timestamp:asc with high limit (2000) so initial Ingest logs containing Subject/From/To are retrieved
+            const envelopeLogs = await this.searchMessages(batchQuery, 2000, rangeSeconds);
             const midHeaderMap: Record<string, { sender?: string; recipient?: string; subject?: string; status?: string }> = {};
             targetMids.forEach(m => { midHeaderMap[m] = {}; });
 
@@ -290,9 +291,19 @@ export class OgGraylogClient {
                 const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
                 if (!mid || !midHeaderMap[mid]) return;
 
-                const fromMatch = raw.match(/From:?\s*=?\s*["']?[^<]*["']?\s*<([^>]+)>/i) || raw.match(/bytes from <([^>]+)>/i) || raw.match(/From:\s*(\S+)/i);
-                const toMatch = raw.match(/To:?\s*=?\s*["']?[^<]*["']?\s*<([^>]+)>/i) || raw.match(/To:\s*(\S+)/i);
-                const subjMatch = raw.match(/Subject\s*['"]([^'"]+)['"]/i) || raw.match(/Subject\s*:?\s*(.+)/i);
+                const fromMatch = raw.match(/ready \d+ bytes from <([^>]+)>/i) || 
+                                  raw.match(/From:?\s*=?\s*["']?[^<]*["']?\s*<([^>]+)>/i) || 
+                                  raw.match(/From:\s*(\S+)/i) || 
+                                  raw.match(/From=([^;\s]+)/i);
+
+                const toMatch = raw.match(/To:\s*<([^>]+)>/i) || 
+                                raw.match(/To:?\s*=?\s*["']?[^<]*["']?\s*<([^>]+)>/i) || 
+                                raw.match(/To:\s*(\S+)/i) || 
+                                raw.match(/To=([^;\s]+)/i);
+
+                const subjMatch = raw.match(/Subject\s+"([^"]+)"/i) || 
+                                  raw.match(/Subject\s*['"]([^'"]+)['"]/i) || 
+                                  raw.match(/Subject:\s*(.+)/i);
 
                 if (!midHeaderMap[mid].sender && (h.message.esa_mail_from || fromMatch)) {
                     midHeaderMap[mid].sender = h.message.esa_mail_from || (fromMatch ? fromMatch[1] : undefined);
@@ -363,8 +374,8 @@ export class OgGraylogClient {
     ): Promise<GraylogMessageThreatAggregation[]> {
         try {
             const [riskyHits, generalHits] = await Promise.all([
-                this.searchMessages(`esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL")`, 600, rangeSeconds).catch(() => []),
-                this.searchMessages(`_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")`, 300, rangeSeconds).catch(() => [])
+                this.searchMessages(`esa_url_rep_score:[-10.0 TO -0.1] OR (message:"reputation -" AND message:"URL")`, 1000, rangeSeconds).catch(() => []),
+                this.searchMessages(`_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")`, 500, rangeSeconds).catch(() => [])
             ]);
 
             const allHits = [...riskyHits, ...generalHits];
@@ -373,7 +384,7 @@ export class OgGraylogClient {
             allHits.forEach((h: any) => {
                 const raw = h.message.message || "";
                 const midMatch = raw.match(/MID (\d+)/);
-                const urlMatch = raw.match(/URL (https?:\/\/\S+)/i);
+                const urlMatch = raw.match(/https?:\/\/[^\s"'\)>]+/i) || raw.match(/URL\s+(['"]?)(\S+)\1/i);
                 const repMatch = raw.match(/reputation ([\-\d\.]+)/i);
 
                 const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
@@ -386,7 +397,15 @@ export class OgGraylogClient {
                     score = parseFloat(repMatch[1]);
                 }
 
-                const url = urlMatch ? urlMatch[1] : raw;
+                let extractedUrl = "";
+                if (urlMatch) {
+                    const candidate = urlMatch[0].startsWith("URL ") ? urlMatch[2] : urlMatch[0];
+                    if (candidate && (candidate.startsWith("http://") || candidate.startsWith("https://"))) {
+                        extractedUrl = candidate;
+                    }
+                }
+
+                const primaryUrl = extractedUrl || "N/A (Filter Action)";
 
                 if (!midMap[mid]) {
                     midMap[mid] = {
@@ -398,7 +417,7 @@ export class OgGraylogClient {
                         totalUrls: 0,
                         worstScore: score,
                         riskyUrlCount: 0,
-                        primaryThreatUrl: url,
+                        primaryThreatUrl: primaryUrl,
                         threatLevel: "CLEAN",
                         priorityScore: 0.0,
                         remediationStatus: "DELIVERED_TO_INBOX",
@@ -411,7 +430,7 @@ export class OgGraylogClient {
 
                 if (score < midMap[mid].worstScore) {
                     midMap[mid].worstScore = score;
-                    midMap[mid].primaryThreatUrl = url;
+                    if (extractedUrl) midMap[mid].primaryThreatUrl = extractedUrl;
                 }
 
                 if (score < 0) {
@@ -419,7 +438,7 @@ export class OgGraylogClient {
                 }
             });
 
-            const aggregatedList = Object.values(midMap);
+            let aggregatedList = Object.values(midMap);
             await this.enrichMidsWithEnvelopeHeaders(aggregatedList, rangeSeconds);
 
             aggregatedList.forEach(m => {
@@ -451,9 +470,15 @@ export class OgGraylogClient {
                 m.priorityScore = parseFloat((Math.abs(m.worstScore) * recencyWeight).toFixed(2));
             });
 
-            // Default Sort: Priority Index (Severity x Recency) descending
-            aggregatedList.sort((a, b) => b.priorityScore - a.priorityScore);
-            return aggregatedList.slice(0, limit);
+            // Prioritize MIDs with actual negative WRS scores first (-10.0, -7.5, -5.8, -3.7, etc.)
+            const negativeThreats = aggregatedList.filter(m => m.worstScore < 0);
+            const nonNegativeThreats = aggregatedList.filter(m => m.worstScore >= 0);
+
+            negativeThreats.sort((a, b) => a.worstScore - b.worstScore);
+            nonNegativeThreats.sort((a, b) => b.priorityScore - a.priorityScore);
+
+            const finalSortedList = [...negativeThreats, ...nonNegativeThreats];
+            return finalSortedList.slice(0, limit);
         } catch (e) {
             return [];
         }
