@@ -731,14 +731,18 @@ export default function IronportDashboardClient() {
 
                                             return (
                                                 <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
-                                                    <td className="py-2.5 px-3 font-mono font-bold text-blue-400 shrink-0">
+                                                    <td className="py-2 px-3 font-mono shrink-0">
                                                         <button 
                                                             onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
-                                                            className="hover:underline text-left"
+                                                            className="font-bold text-blue-400 hover:underline text-left block text-xs"
                                                             title={`Click to trace full message thread for MID ${m.mid}`}
                                                         >
                                                             MID {m.mid}
                                                         </button>
+                                                        <span className="text-[10px] text-[var(--text-muted)] flex items-center gap-1 mt-0.5" title={`Gateway Arrival Timestamp: ${m.timestamp}`}>
+                                                            <Clock size={10} className="text-cyan-500 shrink-0" />
+                                                            {formatDateTime(m.timestamp)}
+                                                        </span>
                                                     </td>
                                                     <td className="py-2 px-3 font-semibold text-[var(--text-primary)] max-w-[220px] truncate" title={m.subject ? `Subject: ${m.subject}` : "No Subject Header"}>
                                                         {m.subject || <span className="text-[var(--text-muted)] italic font-normal">No Subject Header</span>}
