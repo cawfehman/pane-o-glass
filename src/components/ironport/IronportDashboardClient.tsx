@@ -580,6 +580,98 @@ export default function IronportDashboardClient() {
                     {/* SUB-TAB 1: OVERVIEW & CORE METRICS */}
                     {activeSubTab === "overview" && (
                         <>
+                            {/* Per-Appliance Health & Load Balance Panel */}
+                            <div className="glass-card bg-[var(--bg-surface)] p-5 border border-[var(--border-color)] rounded-xl flex flex-col gap-4">
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="p-2 rounded-lg bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]">
+                                            <Server className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-sm font-bold text-[var(--text-primary)]">ESA Appliance Health & Load Distribution</h4>
+                                            <p className="text-xs text-[var(--text-secondary)]">Traffic balance and queue status for {getTimeframeLabel(timeframe)} (Total Evaluated: {stats.totalVolume.toLocaleString()})</p>
+                                        </div>
+                                    </div>
+                                    <span className="text-xs px-2.5 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-md font-semibold flex items-center gap-1.5">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        Both Appliances Operational
+                                    </span>
+                                </div>
+
+                                {/* Dual-Appliance Breakdown Grid */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                                    {/* ESA01 Card */}
+                                    <div className="p-4 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] flex flex-col gap-2.5">
+                                        <div className="flex justify-between items-center">
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-3 h-3 rounded-full bg-cyan-500"></span>
+                                                <span className="font-bold text-sm text-[var(--text-primary)]">ESA01</span>
+                                                <span className="text-xs text-[var(--text-muted)] font-mono">(esa01.cooperhealth.edu)</span>
+                                            </div>
+                                            <button 
+                                                onClick={() => handleSearch('source:esa01* OR message:esa01*')}
+                                                className="text-xs px-2 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-500 border border-cyan-500/30 rounded font-semibold transition-colors flex items-center gap-1"
+                                            >
+                                                Inspect ESA01
+                                            </button>
+                                        </div>
+                                        <div className="flex justify-between items-end mt-1">
+                                            <div>
+                                                <p className="text-2xl font-bold text-[var(--text-primary)]">{esa01Vol.toLocaleString()}</p>
+                                                <p className="text-xs text-[var(--text-secondary)]">{esa01Percent}% load share</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className={`text-sm font-bold ${esa01Delays > 150 ? 'text-red-500' : (esa01Delays > 50 ? 'text-amber-500' : 'text-[var(--text-secondary)]')}`}>
+                                                    {esa01Delays.toLocaleString()} delays
+                                                </p>
+                                                <p className="text-[11px] text-[var(--text-muted)]">Queue status</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* ESA02 Card */}
+                                    <div className="p-4 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] flex flex-col gap-2.5">
+                                        <div className="flex justify-between items-center">
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-3 h-3 rounded-full bg-indigo-500"></span>
+                                                <span className="font-bold text-sm text-[var(--text-primary)]">ESA02</span>
+                                                <span className="text-xs text-[var(--text-muted)] font-mono">(esa02.cooperhealth.edu)</span>
+                                            </div>
+                                            <button 
+                                                onClick={() => handleSearch('source:esa02* OR message:esa02*')}
+                                                className="text-xs px-2 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 border border-indigo-500/30 rounded font-semibold transition-colors flex items-center gap-1"
+                                            >
+                                                Inspect ESA02
+                                            </button>
+                                        </div>
+                                        <div className="flex justify-between items-end mt-1">
+                                            <div>
+                                                <p className="text-2xl font-bold text-[var(--text-primary)]">{esa02Vol.toLocaleString()}</p>
+                                                <p className="text-xs text-[var(--text-secondary)]">{esa02Percent}% load share</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className={`text-sm font-bold ${esa02Delays > 150 ? 'text-red-500' : (esa02Delays > 50 ? 'text-amber-500' : 'text-[var(--text-secondary)]')}`}>
+                                                    {esa02Delays.toLocaleString()} delays
+                                                </p>
+                                                <p className="text-[11px] text-[var(--text-muted)]">Queue status</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Dual-Color Progress Bar */}
+                                <div className="flex flex-col gap-1 mt-1">
+                                    <div className="flex justify-between text-[11px] text-[var(--text-muted)] font-semibold">
+                                        <span>ESA01 ({esa01Percent}%)</span>
+                                        <span>ESA02 ({esa02Percent}%)</span>
+                                    </div>
+                                    <div className="w-full h-2 bg-[var(--bg-default)] rounded-full overflow-hidden flex">
+                                        <div className="h-full bg-cyan-500 transition-all duration-300" style={{ width: `${esa01Percent}%` }}></div>
+                                        <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${esa02Percent}%` }}></div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
                         {renderMetricCard(
                             "Clean Delivered Mail", 
@@ -855,98 +947,6 @@ export default function IronportDashboardClient() {
                                 </div>
                             );
                         })()}
-                    </div>
-
-                    {/* Per-Appliance Health & Load Balance Panel */}
-                    <div className="glass-card bg-[var(--bg-surface)] p-5 border border-[var(--border-color)] rounded-xl flex flex-col gap-4">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
-                            <div className="flex items-center gap-2.5">
-                                <div className="p-2 rounded-lg bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]">
-                                    <Server className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <h4 className="text-sm font-bold text-[var(--text-primary)]">ESA Appliance Health & Load Distribution</h4>
-                                    <p className="text-xs text-[var(--text-secondary)]">Traffic balance and queue status for {getTimeframeLabel(timeframe)} (Total Evaluated: {stats.totalVolume.toLocaleString()})</p>
-                                </div>
-                            </div>
-                            <span className="text-xs px-2.5 py-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-md font-semibold flex items-center gap-1.5">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                Both Appliances Operational
-                            </span>
-                        </div>
-
-                        {/* Dual-Appliance Breakdown Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                            {/* ESA01 Card */}
-                            <div className="p-4 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] flex flex-col gap-2.5">
-                                <div className="flex justify-between items-center">
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-3 h-3 rounded-full bg-cyan-500"></span>
-                                        <span className="font-bold text-sm text-[var(--text-primary)]">ESA01</span>
-                                        <span className="text-xs text-[var(--text-muted)] font-mono">(esa01.cooperhealth.edu)</span>
-                                    </div>
-                                    <button 
-                                        onClick={() => handleSearch('source:esa01* OR message:esa01*')}
-                                        className="text-xs px-2 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-500 border border-cyan-500/30 rounded font-semibold transition-colors flex items-center gap-1"
-                                    >
-                                        Inspect ESA01
-                                    </button>
-                                </div>
-                                <div className="flex justify-between items-end mt-1">
-                                    <div>
-                                        <p className="text-2xl font-bold text-[var(--text-primary)]">{esa01Vol.toLocaleString()}</p>
-                                        <p className="text-xs text-[var(--text-secondary)]">{esa01Percent}% load share</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className={`text-sm font-bold ${esa01Delays > 150 ? 'text-red-500' : (esa01Delays > 50 ? 'text-amber-500' : 'text-[var(--text-secondary)]')}`}>
-                                            {esa01Delays.toLocaleString()} delays
-                                        </p>
-                                        <p className="text-[11px] text-[var(--text-muted)]">Queue status</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* ESA02 Card */}
-                            <div className="p-4 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] flex flex-col gap-2.5">
-                                <div className="flex justify-between items-center">
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-3 h-3 rounded-full bg-indigo-500"></span>
-                                        <span className="font-bold text-sm text-[var(--text-primary)]">ESA02</span>
-                                        <span className="text-xs text-[var(--text-muted)] font-mono">(esa02.cooperhealth.edu)</span>
-                                    </div>
-                                    <button 
-                                        onClick={() => handleSearch('source:esa02* OR message:esa02*')}
-                                        className="text-xs px-2 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 border border-indigo-500/30 rounded font-semibold transition-colors flex items-center gap-1"
-                                    >
-                                        Inspect ESA02
-                                    </button>
-                                </div>
-                                <div className="flex justify-between items-end mt-1">
-                                    <div>
-                                        <p className="text-2xl font-bold text-[var(--text-primary)]">{esa02Vol.toLocaleString()}</p>
-                                        <p className="text-xs text-[var(--text-secondary)]">{esa02Percent}% load share</p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className={`text-sm font-bold ${esa02Delays > 150 ? 'text-red-500' : (esa02Delays > 50 ? 'text-amber-500' : 'text-[var(--text-secondary)]')}`}>
-                                            {esa02Delays.toLocaleString()} delays
-                                        </p>
-                                        <p className="text-[11px] text-[var(--text-muted)]">Queue status</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Dual-Color Progress Bar */}
-                        <div className="flex flex-col gap-1 mt-1">
-                            <div className="flex justify-between text-[11px] text-[var(--text-muted)] font-semibold">
-                                <span>ESA01 ({esa01Percent}%)</span>
-                                <span>ESA02 ({esa02Percent}%)</span>
-                            </div>
-                            <div className="w-full h-2 bg-[var(--bg-default)] rounded-full overflow-hidden flex">
-                                <div className="h-full bg-cyan-500 transition-all duration-300" style={{ width: `${esa01Percent}%` }}></div>
-                                <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${esa02Percent}%` }}></div>
-                            </div>
-                        </div>
                     </div>
 
                     {/* UNAMBIGUOUS VISUAL TELEMETRY CARDS: Explicit WRS reputation labels and percentages */}
