@@ -28,10 +28,15 @@ export default function IronportDashboardClient() {
     // Dedicated ETD Message-ID input state
     const [etdInput, setEtdInput] = useState("");
 
-    // Threat sorting, status filtering, and executive report states
+    // Threat sorting, status filtering, pagination, and executive report states
     const [threatSortMode, setThreatSortMode] = useState<"priority" | "worst" | "recent">("priority");
     const [threatStatusFilter, setThreatStatusFilter] = useState<"all" | "active_only">("all");
+    const [threatCurrentPage, setThreatCurrentPage] = useState<number>(1);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+
+    useEffect(() => {
+        setThreatCurrentPage(1);
+    }, [threatSortMode, threatStatusFilter, timeframe, activeTab]);
 
     const getVolumeQueryForTab = (tab: "inbound" | "outbound" | "investigate") => {
         return tab === "outbound" ? 'message:"outbound table"' : 'message:"inbound table"';
@@ -720,78 +725,136 @@ export default function IronportDashboardClient() {
                                             sortedList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
                                         }
 
-                                        return sortedList.map((m, idx) => {
-                                            let remBadge = <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono font-bold flex items-center gap-1 w-fit"><Inbox size={10} /> INBOX ACTIVE</span>;
+                                        const itemsPerPage = 10;
+                                        const totalPages = Math.max(1, Math.ceil(sortedList.length / itemsPerPage));
+                                        const safePage = Math.min(threatCurrentPage, totalPages);
+                                        const paginatedList = sortedList.slice((safePage - 1) * itemsPerPage, safePage * itemsPerPage);
 
-                                            if (m.remediationStatus === "PURGED_BY_ETD") {
-                                                remBadge = <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-mono font-bold flex items-center gap-1 w-fit"><Mail size={10} /> PURGED BY ETD</span>;
-                                            } else if (m.remediationStatus === "QUARANTINED_BY_ESA") {
-                                                remBadge = <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/30 font-mono font-bold flex items-center gap-1 w-fit"><ShieldCheck size={10} /> QUARANTINED</span>;
-                                            }
+                                        return (
+                                            <>
+                                                {paginatedList.map((m, idx) => {
+                                                    let remBadge = <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono font-bold flex items-center gap-1 w-fit"><Inbox size={10} /> INBOX ACTIVE</span>;
 
-                                            return (
-                                                <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
-                                                    <td className="py-2 px-3 font-mono shrink-0">
-                                                        <button 
-                                                            onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
-                                                            className="font-bold text-blue-400 hover:underline text-left block text-xs"
-                                                            title={`Click to trace full message thread for MID ${m.mid}`}
-                                                        >
-                                                            MID {m.mid}
-                                                        </button>
-                                                        <span className="text-[10px] text-[var(--text-muted)] flex items-center gap-1 mt-0.5" title={`Gateway Arrival Timestamp: ${m.timestamp}`}>
-                                                            <Clock size={10} className="text-cyan-500 shrink-0" />
-                                                            {formatDateTime(m.timestamp)}
-                                                        </span>
-                                                    </td>
-                                                    <td className="py-2 px-3 font-semibold text-[var(--text-primary)] max-w-[220px] truncate" title={m.subject ? `Subject: ${m.subject}` : "No Subject Header"}>
-                                                        {m.subject || <span className="text-[var(--text-muted)] italic font-normal">No Subject Header</span>}
-                                                    </td>
-                                                    <td className="py-2 px-3 font-mono text-xs max-w-[240px]">
-                                                        <div 
-                                                            className="flex items-center gap-1.5 truncate text-cyan-400 font-semibold"
-                                                            title={`Full Sender (From): ${m.sender || 'unknown'}`}
-                                                        >
-                                                            <span className="text-[9px] uppercase font-bold text-cyan-400/90 px-1 rounded bg-cyan-500/10 border border-cyan-500/20 shrink-0">FROM</span>
-                                                            <span className="truncate">{m.sender || 'unknown'}</span>
-                                                        </div>
-                                                        <div 
-                                                            className="flex items-center gap-1.5 truncate text-indigo-300 mt-0.5"
-                                                            title={`Full Recipient (To): ${m.recipient || 'unknown'}`}
-                                                        >
-                                                            <span className="text-[9px] uppercase font-bold text-indigo-400/90 px-1 rounded bg-indigo-500/10 border border-indigo-500/20 shrink-0">TO</span>
-                                                            <span className="truncate">{m.recipient || 'unknown'}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="py-2.5 px-3">
-                                                        {remBadge}
-                                                    </td>
-                                                    <td className="py-2.5 px-3 font-mono font-bold">
-                                                        <span className={m.worstScore < 0 ? (m.worstScore <= -5.0 ? "text-red-400" : "text-orange-400") : "text-[var(--text-secondary)]"}>
-                                                            {m.worstScore.toFixed(1)}
-                                                        </span>
-                                                    </td>
-                                                    <td className="py-2.5 px-3 font-mono font-extrabold text-amber-400">
-                                                        {m.priorityScore !== undefined ? m.priorityScore.toFixed(1) : Math.abs(m.worstScore).toFixed(1)}
-                                                    </td>
-                                                    <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--text-primary)] max-w-[200px] truncate" title={`Full Target URL: ${m.primaryThreatUrl}`}>
-                                                        {m.primaryThreatUrl}
-                                                    </td>
-                                                    <td className="py-2.5 px-3 text-right">
-                                                        <button 
-                                                            onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
-                                                            className="px-2.5 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded font-semibold text-[11px] transition-colors"
-                                                        >
-                                                            Trace MID {m.mid}
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        });
+                                                    if (m.remediationStatus === "PURGED_BY_ETD") {
+                                                        remBadge = <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-mono font-bold flex items-center gap-1 w-fit"><Mail size={10} /> PURGED BY ETD</span>;
+                                                    } else if (m.remediationStatus === "QUARANTINED_BY_ESA") {
+                                                        remBadge = <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/30 font-mono font-bold flex items-center gap-1 w-fit"><ShieldCheck size={10} /> QUARANTINED</span>;
+                                                    }
+
+                                                    return (
+                                                        <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
+                                                            <td className="py-2 px-3 font-mono shrink-0">
+                                                                <button 
+                                                                    onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
+                                                                    className="font-bold text-blue-400 hover:underline text-left block text-xs"
+                                                                    title={`Click to trace full message thread for MID ${m.mid}`}
+                                                                >
+                                                                    MID {m.mid}
+                                                                </button>
+                                                                <span className="text-[10px] text-[var(--text-muted)] flex items-center gap-1 mt-0.5" title={`Gateway Arrival Timestamp: ${m.timestamp}`}>
+                                                                    <Clock size={10} className="text-cyan-500 shrink-0" />
+                                                                    {formatDateTime(m.timestamp)}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-2 px-3 font-semibold text-[var(--text-primary)] max-w-[220px] truncate" title={m.subject ? `Subject: ${m.subject}` : "No Subject Header"}>
+                                                                {m.subject || <span className="text-[var(--text-muted)] italic font-normal">No Subject Header</span>}
+                                                            </td>
+                                                            <td className="py-2 px-3 font-mono text-xs max-w-[240px]">
+                                                                <div 
+                                                                    className="flex items-center gap-1.5 truncate text-cyan-400 font-semibold"
+                                                                    title={`Full Sender (From): ${m.sender || 'unknown'}`}
+                                                                >
+                                                                    <span className="text-[9px] uppercase font-bold text-cyan-400/90 px-1 rounded bg-cyan-500/10 border border-cyan-500/20 shrink-0">FROM</span>
+                                                                    <span className="truncate">{m.sender || 'unknown'}</span>
+                                                                </div>
+                                                                <div 
+                                                                    className="flex items-center gap-1.5 truncate text-indigo-300 mt-0.5"
+                                                                    title={`Full Recipient (To): ${m.recipient || 'unknown'}`}
+                                                                >
+                                                                    <span className="text-[9px] uppercase font-bold text-indigo-400/90 px-1 rounded bg-indigo-500/10 border border-indigo-500/20 shrink-0">TO</span>
+                                                                    <span className="truncate">{m.recipient || 'unknown'}</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-2.5 px-3">
+                                                                {remBadge}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 font-mono font-bold">
+                                                                <span className={m.worstScore < 0 ? (m.worstScore <= -5.0 ? "text-red-400" : "text-orange-400") : "text-[var(--text-secondary)]"}>
+                                                                    {m.worstScore.toFixed(1)}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-2.5 px-3 font-mono font-extrabold text-amber-400">
+                                                                {m.priorityScore !== undefined ? m.priorityScore.toFixed(1) : Math.abs(m.worstScore).toFixed(1)}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--text-primary)] max-w-[200px] truncate" title={`Full Target URL: ${m.primaryThreatUrl}`}>
+                                                                {m.primaryThreatUrl}
+                                                            </td>
+                                                            <td className="py-2.5 px-3 text-right">
+                                                                <button 
+                                                                    onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
+                                                                    className="px-2.5 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded font-semibold text-[11px] transition-colors"
+                                                                >
+                                                                    Trace MID {m.mid}
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </>
+                                        );
                                     })()}
                                 </tbody>
                             </table>
                         </div>
+
+                        {/* High-Risk Table Pagination Footer */}
+                        {(() => {
+                            let rawList = (stats?.topMessageThreats && stats.topMessageThreats.length > 0 ? stats.topMessageThreats : []);
+                            if (threatStatusFilter === "active_only") {
+                                rawList = rawList.filter(m => m.remediationStatus === "DELIVERED_TO_INBOX" || !m.remediationStatus);
+                            }
+                            const totalItems = rawList.length;
+                            const itemsPerPage = 10;
+                            const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+                            const startIdx = totalItems > 0 ? (threatCurrentPage - 1) * itemsPerPage + 1 : 0;
+                            const endIdx = Math.min(threatCurrentPage * itemsPerPage, totalItems);
+
+                            return (
+                                <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-3 border-t border-[var(--border-color)] text-xs text-[var(--text-secondary)]">
+                                    <div className="font-medium font-mono">
+                                        Showing <span className="font-bold text-[var(--text-primary)]">{startIdx}–{endIdx}</span> of <span className="font-bold text-[var(--text-primary)]">{totalItems}</span> evaluated high-risk threat messages
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5">
+                                        <button
+                                            onClick={() => setThreatCurrentPage(p => Math.max(1, p - 1))}
+                                            disabled={threatCurrentPage <= 1}
+                                            className="px-2.5 py-1 bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)] rounded-md disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition-colors text-[11px]"
+                                        >
+                                            ◀ Prev
+                                        </button>
+
+                                        {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                                            <button
+                                                key={p}
+                                                onClick={() => setThreatCurrentPage(p)}
+                                                className={`px-2.5 py-1 rounded-md text-[11px] font-mono font-bold transition-colors ${threatCurrentPage === p ? "bg-[var(--accent-primary)] text-white shadow-sm" : "bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)] text-[var(--text-secondary)]"}`}
+                                            >
+                                                {p}
+                                            </button>
+                                        ))}
+
+                                        <button
+                                            onClick={() => setThreatCurrentPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={threatCurrentPage >= totalPages}
+                                            className="px-2.5 py-1 bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)] rounded-md disabled:opacity-40 disabled:cursor-not-allowed font-semibold transition-colors text-[11px]"
+                                        >
+                                            Next ▶
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* Per-Appliance Health & Load Balance Panel */}

@@ -358,15 +358,15 @@ export class OgGraylogClient {
      */
     async getTopMessageThreatAggregations(
         rangeSeconds: number = 86400, 
-        limit: number = 12,
+        limit: number = 50,
         volumeQuery: string = 'message:"inbound table"'
     ): Promise<GraylogMessageThreatAggregation[]> {
         try {
             const scopePrefix = volumeQuery ? `(${volumeQuery}) AND ` : '';
 
             const [riskyHits, generalHits] = await Promise.all([
-                this.searchMessages(`${scopePrefix}(esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL"))`, 350, rangeSeconds).catch(() => []),
-                this.searchMessages(`${scopePrefix}(_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation"))`, 200, rangeSeconds).catch(() => [])
+                this.searchMessages(`${scopePrefix}(esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL"))`, 600, rangeSeconds).catch(() => []),
+                this.searchMessages(`${scopePrefix}(_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation"))`, 300, rangeSeconds).catch(() => [])
             ]);
 
             const allHits = [...riskyHits, ...generalHits];
@@ -775,7 +775,7 @@ export class OgGraylogClient {
             this.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
             this.getRecentTelemetrySamples(rangeSeconds),
             this.get100PercentFullDatasetAggregations(rangeSeconds),
-            this.getTopMessageThreatAggregations(rangeSeconds, 12, volumeQuery),
+            this.getTopMessageThreatAggregations(rangeSeconds, 50, volumeQuery),
             this.getAmpIocAggregations(rangeSeconds, 10, volumeQuery),
             this.getSpoofingAuthAggregations(rangeSeconds, 10, volumeQuery),
             this.getTargetRecipientAggregations(rangeSeconds, 10, volumeQuery)
