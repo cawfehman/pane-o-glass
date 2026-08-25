@@ -431,6 +431,54 @@ export const helpData: Record<string, TooltipDetails> = {
             "Graylog Stream 5d7ff82fb209026ab43e167b: Ingests raw ESA syslog events from ESA01 and ESA02.",
             "2-Step Batch MID Lookup: Correlates separate syslog lines (URL score, From, To, Subject) in memory."
         ]
+    },
+    etd: {
+        title: "Cisco Email Threat Defense (ETD) Retrospective Center",
+        version: "1.0.0",
+        category: "Cloud Post-Delivery Threat Hunting & Remediation",
+        description: "Monitor retrospective threat verdicts (Scam, Phishing, Malware), calculate user exposure window deltas, track M365 auto-clawbacks, and deep-link directly to Cisco CMD portal incident records.",
+        capabilities: [
+            {
+                title: "Retrospective Scam, Phish & Malware Verdict Tracking",
+                detail: "Collects cloud threat verdicts applied retroactively to messages delivered into user inboxes. Surfaces Message-ID, Subject, Sender, and Recipient.",
+                tag: "Retrospective Stream"
+            },
+            {
+                title: "User Exposure Window Delta (Elapsed Mins)",
+                detail: "Calculates the exact elapsed minutes between email arrival and Cisco ETD cloud clawback to identify users who had time to open or click malicious links.",
+                tag: "Exposure Delta"
+            },
+            {
+                title: "Direct Cisco CMD Portal Deep-Linking",
+                detail: "1-click deep links directly to the official Cisco CMD portal incident details (https://portal.cmd.cisco.com/messages?_any=...).",
+                tag: "CMD Deep Link"
+            },
+            {
+                title: "1-Click Graylog MID & Message-ID Correlation",
+                detail: "Instantly pivots to internal Graylog stream traces to inspect the exact gateway ingress logs, connecting IP, and recipient envelope.",
+                tag: "MID Trace"
+            },
+            {
+                title: "1-Click Handoff to User Advisory Campaigns",
+                detail: "Stage exposed employees directly into the Corporate Breach Notification Center for automated security advisory or credential reset campaigns.",
+                tag: "User Advisory"
+            }
+        ],
+        colors: [
+            { name: "🟢 PURGED BY ETD", meaning: "Email retroactively clawed back and purged from Microsoft 365 user inbox automatically.", rgb: "#10b981" },
+            { name: "🟣 QUARANTINED BY ESA", meaning: "Held in Cisco ESA policy quarantine or dropped at edge.", rgb: "#a855f7" },
+            { name: "🔴 PENDING MANUAL REVIEW", meaning: "Retrospective verdict applied but message requires manual SOC inbox review.", rgb: "#ef4444" },
+            { name: "🟨 High Exposure Delta (>15 Mins)", meaning: "User had over 15 minutes of exposure before clawback occurred. Recommend security advisory.", rgb: "#f59e0b" }
+        ],
+        shortcuts: [
+            "Click [Trace MID in Graylog] on any incident to launch full internal syslog thread analysis.",
+            "Click [Open Cisco CMD Portal] for direct deep-link to the official Cisco ETD incident record.",
+            "Click [Stage User Advisory] to send high-exposure users directly into the Notification Center."
+        ],
+        backgroundJobs: [
+            "Cisco ETD Service: Outbound polling to Cisco CMD/ETD API & internal Graylog retrospective stream parsing.",
+            "Exposure Delta Engine: Calculates timestamp deltas between gateway ingest and retrospective remediation."
+        ]
     }
 };
 
