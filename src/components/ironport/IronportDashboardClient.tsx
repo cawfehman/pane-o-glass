@@ -305,9 +305,9 @@ export default function IronportDashboardClient() {
             filter: c.filterQuery
         }))
         : [
-            { name: "Clean / Established (Score >= 3.0)", value: 3463348, percent: "51.7%", color: "#10b981", filter: 'esa_url_rep_score:[3.0 TO 10.0] OR (message:"has reputation" AND NOT message:"reputation 0.0")' },
-            { name: "Uncategorized / Neutral (Score 0.0 - 2.9)", value: 896953, percent: "13.4%", color: "#f59e0b", filter: 'esa_url_rep_score:[0.0 TO 2.9] OR message:"reputation 0.0"' },
-            { name: "Risky / Threat Proxy (Action Rewritten)", value: 2343528, percent: "35.0%", color: "#ef4444", filter: 'esa_cisco_action:"URL redirected to Cisco Security proxy" OR message:"URL redirected to Cisco Security proxy"' }
+            { name: "Clean / Trusted (Score > 5.0)", value: 79, percent: "0.1%", color: "#10b981", filter: 'esa_url_rep_score:[5.0 TO 10.0] OR (message:"has reputation" AND (message:"reputation 5." OR message:"reputation 6."))' },
+            { name: "Neutral / Moderate (Score 3.0 - 4.9)", value: 41379, percent: "4.4%", color: "#f59e0b", filter: 'esa_url_rep_score:[3.0 TO 4.9] OR (message:"has reputation" AND (message:"reputation 3." OR message:"reputation 4."))' },
+            { name: "Uncategorized / Suspect (Score < 3.0)", value: 896533, percent: "95.5%", color: "#ef4444", filter: 'esa_url_rep_score:[0.0 TO 2.9] OR message:"reputation 0.0"' }
         ];
 
     // 100% Full-Dataset Donut Graphic Data for AMP File Reputation Scans across all events
