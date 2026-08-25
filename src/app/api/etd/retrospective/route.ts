@@ -9,7 +9,10 @@ export async function GET(req: NextRequest) {
         const etdService = new CiscoEtdService();
         const data = await etdService.getRetrospectiveVerdicts(rangeSeconds);
 
-        return NextResponse.json(data);
+        return NextResponse.json({
+            ...data,
+            hasApiConfigured: CiscoEtdService.hasApiCredentials()
+        });
     } catch (e: any) {
         console.error("ETD Retrospective Route Error:", e?.message || e);
         return NextResponse.json(

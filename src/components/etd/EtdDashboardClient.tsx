@@ -144,6 +144,11 @@ export function EtdDashboardClient() {
                     icon={<ShieldAlert className="w-6 h-6 text-red-400" />}
                     actions={
                         <div className="flex items-center gap-3">
+                            <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5 shadow-sm">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                Cisco ETD API & Graylog Stream Connected
+                            </span>
+
                             {/* Timeframe Selector */}
                             <div className="flex bg-[var(--bg-surface)] p-1 rounded-lg border border-[var(--border-color)]">
                                 {[

@@ -44,6 +44,13 @@ export class CiscoEtdService {
     }
 
     /**
+     * Helper to check if ETD API credentials are provided in environment variables.
+     */
+    static hasApiCredentials(): boolean {
+        return !!(process.env.ETD_CLIENT_ID && process.env.ETD_CLIENT_SECRET);
+    }
+
+    /**
      * Fetches retrospective threat verdicts across Graylog ETD streams and/or Cisco ETD Cloud API.
      */
     async getRetrospectiveVerdicts(rangeSeconds: number = 86400): Promise<EtdSummaryStats> {
