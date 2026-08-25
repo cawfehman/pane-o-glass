@@ -133,15 +133,21 @@ export default function IronportDashboardClient() {
         });
     };
 
-    // Advanced Syslog Parser: extracts MID, Message-ID, Subject, Delay Reasons, URLs, and AMP Verdicts
-    const parseMessage = (msg: string) => {
-        let mid: string | null = null;
-        const midMatch = msg.match(/MID (\d+)/);
-        if (midMatch) mid = midMatch[1];
+    // Advanced Syslog Parser: reads Graylog Extractor Fields directly or falls back to regex
+    const parseMessage = (msgObj: any) => {
+        const msg = typeof msgObj === 'string' ? msgObj : (msgObj?.message || "");
 
-        let messageId: string | null = null;
-        const msgIdMatch = msg.match(/Message-ID '(<.*?>|.*?)'/i);
-        if (msgIdMatch) messageId = msgIdMatch[1];
+        let mid: string | null = msgObj?.esa_mid || null;
+        if (!mid) {
+            const midMatch = msg.match(/MID (\d+)/);
+            if (midMatch) mid = midMatch[1];
+        }
+
+        let messageId: string | null = msgObj?.esa_rfc_message_id || null;
+        if (!messageId) {
+            const msgIdMatch = msg.match(/Message-ID '(<.*?>|.*?)'/i);
+            if (msgIdMatch) messageId = msgIdMatch[1];
+        }
 
         let subject: string | null = null;
         const subjMatch = msg.match(/Subject '(.*?)'/i);
@@ -151,8 +157,8 @@ export default function IronportDashboardClient() {
         const urlMatch = msg.match(/URL (https?:\/\/\S+)/i);
         if (urlMatch) extractedUrl = urlMatch[1];
 
-        let ampVerdict: string | null = null;
-        if (msg.includes("AMP file reputation verdict")) {
+        let ampVerdict: string | null = msgObj?.esa_amp_file_verdict || null;
+        if (!ampVerdict && msg.includes("AMP file reputation verdict")) {
             const verdictMatch = msg.match(/AMP file reputation verdict\s*:\s*([^,]+)/i);
             if (verdictMatch) ampVerdict = verdictMatch[1].trim();
         }
@@ -1130,10 +1136,10 @@ export default function IronportDashboardClient() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-[var(--border-color)]">
-                                        {searchResults.map((hit, idx) => {
+                                         {searchResults.map((hit, idx) => {
                                             const msgObj = hit.message;
                                             const rawMsg = msgObj.message || "";
-                                            const { mid, messageId, subject, extractedUrl, ampVerdict, delayReason, isDelaySyslog } = parseMessage(rawMsg);
+                                            const { mid, messageId, subject, extractedUrl, ampVerdict, delayReason, isDelaySyslog } = parseMessage(msgObj);
                                             
                                             return (
                                                 <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
@@ -1146,7 +1152,7 @@ export default function IronportDashboardClient() {
                                                     <td className="p-3 align-top flex flex-col gap-1">
                                                         {mid && (
                                                             <button 
-                                                                onClick={() => handleSearch(`message:"MID ${mid}"`)}
+                                                                onClick={() => handleSearch(`esa_mid:"${mid}" OR message:"MID ${mid}"`)}
                                                                 className="text-xs px-2 py-0.5 bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 border border-blue-500/30 rounded font-mono font-bold transition-colors text-left inline-block w-fit"
                                                                 title={`Click to trace full message thread for MID ${mid}`}
                                                             >
@@ -1155,7 +1161,7 @@ export default function IronportDashboardClient() {
                                                         )}
                                                         {messageId && (
                                                             <button 
-                                                                onClick={() => handleSearch(`"${messageId}"`)}
+                                                                onClick={() => handleSearch(`esa_rfc_message_id:"${messageId}" OR "${messageId}"`)}
                                                                 className="text-[11px] px-2 py-0.5 bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 border border-cyan-500/30 rounded font-mono font-semibold transition-colors text-left truncate max-w-[220px] inline-block"
                                                                 title={`Click to search post-delivery ETD correlation for Message-ID ${messageId}`}
                                                             >
