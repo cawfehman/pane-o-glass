@@ -305,8 +305,9 @@ export default function IronportDashboardClient() {
             filter: c.filterQuery
         }))
         : [
-            { name: "Cisco Security Proxy Rewrites (WRS Triggered)", value: 2322525, percent: "53.7%", color: "#ef4444", filter: 'message:"URL redirected to Cisco Security proxy"' },
-            { name: "Standard Evaluated WRS Links (Passed Proxy)", value: 2005795, percent: "46.3%", color: "#10b981", filter: 'message:"has reputation"' }
+            { name: "Clean / Established (Score >= 3.0)", value: 3463348, percent: "51.7%", color: "#10b981", filter: 'esa_url_rep_score:[3.0 TO 10.0] OR (message:"has reputation" AND NOT message:"reputation 0.0")' },
+            { name: "Uncategorized / Neutral (Score 0.0 - 2.9)", value: 896953, percent: "13.4%", color: "#f59e0b", filter: 'esa_url_rep_score:[0.0 TO 2.9] OR message:"reputation 0.0"' },
+            { name: "Risky / Threat Proxy (Action Rewritten)", value: 2343528, percent: "35.0%", color: "#ef4444", filter: 'esa_cisco_action:"URL redirected to Cisco Security proxy" OR message:"URL redirected to Cisco Security proxy"' }
         ];
 
     // 100% Full-Dataset Donut Graphic Data for AMP File Reputation Scans across all events

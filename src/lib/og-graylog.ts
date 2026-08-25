@@ -256,7 +256,7 @@ export class OgGraylogClient {
                 const res = await axios.get(url, {
                     httpsAgent,
                     headers: { "Authorization": this.authHeader, "Accept": "application/json", "X-Requested-By": "cli" },
-                    timeout: 6000
+                    timeout: 8000
                 });
                 return res.data.total_results || 0;
             } catch (e) {
@@ -264,31 +264,34 @@ export class OgGraylogClient {
             }
         };
 
-        // Dual-compatibility queries using exact user-configured Graylog Extractor Field Names!
+        // Granular, sub-second score bucket queries using esa_url_rep_score & esa_cisco_action
         const [
-            totalRepCount,
-            proxyRewriteCount,
+            urlCleanCount,
+            urlNeuCount,
+            urlRiskCount,
             ampSkippedCount,
             ampUnknownCount,
             ampCleanCount,
             ampMaliciousCount
         ] = await Promise.all([
-            fetchCount('(_exists_:esa_url_rep_score) OR message:"has reputation"'),
-            fetchCount('(esa_cisco_action:"URL redirected to Cisco Security proxy") OR message:"URL redirected to Cisco Security proxy"'),
+            fetchCount('esa_url_rep_score:[3.0 TO 10.0] OR (message:"has reputation" AND NOT message:"reputation 0.0" AND NOT message:"reputation 1." AND NOT message:"reputation 2.")'),
+            fetchCount('esa_url_rep_score:[0.0 TO 2.9] OR message:"reputation 0.0"'),
+            fetchCount('esa_cisco_action:"URL redirected to Cisco Security proxy" OR message:"URL redirected to Cisco Security proxy"'),
             fetchCount('(esa_amp_file_verdict:SKIPPED) OR message:"AMP file reputation verdict : SKIPPED"'),
             fetchCount('(esa_amp_file_verdict:UNKNOWN) OR message:"AMP file reputation verdict : UNKNOWN" OR message:"FILE UNKNOWN"'),
             fetchCount('(esa_amp_file_verdict:CLEAN) OR message:"AMP file reputation verdict : CLEAN"'),
             fetchCount('(esa_amp_file_verdict:MALICIOUS) OR message:"AMP file reputation verdict : MALICIOUS"')
         ]);
 
-        const totalUrl = Math.max(1, totalRepCount);
-        const proxyPct = ((proxyRewriteCount / totalUrl) * 100).toFixed(1);
-        const evalCount = Math.max(0, totalRepCount - proxyRewriteCount);
-        const evalPct = ((evalCount / totalUrl) * 100).toFixed(1);
+        const totalUrl = Math.max(1, urlCleanCount + urlNeuCount + urlRiskCount);
+        const cleanPct = ((urlCleanCount / totalUrl) * 100).toFixed(1);
+        const neuPct = ((urlNeuCount / totalUrl) * 100).toFixed(1);
+        const riskPct = ((urlRiskCount / totalUrl) * 100).toFixed(1);
 
         const fullUrlCategories: GraylogFullCategoryStats[] = [
-            { name: "Cisco Security Proxy Rewrites (WRS Triggered)", count: proxyRewriteCount, percentage: `${proxyPct}%`, color: "#ef4444", filterQuery: 'esa_cisco_action:"URL redirected to Cisco Security proxy" OR message:"URL redirected to Cisco Security proxy"' },
-            { name: "Standard Evaluated WRS Links (Passed Proxy)", count: evalCount, percentage: `${evalPct}%`, color: "#10b981", filterQuery: '_exists_:esa_url_rep_score OR message:"has reputation"' }
+            { name: "Clean / Established (Score >= 3.0)", count: urlCleanCount, percentage: `${cleanPct}%`, color: "#10b981", filterQuery: 'esa_url_rep_score:[3.0 TO 10.0] OR (message:"has reputation" AND NOT message:"reputation 0.0")' },
+            { name: "Uncategorized / Neutral (Score 0.0 - 2.9)", count: urlNeuCount, percentage: `${neuPct}%`, color: "#f59e0b", filterQuery: 'esa_url_rep_score:[0.0 TO 2.9] OR message:"reputation 0.0"' },
+            { name: "Risky / Threat Proxy (Action Rewritten)", count: urlRiskCount, percentage: `${riskPct}%`, color: "#ef4444", filterQuery: 'esa_cisco_action:"URL redirected to Cisco Security proxy" OR message:"URL redirected to Cisco Security proxy"' }
         ];
 
         const totalAmp = Math.max(1, ampSkippedCount + ampUnknownCount + ampCleanCount + ampMaliciousCount);
