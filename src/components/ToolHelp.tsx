@@ -355,14 +355,39 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     ironport: {
         title: "Cisco IronPort Email Security & Threat Suite",
-        version: "2.5.0",
+        version: "2.6.0",
         category: "Email Security, AMP IOCs & ETD Telemetry",
-        description: "Monitor real-time email flow, analyze composite URL threat scores, hunt AMP malware attachment hashes, detect SPF/DMARC spoofing, and trace Cisco ETD post-delivery removals.",
+        description: "Monitor real-time email flow, analyze composite URL threat scores, hunt AMP malware attachment hashes, detect SPF/DMARC spoofing, and trace Cisco ETD post-delivery removals with syntax-highlighted log payloads.",
         capabilities: [
             {
-                title: "Per-Message Composite URL Threat Score",
-                detail: "Auto-aggregates worst WRS scores per MID with 2-step batch lookup to surface Subject, Sender, and Recipient envelope headers across separate syslog events.",
-                tag: "WRS Aggregator"
+                title: "Per-Message Composite URL Threat Engine & Decayed Priority Score",
+                detail: "Auto-aggregates worst WRS scores per MID with 2-step batch lookup across separate syslog events. Applies Decayed Priority Index (Severity x Recency weighting) to keep fresh threats actionable while tracking historic incidents.",
+                tag: "Decayed Risk Engine"
+            },
+            {
+                title: "Cisco ETD & ESA Remediation Lifecycle Tracking",
+                detail: "Tracks email remediation status with glowing badges: INBOX ACTIVE (🟢), PURGED BY ETD (🩵), and QUARANTINED BY ESA (🟣) across post-delivery clawback events.",
+                tag: "Remediation Badges"
+            },
+            {
+                title: "Active Inboxes Only Triage Toggle",
+                detail: "1-click toggle to isolate active un-remediated threats sitting in user inboxes from auto-purged or edge-quarantined messages.",
+                tag: "Active Inbox Filter"
+            },
+            {
+                title: "50-Item Capacity with 10-per-Page Pagination",
+                detail: "Evaluates top 50 high-risk messages across selected timeframe with clean 10-per-page client pagination controls ([◀ Prev], [1], [2], [3], [4], [5], [Next ▶]).",
+                tag: "50-Item Pagination"
+            },
+            {
+                title: "Executive Threat Summary Modal & CSV Export",
+                detail: "Executive reporting modal summarizing inbound volume, critical threats, and remediated threats with 1-click [Export Executive CSV Report] download.",
+                tag: "Executive CSV"
+            },
+            {
+                title: "Inline Syslog Trace Syntax Highlighting Engine",
+                detail: "Pivoting into raw log traces automatically highlights MIDs (Blue), URLs (Amber), WRS Scores (Red/Green), Policy Actions (Purple), Emails (Teal), and IPs (Yellow) inside unstructured syslog payloads.",
+                tag: "Syntax Highlighter"
             },
             {
                 title: "Attachment Malware & AMP IOC Hunting Center",
@@ -380,40 +405,27 @@ export const helpData: Record<string, TooltipDetails> = {
                 tag: "VIP Matrix"
             },
             {
-                title: "Cisco ETD Post-Delivery Removal Readout (Read-Only)",
-                detail: "Displays Message-ID, Subject Line, Target User Inbox, ETD Threat Verdict, and Auto-Remediation Status for emails clawed back post-delivery.",
-                tag: "ETD Readout"
-            },
-            {
-                title: "Clean Delivered Mail & Whitelisted Flow",
-                detail: "Aligned 1:1 with Cisco SMA categories (Standard Inbound Policy vs Whitelisted Senders).",
-                tag: "SMA Alignment"
-            },
-            {
                 title: "Per-Appliance Health & Load Balance",
-                detail: "Monitors ESA01 (esa01.cooperhealth.edu) and ESA02 (esa02.cooperhealth.edu) load distribution and delay queues in real time.",
+                detail: "Positioned at the top of the Overview tab: monitors ESA01 (esa01.cooperhealth.edu) and ESA02 (esa02.cooperhealth.edu) load distribution and delay queues in real time.",
                 tag: "Appliance Load"
-            },
-            {
-                title: "Dynamic Timeframe Controls & Lucene Search",
-                detail: "Filter telemetry seamlessly across 1h, 6h, 12h, 24h, 3d, and 7d with 1-click Lucene log stream filtering.",
-                tag: "Timeframe Selector"
             }
         ],
         colors: [
-            { name: "Emerald Green (Score +3.0 to +10.0)", meaning: "Clean / Established mail passing all security & WRS reputation rules cleanly.", rgb: "#10b981" },
-            { name: "Blue (Score 0.0 to +2.9)", meaning: "Neutral / Uncategorized mail flow.", rgb: "#3b82f6" },
-            { name: "Amber (Score -0.1 to -2.9)", meaning: "Low Suspect URL reputation scores.", rgb: "#f59e0b" },
-            { name: "Orange (Score -3.0 to -5.9)", meaning: "Risky / Policy Trigger URL scores (aligned 100% to Cisco -3.0 policy trigger).", rgb: "#f97316" },
+            { name: "🟢 INBOX ACTIVE", meaning: "Email delivered to target user inbox and currently remains active.", rgb: "#10b981" },
+            { name: "🩵 PURGED BY ETD", meaning: "Post-delivery clawback executed by Cisco Email Threat Defense.", rgb: "#06b6d4" },
+            { name: "🟣 QUARANTINED BY ESA", meaning: "Held in Cisco ESA policy quarantine or dropped at edge.", rgb: "#a855f7" },
             { name: "Deep Red (Score -6.0 to -10.0)", meaning: "Malicious / Critical Block URL score.", rgb: "#ef4444" },
-            { name: "Purple (Whitelisted Senders)", meaning: "Inbound messages allowed via Whitelisted Addresses policy stream.", rgb: "#a855f7" },
-            { name: "Cyan (Cisco ETD / Message-ID)", meaning: "Cisco Email Threat Defense Message-ID header correlation & ESA traffic.", rgb: "#06b6d4" }
+            { name: "Orange (Score -3.0 to -5.9)", meaning: "Risky / Policy Trigger URL scores (aligned 100% to Cisco -3.0 policy trigger).", rgb: "#f97316" },
+            { name: "Amber (Score -0.1 to -2.9)", meaning: "Low Suspect URL reputation scores.", rgb: "#f59e0b" },
+            { name: "Blue (MIDs & Syslog Tokens)", meaning: "Message ID header & trace highlight token.", rgb: "#3b82f6" },
+            { name: "Amber Underline (Syslog URLs)", meaning: "Embedded web links inside raw trace payloads.", rgb: "#f59e0b" }
         ],
         shortcuts: [
-            "Click [Trace MID] on any row in the High-Risk Messages table to inspect raw syslog threads.",
+            "Click [Trace MID] on any row in the High-Risk Messages table to inspect syntax-highlighted raw syslog threads.",
+            "Click [Weekly Executive Report] to view executive threat statistics and export CSV reports.",
+            "Use [Active Inboxes Only] toggle to focus exclusively on active, un-handled inbox threats.",
             "Click [Shun Sender IP] in the Spoofing Center to push bad senders directly into your Cisco ASA Shun database.",
-            "Click [VirusTotal Lookup] on any AMP SHA256 hash to trigger an instant file threat intelligence report.",
-            "Use quick-filter chips (Message-ID, URL Reputation, AMP Logs) for 1-click Lucene log stream filtering."
+            "Click [VirusTotal Lookup] on any AMP SHA256 hash to trigger an instant file threat intelligence report."
         ],
         backgroundJobs: [
             "Graylog Stream 5d7ff82fb209026ab43e167b: Ingests raw ESA syslog events from ESA01 and ESA02.",
