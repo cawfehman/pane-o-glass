@@ -712,7 +712,9 @@ export default function IronportDashboardClient() {
                                                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }}></span>
                                                 <span className="text-xs font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent-primary)] transition-colors">{item.name}</span>
                                             </div>
-                                            <span className="text-xs font-bold text-[var(--text-secondary)] bg-[var(--bg-surface)] px-2 py-0.5 rounded border border-[var(--border-color)]">{item.percent}</span>
+                                            <span className="text-xs font-bold text-[var(--text-secondary)] bg-[var(--bg-surface)] px-2.5 py-0.5 rounded border border-[var(--border-color)] font-mono">
+                                                {item.value.toLocaleString()} <span className="opacity-70 font-sans">({item.percent})</span>
+                                            </span>
                                         </button>
                                     ))}
                                 </div>
@@ -765,8 +767,10 @@ export default function IronportDashboardClient() {
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                        <span className="text-xl font-bold text-[var(--text-primary)]">AMP Scans</span>
-                                        <span className="text-[10px] text-[var(--text-muted)] font-semibold uppercase">Active</span>
+                                        <span className="text-xl font-bold text-[var(--text-primary)]">
+                                            {ampPieData.reduce((acc, curr) => acc + curr.value, 0).toLocaleString()}
+                                        </span>
+                                        <span className="text-[10px] text-[var(--text-muted)] font-semibold uppercase">AMP Scans</span>
                                     </div>
                                 </div>
 
@@ -775,14 +779,16 @@ export default function IronportDashboardClient() {
                                     {ampPieData.map((item, i) => (
                                         <button 
                                             key={i} 
-                                            onClick={() => handleSearch('message:"AMP file reputation verdict"')}
+                                            onClick={() => handleSearch(item.filter || 'message:"AMP file reputation verdict"')}
                                             className="flex justify-between items-center p-2 rounded-lg bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)] transition-colors text-left group"
                                         >
                                             <div className="flex items-center gap-2">
                                                 <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }}></span>
                                                 <span className="text-xs font-semibold text-[var(--text-primary)] group-hover:text-[var(--accent-primary)] transition-colors">{item.name}</span>
                                             </div>
-                                            <span className="text-xs font-bold text-[var(--text-secondary)] bg-[var(--bg-surface)] px-2 py-0.5 rounded border border-[var(--border-color)]">{item.percent}</span>
+                                            <span className="text-xs font-bold text-[var(--text-secondary)] bg-[var(--bg-surface)] px-2.5 py-0.5 rounded border border-[var(--border-color)] font-mono">
+                                                {item.value.toLocaleString()} <span className="opacity-70 font-sans">({item.percent})</span>
+                                            </span>
                                         </button>
                                     ))}
                                 </div>
