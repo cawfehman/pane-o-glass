@@ -4,6 +4,9 @@ import { hasPermission } from "@/app/actions/permissions";
 import { OgGraylogClient } from "@/lib/og-graylog";
 import { prisma } from "@/lib/prisma";
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: Request) {
     try {
         const session = await auth();
@@ -132,13 +135,21 @@ export async function GET(req: Request) {
                     fullUrlCategories: fullAggregations?.fullUrlCategories || [],
                     fullAmpCategories: fullAggregations?.fullAmpCategories || [],
                     fromCache: true
+                }, {
+                    headers: {
+                        "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate"
+                    }
                 });
             }
         }
 
         // Live Graylog Fallback
         const stats = await client.getDashboardStats(rangeSeconds, volumeQuery);
-        return NextResponse.json(stats);
+        return NextResponse.json(stats, {
+            headers: {
+                "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate"
+            }
+        });
     } catch (error: any) {
         console.error("IronPort Stats API Error:", error);
         return NextResponse.json(

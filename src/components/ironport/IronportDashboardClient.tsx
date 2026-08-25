@@ -34,8 +34,8 @@ export default function IronportDashboardClient() {
         setError(null);
         try {
             const vQuery = getVolumeQueryForTab(tab);
-            const url = `/api/ironport/stats?range=${selectedRange}&volumeQuery=${encodeURIComponent(vQuery)}`;
-            const res = await fetch(url);
+            const url = `/api/ironport/stats?range=${selectedRange}&volumeQuery=${encodeURIComponent(vQuery)}&_t=${Date.now()}`;
+            const res = await fetch(url, { cache: "no-store" });
             if (!res.ok) {
                 const err = await res.json();
                 throw new Error(err.details || "Failed to fetch IronPort stats");
