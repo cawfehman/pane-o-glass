@@ -253,10 +253,15 @@ export class OgGraylogClient {
      */
     async getTopMessageThreatAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogMessageThreatAggregation[]> {
         try {
-            const messages = await this.searchMessages('_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")', 150, rangeSeconds);
+            const [riskyHits, generalHits] = await Promise.all([
+                this.searchMessages('esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL")', 100, rangeSeconds).catch(() => []),
+                this.searchMessages('_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")', 100, rangeSeconds).catch(() => [])
+            ]);
+
+            const allHits = [...riskyHits, ...generalHits];
             const midMap: Record<string, GraylogMessageThreatAggregation> = {};
 
-            messages.forEach((h: any) => {
+            allHits.forEach((h: any) => {
                 const raw = h.message.message || "";
                 const midMatch = raw.match(/MID (\d+)/);
                 const urlMatch = raw.match(/URL (https?:\/\/\S+)/i);

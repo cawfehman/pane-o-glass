@@ -75,19 +75,22 @@ export async function GET(req: Request) {
                 let esaBreakdown;
                 let telemetrySamples;
                 let fullAggregations;
+                let topMsgThreats: any[] = [];
 
                 try {
-                    const [wHist, esaData, tSamples, fAgg] = await Promise.all([
+                    const [wHist, esaData, tSamples, fAgg, tThreats] = await Promise.all([
                         client.getHistogram('message:"Whitelisted Addresses"', rangeSeconds),
                         client.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
                         client.getRecentTelemetrySamples(rangeSeconds),
-                        client.get100PercentFullDatasetAggregations(rangeSeconds)
+                        client.get100PercentFullDatasetAggregations(rangeSeconds),
+                        client.getTopMessageThreatAggregations(rangeSeconds, 8)
                     ]);
                     whitelistedSeries = wHist.series;
                     whitelistedTotal = wHist.total;
                     esaBreakdown = esaData;
                     telemetrySamples = tSamples;
                     fullAggregations = fAgg;
+                    topMsgThreats = tThreats;
 
                     // Ensure top card delayedMessages & totalVolume match exact sum of ESA01 + ESA02 direct receiver numbers!
                     if (esaBreakdown) {
@@ -134,6 +137,7 @@ export async function GET(req: Request) {
                     recentAmpVerdicts: telemetrySamples?.recentAmpVerdicts || [],
                     fullUrlCategories: fullAggregations?.fullUrlCategories || [],
                     fullAmpCategories: fullAggregations?.fullAmpCategories || [],
+                    topMessageThreats: topMsgThreats || [],
                     fromCache: true
                 }, {
                     headers: {
