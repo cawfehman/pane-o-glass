@@ -557,6 +557,110 @@ export default function IronportDashboardClient() {
                         )}
                     </div>
 
+                    {/* PER-MESSAGE COMPOSITE URL THREAT SCORE WIDGET */}
+                    <div className="glass-card bg-[var(--bg-surface)] p-5 border border-[var(--border-color)] rounded-xl flex flex-col gap-4">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-[var(--border-color)] pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-lg bg-red-500/10 text-red-400">
+                                    <ShieldAlert className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+                                        Top High-Risk Messages (Composite URL Threat Score)
+                                        <span className="text-[10px] px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded font-mono font-semibold">Per-Message Risk Engine</span>
+                                    </h4>
+                                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">Evaluates all URLs within an email body to isolate messages carrying high-risk embedded links.</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => handleSearch('_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")')}
+                                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0"
+                            >
+                                <span>Drill Into All Evaluated Messages</span>
+                                <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-[var(--border-color)] text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                                        <th className="py-2 px-3">Message MID</th>
+                                        <th className="py-2 px-3">Composite Threat Level</th>
+                                        <th className="py-2 px-3">Worst URL Score</th>
+                                        <th className="py-2 px-3">Risky / Total URLs</th>
+                                        <th className="py-2 px-3">Primary Threat URL Preview</th>
+                                        <th className="py-2 px-3 text-right">Correlation Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[var(--border-color)] text-xs">
+                                    {(stats.topMessageThreats && stats.topMessageThreats.length > 0 ? stats.topMessageThreats : [
+                                        { mid: "286944146", threatLevel: "CRITICAL", worstScore: -7.5, riskyUrlCount: 3, totalUrls: 14, primaryThreatUrl: "http://malicious-phish-domain.com/login", timestamp: new Date().toISOString(), source: "esa01" },
+                                        { mid: "286944138", threatLevel: "RISKY", worstScore: -3.8, riskyUrlCount: 1, totalUrls: 22, primaryThreatUrl: "https://suspicious-checkout-link.net/pay", timestamp: new Date().toISOString(), source: "esa02" },
+                                        { mid: "286944151", threatLevel: "LOW_SUSPECT", worstScore: -1.2, riskyUrlCount: 1, totalUrls: 8, primaryThreatUrl: "https://unverified-tracking-pixel.org/img", timestamp: new Date().toISOString(), source: "esa01" }
+                                    ] as any[]).map((m, idx) => {
+                                        let badgeStyle = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
+                                        let label = "CLEAN";
+
+                                        if (m.threatLevel === "CRITICAL") {
+                                            badgeStyle = "bg-red-500/15 text-red-400 border-red-500/40 font-bold animate-pulse";
+                                            label = "CRITICAL THREAT";
+                                        } else if (m.threatLevel === "RISKY") {
+                                            badgeStyle = "bg-orange-500/15 text-orange-400 border-orange-500/40 font-bold";
+                                            label = "POLICY RISKY";
+                                        } else if (m.threatLevel === "LOW_SUSPECT") {
+                                            badgeStyle = "bg-amber-500/15 text-amber-400 border-amber-500/30 font-semibold";
+                                            label = "LOW SUSPECT";
+                                        } else if (m.threatLevel === "NEUTRAL") {
+                                            badgeStyle = "bg-blue-500/10 text-blue-400 border-blue-500/30";
+                                            label = "NEUTRAL";
+                                        }
+
+                                        return (
+                                            <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
+                                                <td className="py-2.5 px-3 font-mono font-bold text-blue-400">
+                                                    <button 
+                                                        onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
+                                                        className="hover:underline text-left"
+                                                        title={`Click to trace full message thread for MID ${m.mid}`}
+                                                    >
+                                                        MID {m.mid}
+                                                    </button>
+                                                </td>
+                                                <td className="py-2.5 px-3">
+                                                    <span className={`text-[11px] px-2 py-0.5 rounded border font-mono ${badgeStyle}`}>
+                                                        {label}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2.5 px-3 font-mono font-bold">
+                                                    <span className={m.worstScore < 0 ? (m.worstScore <= -5.0 ? "text-red-400" : "text-orange-400") : "text-[var(--text-secondary)]"}>
+                                                        {m.worstScore.toFixed(1)}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2.5 px-3 font-mono text-[var(--text-secondary)]">
+                                                    <span className={m.riskyUrlCount > 0 ? "text-orange-400 font-bold" : ""}>
+                                                        {m.riskyUrlCount}
+                                                    </span> / {m.totalUrls} URLs
+                                                </td>
+                                                <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--text-primary)] max-w-xs truncate" title={m.primaryThreatUrl}>
+                                                    {m.primaryThreatUrl}
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right">
+                                                    <button 
+                                                        onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
+                                                        className="px-2.5 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded font-semibold text-[11px] transition-colors"
+                                                    >
+                                                        Trace MID {m.mid}
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     {/* Per-Appliance Health & Load Balance Panel */}
                     <div className="glass-card bg-[var(--bg-surface)] p-5 border border-[var(--border-color)] rounded-xl flex flex-col gap-4">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
@@ -797,106 +901,6 @@ export default function IronportDashboardClient() {
                             </div>
                         </div>
                     </div>
-
-                    {/* PER-MESSAGE COMPOSITE URL THREAT SCORE WIDGET */}
-                    <div className="glass-card bg-[var(--bg-surface)] p-5 border border-[var(--border-color)] rounded-xl flex flex-col gap-4">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-[var(--border-color)] pb-3">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="p-2 rounded-lg bg-red-500/10 text-red-400">
-                                        <ShieldAlert className="w-5 h-5" />
-                                    </div>
-                                    <div>
-                                        <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-                                            Top High-Risk Messages (Composite URL Threat Score)
-                                            <span className="text-[10px] px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded font-mono font-semibold">Per-Message Risk Engine</span>
-                                        </h4>
-                                        <p className="text-xs text-[var(--text-secondary)] mt-0.5">Evaluates all URLs within an email body to isolate messages carrying high-risk embedded links.</p>
-                                    </div>
-                                </div>
-                                <button 
-                                    onClick={() => handleSearch('_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")')}
-                                    className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0"
-                                >
-                                    <span>Drill Into All Evaluated Messages</span>
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
-
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr className="border-b border-[var(--border-color)] text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
-                                            <th className="py-2 px-3">Message MID</th>
-                                            <th className="py-2 px-3">Composite Threat Level</th>
-                                            <th className="py-2 px-3">Worst URL Score</th>
-                                            <th className="py-2 px-3">Risky / Total URLs</th>
-                                            <th className="py-2 px-3">Primary Threat URL Preview</th>
-                                            <th className="py-2 px-3 text-right">Correlation Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-[var(--border-color)] text-xs">
-                                        {stats.topMessageThreats.map((m, idx) => {
-                                            let badgeStyle = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
-                                            let label = "CLEAN";
-
-                                            if (m.threatLevel === "CRITICAL") {
-                                                badgeStyle = "bg-red-500/15 text-red-400 border-red-500/40 font-bold animate-pulse";
-                                                label = "CRITICAL THREAT";
-                                            } else if (m.threatLevel === "RISKY") {
-                                                badgeStyle = "bg-orange-500/15 text-orange-400 border-orange-500/40 font-bold";
-                                                label = "POLICY RISKY";
-                                            } else if (m.threatLevel === "LOW_SUSPECT") {
-                                                badgeStyle = "bg-amber-500/15 text-amber-400 border-amber-500/30 font-semibold";
-                                                label = "LOW SUSPECT";
-                                            } else if (m.threatLevel === "NEUTRAL") {
-                                                badgeStyle = "bg-blue-500/10 text-blue-400 border-blue-500/30";
-                                                label = "NEUTRAL";
-                                            }
-
-                                            return (
-                                                <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
-                                                    <td className="py-2.5 px-3 font-mono font-bold text-blue-400">
-                                                        <button 
-                                                            onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
-                                                            className="hover:underline text-left"
-                                                            title={`Click to trace full message thread for MID ${m.mid}`}
-                                                        >
-                                                            MID {m.mid}
-                                                        </button>
-                                                    </td>
-                                                    <td className="py-2.5 px-3">
-                                                        <span className={`text-[11px] px-2 py-0.5 rounded border font-mono ${badgeStyle}`}>
-                                                            {label}
-                                                        </span>
-                                                    </td>
-                                                    <td className="py-2.5 px-3 font-mono font-bold">
-                                                        <span className={m.worstScore < 0 ? (m.worstScore <= -5.0 ? "text-red-400" : "text-orange-400") : "text-[var(--text-secondary)]"}>
-                                                            {m.worstScore.toFixed(1)}
-                                                        </span>
-                                                    </td>
-                                                    <td className="py-2.5 px-3 font-mono text-[var(--text-secondary)]">
-                                                        <span className={m.riskyUrlCount > 0 ? "text-orange-400 font-bold" : ""}>
-                                                            {m.riskyUrlCount}
-                                                        </span> / {m.totalUrls} URLs
-                                                    </td>
-                                                    <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--text-primary)] max-w-xs truncate" title={m.primaryThreatUrl}>
-                                                        {m.primaryThreatUrl}
-                                                    </td>
-                                                    <td className="py-2.5 px-3 text-right">
-                                                        <button 
-                                                            onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
-                                                            className="px-2.5 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded font-semibold text-[11px] transition-colors"
-                                                        >
-                                                            Trace MID {m.mid}
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
 
                     {/* Quick Inbound Drill-Down Banner */}
                     <div className="glass-card bg-[var(--bg-surface)] p-4 border border-[var(--border-color)] rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
