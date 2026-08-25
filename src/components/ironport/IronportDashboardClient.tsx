@@ -683,13 +683,24 @@ export default function IronportDashboardClient() {
                                                         MID {m.mid}
                                                     </button>
                                                 </td>
-                                                <td className="py-2.5 px-3 font-semibold text-[var(--text-primary)] max-w-[200px] truncate" title={m.subject || "No Subject Header"}>
+                                                <td className="py-2 px-3 font-semibold text-[var(--text-primary)] max-w-[220px] truncate" title={m.subject ? `Subject: ${m.subject}` : "No Subject Header"}>
                                                     {m.subject || <span className="text-[var(--text-muted)] italic font-normal">No Subject Header</span>}
                                                 </td>
-                                                <td className="py-2.5 px-3 font-mono text-[11px] max-w-[220px] truncate">
-                                                    <span className="text-cyan-400" title={`Sender: ${m.sender || 'unknown'}`}>{m.sender || 'unknown'}</span>
-                                                    <span className="text-[var(--text-muted)] mx-1">➔</span>
-                                                    <span className="text-indigo-300" title={`Recipient: ${m.recipient || 'unknown'}`}>{m.recipient || 'unknown'}</span>
+                                                <td className="py-2 px-3 font-mono text-xs max-w-[240px]">
+                                                    <div 
+                                                        className="flex items-center gap-1.5 truncate text-cyan-400 font-semibold"
+                                                        title={`Full Sender (From): ${m.sender || 'unknown'}`}
+                                                    >
+                                                        <span className="text-[9px] uppercase font-bold text-cyan-400/90 px-1 rounded bg-cyan-500/10 border border-cyan-500/20 shrink-0">FROM</span>
+                                                        <span className="truncate">{m.sender || 'unknown'}</span>
+                                                    </div>
+                                                    <div 
+                                                        className="flex items-center gap-1.5 truncate text-indigo-300 mt-0.5"
+                                                        title={`Full Recipient (To): ${m.recipient || 'unknown'}`}
+                                                    >
+                                                        <span className="text-[9px] uppercase font-bold text-indigo-400/90 px-1 rounded bg-indigo-500/10 border border-indigo-500/20 shrink-0">TO</span>
+                                                        <span className="truncate">{m.recipient || 'unknown'}</span>
+                                                    </div>
                                                 </td>
                                                 <td className="py-2.5 px-3">
                                                     <span className={`text-[11px] px-2 py-0.5 rounded border font-mono ${badgeStyle}`}>
@@ -706,7 +717,7 @@ export default function IronportDashboardClient() {
                                                         {m.riskyUrlCount}
                                                     </span> / {m.totalUrls} URLs
                                                 </td>
-                                                <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--text-primary)] max-w-xs truncate" title={m.primaryThreatUrl}>
+                                                <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--text-primary)] max-w-[220px] truncate" title={`Full Target URL: ${m.primaryThreatUrl}`}>
                                                     {m.primaryThreatUrl}
                                                 </td>
                                                 <td className="py-2.5 px-3 text-right">

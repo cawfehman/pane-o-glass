@@ -353,8 +353,8 @@ export class OgGraylogClient {
             const scopePrefix = volumeQuery ? `(${volumeQuery}) AND ` : '';
 
             const [riskyHits, generalHits] = await Promise.all([
-                this.searchMessages(`${scopePrefix}(esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL"))`, 150, rangeSeconds).catch(() => []),
-                this.searchMessages(`${scopePrefix}(_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation"))`, 150, rangeSeconds).catch(() => [])
+                this.searchMessages(`${scopePrefix}(esa_url_rep_score:[-10.0 TO -0.1] OR esa_url_rep_score:/-[0-9]\\..*/ OR (message:"reputation -" AND message:"URL"))`, 350, rangeSeconds).catch(() => []),
+                this.searchMessages(`${scopePrefix}(_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation"))`, 200, rangeSeconds).catch(() => [])
             ]);
 
             const allHits = [...riskyHits, ...generalHits];
@@ -424,8 +424,16 @@ export class OgGraylogClient {
                 }
             });
 
-            // Sort by worstScore ascending (most dangerous negative scores first)
-            aggregatedList.sort((a, b) => a.worstScore - b.worstScore);
+            // Sort deterministically: worst WRS score ascending (most dangerous first), then risky URL count descending, then timestamp descending
+            aggregatedList.sort((a, b) => {
+                if (a.worstScore !== b.worstScore) {
+                    return a.worstScore - b.worstScore;
+                }
+                if (a.riskyUrlCount !== b.riskyUrlCount) {
+                    return b.riskyUrlCount - a.riskyUrlCount;
+                }
+                return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+            });
             return aggregatedList.slice(0, limit);
         } catch (e) {
             return [];
