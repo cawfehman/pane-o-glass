@@ -289,7 +289,7 @@ export default function IronportDashboardClient() {
     const whitelistedVol = whitelistedCat?.value || 0;
     const pureCleanVol = Math.max(0, stats.totalVolume - whitelistedVol);
 
-    // 100% Full-Dataset Donut Graphic Data for URL Web Reputation Scores (WRS) across millions of events
+    // 100% Full-Dataset Donut Graphic Data for URL Web Reputation Scores (WRS: -10.0 to +10.0) across millions of events
     const urlPieData = (stats.fullUrlCategories && stats.fullUrlCategories.length > 0)
         ? stats.fullUrlCategories.map(c => ({
             name: c.name,
@@ -299,9 +299,9 @@ export default function IronportDashboardClient() {
             filter: c.filterQuery
         }))
         : [
-            { name: "Clean / Safe (High Score > 5.0)", value: 135, percent: "0.0%", color: "#10b981", filter: 'message:"URL" AND (message:"reputation 5." OR message:"reputation 6.")' },
-            { name: "Neutral (Moderate Score 3.0-5.0)", value: 283, percent: "0.0%", color: "#f59e0b", filter: 'message:"URL" AND (message:"reputation 3." OR message:"reputation 4.")' },
-            { name: "Risky / Threat (Low Score < 3.0)", value: 3897091, percent: "100.0%", color: "#ef4444", filter: 'message:"URL" AND message:"reputation"' }
+            { name: "Negative WRS / Rewritten (Score < 0.0)", value: 4385439, percent: "99.9%", color: "#ef4444", filter: 'message:"URL" AND message:"reputation -"' },
+            { name: "Neutral / Uncategorized (Score 0.0 - 5.9)", value: 347, percent: "0.1%", color: "#f59e0b", filter: 'message:"URL" AND (message:"reputation 0." OR message:"reputation 1.")' },
+            { name: "Clean / Established (Score >= 6.0)", value: 0, percent: "0.0%", color: "#10b981", filter: 'message:"URL" AND message:"reputation 6."' }
         ];
 
     // 100% Full-Dataset Donut Graphic Data for AMP File Reputation Scans across all events
@@ -652,7 +652,7 @@ export default function IronportDashboardClient() {
                                     </div>
                                     <div>
                                         <h4 className="text-sm font-bold text-[var(--text-primary)]">URL Reputation Analysis (`url_rep`)</h4>
-                                        <p className="text-xs text-[var(--text-secondary)]">Cisco Web Reputation Score (WRS): <span className="text-[var(--accent-primary)] font-semibold">High Score = Clean | Low Score = Risky</span></p>
+                                        <p className="text-xs text-[var(--text-secondary)]">Cisco WRS (-10.0 to +10.0): <span className="text-[var(--accent-primary)] font-semibold">url_rep logs links matching reputation rules or proxy rewrites</span></p>
                                     </div>
                                 </div>
                                 <button 

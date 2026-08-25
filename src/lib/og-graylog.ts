@@ -236,19 +236,23 @@ export class OgGraylogClient {
     }
 
     /**
-     * Fetches 100% full dataset stream aggregations across millions of events in Graylog without sampling.
+     * Fetches 100% full dataset stream aggregations across millions of events in Graylog targeting exact Cisco WRS score ranges (-10.0 to +10.0).
      */
     async get100PercentFullDatasetAggregations(rangeSeconds: number = 86400): Promise<{ fullUrlCategories: GraylogFullCategoryStats[], fullAmpCategories: GraylogFullCategoryStats[] }> {
+        // Cisco WRS Score Ranges:
+        // Negative / Risky: WRS < 0.0 (query: message:"reputation -")
+        // Neutral / Uncategorized: WRS 0.0 - 5.9
+        // Clean / Established: WRS >= 6.0
         const urlQueries = [
-            { name: "Clean / Safe (High Score > 5.0)", query: 'message:"URL" AND (message:"reputation 5." OR message:"reputation 6." OR message:"reputation 7." OR message:"reputation 8." OR message:"reputation 9." OR message:"reputation 10.")', color: "#10b981" },
-            { name: "Neutral (Moderate Score 3.0-5.0)", query: 'message:"URL" AND (message:"reputation 3." OR message:"reputation 4.")', color: "#f59e0b" },
-            { name: "Risky / Threat (Low Score < 3.0)", query: 'message:"URL" AND message:"reputation" AND NOT (message:"reputation 3." OR message:"reputation 4." OR message:"reputation 5." OR message:"reputation 6." OR message:"reputation 7." OR message:"reputation 8." OR message:"reputation 9." OR message:"reputation 10.")', color: "#ef4444" }
+            { name: "Negative WRS / Rewritten (Score < 0.0)", query: 'message:"URL" AND message:"reputation -"', color: "#ef4444" },
+            { name: "Neutral / Uncategorized (Score 0.0 - 5.9)", query: 'message:"URL" AND (message:"reputation 0." OR message:"reputation 1." OR message:"reputation 2." OR message:"reputation 3." OR message:"reputation 4." OR message:"reputation 5.")', color: "#f59e0b" },
+            { name: "Clean / Established (Score >= 6.0)", query: 'message:"URL" AND (message:"reputation 6." OR message:"reputation 7." OR message:"reputation 8." OR message:"reputation 9." OR message:"reputation 10.")', color: "#10b981" }
         ];
 
         const ampQueries = [
             { name: "No Attachment (Skipped)", query: 'message:"AMP file reputation verdict : SKIPPED"', color: "#6b7280" },
-            { name: "Clean File Scans", query: 'message:"AMP file reputation verdict : CLEAN"', color: "#10b981" },
             { name: "Analyzing / Unknown", query: 'message:"AMP file reputation verdict : UNKNOWN" OR message:"FILE UNKNOWN"', color: "#f59e0b" },
+            { name: "Clean File Scans", query: 'message:"AMP file reputation verdict : CLEAN"', color: "#10b981" },
             { name: "Malicious File Verdicts", query: 'message:"AMP file reputation verdict : MALICIOUS"', color: "#ef4444" }
         ];
 
@@ -273,8 +277,8 @@ export class OgGraylogClient {
         };
 
         const [
-            urlHighCount, urlModCount, urlLowCount,
-            ampSkippedCount, ampCleanCount, ampUnknownCount, ampMaliciousCount
+            urlNegCount, urlNeuCount, urlPosCount,
+            ampSkippedCount, ampUnknownCount, ampCleanCount, ampMaliciousCount
         ] = await Promise.all([
             fetchCount(urlQueries[0].query),
             fetchCount(urlQueries[1].query),
@@ -285,18 +289,18 @@ export class OgGraylogClient {
             fetchCount(ampQueries[3].query)
         ]);
 
-        const totalUrl = Math.max(1, urlHighCount + urlModCount + urlLowCount);
+        const totalUrl = Math.max(1, urlNegCount + urlNeuCount + urlPosCount);
         const fullUrlCategories: GraylogFullCategoryStats[] = [
-            { name: "Clean / Safe (High Score > 5.0)", count: urlHighCount, percentage: `${((urlHighCount / totalUrl) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: urlQueries[0].query },
-            { name: "Neutral (Moderate Score 3.0-5.0)", count: urlModCount, percentage: `${((urlModCount / totalUrl) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: urlQueries[1].query },
-            { name: "Risky / Threat (Low Score < 3.0)", count: urlLowCount, percentage: `${((urlLowCount / totalUrl) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: urlQueries[2].query }
+            { name: "Negative WRS / Rewritten (Score < 0.0)", count: urlNegCount, percentage: `${((urlNegCount / totalUrl) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: urlQueries[0].query },
+            { name: "Neutral / Uncategorized (Score 0.0 - 5.9)", count: urlNeuCount, percentage: `${((urlNeuCount / totalUrl) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: urlQueries[1].query },
+            { name: "Clean / Established (Score >= 6.0)", count: urlPosCount, percentage: `${((urlPosCount / totalUrl) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: urlQueries[2].query }
         ];
 
-        const totalAmp = Math.max(1, ampSkippedCount + ampCleanCount + ampUnknownCount + ampMaliciousCount);
+        const totalAmp = Math.max(1, ampSkippedCount + ampUnknownCount + ampCleanCount + ampMaliciousCount);
         const fullAmpCategories: GraylogFullCategoryStats[] = [
             { name: "No Attachment (Skipped)", count: ampSkippedCount, percentage: `${((ampSkippedCount / totalAmp) * 100).toFixed(1)}%`, color: "#6b7280", filterQuery: ampQueries[0].query },
-            { name: "Clean File Scans", count: ampCleanCount, percentage: `${((ampCleanCount / totalAmp) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: ampQueries[1].query },
-            { name: "Analyzing / Unknown", count: ampUnknownCount, percentage: `${((ampUnknownCount / totalAmp) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: ampQueries[2].query },
+            { name: "Analyzing / Unknown", count: ampUnknownCount, percentage: `${((ampUnknownCount / totalAmp) * 100).toFixed(1)}%`, color: "#f59e0b", filterQuery: ampQueries[1].query },
+            { name: "Clean File Scans", count: ampCleanCount, percentage: `${((ampCleanCount / totalAmp) * 100).toFixed(1)}%`, color: "#10b981", filterQuery: ampQueries[2].query },
             { name: "Malicious File Verdicts", count: ampMaliciousCount, percentage: `${((ampMaliciousCount / totalAmp) * 100).toFixed(1)}%`, color: "#ef4444", filterQuery: ampQueries[3].query }
         ];
 
@@ -316,7 +320,7 @@ export class OgGraylogClient {
             const raw = h.message.message || "";
             const midMatch = raw.match(/MID (\d+)/);
             const urlMatch = raw.match(/URL (https?:\/\/\S+)/i);
-            const repMatch = raw.match(/reputation ([\d\.]+)/i);
+            const repMatch = raw.match(/reputation ([\-\d\.]+)/i);
 
             return {
                 mid: midMatch ? midMatch[1] : "",
