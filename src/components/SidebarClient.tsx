@@ -142,26 +142,26 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                 </Link>
                             )}
                             {hasPermission('ironport') && (
-                                <>
-                                    <Link 
-                                        href="/queries/ironport" 
-                                        onClick={closeMobile}
-                                        title={isCollapsed ? "IronPort Telemetry" : undefined}
-                                        className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/ironport") ? "active" : ""}`}
-                                    >
-                                        <Mail size={18} className="shrink-0" />
-                                        <span className="nav-text">IronPort Telemetry</span>
-                                    </Link>
-                                    <Link 
-                                        href="/queries/etd" 
-                                        onClick={closeMobile}
-                                        title={isCollapsed ? "Cisco ETD Center" : undefined}
-                                        className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/etd") ? "active" : ""}`}
-                                    >
-                                        <ShieldAlert size={18} className="shrink-0 text-red-400" />
-                                        <span className="nav-text">Cisco ETD Center</span>
-                                    </Link>
-                                </>
+                                <Link 
+                                    href="/queries/ironport" 
+                                    onClick={closeMobile}
+                                    title={isCollapsed ? "IronPort Telemetry" : undefined}
+                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/ironport") ? "active" : ""}`}
+                                >
+                                    <Mail size={18} className="shrink-0" />
+                                    <span className="nav-text">IronPort Telemetry</span>
+                                </Link>
+                            )}
+                            {hasPermission('etd') && (
+                                <Link 
+                                    href="/queries/etd" 
+                                    onClick={closeMobile}
+                                    title={isCollapsed ? "Cisco ETD Center" : undefined}
+                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/etd") ? "active" : ""}`}
+                                >
+                                    <ShieldAlert size={18} className="shrink-0 text-red-400" />
+                                    <span className="nav-text">Cisco ETD Center</span>
+                                </Link>
                             )}
                             {hasPermission('notification-center') && (
                                 <Link 
