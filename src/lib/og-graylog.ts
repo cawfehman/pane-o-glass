@@ -253,6 +253,7 @@ export class OgGraylogClient {
 
     /**
      * Aggregates URL telemetry by Message ID (esa_mid) and calculates composite risk levels per email.
+     * Uses 2-step batch lookup to fetch Subject, Sender, and Recipient envelope headers across all log lines.
      */
     async getTopMessageThreatAggregations(rangeSeconds: number = 86400, limit: number = 10): Promise<GraylogMessageThreatAggregation[]> {
         try {
@@ -270,10 +271,6 @@ export class OgGraylogClient {
                 const urlMatch = raw.match(/URL (https?:\/\/\S+)/i);
                 const repMatch = raw.match(/reputation ([\-\d\.]+)/i);
 
-                const fromMatch = raw.match(/From:\s*<([^>]+)>/i) || raw.match(/From:\s*(\S+)/i);
-                const toMatch = raw.match(/To:\s*<([^>]+)>/i) || raw.match(/To:\s*(\S+)/i);
-                const subjMatch = raw.match(/Subject\s*['"]([^'"]+)['"]/i) || raw.match(/Subject\s*:?\s*(.+)/i);
-
                 const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
                 if (!mid) return;
 
@@ -290,9 +287,9 @@ export class OgGraylogClient {
                     midMap[mid] = {
                         mid,
                         messageId: h.message.esa_rfc_message_id || "",
-                        subject: h.message.esa_subject || (subjMatch ? subjMatch[1].trim() : undefined),
-                        sender: h.message.esa_mail_from || (fromMatch ? fromMatch[1] : undefined),
-                        recipient: h.message.esa_rcpt_to || (toMatch ? toMatch[1] : undefined),
+                        subject: h.message.esa_subject,
+                        sender: h.message.esa_mail_from,
+                        recipient: h.message.esa_rcpt_to,
                         totalUrls: 0,
                         worstScore: score,
                         riskyUrlCount: 0,
@@ -301,16 +298,6 @@ export class OgGraylogClient {
                         timestamp: h.message.timestamp,
                         source: h.message.source ? h.message.source.split('.')[0] : "esa"
                     };
-                }
-
-                if (!midMap[mid].subject && (h.message.esa_subject || subjMatch)) {
-                    midMap[mid].subject = h.message.esa_subject || (subjMatch ? subjMatch[1].trim() : undefined);
-                }
-                if (!midMap[mid].sender && (h.message.esa_mail_from || fromMatch)) {
-                    midMap[mid].sender = h.message.esa_mail_from || (fromMatch ? fromMatch[1] : undefined);
-                }
-                if (!midMap[mid].recipient && (h.message.esa_rcpt_to || toMatch)) {
-                    midMap[mid].recipient = h.message.esa_rcpt_to || (toMatch ? toMatch[1] : undefined);
                 }
 
                 midMap[mid].totalUrls += 1;
@@ -324,6 +311,37 @@ export class OgGraylogClient {
                     midMap[mid].riskyUrlCount += 1;
                 }
             });
+
+            // STEP 2: Batch lookup envelope details (Sender, Recipient, Subject) for the target MIDs
+            const targetMids = Object.keys(midMap);
+            if (targetMids.length > 0) {
+                const batchQuery = targetMids.slice(0, 30).map(m => `esa_mid:"${m}" OR message:"MID ${m}"`).join(" OR ");
+                try {
+                    const envelopeLogs = await this.searchMessages(batchQuery, 200, rangeSeconds);
+                    envelopeLogs.forEach((h: any) => {
+                        const raw = h.message.message || "";
+                        const midMatch = raw.match(/MID (\d+)/);
+                        const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
+                        if (!mid || !midMap[mid]) return;
+
+                        const fromMatch = raw.match(/From:\s*<([^>]+)>/i) || raw.match(/From:\s*(\S+)/i);
+                        const toMatch = raw.match(/To:\s*<([^>]+)>/i) || raw.match(/To:\s*(\S+)/i);
+                        const subjMatch = raw.match(/Subject\s*['"]([^'"]+)['"]/i) || raw.match(/Subject\s*:?\s*(.+)/i);
+
+                        if (!midMap[mid].subject && (h.message.esa_subject || subjMatch)) {
+                            midMap[mid].subject = h.message.esa_subject || (subjMatch ? subjMatch[1].trim() : undefined);
+                        }
+                        if (!midMap[mid].sender && (h.message.esa_mail_from || fromMatch)) {
+                            midMap[mid].sender = h.message.esa_mail_from || (fromMatch ? fromMatch[1] : undefined);
+                        }
+                        if (!midMap[mid].recipient && (h.message.esa_rcpt_to || toMatch)) {
+                            midMap[mid].recipient = h.message.esa_rcpt_to || (toMatch ? toMatch[1] : undefined);
+                        }
+                    });
+                } catch (e) {
+                    // Ignore secondary lookup errors
+                }
+            }
 
             const aggregatedList = Object.values(midMap).map(m => {
                 if (m.worstScore <= -6.0) {
