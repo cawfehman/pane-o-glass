@@ -98,59 +98,57 @@ export function classifyM365Url(
     const lowerUrl = destUrl.toLowerCase();
     const lowerHost = host.toLowerCase();
 
-    // 1. Check if URL matches official legitimate authentication endpoints or general auth patterns
+    // 1. Is it an Official Microsoft Auth Host or Endpoint?
     const matchedOfficial = customEndpoints.find(ep => lowerUrl.startsWith(ep.url.toLowerCase()));
     const isOfficialHost = OFFICIAL_AUTH_HOSTS.some(h => lowerHost === h || lowerHost.endsWith(`.${h}`));
 
-    const isAuthPattern = lowerUrl.includes("oauth2") || 
-                          lowerUrl.includes("authorize") || 
-                          lowerUrl.includes("devicelogin") || 
-                          lowerUrl.includes("deviceauth") || 
-                          lowerUrl.includes("passwordreset") || 
-                          lowerHost.includes("login.microsoft") || 
-                          lowerHost.includes("login-microsoft") || 
-                          lowerHost.includes("login-windows") || 
-                          lowerHost.includes("m365-login");
+    // 2. Is it an EXPLICIT Microsoft Branded Host or URL?
+    const isMsBranded = lowerHost.includes("microsoft") || 
+                        lowerHost.includes("office365") || 
+                        lowerHost.includes("m365") || 
+                        lowerHost.includes("sharepoint") || 
+                        lowerHost.includes("outlook") || 
+                        lowerHost.includes("onmicrosoft") || 
+                        lowerUrl.includes("devicelogin") || 
+                        lowerUrl.includes("forms.office");
 
-    if (!matchedOfficial && !isAuthPattern) return null;
+    // Scenario A: Official Microsoft Endpoint / Auth Path
+    if (isOfficialHost) {
+        const isAuthEndpoint = matchedOfficial || lowerUrl.includes("oauth2") || lowerUrl.includes("devicelogin") || lowerUrl.includes("deviceauth") || lowerUrl.includes("authorize") || lowerUrl.includes("forms.office");
+        if (!isAuthEndpoint) return null;
 
-    // All IronPort inbound emails are from external senders!
-    // BASE BOOST for ALL external inbound emails containing M365 Auth links (+6.0)
-    let boost = 6.0;
-    let threatTier: "CRITICAL" | "HIGH" | "MEDIUM" | "INFO" = "HIGH";
-    let categoryParts = matchedOfficial 
-        ? [`Official Auth Link (${matchedOfficial.role})`] 
-        : ["Auth Endpoint Pattern Link"];
-
-    // Penalty Check 1: Non-Official Host / Fake Portal (+10.0 Penalty)
-    if (!isOfficialHost) {
-        boost += 10.0;
-        threatTier = "CRITICAL";
-        categoryParts.push("Fake M365 Host (+10.0 Penalty)");
+        return {
+            destUrl,
+            targetHost: host,
+            threatTier: "HIGH",
+            threatCategory: `Official M365 Auth Endpoint Link (${matchedOfficial ? matchedOfficial.role : "Entra ID / OAuth"})`,
+            impersonationBoost: 6.0,
+            officialRole: matchedOfficial ? matchedOfficial.role : undefined
+        };
     }
 
-    // Penalty Check 2: Typosquatted Brand Impersonation (+10.0 Penalty)
-    if (!isOfficialHost && (lowerHost.includes("microsoft") || lowerHost.includes("office") || lowerHost.includes("m365") || lowerHost.includes("sharepoint") || lowerHost.includes("docusign"))) {
-        boost += 10.0;
-        threatTier = "CRITICAL";
-        categoryParts.push("Typosquatted Brand Impersonation (+10.0 Penalty)");
+    // Scenario B: Explicit Microsoft Impersonation / Typosquatted Fake Portal
+    if (isMsBranded && !isOfficialHost) {
+        let boost = 10.0;
+        let categories = ["🚨 Fake M365 Login Portal / Typosquatted Domain (+10.0 Boost)"];
+
+        if (wrsScore < 0) {
+            const wrsPenalty = Math.abs(wrsScore) * 2.0;
+            boost += wrsPenalty;
+            categories.push(`Negative WRS Penalty (+${wrsPenalty.toFixed(1)})`);
+        }
+
+        return {
+            destUrl,
+            targetHost: host,
+            threatTier: "CRITICAL",
+            threatCategory: categories.join(" | "),
+            impersonationBoost: parseFloat(boost.toFixed(1))
+        };
     }
 
-    // Penalty Check 3: Negative WRS Reputation Score
-    if (wrsScore < 0) {
-        const wrsPenalty = Math.abs(wrsScore) * 2.0;
-        boost += wrsPenalty;
-        categoryParts.push(`Negative WRS Penalty (+${wrsPenalty.toFixed(1)})`);
-    }
-
-    return {
-        destUrl,
-        targetHost: host,
-        threatTier,
-        threatCategory: categoryParts.join(" | "),
-        impersonationBoost: parseFloat(boost.toFixed(1)),
-        officialRole: matchedOfficial ? matchedOfficial.role : undefined
-    };
+    // Non-Microsoft Third-Party URLs (Mimecast, LabCorp, Cisco, RoundTrip) -> 0 BOOST!
+    return null;
 }
 
 export interface GraylogHistogramData {
