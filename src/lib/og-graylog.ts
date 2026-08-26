@@ -1258,7 +1258,7 @@ export class OgGraylogClient {
         ] = await Promise.all([
             this.getHistogram(volumeQuery, rangeSeconds),
             this.getHistogram(esaDelayQuery, rangeSeconds),
-            this.getHistogram('(esa_cisco_action:"URL redirected to Cisco Security proxy") OR message:"Action: URL redirected to Cisco Security proxy"', rangeSeconds),
+            this.getHistogram('message:"Rewrite_Unknown_URLs" OR message:"url-reputation-proxy-redirect-action" OR (esa_cisco_action:"URL redirected to Cisco Security proxy")', rangeSeconds),
             this.getHistogram('message:"interim AV verdict using" AND NOT message:"CLEAN"', rangeSeconds),
             this.getHistogram('message:"Whitelisted Addresses"', rangeSeconds),
             this.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
