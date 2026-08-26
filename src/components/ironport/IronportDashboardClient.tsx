@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2, ShieldCheck, Mail, FileCode2, Globe, PieChart as PieIcon } from "lucide-react";
+import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2, ShieldCheck, Mail, FileCode2, Globe, PieChart as PieIcon, Wrench, X, Lock, Users, LayoutDashboard } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, PieChart, Pie, Cell, Legend } from "recharts";
 import { useSearchParams } from "next/navigation";
-import type { GraylogStats } from "@/lib/og-graylog";
+import { GraylogStats, DEFAULT_M365_KEYWORDS, DEFAULT_LEGIT_MS_DOMAINS } from "@/lib/og-graylog";
 
 export default function IronportDashboardClient() {
     const searchParams = useSearchParams();
@@ -35,6 +35,78 @@ export default function IronportDashboardClient() {
     const [threatStatusFilter, setThreatStatusFilter] = useState<"all" | "active_only">("all");
     const [threatCurrentPage, setThreatCurrentPage] = useState<number>(1);
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+
+    // State for custom watched BEC keywords & whitelisted domains
+    const [watchedKeywords, setWatchedKeywords] = useState<string[]>(() => {
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("pane_bec_keywords");
+            if (saved) {
+                try { return JSON.parse(saved); } catch (e) {}
+            }
+        }
+        return DEFAULT_M365_KEYWORDS;
+    });
+
+    const [legitDomains, setLegitDomains] = useState<string[]>(() => {
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("pane_bec_legit_domains");
+            if (saved) {
+                try { return JSON.parse(saved); } catch (e) {}
+            }
+        }
+        return DEFAULT_LEGIT_MS_DOMAINS;
+    });
+
+    const [isBecConfigOpen, setIsBecConfigOpen] = useState(false);
+    const [newKeywordInput, setNewKeywordInput] = useState("");
+    const [newDomainInput, setNewDomainInput] = useState("");
+
+    const handleAddKeyword = (kw: string) => {
+        const clean = kw.trim().toLowerCase();
+        if (!clean || watchedKeywords.includes(clean)) return;
+        const updated = [...watchedKeywords, clean];
+        setWatchedKeywords(updated);
+        if (typeof window !== "undefined") {
+            localStorage.setItem("pane_bec_keywords", JSON.stringify(updated));
+        }
+        setNewKeywordInput("");
+    };
+
+    const handleRemoveKeyword = (kw: string) => {
+        const updated = watchedKeywords.filter(k => k !== kw);
+        setWatchedKeywords(updated);
+        if (typeof window !== "undefined") {
+            localStorage.setItem("pane_bec_keywords", JSON.stringify(updated));
+        }
+    };
+
+    const handleAddDomain = (dom: string) => {
+        const clean = dom.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+        if (!clean || legitDomains.includes(clean)) return;
+        const updated = [...legitDomains, clean];
+        setLegitDomains(updated);
+        if (typeof window !== "undefined") {
+            localStorage.setItem("pane_bec_legit_domains", JSON.stringify(updated));
+        }
+        setNewDomainInput("");
+    };
+
+    const handleRemoveDomain = (dom: string) => {
+        const updated = legitDomains.filter(d => d !== dom);
+        setLegitDomains(updated);
+        if (typeof window !== "undefined") {
+            localStorage.setItem("pane_bec_legit_domains", JSON.stringify(updated));
+        }
+    };
+
+    const handleResetBecDefaults = () => {
+        setWatchedKeywords(DEFAULT_M365_KEYWORDS);
+        setLegitDomains(DEFAULT_LEGIT_MS_DOMAINS);
+        if (typeof window !== "undefined") {
+            localStorage.removeItem("pane_bec_keywords");
+            localStorage.removeItem("pane_bec_legit_domains");
+        }
+    };
 
     useEffect(() => {
         const queryParam = searchParams.get("query");
@@ -1675,13 +1747,22 @@ export default function IronportDashboardClient() {
                                 </p>
                             </div>
                         </div>
-                        <button 
-                            onClick={() => handleSearch('message:"microsoft" OR message:"devicelogin" OR message:"forms.office"')}
-                            className="px-3 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0"
-                        >
-                            <span>Drill Into All M365 Link Logs</span>
-                            <ExternalLink className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => setIsBecConfigOpen(true)}
+                                className="px-3 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
+                            >
+                                <Wrench className="w-3.5 h-3.5" />
+                                <span>Manage Watched Keywords ({watchedKeywords.length})</span>
+                            </button>
+                            <button 
+                                onClick={() => handleSearch('message:"microsoft" OR message:"devicelogin" OR message:"forms.office"')}
+                                className="px-3 py-1.5 bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-color)] rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0"
+                            >
+                                <span>Drill Into All M365 Link Logs</span>
+                                <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
                     </div>
 
                     {/* Top Summary Metric Cards for BEC Subtab */}
@@ -2332,6 +2413,107 @@ export default function IronportDashboardClient() {
                             >
                                 <FileText size={14} />
                                 Export Executive CSV Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* BEC WATCHED KEYWORDS & DOMAIN WHITELIST CONFIG MODAL */}
+            {isBecConfigOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl w-full max-w-2xl p-6 shadow-2xl flex flex-col gap-5 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                        <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
+                            <div className="flex items-center gap-2">
+                                <Wrench className="w-5 h-5 text-orange-400" />
+                                <h3 className="text-base font-bold text-[var(--text-primary)]">Manage Watched BEC Keywords & Infrastructure Whitelist</h3>
+                            </div>
+                            <button 
+                                onClick={() => setIsBecConfigOpen(false)}
+                                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Keywords Section */}
+                        <div className="flex flex-col gap-2.5">
+                            <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-1.5">
+                                <Globe className="w-3.5 h-3.5 text-orange-400" />
+                                <span>Watched Impersonation & Phishing Keywords ({watchedKeywords.length})</span>
+                            </h4>
+                            <p className="text-xs text-[var(--text-secondary)]">URLs containing any of these keywords will be evaluated for fake login portals or OAuth token theft vectors.</p>
+                            <div className="flex gap-2">
+                                <input 
+                                    type="text"
+                                    placeholder="Add new keyword (e.g. docusign, mychart, payroll)..."
+                                    value={newKeywordInput}
+                                    onChange={e => setNewKeywordInput(e.target.value)}
+                                    onKeyDown={e => { if (e.key === "Enter") handleAddKeyword(newKeywordInput); }}
+                                    className="flex-1 px-3 py-1.5 bg-[var(--bg-default)] border border-[var(--border-color)] rounded-lg text-xs font-mono focus:outline-none focus:border-orange-500"
+                                />
+                                <button 
+                                    onClick={() => handleAddKeyword(newKeywordInput)}
+                                    className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold hover:bg-orange-600 transition-colors"
+                                >
+                                    + Add Keyword
+                                </button>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 p-3 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] max-h-36 overflow-y-auto custom-scrollbar">
+                                {watchedKeywords.map(kw => (
+                                    <span key={kw} className="px-2 py-1 rounded bg-orange-500/15 text-orange-400 border border-orange-500/30 font-mono text-xs flex items-center gap-1.5">
+                                        <span>{kw}</span>
+                                        <button onClick={() => handleRemoveKeyword(kw)} className="text-orange-400/70 hover:text-orange-400 font-bold">×</button>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Infrastructure Whitelist Section */}
+                        <div className="flex flex-col gap-2.5 pt-2 border-t border-[var(--border-color)]">
+                            <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-1.5">
+                                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                                <span>Authorized Infrastructure Domains ({legitDomains.length})</span>
+                            </h4>
+                            <p className="text-xs text-[var(--text-secondary)]">Domains listed here are recognized as official infrastructure. Links to other domains matching watched keywords trigger Fake Portal alerts.</p>
+                            <div className="flex gap-2">
+                                <input 
+                                    type="text"
+                                    placeholder="Add authorized domain (e.g. cooperhealth.edu, partner.com)..."
+                                    value={newDomainInput}
+                                    onChange={e => setNewDomainInput(e.target.value)}
+                                    onKeyDown={e => { if (e.key === "Enter") handleAddDomain(newDomainInput); }}
+                                    className="flex-1 px-3 py-1.5 bg-[var(--bg-default)] border border-[var(--border-color)] rounded-lg text-xs font-mono focus:outline-none focus:border-cyan-500"
+                                />
+                                <button 
+                                    onClick={() => handleAddDomain(newDomainInput)}
+                                    className="px-3 py-1.5 bg-cyan-500 text-white rounded-lg text-xs font-bold hover:bg-cyan-600 transition-colors"
+                                >
+                                    + Add Domain
+                                </button>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 p-3 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] max-h-36 overflow-y-auto custom-scrollbar">
+                                {legitDomains.map(dom => (
+                                    <span key={dom} className="px-2 py-1 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-mono text-xs flex items-center gap-1.5">
+                                        <span>{dom}</span>
+                                        <button onClick={() => handleRemoveDomain(dom)} className="text-cyan-400/70 hover:text-cyan-400 font-bold">×</button>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex justify-between items-center pt-3 border-t border-[var(--border-color)]">
+                            <button 
+                                onClick={handleResetBecDefaults}
+                                className="px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg text-xs font-semibold hover:bg-red-500/20 transition-colors"
+                            >
+                                Reset Defaults
+                            </button>
+                            <button 
+                                onClick={() => setIsBecConfigOpen(false)}
+                                className="px-4 py-1.5 bg-[var(--accent-primary)] text-white rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
+                            >
+                                Done & Save
                             </button>
                         </div>
                     </div>

@@ -1,9 +1,37 @@
-import https from "https";
-import axios from "axios";
+export const DEFAULT_M365_KEYWORDS = [
+    "microsoft",
+    "office365",
+    "office.com",
+    "sharepoint",
+    "outlook",
+    "m365",
+    "devicelogin",
+    "forms.office",
+    "login.live",
+    "onmicrosoft",
+    "docusign",
+    "mychart",
+    "workday"
+];
 
-const httpsAgent = new https.Agent({
-    rejectUnauthorized: false,
-});
+export const DEFAULT_LEGIT_MS_DOMAINS = [
+    "microsoft.com",
+    "microsoftonline.com",
+    "office.com",
+    "office365.com",
+    "live.com",
+    "sharepoint.com",
+    "outlook.com",
+    "windows.net",
+    "windowsazure.com",
+    "aka.ms",
+    "msftconnecttest.com",
+    "lync.com",
+    "skype.com",
+    "bing.com",
+    "msn.com",
+    "cooperhealth.edu"
+];
 
 export interface GraylogHistogramData {
     timestamp: number;
