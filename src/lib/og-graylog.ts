@@ -113,19 +113,42 @@ export function classifyM365Url(
         };
     }
 
-    // 2. Is it an Impersonated / Typosquatted / Fake Version of an Auth Endpoint?
-    // MUST host an authentication path or auth pattern AND be hosted on a non-official host!
-    const isAuthPathPattern = lowerUrl.includes("oauth2") || 
-                              lowerUrl.includes("authorize") || 
-                              lowerUrl.includes("devicelogin") || 
-                              lowerUrl.includes("deviceauth") || 
-                              lowerUrl.includes("passwordreset") || 
-                              lowerHost.includes("login.microsoft") || 
-                              lowerHost.includes("login-microsoft") || 
-                              lowerHost.includes("login-windows") || 
-                              lowerHost.includes("m365-login");
+    // List of known legitimate non-Microsoft vendor/news domains that use /authorize or /oauth in standard APIs
+    const LEGITIMATE_VENDOR_DOMAINS = [
+        "neurologyadvisor.com",
+        "haymarketmedicalnetwork.com",
+        "libertydentalplan.com",
+        "mimecast.com",
+        "mimecastcybergraph.com",
+        "docusign.com",
+        "docusign.net",
+        "google.com",
+        "okta.com",
+        "duosecurity.com",
+        "linkedin.com",
+        "marinisksolutions.com",
+        "wolterskluwer.com",
+        "constantcontact.com"
+    ];
 
-    if (isAuthPathPattern && !isOfficialAuthHost) {
+    const isLegitVendor = LEGITIMATE_VENDOR_DOMAINS.some(d => lowerHost === d || lowerHost.endsWith(`.${d}`));
+
+    // 2. Is it an Impersonated / Typosquatted / Fake Version of an Auth Endpoint?
+    // Requires explicit Microsoft/Entra ID login keywords OR /devicelogin / /oauth2/authorize path on non-legitimate hosts!
+    const isExplicitM365Impersonation = lowerHost.includes("login.microsoft") || 
+                                        lowerHost.includes("login-microsoft") || 
+                                        lowerHost.includes("login-windows") || 
+                                        lowerHost.includes("m365-login") || 
+                                        lowerHost.includes("office365-login") ||
+                                        lowerHost.includes("entra-login") ||
+                                        lowerHost.includes("devicelogin");
+
+    const isAuthLoginPath = lowerUrl.includes("/devicelogin") || 
+                            lowerUrl.includes("/deviceauth") || 
+                            lowerUrl.includes("/passwordreset") ||
+                            (lowerUrl.includes("/oauth2/authorize") && !isLegitVendor);
+
+    if ((isExplicitM365Impersonation || isAuthLoginPath) && !isOfficialAuthHost && !isLegitVendor) {
         let boost = 10.0;
         let categories = ["🚨 Fake M365 Login Portal / Typosquatted Auth Endpoint (+10.0 Boost)"];
 
