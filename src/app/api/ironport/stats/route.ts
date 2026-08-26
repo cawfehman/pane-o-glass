@@ -79,17 +79,19 @@ export async function GET(req: Request) {
                 let ampIocsList: any[] = [];
                 let spoofingAlertsList: any[] = [];
                 let targetRecipientsList: any[] = [];
+                let becThreatsList: any[] = [];
 
                 try {
-                    const [wHist, esaData, tSamples, fAgg, tThreats, ampList, spfList, rcptList] = await Promise.all([
+                    const [wHist, esaData, tSamples, fAgg, tThreats, ampList, spfList, rcptList, becList] = await Promise.all([
                         client.getHistogram('message:"Whitelisted Addresses"', rangeSeconds),
                         client.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
                         client.getRecentTelemetrySamples(rangeSeconds),
                         client.get100PercentFullDatasetAggregations(rangeSeconds),
-                        client.getTopMessageThreatAggregations(rangeSeconds, 8),
-                        client.getAmpIocAggregations(rangeSeconds, 8),
-                        client.getSpoofingAuthAggregations(rangeSeconds, 8),
-                        client.getTargetRecipientAggregations(rangeSeconds, 8)
+                        client.getTopMessageThreatAggregations(rangeSeconds, 50),
+                        client.getAmpIocAggregations(rangeSeconds, 10),
+                        client.getSpoofingAuthAggregations(rangeSeconds, 10),
+                        client.getTargetRecipientAggregations(rangeSeconds, 10),
+                        client.getM365BecThreatAggregations(rangeSeconds, 20)
                     ]);
                     whitelistedSeries = wHist.series;
                     whitelistedTotal = wHist.total;
@@ -100,6 +102,7 @@ export async function GET(req: Request) {
                     ampIocsList = ampList;
                     spoofingAlertsList = spfList;
                     targetRecipientsList = rcptList;
+                    becThreatsList = becList;
 
                     // Ensure top card delayedMessages & totalVolume match exact sum of ESA01 + ESA02 direct receiver numbers!
                     if (esaBreakdown) {
@@ -150,6 +153,7 @@ export async function GET(req: Request) {
                     ampIocs: ampIocsList || [],
                     spoofingAlerts: spoofingAlertsList || [],
                     targetRecipients: targetRecipientsList || [],
+                    becThreats: becThreatsList || [],
                     fromCache: true
                 }, {
                     headers: {

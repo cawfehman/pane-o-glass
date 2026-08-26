@@ -624,23 +624,25 @@ export default function IronportDashboardClient() {
                         </form>
                     </div>
 
-                    {/* Sub-Module Navigation Bar */}
-                    <div className="flex flex-wrap gap-2 border-b border-[var(--border-color)] pb-3">
+                    {/* Navigation Sub-Tabs Bar */}
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1">
                         <button 
                             onClick={() => setActiveSubTab("overview")}
                             className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 ${activeSubTab === "overview" ? "bg-[var(--accent-primary)] text-white" : "bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)]"}`}
                         >
-                            <PieIcon className="w-4 h-4" />
-                            Overview & URL Risk
+                            <LayoutDashboard className="w-4 h-4" />
+                            <span>Overview & Threat Matrix</span>
                         </button>
                         <button 
                             onClick={() => setActiveSubTab("amp")}
                             className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 ${activeSubTab === "amp" ? "bg-amber-500 text-white" : "bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)]"}`}
                         >
                             <FileCode2 className="w-4 h-4" />
-                            Attachment Malware & AMP IOCs
-                            {stats.ampIocs && stats.ampIocs.length > 0 && (
-                                <span className="text-[10px] px-1.5 py-0.2 bg-amber-900/40 text-amber-200 rounded-full font-mono">{stats.ampIocs.length}</span>
+                            <span>AMP Attachment IOC Center</span>
+                            {stats?.ampIocs && stats.ampIocs.length > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 font-mono">
+                                    {stats.ampIocs.length}
+                                </span>
                             )}
                         </button>
                         <button 
@@ -648,19 +650,30 @@ export default function IronportDashboardClient() {
                             className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 ${activeSubTab === "auth" ? "bg-purple-600 text-white" : "bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)]"}`}
                         >
                             <ShieldAlert className="w-4 h-4" />
-                            SPF / DMARC Spoofing & Shun
-                            {stats.spoofingAlerts && stats.spoofingAlerts.length > 0 && (
-                                <span className="text-[10px] px-1.5 py-0.2 bg-purple-900/40 text-purple-200 rounded-full font-mono">{stats.spoofingAlerts.length}</span>
+                            <span>Spoofing & ASA Shun Center</span>
+                            {stats?.spoofingAlerts && stats.spoofingAlerts.length > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-purple-500/20 text-purple-300 font-mono">
+                                    {stats.spoofingAlerts.length}
+                                </span>
                             )}
                         </button>
                         <button 
                             onClick={() => setActiveSubTab("targets")}
                             className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 ${activeSubTab === "targets" ? "bg-red-600 text-white" : "bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)]"}`}
                         >
-                            <MailWarning className="w-4 h-4" />
-                            High-Target VIP Matrix
-                            {stats.targetRecipients && stats.targetRecipients.length > 0 && (
-                                <span className="text-[10px] px-1.5 py-0.2 bg-red-900/40 text-red-200 rounded-full font-mono">{stats.targetRecipients.length}</span>
+                            <Users className="w-4 h-4" />
+                            <span>High-Target VIP Matrix</span>
+                        </button>
+                        <button 
+                            onClick={() => setActiveSubTab("bec")}
+                            className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 ${activeSubTab === "bec" ? "bg-orange-600 text-white" : "bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)]"}`}
+                        >
+                            <Globe className="w-4 h-4" />
+                            <span>M365 BEC & Impersonation</span>
+                            {stats?.becThreats && stats.becThreats.length > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-orange-500/20 text-orange-300 font-mono">
+                                    {stats.becThreats.length}
+                                </span>
                             )}
                         </button>
                         <button 
@@ -668,7 +681,7 @@ export default function IronportDashboardClient() {
                             className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-2 ${activeSubTab === "etd" ? "bg-cyan-600 text-white" : "bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)]"}`}
                         >
                             <Mail className="w-4 h-4" />
-                            ETD Post-Delivery Removal (Read-Only)
+                            <span>Cisco ETD Retrospective</span>
                         </button>
                     </div>
 
@@ -1642,7 +1655,181 @@ export default function IronportDashboardClient() {
                 </div>
             )}
 
-            {/* SUB-TAB 5: CISCO ETD POST-DELIVERY REMOVAL (READ-ONLY) */}
+            {/* SUB-TAB 5: M365 BEC & LOGIN IMPERSONATION ANALYZER */}
+            {activeSubTab === "bec" && (
+                <div className="glass-card bg-[var(--bg-surface)] p-5 border border-[var(--border-color)] rounded-xl flex flex-col gap-5">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-[var(--border-color)] pb-3">
+                        <div className="flex items-center gap-2.5">
+                            <div className="p-2 rounded-lg bg-orange-500/10 text-orange-400">
+                                <Globe className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h4 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+                                    M365 BEC & Login Impersonation Threat Hunting Suite
+                                    <span className="text-[10px] px-2 py-0.5 bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded font-mono font-semibold">
+                                        OAuth & Form Token Theft Engine
+                                    </span>
+                                </h4>
+                                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                                    Detects fake Microsoft login portals, typosquatted domains, and external links targeting OAuth Device Code / Form token theft.
+                                </p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => handleSearch('message:"microsoft" OR message:"devicelogin" OR message:"forms.office"')}
+                            className="px-3 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0"
+                        >
+                            <span>Drill Into All M365 Link Logs</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+
+                    {/* Top Summary Metric Cards for BEC Subtab */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="p-3.5 rounded-xl bg-[var(--bg-default)] border border-[var(--border-color)]">
+                            <p className="text-[11px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Total Evaluated M365 Links</p>
+                            <p className="text-2xl font-extrabold text-[var(--text-primary)] mt-1 font-mono">{stats?.becThreats ? stats.becThreats.length : 0}</p>
+                            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Unwrapped across SafeLinks & proxy wrappers</p>
+                        </div>
+                        <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20">
+                            <p className="text-[11px] font-semibold text-red-400 uppercase tracking-wider flex items-center gap-1">
+                                <AlertTriangle size={12} /> Fake M365 Portals
+                            </p>
+                            <p className="text-2xl font-extrabold text-red-400 mt-1 font-mono">
+                                {stats?.becThreats ? stats.becThreats.filter(b => b.impersonationBoost >= 8).length : 0}
+                            </p>
+                            <p className="text-[10px] text-red-400/80 mt-0.5">+10.0 Priority Score Boost</p>
+                        </div>
+                        <div className="p-3.5 rounded-xl bg-orange-500/10 border border-orange-500/20">
+                            <p className="text-[11px] font-semibold text-orange-400 uppercase tracking-wider flex items-center gap-1">
+                                <Lock size={12} /> OAuth / Form Token Theft Vectors
+                            </p>
+                            <p className="text-2xl font-extrabold text-orange-400 mt-1 font-mono">
+                                {stats?.becThreats ? stats.becThreats.filter(b => b.impersonationBoost === 6).length : 0}
+                            </p>
+                            <p className="text-[10px] text-orange-400/80 mt-0.5">+6.0 Priority Score Boost</p>
+                        </div>
+                        <div className="p-3.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
+                            <p className="text-[11px] font-semibold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
+                                <ShieldCheck size={12} /> Unwrapped Destinations
+                            </p>
+                            <p className="text-2xl font-extrabold text-cyan-400 mt-1 font-mono">100%</p>
+                            <p className="text-[10px] text-cyan-400/80 mt-0.5">Real target hostnames exposed</p>
+                        </div>
+                    </div>
+
+                    {/* BEC Threat Hunting Table */}
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="border-b border-[var(--border-color)] text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                                    <th className="py-2.5 px-3">Delivery Time</th>
+                                    <th className="py-2.5 px-3">Message MID</th>
+                                    <th className="py-2.5 px-3">Subject Line</th>
+                                    <th className="py-2.5 px-3">Sender ➔ Target Recipient</th>
+                                    <th className="py-2.5 px-3">Target Host & Unwrapped URL</th>
+                                    <th className="py-2.5 px-3">Threat Category</th>
+                                    <th className="py-2.5 px-3">Priority Boost</th>
+                                    <th className="py-2.5 px-3 text-right">Triage Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-[var(--border-color)] text-xs font-mono">
+                                {(() => {
+                                    const becList = stats?.becThreats || [];
+                                    if (becList.length === 0) {
+                                        return (
+                                            <tr>
+                                                <td colSpan={8} className="py-8 text-center text-[var(--text-muted)] italic">
+                                                    No active M365 impersonation or OAuth token theft threats detected in current timeframe.
+                                                </td>
+                                            </tr>
+                                        );
+                                    }
+
+                                    return becList.map((b, idx) => {
+                                        let tierBadge = (
+                                            <span className="text-[10px] px-2 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30 font-bold flex items-center gap-1 w-fit">
+                                                <AlertTriangle size={10} /> {b.threatCategory}
+                                            </span>
+                                        );
+                                        if (b.impersonationBoost === 6) {
+                                            tierBadge = (
+                                                <span className="text-[10px] px-2 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30 font-bold flex items-center gap-1 w-fit">
+                                                    <Lock size={10} /> {b.threatCategory}
+                                                </span>
+                                            );
+                                        }
+
+                                        return (
+                                            <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
+                                                <td className="py-2.5 px-3 text-[var(--text-primary)] font-semibold whitespace-nowrap">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Clock size={12} className="text-cyan-400 shrink-0" />
+                                                        <span>{formatDateTime(b.timestamp)}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="py-2.5 px-3">
+                                                    <button 
+                                                        onClick={() => handleSearch(`esa_mid:"${b.mid}" OR message:"MID ${b.mid}"`)}
+                                                        className="font-bold text-blue-400 hover:underline text-xs bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded inline-block"
+                                                    >
+                                                        MID {b.mid}
+                                                    </button>
+                                                </td>
+                                                <td className="py-2.5 px-3 font-sans font-semibold text-[var(--text-primary)] max-w-[200px] truncate" title={b.subject}>
+                                                    {b.subject || <span className="text-[var(--text-muted)] italic font-normal">No Subject Header</span>}
+                                                </td>
+                                                <td className="py-2.5 px-3 text-xs max-w-[220px]">
+                                                    <div className="truncate text-cyan-400 font-semibold" title={`From: ${b.sender}`}>
+                                                        FROM: {b.sender || 'unknown'}
+                                                    </div>
+                                                    <div className="truncate text-indigo-300 mt-0.5" title={`To: ${b.recipient}`}>
+                                                        TO: {b.recipient || 'unknown'}
+                                                    </div>
+                                                </td>
+                                                <td className="py-2.5 px-3 max-w-[260px]">
+                                                    <div className="font-bold text-amber-400 truncate" title={`Target Host: ${b.targetHost}`}>
+                                                        {b.targetHost}
+                                                    </div>
+                                                    <div className="text-[10px] text-[var(--text-muted)] truncate mt-0.5" title={`Unwrapped URL: ${b.destUrl}`}>
+                                                        {b.destUrl}
+                                                    </div>
+                                                </td>
+                                                <td className="py-2.5 px-3">
+                                                    {tierBadge}
+                                                </td>
+                                                <td className="py-2.5 px-3 font-extrabold text-amber-400">
+                                                    +{b.impersonationBoost.toFixed(1)}
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                                                    <div className="flex items-center gap-1.5 justify-end">
+                                                        <button 
+                                                            onClick={() => handleSearch(`esa_mid:"${b.mid}" OR message:"MID ${b.mid}"`)}
+                                                            className="px-2 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded text-[11px] font-semibold transition-colors"
+                                                        >
+                                                            Trace MID
+                                                        </button>
+                                                        {b.sender && b.sender.includes("@") && (
+                                                            <button 
+                                                                onClick={() => handleSearch(`esa_mail_from:"${b.sender}"`)}
+                                                                className="px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded text-[11px] font-semibold transition-colors"
+                                                            >
+                                                                Audit Sender
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    });
+                                })()}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* SUB-TAB 6: CISCO ETD POST-DELIVERY REMOVAL (READ-ONLY) */}
             {activeSubTab === "etd" && (
                 <div className="glass-card bg-[var(--bg-surface)] p-5 border border-[var(--border-color)] rounded-xl flex flex-col gap-4">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2 border-b border-[var(--border-color)] pb-3">

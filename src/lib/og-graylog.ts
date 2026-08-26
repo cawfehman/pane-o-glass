@@ -100,6 +100,25 @@ export interface GraylogTargetRecipientAggregation {
     latestTimestamp: string;
 }
 
+export interface GraylogBecImpersonationAggregation {
+    mid: string;
+    messageId?: string;
+    subject?: string;
+    sender?: string;
+    recipient?: string;
+    rawUrl: string;
+    destUrl: string;
+    targetHost: string;
+    threatTier: "CRITICAL" | "HIGH" | "MEDIUM" | "INFO";
+    threatCategory: string;
+    impersonationBoost: number;
+    worstScore: number;
+    spfVerdict?: string;
+    dmarcVerdict?: string;
+    timestamp: string;
+    source: string;
+}
+
 export interface GraylogStats {
     rangeSeconds: number;
     volumeQuery: string;
@@ -121,6 +140,7 @@ export interface GraylogStats {
     ampIocs?: GraylogAmpIocAggregation[];
     spoofingAlerts?: GraylogSpoofingAuthAggregation[];
     targetRecipients?: GraylogTargetRecipientAggregation[];
+    becThreats?: GraylogBecImpersonationAggregation[];
 }
 
 export class OgGraylogClient {
@@ -506,6 +526,16 @@ export class OgGraylogClient {
                     m.threatLevel = "CLEAN";
                 }
 
+                // Check for M365 Impersonation & OAuth Token Theft vectors
+                const m365Info = classifyM365Url(m.primaryThreatUrl, m.sender);
+                if (m365Info) {
+                    m.impersonationCategory = m365Info.threatCategory;
+                    m.impersonationBoost = m365Info.impersonationBoost;
+                    m.isBecThreat = m365Info.impersonationBoost > 0;
+                } else {
+                    m.impersonationBoost = 0.0;
+                }
+
                 // Calculate Recency Weight Multiplier for Priority Score
                 const ageHours = (Date.now() - new Date(m.timestamp).getTime()) / (1000 * 3600);
                 let recencyWeight = 1.0;
@@ -519,18 +549,21 @@ export class OgGraylogClient {
                     recencyWeight = 0.95;
                 }
 
-                m.priorityScore = parseFloat((Math.abs(m.worstScore) * recencyWeight).toFixed(2));
+                // Boost Composite Priority Score for BEC, M365 Impersonation, and OAuth Token Theft threats
+                const baseScore = Math.abs(m.worstScore);
+                const boost = m.impersonationBoost || 0.0;
+                m.priorityScore = parseFloat(((baseScore + boost) * recencyWeight).toFixed(2));
             });
 
-            // Prioritize MIDs with actual negative WRS scores first (-10.0, -7.5, -5.8, -3.7, etc.)
-            const negativeThreats = aggregatedList.filter(m => m.worstScore < 0);
-            const nonNegativeThreats = aggregatedList.filter(m => m.worstScore >= 0);
+            // Prioritize MIDs with actual negative WRS scores or active BEC/Impersonation priority boosts
+            const highThreats = aggregatedList.filter(m => m.worstScore < 0 || (m.impersonationBoost && m.impersonationBoost > 0));
+            const standardThreats = aggregatedList.filter(m => m.worstScore >= 0 && (!m.impersonationBoost || m.impersonationBoost === 0));
 
-            // Consistently sort negative threats by worstScore ascending (-10.0 first) so critical threats stay at top across all timeframes
-            negativeThreats.sort((a, b) => a.worstScore - b.worstScore);
-            nonNegativeThreats.sort((a, b) => b.priorityScore - a.priorityScore);
+            // Sort high threats by boosted priorityScore descending so fake portals & token theft vectors rank #1
+            highThreats.sort((a, b) => b.priorityScore - a.priorityScore);
+            standardThreats.sort((a, b) => b.priorityScore - a.priorityScore);
 
-            const finalSortedList = [...negativeThreats, ...nonNegativeThreats];
+            const finalSortedList = [...highThreats, ...standardThreats];
             return finalSortedList.slice(0, limit);
         } catch (e) {
             return [];
@@ -821,6 +854,74 @@ export class OgGraylogClient {
     }
 
     /**
+     * Aggregates inbound emails containing M365 / Microsoft login URLs, detecting Typosquatting, Fake Portals, and OAuth Token Theft vectors.
+     */
+    async getM365BecThreatAggregations(
+        rangeSeconds: number = 86400,
+        limit: number = 20
+    ): Promise<GraylogBecImpersonationAggregation[]> {
+        try {
+            const rawLimit = rangeSeconds > 259200 ? 3000 : (rangeSeconds > 86400 ? 2000 : 1000);
+            const becHits = await this.searchMessages(
+                `message:"microsoft" OR message:"office365" OR message:"sharepoint" OR message:"login.microsoftonline" OR message:"outlook.com" OR message:"devicelogin" OR message:"forms.office"`,
+                rawLimit,
+                rangeSeconds
+            );
+
+            const becMap: Record<string, GraylogBecImpersonationAggregation> = {};
+
+            becHits.forEach((h: any) => {
+                const raw = h.message.message || "";
+                const midMatch = raw.match(/MID (\d+)/);
+                const urlMatch = raw.match(/https?:\/\/[^\s"'\)>]+/i) || raw.match(/URL\s+(['"]?)(\S+)\1/i);
+                const repMatch = raw.match(/reputation ([\-\d\.]+)/i);
+
+                const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
+                if (!mid || !urlMatch) return;
+
+                const rawUrl = urlMatch[0].startsWith("URL ") ? urlMatch[2] : urlMatch[0];
+                const analysis = classifyM365Url(rawUrl, h.message.esa_mail_from || "");
+
+                if (analysis && analysis.impersonationBoost > 0) {
+                    let score = 0.0;
+                    if (h.message.esa_url_rep_score !== undefined) {
+                        score = parseFloat(h.message.esa_url_rep_score);
+                    } else if (repMatch) {
+                        score = parseFloat(repMatch[1]);
+                    }
+
+                    if (!becMap[mid] || analysis.impersonationBoost > becMap[mid].impersonationBoost) {
+                        becMap[mid] = {
+                            mid,
+                            messageId: h.message.esa_rfc_message_id || "",
+                            subject: h.message.esa_subject,
+                            sender: h.message.esa_mail_from,
+                            recipient: h.message.esa_rcpt_to,
+                            rawUrl,
+                            destUrl: analysis.destUrl,
+                            targetHost: analysis.targetHost,
+                            threatTier: analysis.threatTier,
+                            threatCategory: analysis.threatCategory,
+                            impersonationBoost: analysis.impersonationBoost,
+                            worstScore: score,
+                            timestamp: h.message.timestamp,
+                            source: h.message.source ? h.message.source.split('.')[0] : "esa"
+                        };
+                    }
+                }
+            });
+
+            const list = Object.values(becMap);
+            await this.enrichMidsWithEnvelopeHeaders(list as any, rangeSeconds);
+
+            list.sort((a, b) => b.impersonationBoost - a.impersonationBoost || a.worstScore - b.worstScore);
+            return list.slice(0, limit);
+        } catch (e) {
+            return [];
+        }
+    }
+
+    /**
      * Fetches all stats required for the IronPort dashboard, targeting real ESA policy streams and per-appliance breakdowns.
      */
     async getDashboardStats(rangeSeconds: number = 86400, volumeQuery: string = 'message:"inbound table"'): Promise<GraylogStats> {
@@ -838,7 +939,8 @@ export class OgGraylogClient {
             topMessageThreats,
             ampIocs,
             spoofingAlerts,
-            targetRecipients
+            targetRecipients,
+            becThreats
         ] = await Promise.all([
             this.getHistogram(volumeQuery, rangeSeconds),
             this.getHistogram(esaDelayQuery, rangeSeconds),
@@ -851,7 +953,8 @@ export class OgGraylogClient {
             this.getTopMessageThreatAggregations(rangeSeconds, 50, volumeQuery),
             this.getAmpIocAggregations(rangeSeconds, 10, volumeQuery),
             this.getSpoofingAuthAggregations(rangeSeconds, 10, volumeQuery),
-            this.getTargetRecipientAggregations(rangeSeconds, 10, volumeQuery)
+            this.getTargetRecipientAggregations(rangeSeconds, 10, volumeQuery),
+            this.getM365BecThreatAggregations(rangeSeconds, 20)
         ]);
 
         if (esaBreakdown && (esaBreakdown.esa01Volume + esaBreakdown.esa02Volume > 0)) {
@@ -898,7 +1001,8 @@ export class OgGraylogClient {
             topMessageThreats,
             ampIocs,
             spoofingAlerts,
-            targetRecipients
+            targetRecipients,
+            becThreats
         };
     }
 }
