@@ -546,25 +546,25 @@ export class OgGraylogClient {
                     midHeaderMap[mid].deliveryTimestamp = h.message.timestamp;
                 }
 
-                const fromMatch = raw.match(/ready \d+ bytes from <([^>]+)>/i) || 
-                                  raw.match(/From:?\s*=?\s*["']?[^<]*["']?\s*<([^>]+)>/i) || 
-                                  raw.match(/From:\s*(\S+)/i) || 
-                                  raw.match(/From=([^;\s]+)/i);
+                const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i;
 
-                const toMatch = raw.match(/To:\s*<([^>]+)>/i) || 
-                                raw.match(/To:?\s*=?\s*["']?[^<]*["']?\s*<([^>]+)>/i) || 
-                                raw.match(/To:\s*(\S+)/i) || 
-                                raw.match(/To=([^;\s]+)/i);
+                const fromBracket = raw.match(/From:?\s*<([^>]+)>/i) || raw.match(/From=([^;\s]+)/i) || raw.match(/envelope sender\s+<([^>]+)>/i);
+                const fromDirect = raw.match(emailRegex);
+                const senderCand = h.message.esa_mail_from || (fromBracket ? fromBracket[1] : (fromDirect ? fromDirect[0] : undefined));
+
+                const toBracket = raw.match(/To:\s*<([^>]+)>/i) || raw.match(/To=([^;\s]+)/i) || raw.match(/envelope rcpt to\s+<([^>]+)>/i);
+                const toDirect = raw.match(/To:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i);
+                const rcptCand = h.message.esa_rcpt_to || (toBracket ? toBracket[1] : (toDirect ? toDirect[1] : undefined));
 
                 const subjMatch = raw.match(/Subject\s+"([^"]+)"/i) || 
                                   raw.match(/Subject\s*['"]([^'"]+)['"]/i) || 
                                   raw.match(/Subject:\s*(.+)/i);
 
-                if (!midHeaderMap[mid].sender && (h.message.esa_mail_from || fromMatch)) {
-                    midHeaderMap[mid].sender = h.message.esa_mail_from || (fromMatch ? fromMatch[1] : undefined);
+                if (!midHeaderMap[mid].sender && senderCand && senderCand.includes("@") && !senderCand.startsWith("Not") && !senderCand.startsWith("unknown")) {
+                    midHeaderMap[mid].sender = senderCand.trim();
                 }
-                if (!midHeaderMap[mid].recipient && (h.message.esa_rcpt_to || toMatch)) {
-                    midHeaderMap[mid].recipient = h.message.esa_rcpt_to || (toMatch ? toMatch[1] : undefined);
+                if (!midHeaderMap[mid].recipient && rcptCand && rcptCand.includes("@") && !rcptCand.startsWith("Not") && !rcptCand.startsWith("unknown")) {
+                    midHeaderMap[mid].recipient = rcptCand.trim();
                 }
                 if (!midHeaderMap[mid].subject && (h.message.esa_subject || subjMatch)) {
                     midHeaderMap[mid].subject = h.message.esa_subject || (subjMatch ? subjMatch[1].trim() : undefined);
@@ -1245,16 +1245,19 @@ export class OgGraylogClient {
                 await this.enrichMidsWithEnvelopeHeaders(item.items as any, rangeSeconds).catch(() => {});
             }
 
-            const thirdPartyOAuthLinks: GraylogThirdPartyOAuthAggregation[] = rawOauthList.map(item => ({
-                provider: item.provider,
-                count: item.count,
-                percentage: `${((item.count / Math.max(1, totalOAuthCount)) * 100).toFixed(1)}%`,
-                uniqueRecipientsCount: item.recipients.size,
-                topHosts: Array.from(item.hosts as Set<string>).slice(0, 5),
-                sampleMids: Array.from(item.mids as Set<string>).slice(0, 5),
-                items: item.items.slice(0, 30),
-                latestTimestamp: item.latestTimestamp
-            }));
+            const thirdPartyOAuthLinks: GraylogThirdPartyOAuthAggregation[] = rawOauthList.map(item => {
+                const validRcpts = new Set(item.items.map((it: any) => it.recipient).filter((r: any) => r && r.includes("@") && !r.startsWith("Not") && !r.startsWith("unknown")));
+                return {
+                    provider: item.provider,
+                    count: item.count,
+                    percentage: `${((item.count / Math.max(1, totalOAuthCount)) * 100).toFixed(1)}%`,
+                    uniqueRecipientsCount: validRcpts.size,
+                    topHosts: Array.from(item.hosts as Set<string>).slice(0, 5),
+                    sampleMids: Array.from(item.mids as Set<string>).slice(0, 5),
+                    items: item.items.slice(0, 30),
+                    latestTimestamp: item.latestTimestamp
+                };
+            });
 
             thirdPartyOAuthLinks.sort((a, b) => b.count - a.count);
 
