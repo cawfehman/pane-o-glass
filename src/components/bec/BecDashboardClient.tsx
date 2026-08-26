@@ -198,12 +198,12 @@ export default function BecDashboardClient() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)]">
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Unwrapped URLs (Live Sample)</span>
+                        <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Total Unwrapped URLs Evaluated</span>
                         <Globe className="w-4 h-4 text-blue-400" />
                     </div>
                     <div className="flex items-baseline justify-between mt-2">
                         <span className="text-2xl font-black text-[var(--text-primary)]">{totalEvaluatedUrls.toLocaleString()}</span>
-                        <span className="text-xs text-[var(--text-secondary)]">{totalEvaluatedMessages.toLocaleString()} msgs sampled</span>
+                        <span className="text-xs text-[var(--text-secondary)]">{totalEvaluatedMessages.toLocaleString()} unique msgs</span>
                     </div>
                 </div>
 
