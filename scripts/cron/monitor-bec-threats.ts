@@ -182,14 +182,14 @@ async function runBecMonitorCron() {
 
         // Update BackgroundJob status in Prisma
         await prisma.backgroundJob.upsert({
-            where: { name: "monitor-bec-threats" },
+            where: { name: "M365 BEC Threat Monitor" },
             update: {
                 lastRun: new Date(),
                 status: "SUCCESS",
                 message: `Evaluated ${incidentsCount} threats, dispatched ${alertsSent} alert emails to ${DEFAULT_ALERT_RECIPIENT}. (${durationMs}ms)`
             },
             create: {
-                name: "monitor-bec-threats",
+                name: "M365 BEC Threat Monitor",
                 lastRun: new Date(),
                 status: "SUCCESS",
                 message: `Evaluated ${incidentsCount} threats, dispatched ${alertsSent} alert emails to ${DEFAULT_ALERT_RECIPIENT}. (${durationMs}ms)`
