@@ -1166,14 +1166,21 @@ export class OgGraylogClient {
                         }
                         const entry = oauthDiscoveriesMap[key] as any;
                         entry.count += 1;
-                        if (h.message.esa_rcpt_to) entry.recipients.add(h.message.esa_rcpt_to);
+
+                        const toMatch = raw.match(/To:\s*<([^>]+)>/i) || raw.match(/To:\s*(\S+)/i) || raw.match(/envelope rcpt to\s+<([^>]+)>/i);
+                        const fromMatch = raw.match(/From:\s*<([^>]+)>/i) || raw.match(/From:\s*(\S+)/i) || raw.match(/envelope sender\s+<([^>]+)>/i);
+
+                        const rcptVal = h.message.esa_rcpt_to || (toMatch ? toMatch[1] : "");
+                        const senderVal = h.message.esa_mail_from || (fromMatch ? fromMatch[1] : "");
+
+                        if (rcptVal) entry.recipients.add(rcptVal);
                         if (host) entry.hosts.add(host);
                         if (mid) entry.mids.add(mid);
                         
                         entry.items.push({
                             mid,
-                            sender: h.message.esa_mail_from,
-                            recipient: h.message.esa_rcpt_to,
+                            sender: senderVal,
+                            recipient: rcptVal,
                             subject: h.message.esa_subject,
                             host,
                             destUrl,
