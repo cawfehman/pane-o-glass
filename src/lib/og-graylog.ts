@@ -1051,9 +1051,9 @@ export class OgGraylogClient {
             const query = `_exists_:esa_url_rep_score OR message:"URL" OR message:"devicelogin" OR message:"authorize" OR message:"oauth"`;
             let becHits: any[] = [];
 
-            // Execute Time-Chunked Paging for ranges > 1 hour (3600s) to bypass 10k Elasticsearch window cap
+            // Execute 24-Chunk High-Resolution Parallel Paging for ranges > 1 hour (3600s) to bypass 10k Elasticsearch window cap
             if (rangeSeconds > 3600) {
-                const numChunks = rangeSeconds > 604800 ? 12 : (rangeSeconds > 86400 ? 8 : 6);
+                const numChunks = Math.min(24, Math.max(1, Math.ceil(rangeSeconds / 3600)));
                 const chunkSeconds = rangeSeconds / numChunks;
                 const nowSec = Math.floor(Date.now() / 1000);
                 const chunkPromises = [];
