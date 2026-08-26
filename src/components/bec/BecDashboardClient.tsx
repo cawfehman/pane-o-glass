@@ -34,12 +34,12 @@ import {
 } from "@/lib/og-graylog";
 
 export default function BecDashboardClient() {
-    const [timeframe, setTimeframe] = useState<number>(86400); // 24h default
+    const [timeframe, setTimeframe] = useState<number>(3600); // 1h default (3600s) for lightning fast load
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState<string>("");
     
-    // Master Dataset State (Single Master Query from Graylog)
+    // Master Dataset State (Single Query from Graylog)
     const [masterBecData, setMasterBecData] = useState<GraylogBecImpersonationAggregation[]>([]);
     const [masterTopDomains, setMasterTopDomains] = useState<GraylogTopDomainAggregation[]>([]);
     const [masterOauthLinks, setMasterOauthLinks] = useState<GraylogThirdPartyOAuthAggregation[]>([]);
@@ -65,25 +65,25 @@ export default function BecDashboardClient() {
         if (saved) {
             try { setAuthEndpoints(JSON.parse(saved)); } catch (e) {}
         }
-        fetchMasterBecData();
+        fetchMasterBecData(3600);
     }, []);
 
     // Auto-refresh timer when autoRefreshInterval > 0
     useEffect(() => {
         if (autoRefreshInterval <= 0) return;
         const timer = setInterval(() => {
-            fetchMasterBecData();
+            fetchMasterBecData(timeframe);
         }, autoRefreshInterval * 1000);
         return () => clearInterval(timer);
-    }, [autoRefreshInterval]);
+    }, [autoRefreshInterval, timeframe]);
 
-    // Single Master Query Execution from Graylog (24-Hour Max Window)
-    const fetchMasterBecData = async () => {
+    // Query Execution from Graylog (Default 1-Hour Window for fast performance)
+    const fetchMasterBecData = async (rangeToFetch: number = timeframe) => {
         setLoading(true);
         setError(null);
 
         try {
-            const res = await fetch(`/api/ironport/stats?range=86400`);
+            const res = await fetch(`/api/ironport/stats?range=${rangeToFetch}`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             
@@ -289,7 +289,10 @@ export default function BecDashboardClient() {
                         ].map(t => (
                             <button
                                 key={t.value}
-                                onClick={() => setTimeframe(t.value)}
+                                onClick={() => {
+                                    setTimeframe(t.value);
+                                    fetchMasterBecData(t.value);
+                                }}
                                 className={`px-2.5 py-1 rounded-md transition-colors font-medium whitespace-nowrap ${
                                     timeframe === t.value 
                                         ? "bg-blue-600 text-white font-semibold shadow-xs" 
@@ -314,7 +317,7 @@ export default function BecDashboardClient() {
                         </select>
 
                         <button
-                            onClick={fetchMasterBecData}
+                            onClick={() => fetchMasterBecData(timeframe)}
                             disabled={loading}
                             className="p-2 rounded-lg bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] border border-[var(--border-color)] transition-colors disabled:opacity-50"
                             title="Re-query Graylog"
