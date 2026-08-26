@@ -434,10 +434,15 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     etd: {
         title: "Cisco Email Threat Defense (ETD) Retrospective Center",
-        version: "1.0.0",
+        version: "1.1.0",
         category: "Cloud Post-Delivery Threat Hunting & Remediation",
-        description: "Monitor retrospective threat verdicts (Scam, Phishing, Malware), calculate user exposure window deltas, track M365 auto-clawbacks, and deep-link directly to Cisco CMD portal incident records.",
+        description: "Monitor retrospective threat verdicts (Scam, Phishing, Malware), calculate user exposure window deltas, track M365 auto-clawbacks, extract real threat envelope metadata via double-URL decoding, and deep-link directly to Cisco CMD portal incident records.",
         capabilities: [
+            {
+                title: "2-Pass Envelope Correlation & Double-URL Decoding Engine",
+                detail: "Decodes double-URL encoded Cisco CMD parameters inside syslog links to extract the exact original threat sender email, target recipient inbox, original subject line, and original gateway MID.",
+                tag: "Envelope Extraction"
+            },
             {
                 title: "Retrospective Scam, Phish & Malware Verdict Tracking",
                 detail: "Collects cloud threat verdicts applied retroactively to messages delivered into user inboxes. Surfaces Message-ID, Subject, Sender, and Recipient.",
@@ -445,18 +450,18 @@ export const helpData: Record<string, TooltipDetails> = {
             },
             {
                 title: "User Exposure Window Delta (Elapsed Mins)",
-                detail: "Calculates the exact elapsed minutes between email arrival and Cisco ETD cloud clawback to identify users who had time to open or click malicious links.",
+                detail: "Calculates the exact elapsed minutes between original email arrival and Cisco ETD cloud clawback to identify users who had time to open or click malicious links.",
                 tag: "Exposure Delta"
             },
             {
-                title: "Direct Cisco CMD Portal Deep-Linking",
-                detail: "1-click deep links directly to the official Cisco CMD portal incident details (https://portal.cmd.cisco.com/messages?_any=...).",
+                title: "Direct Cisco CMD Portal Deep Links",
+                detail: "Provides 1-click deep links directly to the official Cisco CMD portal incident details (https://portal.cmd.cisco.com/messages?_any=...).",
                 tag: "CMD Deep Link"
             },
             {
-                title: "1-Click Graylog MID & Message-ID Correlation",
-                detail: "Instantly pivots to internal Graylog stream traces to inspect the exact gateway ingress logs, connecting IP, and recipient envelope.",
-                tag: "MID Trace"
+                title: "1-Click Graylog MID & Message-ID Correlation in New Tab",
+                detail: "Instantly opens the IronPort Investigate & Logs tab in a new browser window to inspect the exact gateway ingress logs, connecting IP, and recipient envelope.",
+                tag: "MID Trace (New Tab)"
             },
             {
                 title: "1-Click Handoff to User Advisory Campaigns",
@@ -472,13 +477,13 @@ export const helpData: Record<string, TooltipDetails> = {
         ],
         shortcuts: [
             "Click [Export Executive CSV] to generate an audit-ready CSV report of all retrospective threat verdicts.",
-            "Click [Trace MID in Graylog] on any incident to launch full internal syslog thread analysis.",
+            "Click [Trace MID] on any incident to launch full internal syslog thread analysis in a new browser tab.",
             "Click [Open Cisco CMD Portal] for direct deep-link to the official Cisco ETD incident record.",
             "Click [Stage Advisory] on high-exposure incidents to send exposed users directly into the Notification Center."
         ],
         backgroundJobs: [
-            "Cisco ETD Service: Outbound polling to Cisco CMD/ETD API & internal Graylog retrospective stream parsing.",
-            "Exposure Delta Engine: Calculates timestamp deltas between gateway ingest and retrospective remediation."
+            "Cisco ETD Service: Outbound polling to Cisco CMD/ETD API & internal Graylog retrospective stream parsing with double-URL decoding.",
+            "2-Pass Envelope Correlation: Resolves alert MIDs to original threat gateway MIDs, real senders, target inboxes, and original subjects."
         ]
     }
 };
