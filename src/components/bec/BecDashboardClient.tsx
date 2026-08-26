@@ -46,6 +46,9 @@ export default function BecDashboardClient() {
     const [masterTotalUrls, setMasterTotalUrls] = useState<number>(0);
     const [masterTotalMessages, setMasterTotalMessages] = useState<number>(0);
     
+    // Auto Refresh Interval State (0 = Off, 60 = 60s, 300 = 5m)
+    const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(0);
+
     // Drill-Down Modal State for Non-MS OAuth Providers
     const [selectedProvider, setSelectedProvider] = useState<GraylogThirdPartyOAuthAggregation | null>(null);
 
@@ -62,6 +65,15 @@ export default function BecDashboardClient() {
         }
         fetchMasterBecData();
     }, []);
+
+    // Auto-refresh timer when autoRefreshInterval > 0
+    useEffect(() => {
+        if (autoRefreshInterval <= 0) return;
+        const timer = setInterval(() => {
+            fetchMasterBecData();
+        }, autoRefreshInterval * 1000);
+        return () => clearInterval(timer);
+    }, [autoRefreshInterval]);
 
     // Single Master Query Execution from Graylog (24-Hour Max Window)
     const fetchMasterBecData = async () => {
@@ -218,14 +230,27 @@ export default function BecDashboardClient() {
                         ))}
                     </div>
 
-                    <button
-                        onClick={fetchMasterBecData}
-                        disabled={loading}
-                        className="p-2 rounded-lg bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] border border-[var(--border-color)] transition-colors disabled:opacity-50"
-                        title="Re-query Graylog"
-                    >
-                        <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-blue-400" : ""}`} />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                        <select
+                            value={autoRefreshInterval}
+                            onChange={(e) => setAutoRefreshInterval(parseInt(e.target.value, 10))}
+                            className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] font-semibold focus:outline-none focus:border-blue-500"
+                            title="Auto-refresh interval"
+                        >
+                            <option value={0}>Auto: OFF</option>
+                            <option value={60}>Auto: 60s</option>
+                            <option value={300}>Auto: 5m</option>
+                        </select>
+
+                        <button
+                            onClick={fetchMasterBecData}
+                            disabled={loading}
+                            className="p-2 rounded-lg bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] border border-[var(--border-color)] transition-colors disabled:opacity-50"
+                            title="Re-query Graylog"
+                        >
+                            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-blue-400" : ""}`} />
+                        </button>
+                    </div>
                 </div>
             </div>
 
