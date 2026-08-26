@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { 
     ShieldAlert, 
     ExternalLink, 
@@ -60,25 +60,8 @@ export default function BecDashboardClient() {
     const [newUrl, setNewUrl] = useState<string>("");
     const [newRole, setNewRole] = useState<string>("");
 
-    useEffect(() => {
-        const saved = localStorage.getItem("pane_m365_auth_endpoints");
-        if (saved) {
-            try { setAuthEndpoints(JSON.parse(saved)); } catch (e) {}
-        }
-        fetchMasterBecData(3600);
-    }, []);
-
-    // Auto-refresh timer when autoRefreshInterval > 0
-    useEffect(() => {
-        if (autoRefreshInterval <= 0) return;
-        const timer = setInterval(() => {
-            fetchMasterBecData(timeframe);
-        }, autoRefreshInterval * 1000);
-        return () => clearInterval(timer);
-    }, [autoRefreshInterval, timeframe]);
-
     // Query Execution from Graylog (Default 1-Hour Window for fast performance)
-    const fetchMasterBecData = async (rangeToFetch: number = timeframe) => {
+    const fetchMasterBecData = useCallback(async (rangeToFetch: number = timeframe) => {
         setLoading(true);
         setError(null);
 
@@ -108,7 +91,24 @@ export default function BecDashboardClient() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [timeframe]);
+
+    useEffect(() => {
+        const saved = localStorage.getItem("pane_m365_auth_endpoints");
+        if (saved) {
+            try { setAuthEndpoints(JSON.parse(saved)); } catch (e) {}
+        }
+        fetchMasterBecData(3600);
+    }, [fetchMasterBecData]);
+
+    // Auto-refresh timer when autoRefreshInterval > 0
+    useEffect(() => {
+        if (autoRefreshInterval <= 0) return;
+        const timer = setInterval(() => {
+            fetchMasterBecData(timeframe);
+        }, autoRefreshInterval * 1000);
+        return () => clearInterval(timer);
+    }, [autoRefreshInterval, timeframe, fetchMasterBecData]);
 
     // Fast In-Memory Cutoff Filter across Client Master Dataset (0ms re-query delay!)
     const cutoffTime = useMemo(() => Date.now() - timeframe * 1000, [timeframe]);
