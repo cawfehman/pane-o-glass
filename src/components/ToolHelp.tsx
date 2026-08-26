@@ -365,9 +365,9 @@ export const helpData: Record<string, TooltipDetails> = {
                 tag: "Decayed Risk Engine"
             },
             {
-                title: "M365 BEC & OAuth Token Theft Threat Hunting Suite",
-                detail: "Unwraps SafeLinks and proxy URLs to detect fake M365 portals (+10.0 boost) and OAuth Device Code / Form token theft links (+6.0 boost), directly driving the High-Risk Messages Priority Score.",
-                tag: "M365 BEC & OAuth"
+                title: "Official M365 Authentication Endpoint Registry & Role Matrix",
+                detail: "Evaluates inbound email links against 14 official Microsoft authentication and OAuth authorization endpoints (Entra ID, device code flow, SSPR). Eliminates broad keyword false positives while pinpointing fake login portals (+10.0 boost) and external OAuth token theft links (+6.0 boost).",
+                tag: "M365 Auth Registry"
             },
             {
                 title: "Cisco ETD & ESA Remediation Lifecycle & Exposure Window Tracking",

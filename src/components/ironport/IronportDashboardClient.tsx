@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2, ShieldCheck, Mail, FileCode2, Globe, PieChart as PieIcon, Wrench, X, Lock, Users, LayoutDashboard } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, PieChart, Pie, Cell, Legend } from "recharts";
 import { useSearchParams } from "next/navigation";
-import { GraylogStats, DEFAULT_M365_KEYWORDS, DEFAULT_LEGIT_MS_DOMAINS } from "@/lib/og-graylog";
+import { GraylogStats, OFFICIAL_M365_AUTH_ENDPOINTS, M365AuthEndpoint, OFFICIAL_AUTH_HOSTS } from "@/lib/og-graylog";
 
 export default function IronportDashboardClient() {
     const searchParams = useSearchParams();
@@ -37,65 +37,46 @@ export default function IronportDashboardClient() {
     const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
     // State for custom watched BEC keywords & whitelisted domains
-    const [watchedKeywords, setWatchedKeywords] = useState<string[]>(() => {
-        if (typeof window !== "undefined") {
-            const saved = localStorage.getItem("pane_bec_keywords");
-            if (saved) {
-                try { return JSON.parse(saved); } catch (e) {}
-            }
-        }
-        return DEFAULT_M365_KEYWORDS;
-    });
-
-    const [legitDomains, setLegitDomains] = useState<string[]>(() => {
-        if (typeof window !== "undefined") {
-            const saved = localStorage.getItem("pane_bec_legit_domains");
-            if (saved) {
-                try { return JSON.parse(saved); } catch (e) {}
-            }
-        }
-        return DEFAULT_LEGIT_MS_DOMAINS;
-    });
-
     const [isBecConfigOpen, setIsBecConfigOpen] = useState(false);
-    const [newKeywordInput, setNewKeywordInput] = useState("");
-    const [newDomainInput, setNewDomainInput] = useState("");
 
-    const handleAddKeyword = (kw: string) => {
-        const clean = kw.trim().toLowerCase();
-        if (!clean || watchedKeywords.includes(clean)) return;
-        const updated = [...watchedKeywords, clean];
-        setWatchedKeywords(updated);
+    // Official M365 Auth Endpoint Registry State
+    const [authEndpoints, setAuthEndpoints] = useState<M365AuthEndpoint[]>(() => {
         if (typeof window !== "undefined") {
-            localStorage.setItem("pane_bec_keywords", JSON.stringify(updated));
+            const saved = localStorage.getItem("pane_m365_auth_endpoints");
+            if (saved) {
+                try { return JSON.parse(saved); } catch (e) {}
+            }
         }
-        setNewKeywordInput("");
+        return OFFICIAL_M365_AUTH_ENDPOINTS;
+    });
+
+    const [newEndpointUrl, setNewEndpointUrl] = useState("");
+    const [newEndpointRole, setNewEndpointRole] = useState("");
+
+    const handleAddEndpoint = () => {
+        if (!newEndpointUrl.trim() || !newEndpointRole.trim()) return;
+        const urlClean = newEndpointUrl.trim().toLowerCase().startsWith("http") ? newEndpointUrl.trim() : `https://${newEndpointUrl.trim()}`;
+        const updated = [...authEndpoints, { url: urlClean, role: newEndpointRole.trim() }];
+        setAuthEndpoints(updated);
+        if (typeof window !== "undefined") {
+            localStorage.setItem("pane_m365_auth_endpoints", JSON.stringify(updated));
+        }
+        setNewEndpointUrl("");
+        setNewEndpointRole("");
     };
 
-    const handleRemoveKeyword = (kw: string) => {
-        const updated = watchedKeywords.filter(k => k !== kw);
-        setWatchedKeywords(updated);
+    const handleRemoveEndpoint = (url: string) => {
+        const updated = authEndpoints.filter(e => e.url !== url);
+        setAuthEndpoints(updated);
         if (typeof window !== "undefined") {
-            localStorage.setItem("pane_bec_keywords", JSON.stringify(updated));
+            localStorage.setItem("pane_m365_auth_endpoints", JSON.stringify(updated));
         }
     };
 
-    const handleAddDomain = (dom: string) => {
-        const clean = dom.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-        if (!clean || legitDomains.includes(clean)) return;
-        const updated = [...legitDomains, clean];
-        setLegitDomains(updated);
+    const handleResetEndpoints = () => {
+        setAuthEndpoints(OFFICIAL_M365_AUTH_ENDPOINTS);
         if (typeof window !== "undefined") {
-            localStorage.setItem("pane_bec_legit_domains", JSON.stringify(updated));
-        }
-        setNewDomainInput("");
-    };
-
-    const handleRemoveDomain = (dom: string) => {
-        const updated = legitDomains.filter(d => d !== dom);
-        setLegitDomains(updated);
-        if (typeof window !== "undefined") {
-            localStorage.setItem("pane_bec_legit_domains", JSON.stringify(updated));
+            localStorage.removeItem("pane_m365_auth_endpoints");
         }
     };
 
@@ -1752,8 +1733,8 @@ export default function IronportDashboardClient() {
                                 onClick={() => setIsBecConfigOpen(true)}
                                 className="px-3 py-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
                             >
-                                <Wrench className="w-3.5 h-3.5" />
-                                <span>Manage Watched Keywords ({watchedKeywords.length})</span>
+                                <Lock className="w-3.5 h-3.5" />
+                                <span>Official Auth Endpoints Registry ({authEndpoints.length})</span>
                             </button>
                             <button 
                                 onClick={() => handleSearch('message:"microsoft" OR message:"devicelogin" OR message:"forms.office"')}
@@ -2419,101 +2400,112 @@ export default function IronportDashboardClient() {
                 </div>
             )}
 
-            {/* BEC WATCHED KEYWORDS & DOMAIN WHITELIST CONFIG MODAL */}
+            {/* OFFICIAL M365 AUTH ENDPOINT REGISTRY & ROLE MATRIX MODAL */}
             {isBecConfigOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                    <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl w-full max-w-2xl p-6 shadow-2xl flex flex-col gap-5 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                    <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl w-full max-w-4xl p-6 shadow-2xl flex flex-col gap-5 max-h-[90vh] overflow-y-auto custom-scrollbar">
                         <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
                             <div className="flex items-center gap-2">
-                                <Wrench className="w-5 h-5 text-orange-400" />
-                                <h3 className="text-base font-bold text-[var(--text-primary)]">Manage Watched BEC Keywords & Infrastructure Whitelist</h3>
+                                <Lock className="w-5 h-5 text-orange-400" />
+                                <div>
+                                    <h3 className="text-base font-bold text-[var(--text-primary)]">Official M365 Authentication Endpoint Registry & Role Matrix</h3>
+                                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                                        These 14 official Microsoft login and OAuth authorization endpoints serve as the authoritative baseline for threat scoring.
+                                    </p>
+                                </div>
                             </div>
                             <button 
                                 onClick={() => setIsBecConfigOpen(false)}
-                                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+                                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
                             >
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
 
-                        {/* Keywords Section */}
-                        <div className="flex flex-col gap-2.5">
-                            <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-1.5">
-                                <Globe className="w-3.5 h-3.5 text-orange-400" />
-                                <span>Watched Impersonation & Phishing Keywords ({watchedKeywords.length})</span>
-                            </h4>
-                            <p className="text-xs text-[var(--text-secondary)]">URLs containing any of these keywords will be evaluated for fake login portals or OAuth token theft vectors.</p>
-                            <div className="flex gap-2">
-                                <input 
-                                    type="text"
-                                    placeholder="Add new keyword (e.g. docusign, mychart, payroll)..."
-                                    value={newKeywordInput}
-                                    onChange={e => setNewKeywordInput(e.target.value)}
-                                    onKeyDown={e => { if (e.key === "Enter") handleAddKeyword(newKeywordInput); }}
-                                    className="flex-1 px-3 py-1.5 bg-[var(--bg-default)] border border-[var(--border-color)] rounded-lg text-xs font-mono focus:outline-none focus:border-orange-500"
-                                />
-                                <button 
-                                    onClick={() => handleAddKeyword(newKeywordInput)}
-                                    className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold hover:bg-orange-600 transition-colors"
-                                >
-                                    + Add Keyword
-                                </button>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5 p-3 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] max-h-36 overflow-y-auto custom-scrollbar">
-                                {watchedKeywords.map(kw => (
-                                    <span key={kw} className="px-2 py-1 rounded bg-orange-500/15 text-orange-400 border border-orange-500/30 font-mono text-xs flex items-center gap-1.5">
-                                        <span>{kw}</span>
-                                        <button onClick={() => handleRemoveKeyword(kw)} className="text-orange-400/70 hover:text-orange-400 font-bold">×</button>
-                                    </span>
-                                ))}
-                            </div>
+                        {/* Add New Endpoint Input Bar */}
+                        <div className="p-3.5 rounded-xl bg-[var(--bg-default)] border border-[var(--border-color)] flex flex-col md:flex-row gap-3 items-stretch md:items-center">
+                            <input 
+                                type="text"
+                                placeholder="https://login.microsoftonline.com/custom/oauth2..."
+                                value={newEndpointUrl}
+                                onChange={e => setNewEndpointUrl(e.target.value)}
+                                className="flex-1 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg text-xs font-mono focus:outline-none focus:border-orange-500"
+                            />
+                            <input 
+                                type="text"
+                                placeholder="Role description (e.g. Custom Tenant OAuth Authorize)..."
+                                value={newEndpointRole}
+                                onChange={e => setNewEndpointRole(e.target.value)}
+                                className="flex-1 px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg text-xs font-mono focus:outline-none focus:border-orange-500"
+                            />
+                            <button 
+                                onClick={handleAddEndpoint}
+                                className="px-4 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold hover:bg-orange-600 transition-colors shrink-0 flex items-center justify-center gap-1"
+                            >
+                                + Add Official Endpoint
+                            </button>
                         </div>
 
-                        {/* Infrastructure Whitelist Section */}
-                        <div className="flex flex-col gap-2.5 pt-2 border-t border-[var(--border-color)]">
-                            <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-1.5">
-                                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-                                <span>Authorized Infrastructure Domains ({legitDomains.length})</span>
-                            </h4>
-                            <p className="text-xs text-[var(--text-secondary)]">Domains listed here are recognized as official infrastructure. Links to other domains matching watched keywords trigger Fake Portal alerts.</p>
-                            <div className="flex gap-2">
-                                <input 
-                                    type="text"
-                                    placeholder="Add authorized domain (e.g. cooperhealth.edu, partner.com)..."
-                                    value={newDomainInput}
-                                    onChange={e => setNewDomainInput(e.target.value)}
-                                    onKeyDown={e => { if (e.key === "Enter") handleAddDomain(newDomainInput); }}
-                                    className="flex-1 px-3 py-1.5 bg-[var(--bg-default)] border border-[var(--border-color)] rounded-lg text-xs font-mono focus:outline-none focus:border-cyan-500"
-                                />
-                                <button 
-                                    onClick={() => handleAddDomain(newDomainInput)}
-                                    className="px-3 py-1.5 bg-cyan-500 text-white rounded-lg text-xs font-bold hover:bg-cyan-600 transition-colors"
-                                >
-                                    + Add Domain
-                                </button>
-                            </div>
-                            <div className="flex flex-wrap gap-1.5 p-3 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] max-h-36 overflow-y-auto custom-scrollbar">
-                                {legitDomains.map(dom => (
-                                    <span key={dom} className="px-2 py-1 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-mono text-xs flex items-center gap-1.5">
-                                        <span>{dom}</span>
-                                        <button onClick={() => handleRemoveDomain(dom)} className="text-cyan-400/70 hover:text-cyan-400 font-bold">×</button>
-                                    </span>
-                                ))}
-                            </div>
+                        {/* Official Endpoint Registry Table */}
+                        <div className="overflow-x-auto border border-[var(--border-color)] rounded-xl">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-[var(--border-color)] bg-[var(--bg-default)] text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                                        <th className="py-2.5 px-3">Official URL Endpoint</th>
+                                        <th className="py-2.5 px-3">Role / IdP Function</th>
+                                        <th className="py-2.5 px-3">OAuth Vector Status</th>
+                                        <th className="py-2.5 px-3 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[var(--border-color)] text-xs font-mono">
+                                    {authEndpoints.map((ep, idx) => {
+                                        const isAbused = ep.isAbusedOAuthPath || ep.url.includes("oauth2") || ep.url.includes("devicelogin");
+                                        return (
+                                            <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
+                                                <td className="py-2.5 px-3 font-bold text-amber-400 max-w-[280px] truncate" title={ep.url}>
+                                                    {ep.url}
+                                                </td>
+                                                <td className="py-2.5 px-3 font-sans text-[var(--text-primary)]">
+                                                    {ep.role}
+                                                </td>
+                                                <td className="py-2.5 px-3">
+                                                    {isAbused ? (
+                                                        <span className="text-[10px] px-2 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30 font-bold">
+                                                            ⚠️ Primary OAuth Vector (+6.0 Boost)
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-semibold">
+                                                            ℹ️ Standard IdP Endpoint
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right">
+                                                    <button 
+                                                        onClick={() => handleRemoveEndpoint(ep.url)}
+                                                        className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded font-semibold text-[11px] transition-colors"
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
 
                         <div className="flex justify-between items-center pt-3 border-t border-[var(--border-color)]">
                             <button 
-                                onClick={handleResetBecDefaults}
+                                onClick={handleResetEndpoints}
                                 className="px-3 py-1.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg text-xs font-semibold hover:bg-red-500/20 transition-colors"
                             >
-                                Reset Defaults
+                                Reset 14 Official Defaults
                             </button>
                             <button 
                                 onClick={() => setIsBecConfigOpen(false)}
                                 className="px-4 py-1.5 bg-[var(--accent-primary)] text-white rounded-lg text-xs font-bold hover:opacity-90 transition-opacity"
                             >
-                                Done & Save
+                                Save & Done
                             </button>
                         </div>
                     </div>

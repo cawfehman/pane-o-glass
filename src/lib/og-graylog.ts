@@ -1,3 +1,10 @@
+import https from "https";
+import axios from "axios";
+
+const httpsAgent = new https.Agent({
+    rejectUnauthorized: false,
+});
+
 export const DEFAULT_M365_KEYWORDS = [
     "microsoft",
     "office365",
@@ -14,24 +21,124 @@ export const DEFAULT_M365_KEYWORDS = [
     "workday"
 ];
 
-export const DEFAULT_LEGIT_MS_DOMAINS = [
-    "microsoft.com",
-    "microsoftonline.com",
-    "office.com",
-    "office365.com",
-    "live.com",
-    "sharepoint.com",
-    "outlook.com",
-    "windows.net",
-    "windowsazure.com",
-    "aka.ms",
-    "msftconnecttest.com",
-    "lync.com",
-    "skype.com",
-    "bing.com",
-    "msn.com",
-    "cooperhealth.edu"
+export interface M365AuthEndpoint {
+    url: string;
+    role: string;
+    isAbusedOAuthPath?: boolean;
+}
+
+export const OFFICIAL_M365_AUTH_ENDPOINTS: M365AuthEndpoint[] = [
+    { url: "https://login.microsoftonline.com", role: "Work/school (Entra ID) sign-in" },
+    { url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", role: "OAuth authorize (most abused path)", isAbusedOAuthPath: true },
+    { url: "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize", role: "Org-only OAuth", isAbusedOAuthPath: true },
+    { url: "https://login.microsoftonline.com/common/oauth2/authorize", role: "Older v1 authorize", isAbusedOAuthPath: true },
+    { url: "https://login.microsoftonline.com/common/oauth2/deviceauth", role: "Device-code flow", isAbusedOAuthPath: true },
+    { url: "https://microsoft.com/devicelogin", role: "Device-code landing page", isAbusedOAuthPath: true },
+    { url: "https://aka.ms/devicelogin", role: "Short link to device login", isAbusedOAuthPath: true },
+    { url: "https://login.microsoft.com", role: "Alias of the same IdP" },
+    { url: "https://login.windows.net", role: "Older Entra hostname" },
+    { url: "https://login.live.com", role: "Consumer Microsoft account" },
+    { url: "https://login.microsoftonline.us", role: "GCC High / US Gov" },
+    { url: "https://device.login.microsoftonline.com", role: "Device login", isAbusedOAuthPath: true },
+    { url: "https://passwordreset.microsoftonline.com", role: "SSPR (also impersonated)" },
+    { url: "https://account.microsoft.com", role: "Account portal after auth" }
 ];
+
+export const OFFICIAL_AUTH_HOSTS = [
+    "login.microsoftonline.com",
+    "microsoft.com",
+    "aka.ms",
+    "login.microsoft.com",
+    "login.windows.net",
+    "login.live.com",
+    "login.microsoftonline.us",
+    "device.login.microsoftonline.com",
+    "passwordreset.microsoftonline.com",
+    "account.microsoft.com"
+];
+
+export function unwrapUrl(rawUrl: string): string {
+    let url = rawUrl;
+    if (url.includes("safelinks.protection.outlook.com") || url.includes("awstrack.me") || url.includes("cisco.com")) {
+        const m = url.match(/[?&](url|link|target|u)=([^&]+)/i);
+        if (m) {
+            try { url = decodeURIComponent(m[2]); } catch (e) {}
+        }
+    }
+    return url;
+}
+
+export function parseDomain(urlStr: string): string {
+    try {
+        const u = new URL(urlStr.startsWith("http") ? urlStr : `https://${urlStr}`);
+        return u.hostname.toLowerCase();
+    } catch (e) {
+        return "";
+    }
+}
+
+export function classifyM365Url(
+    rawUrl: string, 
+    sender: string = "",
+    customEndpoints: M365AuthEndpoint[] = OFFICIAL_M365_AUTH_ENDPOINTS
+): {
+    destUrl: string;
+    targetHost: string;
+    threatTier: "CRITICAL" | "HIGH" | "MEDIUM" | "INFO";
+    threatCategory: string;
+    impersonationBoost: number;
+    officialRole?: string;
+} | null {
+    if (!rawUrl) return null;
+    const destUrl = unwrapUrl(rawUrl);
+    const host = parseDomain(destUrl);
+    if (!host) return null;
+
+    const lowerUrl = destUrl.toLowerCase();
+    const lowerHost = host.toLowerCase();
+
+    // 1. Check if URL matches official legitimate authentication endpoints
+    const matchedOfficial = customEndpoints.find(ep => lowerUrl.startsWith(ep.url.toLowerCase()));
+
+    if (matchedOfficial) {
+        const isExternal = sender && !sender.includes("@cooperhealth.edu") && !sender.includes("microsoft");
+        return {
+            destUrl,
+            targetHost: host,
+            threatTier: isExternal ? "HIGH" : "INFO",
+            threatCategory: isExternal 
+                ? `Official Auth Link from External Sender (${matchedOfficial.role})` 
+                : `Official Auth Infrastructure (${matchedOfficial.role})`,
+            impersonationBoost: isExternal ? 6.0 : 0.0,
+            officialRole: matchedOfficial.role
+        };
+    }
+
+    // 2. Check if URL is an illegitimate / fake login portal (auth patterns on non-official hosts)
+    const isAuthPattern = lowerUrl.includes("oauth2") || 
+                          lowerUrl.includes("authorize") || 
+                          lowerUrl.includes("devicelogin") || 
+                          lowerUrl.includes("deviceauth") || 
+                          lowerUrl.includes("passwordreset") || 
+                          lowerHost.includes("login.microsoft") || 
+                          lowerHost.includes("login-microsoft") || 
+                          lowerHost.includes("login-windows") || 
+                          lowerHost.includes("m365-login");
+
+    const isOfficialHost = OFFICIAL_AUTH_HOSTS.some(h => lowerHost === h || lowerHost.endsWith(`.${h}`));
+
+    if (isAuthPattern && !isOfficialHost) {
+        return {
+            destUrl,
+            targetHost: host,
+            threatTier: "CRITICAL",
+            threatCategory: "Fake M365 Login Portal / Impersonated Auth Endpoint",
+            impersonationBoost: 10.0
+        };
+    }
+
+    return null;
+}
 
 export interface GraylogHistogramData {
     timestamp: number;
