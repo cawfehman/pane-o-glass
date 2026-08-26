@@ -1035,11 +1035,15 @@ export class OgGraylogClient {
     ): Promise<{
         becThreats: GraylogBecImpersonationAggregation[];
         topUnwrappedDomains: GraylogTopDomainAggregation[];
-        thirdPartyOAuthLinks: GraylogThirdPartyOAuthDiscovery[];
+        thirdPartyOAuthLinks: GraylogThirdPartyOAuthAggregation[];
         totalEvaluatedUrls: number;
         totalEvaluatedMessages: number;
     }> {
         try {
+            // Fetch Total Inbound Mail Volume from IronPort Policy Histogram to match IronPort Tool 100%
+            const volumeHist = await this.getHistogram('message:"inbound table"', rangeSeconds).catch(() => ({ total: 0 }));
+            const totalInboundVolume = volumeHist.total || 0;
+
             const query = `_exists_:esa_url_rep_score OR message:"URL" OR message:"devicelogin" OR message:"authorize" OR message:"oauth"`;
             let becHits: any[] = [];
 
@@ -1218,7 +1222,7 @@ export class OgGraylogClient {
                 topUnwrappedDomains,
                 thirdPartyOAuthLinks,
                 totalEvaluatedUrls,
-                totalEvaluatedMessages: uniqueMids.size
+                totalEvaluatedMessages: totalInboundVolume || uniqueMids.size
             };
         } catch (e) {
             return {
