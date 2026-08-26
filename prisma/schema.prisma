@@ -297,4 +297,31 @@ model SqliteTelemetrySnapshot {
   @@index([healthStatus])
 }
 
+model BecIncident {
+  id                 String    @id @default(cuid())
+  mid                String
+  rfcMessageId       String?
+  subject            String?
+  sender             String?
+  recipient          String?
+  targetHost         String
+  destUrl            String
+  threatTier         String    // "CRITICAL", "HIGH", "MEDIUM"
+  threatCategory     String
+  impersonationBoost Float
+  worstScore         Float     @default(0.0)
+  priorityScore      Float     @default(0.0)
+  status             String    @default("UN_TRIAGED") // "UN_TRIAGED", "TRIAGED", "ADVISORY_STAGED", "EXPIRED"
+  alertSentAt        DateTime?
+  alertRecipient     String?
+  triagedBy          String?
+  triagedAt          DateTime?
+  createdAt          DateTime  @default(now())
+
+  @@unique([mid, destUrl])
+  @@index([createdAt])
+  @@index([status])
+  @@index([threatTier])
+}
+
 
