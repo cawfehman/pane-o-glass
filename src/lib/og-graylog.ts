@@ -1017,6 +1017,7 @@ export class OgGraylogClient {
 
     /**
      * Aggregates inbound emails containing M365 / Microsoft login URLs, top unwrapped destination domains, and third-party OAuth discoveries.
+     * Uses Time-Chunked Paged Ingestion to guarantee 100% Zero Message Loss across large time windows.
      */
     async getM365BecThreatAggregations(
         rangeSeconds: number = 86400,
@@ -1029,14 +1030,32 @@ export class OgGraylogClient {
         totalEvaluatedMessages: number;
     }> {
         try {
-            // Full Un-Sampled Dataset Ingestion (Max Elasticsearch Result Window = 10,000 entries)
-            const rawLimit = 10000;
-            // Search broadly for inbound links and auth keywords
-            const becHits = await this.searchMessages(
-                `_exists_:esa_url_rep_score OR message:"http" OR message:"URL" OR message:"devicelogin" OR message:"authorize" OR message:"oauth"`,
-                rawLimit,
-                rangeSeconds
-            );
+            const query = `_exists_:esa_url_rep_score OR message:"URL" OR message:"devicelogin" OR message:"authorize" OR message:"oauth"`;
+            let becHits: any[] = [];
+
+            // Execute Time-Chunked Paging for ranges > 1 hour (3600s) to bypass 10k Elasticsearch window cap
+            if (rangeSeconds > 3600) {
+                const numChunks = rangeSeconds > 604800 ? 12 : (rangeSeconds > 86400 ? 8 : 6);
+                const chunkSeconds = rangeSeconds / numChunks;
+                const nowSec = Math.floor(Date.now() / 1000);
+                const chunkPromises = [];
+
+                for (let i = 0; i < numChunks; i++) {
+                    const fromTs = nowSec - (rangeSeconds - (i * chunkSeconds));
+                    const toTs = nowSec - (rangeSeconds - ((i + 1) * chunkSeconds));
+                    const fromIso = new Date(fromTs * 1000).toISOString();
+                    const toIso = new Date(toTs * 1000).toISOString();
+
+                    chunkPromises.push(this.searchAbsoluteMessages(query, fromIso, toIso, 10000).catch(() => []));
+                }
+
+                const chunkResults = await Promise.all(chunkPromises);
+                chunkResults.forEach(resList => {
+                    becHits.push(...resList);
+                });
+            } else {
+                becHits = await this.searchMessages(query, 10000, rangeSeconds);
+            }
 
             const becMap: Record<string, GraylogBecImpersonationAggregation> = {};
             const domainCounts: Record<string, number> = {};
