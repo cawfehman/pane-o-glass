@@ -439,6 +439,9 @@
   .m-8 {
     margin: calc(var(--spacing) * 8);
   }
+  .-mx-6 {
+    margin-inline: calc(var(--spacing) * -6);
+  }
   .mx-0\.5 {
     margin-inline: calc(var(--spacing) * 0.5);
   }
@@ -670,6 +673,9 @@
   .h-full {
     height: 100%;
   }
+  .max-h-24 {
+    max-height: calc(var(--spacing) * 24);
+  }
   .max-h-72 {
     max-height: calc(var(--spacing) * 72);
   }
@@ -837,6 +843,9 @@
   }
   .max-w-\[150px\] {
     max-width: 150px;
+  }
+  .max-w-\[160px\] {
+    max-width: 160px;
   }
   .max-w-\[180px\] {
     max-width: 180px;
@@ -1642,6 +1651,12 @@
   .bg-\[var\(--bg-default\)\] {
     background-color: var(--bg-default);
   }
+  .bg-\[var\(--bg-default\)\]\/50 {
+    background-color: var(--bg-default);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--bg-default) 50%, transparent);
+    }
+  }
   .bg-\[var\(--bg-surface\)\] {
     background-color: var(--bg-surface);
   }
@@ -1977,6 +1992,9 @@
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-indigo-500) 10%, transparent);
     }
+  }
+  .bg-indigo-600 {
+    background-color: var(--color-indigo-600);
   }
   .bg-indigo-600\/10 {
     background-color: color-mix(in srgb, oklch(51.1% 0.262 276.966) 10%, transparent);
@@ -3429,6 +3447,14 @@
         background-color: color-mix(in oklab, var(--color-emerald-500) 25%, transparent);
       }
     }
+    .hover\:bg-indigo-500\/10:hover {
+      background-color: color-mix(in srgb, oklch(58.5% 0.233 277.117) 10%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-indigo-500\/10:hover {
+        background-color: color-mix(in oklab, var(--color-indigo-500) 10%, transparent);
+      }
+    }
     .hover\:bg-indigo-500\/20:hover {
       background-color: color-mix(in srgb, oklch(58.5% 0.233 277.117) 20%, transparent);
     }
@@ -3590,6 +3616,9 @@
   }
   .focus\:border-blue-500:focus {
     border-color: var(--color-blue-500);
+  }
+  .focus\:border-indigo-500:focus {
+    border-color: var(--color-indigo-500);
   }
   .focus\:border-orange-500:focus {
     border-color: var(--color-orange-500);

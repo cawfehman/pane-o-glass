@@ -51,6 +51,8 @@ export default function BecDashboardClient() {
 
     // Drill-Down Modal State for Non-MS OAuth Providers
     const [selectedProvider, setSelectedProvider] = useState<GraylogThirdPartyOAuthAggregation | null>(null);
+    const [selectedModalRecipient, setSelectedModalRecipient] = useState<string | null>(null);
+    const [modalSearch, setModalSearch] = useState<string>("");
 
     // Auth Endpoints Modal State
     const [showEndpointModal, setShowEndpointModal] = useState<boolean>(false);
@@ -177,6 +179,75 @@ export default function BecDashboardClient() {
     const tokenTheftCount = activeBecData.filter(d => d.threatTier === "HIGH").length;
 
     const maxDomainCount = masterTopDomains.length > 0 ? Math.max(...masterTopDomains.map(d => d.count)) : 1;
+
+    // Modal Unique Targeted Recipients List
+    const modalUniqueRecipients = useMemo(() => {
+        if (!selectedProvider) return [];
+        const rcptMap: Record<string, number> = {};
+        selectedProvider.items.forEach(it => {
+            const email = it.recipient && it.recipient.includes("@") && !it.recipient.startsWith("Not") && !it.recipient.startsWith("unknown") ? it.recipient : "Unknown Inbox";
+            rcptMap[email] = (rcptMap[email] || 0) + 1;
+        });
+        return Object.entries(rcptMap)
+            .map(([email, count]) => ({ email, count }))
+            .sort((a, b) => b.count - a.count);
+    }, [selectedProvider]);
+
+    // Modal Filtered Items by Recipient & Search Text
+    const filteredModalItems = useMemo(() => {
+        if (!selectedProvider) return [];
+        let list = selectedProvider.items;
+        if (selectedModalRecipient) {
+            list = list.filter(it => it.recipient === selectedModalRecipient);
+        }
+        if (modalSearch) {
+            const q = modalSearch.toLowerCase();
+            list = list.filter(it => 
+                it.mid.toLowerCase().includes(q) ||
+                (it.recipient && it.recipient.toLowerCase().includes(q)) ||
+                (it.sender && it.sender.toLowerCase().includes(q)) ||
+                (it.subject && it.subject.toLowerCase().includes(q)) ||
+                (it.host && it.host.toLowerCase().includes(q))
+            );
+        }
+        return list;
+    }, [selectedProvider, selectedModalRecipient, modalSearch]);
+
+    // Modal Deduplicated Groups by Unique Message MID
+    const modalUniqueMidGroups = useMemo(() => {
+        const groups: Record<string, {
+            mid: string;
+            urlCount: number;
+            recipient?: string;
+            sender?: string;
+            subject?: string;
+            host: string;
+            destUrl: string;
+            timestamp: string;
+        }> = {};
+
+        filteredModalItems.forEach(item => {
+            const key = item.mid;
+            if (!groups[key]) {
+                groups[key] = {
+                    mid: item.mid,
+                    urlCount: 0,
+                    recipient: item.recipient,
+                    sender: item.sender,
+                    subject: item.subject,
+                    host: item.host,
+                    destUrl: item.destUrl,
+                    timestamp: item.timestamp
+                };
+            }
+            groups[key].urlCount += 1;
+            if (!groups[key].recipient && item.recipient) groups[key].recipient = item.recipient;
+            if (!groups[key].sender && item.sender) groups[key].sender = item.sender;
+            if (!groups[key].subject && item.subject) groups[key].subject = item.subject;
+        });
+
+        return Object.values(groups);
+    }, [filteredModalItems]);
 
     return (
         <div className="flex flex-col gap-6">
@@ -561,81 +632,176 @@ export default function BecDashboardClient() {
             {/* Panel B Provider Drill-Down Modal */}
             {selectedProvider && (
                 <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-                    <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl max-w-4xl w-full p-6 shadow-2xl flex flex-col max-h-[85vh]">
+                    <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl max-w-5xl w-full p-6 shadow-2xl flex flex-col max-h-[88vh]">
                         <div className="flex items-center justify-between pb-4 border-b border-[var(--border-color)]">
                             <div className="flex items-center gap-2.5">
                                 <Key className="w-5 h-5 text-indigo-400" />
                                 <div>
-                                    <h3 className="text-base font-bold text-[var(--text-primary)]">
-                                        Third-Party Identity Provider Drill-Down: <span className="text-indigo-400 font-mono">{selectedProvider.provider}</span>
+                                    <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                                        <span>Third-Party Identity Provider Drill-Down:</span>
+                                        <span className="text-indigo-400 font-mono px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">{selectedProvider.provider}</span>
                                     </h3>
-                                    <p className="text-xs text-[var(--text-secondary)]">
-                                        Targeting {selectedProvider.uniqueRecipientsCount} Employee Inboxes across {selectedProvider.count} Auth Links
+                                    <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                                        Targeting <strong className="text-indigo-400 font-mono">{selectedProvider.uniqueRecipientsCount} Employee Inboxes</strong> across <strong className="text-amber-400 font-mono">{selectedProvider.count} Auth Links</strong>
                                     </p>
                                 </div>
                             </div>
-                            <button onClick={() => setSelectedProvider(null)} className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-default)]">
+                            <button onClick={() => { setSelectedProvider(null); setSelectedModalRecipient(null); setModalSearch(""); }} className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-default)]">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
 
-                        {/* Detailed Targeted Inbox List Table */}
-                        <div className="flex-1 overflow-y-auto custom-scrollbar my-4 pr-1">
+                        {/* Interactive Employee Inbox Filter Chips */}
+                        <div className="py-3 border-b border-[var(--border-color)] flex flex-col gap-2 bg-[var(--bg-default)]/50 -mx-6 px-6">
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-1.5">
+                                    <Users className="w-3.5 h-3.5 text-indigo-400" />
+                                    <span>Targeted Employee Inboxes ({modalUniqueRecipients.length}):</span>
+                                </span>
+                                {selectedModalRecipient && (
+                                    <button 
+                                        onClick={() => setSelectedModalRecipient(null)}
+                                        className="text-[11px] font-semibold text-blue-400 hover:underline"
+                                    >
+                                        Show All Inboxes ({modalUniqueRecipients.length})
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-wrap max-h-24 overflow-y-auto custom-scrollbar pr-1">
+                                <button
+                                    onClick={() => setSelectedModalRecipient(null)}
+                                    className={`px-2.5 py-1 rounded-md text-xs font-mono font-semibold transition-colors ${
+                                        selectedModalRecipient === null 
+                                            ? "bg-indigo-600 text-white shadow-xs" 
+                                            : "bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-color)]"
+                                    }`}
+                                >
+                                    All Inboxes ({selectedProvider.items.length})
+                                </button>
+                                {modalUniqueRecipients.map((rcpt) => (
+                                    <button
+                                        key={rcpt.email}
+                                        onClick={() => setSelectedModalRecipient(selectedModalRecipient === rcpt.email ? null : rcpt.email)}
+                                        className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors flex items-center gap-1.5 ${
+                                            selectedModalRecipient === rcpt.email
+                                                ? "bg-indigo-600 text-white font-bold shadow-xs"
+                                                : "bg-[var(--bg-surface)] text-indigo-400 hover:bg-indigo-500/10 border border-indigo-500/20"
+                                        }`}
+                                    >
+                                        <span>{rcpt.email}</span>
+                                        <span className="px-1.5 py-0.2 text-[10px] rounded bg-black/20 font-bold">{rcpt.count}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Search Filter input for MIDs, Subjects, Recipients */}
+                        <div className="pt-3 pb-2 flex items-center gap-2">
+                            <div className="relative flex-1">
+                                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+                                <input 
+                                    type="text"
+                                    placeholder="Filter modal by MID, Subject, Recipient, Sender, or Host..."
+                                    value={modalSearch}
+                                    onChange={(e) => setModalSearch(e.target.value)}
+                                    className="w-full pl-9 pr-8 py-1.5 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-indigo-500"
+                                />
+                                {modalSearch && (
+                                    <button onClick={() => setModalSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+                                        ×
+                                    </button>
+                                )}
+                            </div>
+                            <span className="text-xs text-[var(--text-secondary)] font-mono whitespace-nowrap">
+                                Showing {modalUniqueMidGroups.length} Unique MIDs
+                            </span>
+                        </div>
+
+                        {/* Detailed Targeted Inbox List Table (Deduplicated by Unique MID) */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar my-2 pr-1">
                             <table className="w-full text-left text-xs border-collapse">
                                 <thead>
-                                    <tr className="border-b border-[var(--border-color)] bg-[var(--bg-default)] text-[var(--text-secondary)] font-semibold uppercase">
+                                    <tr className="border-b border-[var(--border-color)] bg-[var(--bg-default)] text-[var(--text-secondary)] font-semibold uppercase sticky top-0 bg-[var(--bg-surface)] z-10">
                                         <th className="py-2.5 px-3">Delivery Time</th>
-                                        <th className="py-2.5 px-3">Message MID</th>
+                                        <th className="py-2.5 px-3">Unique Message MID</th>
+                                        <th className="py-2.5 px-3">Subject Line</th>
                                         <th className="py-2.5 px-3">Target Employee Inbox (Recipient)</th>
                                         <th className="py-2.5 px-3">Sender Email</th>
                                         <th className="py-2.5 px-3">Destination Host & URL</th>
+                                        <th className="py-2.5 px-3 text-center">Instances</th>
                                         <th className="py-2.5 px-3 text-right">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[var(--border-color)]">
-                                    {selectedProvider.items.map((item, idx) => (
-                                        <tr key={`${item.mid}-${idx}`} className="hover:bg-[var(--bg-default)]">
-                                            <td className="py-2.5 px-3 font-mono text-[var(--text-secondary)] whitespace-nowrap">
-                                                {item.timestamp ? new Date(item.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "N/A"}
-                                            </td>
-                                            <td className="py-2.5 px-3 font-mono font-bold text-blue-400 whitespace-nowrap">
-                                                MID {item.mid}
-                                            </td>
-                                            <td className="py-2.5 px-3 font-mono font-bold text-indigo-400 max-w-[200px] truncate" title={item.recipient || "unknown"}>
-                                                {item.recipient || "unknown"}
-                                            </td>
-                                            <td className="py-2.5 px-3 font-mono text-[var(--text-secondary)] max-w-[180px] truncate" title={item.sender || "unknown"}>
-                                                {item.sender || "unknown"}
-                                            </td>
-                                            <td className="py-2.5 px-3 max-w-[240px] truncate">
-                                                <div className="font-mono font-bold text-amber-400 text-[11px]" title={item.host}>
-                                                    {item.host}
-                                                </div>
-                                                <div className="font-mono text-[10px] text-[var(--text-secondary)] truncate" title={item.destUrl}>
-                                                    {item.destUrl}
-                                                </div>
-                                            </td>
-                                            <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                                                <a
-                                                    href={`/queries/ironport?query=esa_mid:${item.mid}`}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="px-2.5 py-1 rounded bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/20 font-semibold text-[11px] inline-flex items-center gap-1 transition-colors"
-                                                >
-                                                    <span>Trace MID</span>
-                                                    <ExternalLink className="w-3 h-3" />
-                                                </a>
+                                    {modalUniqueMidGroups.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={8} className="py-8 text-center text-xs text-[var(--text-secondary)]">
+                                                No matching unique message MIDs found for selected inbox filter.
                                             </td>
                                         </tr>
-                                    ))}
+                                    ) : (
+                                        modalUniqueMidGroups.map((item) => (
+                                            <tr key={item.mid} className="hover:bg-[var(--bg-default)] transition-colors">
+                                                <td className="py-2.5 px-3 font-mono text-[var(--text-secondary)] whitespace-nowrap">
+                                                    {item.timestamp ? new Date(item.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "N/A"}
+                                                </td>
+                                                <td className="py-2.5 px-3 font-mono font-bold text-blue-400 whitespace-nowrap">
+                                                    MID {item.mid}
+                                                </td>
+                                                <td className="py-2.5 px-3 max-w-[180px] truncate text-[var(--text-primary)] font-medium" title={item.subject || "No Subject Header"}>
+                                                    {item.subject || "No Subject Header"}
+                                                </td>
+                                                <td className="py-2.5 px-3 font-mono font-bold text-indigo-400 max-w-[180px] truncate" title={item.recipient || "unknown"}>
+                                                    <button 
+                                                        onClick={() => item.recipient && setSelectedModalRecipient(item.recipient)}
+                                                        className="hover:underline text-left cursor-pointer"
+                                                        title="Click to filter by this employee inbox"
+                                                    >
+                                                        {item.recipient || "unknown"}
+                                                    </button>
+                                                </td>
+                                                <td className="py-2.5 px-3 font-mono text-[var(--text-secondary)] max-w-[160px] truncate" title={item.sender || "unknown"}>
+                                                    {item.sender || "unknown"}
+                                                </td>
+                                                <td className="py-2.5 px-3 max-w-[200px] truncate">
+                                                    <div className="font-mono font-bold text-amber-400 text-[11px]" title={item.host}>
+                                                        {item.host}
+                                                    </div>
+                                                    <div className="font-mono text-[10px] text-[var(--text-secondary)] truncate" title={item.destUrl}>
+                                                        {item.destUrl}
+                                                    </div>
+                                                </td>
+                                                <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                                        {item.urlCount} {item.urlCount === 1 ? "link" : "links"}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                                                    <a
+                                                        href={`/queries/ironport?query=esa_mid:${item.mid}`}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="px-2.5 py-1 rounded bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/20 font-semibold text-[11px] inline-flex items-center gap-1 transition-colors"
+                                                    >
+                                                        <span>Trace MID</span>
+                                                        <ExternalLink className="w-3 h-3" />
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
                                 </tbody>
                             </table>
                         </div>
 
-                        <div className="pt-4 border-t border-[var(--border-color)] flex justify-end">
+                        <div className="pt-3 border-t border-[var(--border-color)] flex items-center justify-between">
+                            <span className="text-xs text-[var(--text-secondary)] font-mono">
+                                Total: {modalUniqueMidGroups.length} Unique Messages ({filteredModalItems.length} Link Occurrences)
+                            </span>
                             <button
-                                onClick={() => setSelectedProvider(null)}
-                                className="px-4 py-2 bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] border border-[var(--border-color)] rounded-lg font-semibold text-xs"
+                                onClick={() => { setSelectedProvider(null); setSelectedModalRecipient(null); setModalSearch(""); }}
+                                className="px-4 py-2 bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] border border-[var(--border-color)] rounded-lg font-semibold text-xs transition-colors"
                             >
                                 Close Drill-Down
                             </button>
