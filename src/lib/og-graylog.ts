@@ -268,6 +268,16 @@ export interface GraylogTopDomainAggregation {
     percentage: string;
 }
 
+export interface GraylogThirdPartyOAuthItem {
+    mid: string;
+    sender?: string;
+    recipient?: string;
+    subject?: string;
+    host: string;
+    destUrl: string;
+    timestamp: string;
+}
+
 export interface GraylogThirdPartyOAuthAggregation {
     provider: string;
     count: number;
@@ -275,6 +285,7 @@ export interface GraylogThirdPartyOAuthAggregation {
     uniqueRecipientsCount: number;
     topHosts: string[];
     sampleMids: string[];
+    items: GraylogThirdPartyOAuthItem[];
     latestTimestamp: string;
 }
 
@@ -1141,6 +1152,7 @@ export class OgGraylogClient {
                                 recipients: new Set(),
                                 hosts: new Set(),
                                 mids: new Set(),
+                                items: [],
                                 latestTimestamp: h.message.timestamp
                             } as any;
                         }
@@ -1149,6 +1161,17 @@ export class OgGraylogClient {
                         if (h.message.esa_rcpt_to) entry.recipients.add(h.message.esa_rcpt_to);
                         if (host) entry.hosts.add(host);
                         if (mid) entry.mids.add(mid);
+                        
+                        entry.items.push({
+                            mid,
+                            sender: h.message.esa_mail_from,
+                            recipient: h.message.esa_rcpt_to,
+                            subject: h.message.esa_subject,
+                            host,
+                            destUrl,
+                            timestamp: h.message.timestamp
+                        });
+
                         if (h.message.timestamp && (!entry.latestTimestamp || new Date(h.message.timestamp) > new Date(entry.latestTimestamp))) {
                             entry.latestTimestamp = h.message.timestamp;
                         }
@@ -1173,6 +1196,10 @@ export class OgGraylogClient {
             const rawOauthList = Object.values(oauthDiscoveriesMap) as any[];
             const totalOAuthCount = rawOauthList.reduce((acc, curr) => acc + curr.count, 0);
 
+            for (const item of rawOauthList) {
+                await this.enrichMidsWithEnvelopeHeaders(item.items as any, rangeSeconds).catch(() => {});
+            }
+
             const thirdPartyOAuthLinks: GraylogThirdPartyOAuthAggregation[] = rawOauthList.map(item => ({
                 provider: item.provider,
                 count: item.count,
@@ -1180,6 +1207,7 @@ export class OgGraylogClient {
                 uniqueRecipientsCount: item.recipients.size,
                 topHosts: Array.from(item.hosts as Set<string>).slice(0, 5),
                 sampleMids: Array.from(item.mids as Set<string>).slice(0, 5),
+                items: item.items.slice(0, 30),
                 latestTimestamp: item.latestTimestamp
             }));
 

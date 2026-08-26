@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
     ShieldAlert, 
     ExternalLink, 
@@ -19,14 +19,18 @@ import {
     BarChart3,
     Key,
     Layers,
-    Filter
+    Filter,
+    Users,
+    ChevronRight,
+    ArrowUpRight
 } from "lucide-react";
 import { 
     OFFICIAL_M365_AUTH_ENDPOINTS, 
     M365AuthEndpoint,
     GraylogBecImpersonationAggregation,
     GraylogTopDomainAggregation,
-    GraylogThirdPartyOAuthAggregation
+    GraylogThirdPartyOAuthAggregation,
+    GraylogThirdPartyOAuthItem
 } from "@/lib/og-graylog";
 
 export default function BecDashboardClient() {
@@ -35,12 +39,16 @@ export default function BecDashboardClient() {
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState<string>("");
     
-    const [becData, setBecData] = useState<GraylogBecImpersonationAggregation[]>([]);
-    const [topDomains, setTopDomains] = useState<GraylogTopDomainAggregation[]>([]);
-    const [oauthLinks, setOauthLinks] = useState<GraylogThirdPartyOAuthAggregation[]>([]);
-    const [totalEvaluatedUrls, setTotalEvaluatedUrls] = useState<number>(0);
-    const [totalEvaluatedMessages, setTotalEvaluatedMessages] = useState<number>(0);
+    // Master Dataset State (Single Master Query from Graylog)
+    const [masterBecData, setMasterBecData] = useState<GraylogBecImpersonationAggregation[]>([]);
+    const [masterTopDomains, setMasterTopDomains] = useState<GraylogTopDomainAggregation[]>([]);
+    const [masterOauthLinks, setMasterOauthLinks] = useState<GraylogThirdPartyOAuthAggregation[]>([]);
+    const [masterTotalUrls, setMasterTotalUrls] = useState<number>(0);
+    const [masterTotalMessages, setMasterTotalMessages] = useState<number>(0);
     
+    // Drill-Down Modal State for Non-MS OAuth Providers
+    const [selectedProvider, setSelectedProvider] = useState<GraylogThirdPartyOAuthAggregation | null>(null);
+
     // Auth Endpoints Modal State
     const [showEndpointModal, setShowEndpointModal] = useState<boolean>(false);
     const [authEndpoints, setAuthEndpoints] = useState<M365AuthEndpoint[]>(OFFICIAL_M365_AUTH_ENDPOINTS);
@@ -52,32 +60,33 @@ export default function BecDashboardClient() {
         if (saved) {
             try { setAuthEndpoints(JSON.parse(saved)); } catch (e) {}
         }
-        fetchBecData(timeframe);
-    }, [timeframe]);
+        fetchMasterBecData();
+    }, []);
 
-    const fetchBecData = async (rangeSeconds = timeframe) => {
+    // Single Master Query Execution from Graylog (24-Hour Max Window)
+    const fetchMasterBecData = async () => {
         setLoading(true);
         setError(null);
 
         try {
-            const res = await fetch(`/api/ironport/stats?range=${rangeSeconds}`);
+            const res = await fetch(`/api/ironport/stats?range=86400`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             
             if (data.becThreats) {
-                setBecData(data.becThreats);
+                setMasterBecData(data.becThreats);
             }
             if (data.topUnwrappedDomains) {
-                setTopDomains(data.topUnwrappedDomains);
+                setMasterTopDomains(data.topUnwrappedDomains);
             }
             if (data.thirdPartyOAuthLinks) {
-                setOauthLinks(data.thirdPartyOAuthLinks);
+                setMasterOauthLinks(data.thirdPartyOAuthLinks);
             }
             if (data.totalEvaluatedUrls !== undefined) {
-                setTotalEvaluatedUrls(data.totalEvaluatedUrls);
+                setMasterTotalUrls(data.totalEvaluatedUrls);
             }
             if (data.totalEvaluatedMessages !== undefined) {
-                setTotalEvaluatedMessages(data.totalEvaluatedMessages);
+                setMasterTotalMessages(data.totalEvaluatedMessages);
             }
         } catch (err: any) {
             console.error("Failed to fetch BEC threat data:", err);
@@ -86,6 +95,33 @@ export default function BecDashboardClient() {
             setLoading(false);
         }
     };
+
+    // Fast In-Memory Cutoff Filter across Client Master Dataset (0ms re-query delay!)
+    const cutoffTime = useMemo(() => Date.now() - timeframe * 1000, [timeframe]);
+
+    const activeBecData = useMemo(() => {
+        if (timeframe >= 86400) return masterBecData;
+        return masterBecData.filter(d => d.timestamp && new Date(d.timestamp).getTime() >= cutoffTime);
+    }, [masterBecData, timeframe, cutoffTime]);
+
+    const activeOauthLinks = useMemo(() => {
+        if (timeframe >= 86400) return masterOauthLinks;
+        return masterOauthLinks.map(p => {
+            const filteredItems = p.items ? p.items.filter(i => i.timestamp && new Date(i.timestamp).getTime() >= cutoffTime) : [];
+            if (filteredItems.length === 0) return null;
+
+            const recipients = new Set(filteredItems.map(i => i.recipient).filter(Boolean));
+            const hosts = new Set(filteredItems.map(i => i.host).filter(Boolean));
+
+            return {
+                ...p,
+                count: filteredItems.length,
+                uniqueRecipientsCount: recipients.size,
+                topHosts: Array.from(hosts).slice(0, 5),
+                items: filteredItems
+            };
+        }).filter(Boolean) as GraylogThirdPartyOAuthAggregation[];
+    }, [masterOauthLinks, timeframe, cutoffTime]);
 
     const handleSaveEndpoints = (updated: M365AuthEndpoint[]) => {
         setAuthEndpoints(updated);
@@ -111,7 +147,7 @@ export default function BecDashboardClient() {
     };
 
     // Filter BEC threats based on search query
-    const filteredBecData = becData.filter(item => {
+    const filteredBecData = activeBecData.filter(item => {
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
         return (
@@ -125,10 +161,10 @@ export default function BecDashboardClient() {
         );
     });
 
-    const fakePortalCount = becData.filter(d => d.threatTier === "CRITICAL").length;
-    const tokenTheftCount = becData.filter(d => d.threatTier === "HIGH").length;
+    const fakePortalCount = activeBecData.filter(d => d.threatTier === "CRITICAL").length;
+    const tokenTheftCount = activeBecData.filter(d => d.threatTier === "HIGH").length;
 
-    const maxDomainCount = topDomains.length > 0 ? Math.max(...topDomains.map(d => d.count)) : 1;
+    const maxDomainCount = masterTopDomains.length > 0 ? Math.max(...masterTopDomains.map(d => d.count)) : 1;
 
     return (
         <div className="flex flex-col gap-6">
@@ -158,6 +194,7 @@ export default function BecDashboardClient() {
                         <span>Official Auth Registry ({authEndpoints.length})</span>
                     </button>
 
+                    {/* Instant In-Memory Timeframe Filter Controls */}
                     <div className="flex items-center bg-[var(--bg-default)] p-1 rounded-lg border border-[var(--border-color)] text-xs overflow-x-auto custom-scrollbar">
                         {[
                             { label: "10m", value: 600 },
@@ -165,9 +202,7 @@ export default function BecDashboardClient() {
                             { label: "1h", value: 3600 },
                             { label: "4h", value: 14400 },
                             { label: "12h", value: 43200 },
-                            { label: "24h", value: 86400 },
-                            { label: "7d", value: 604800 },
-                            { label: "30d", value: 2592000 }
+                            { label: "24h", value: 86400 }
                         ].map(t => (
                             <button
                                 key={t.value}
@@ -184,10 +219,10 @@ export default function BecDashboardClient() {
                     </div>
 
                     <button
-                        onClick={() => fetchBecData(timeframe)}
+                        onClick={fetchMasterBecData}
                         disabled={loading}
                         className="p-2 rounded-lg bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] border border-[var(--border-color)] transition-colors disabled:opacity-50"
-                        title="Refresh threat feed"
+                        title="Re-query Graylog"
                     >
                         <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-blue-400" : ""}`} />
                     </button>
@@ -202,8 +237,8 @@ export default function BecDashboardClient() {
                         <Globe className="w-4 h-4 text-blue-400" />
                     </div>
                     <div className="flex items-baseline justify-between mt-2">
-                        <span className="text-2xl font-black text-[var(--text-primary)]">{totalEvaluatedUrls.toLocaleString()}</span>
-                        <span className="text-xs text-[var(--text-secondary)]">{totalEvaluatedMessages.toLocaleString()} unique msgs</span>
+                        <span className="text-2xl font-black text-[var(--text-primary)]">{masterTotalUrls.toLocaleString()}</span>
+                        <span className="text-xs text-[var(--text-secondary)]">{masterTotalMessages.toLocaleString()} unique msgs</span>
                     </div>
                 </div>
 
@@ -231,11 +266,11 @@ export default function BecDashboardClient() {
 
                 <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-indigo-500/20 bg-indigo-500/5">
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Non-MS OAuth Links</span>
+                        <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Non-MS Identity Providers</span>
                         <Key className="w-4 h-4 text-indigo-400" />
                     </div>
                     <div className="flex items-baseline justify-between mt-2">
-                        <span className="text-2xl font-black text-indigo-400">{oauthLinks.length}</span>
+                        <span className="text-2xl font-black text-indigo-400">{activeOauthLinks.length}</span>
                         <span className="text-xs text-indigo-400/80">3rd-Party SSO</span>
                     </div>
                 </div>
@@ -260,13 +295,13 @@ export default function BecDashboardClient() {
                             <div className="py-12 text-center text-xs text-[var(--text-secondary)]">
                                 Aggregating unwrapped hostnames...
                             </div>
-                        ) : topDomains.length === 0 ? (
+                        ) : masterTopDomains.length === 0 ? (
                             <div className="py-12 text-center text-xs text-[var(--text-secondary)]">
                                 No unwrapped destination domains found in selected timeframe.
                             </div>
                         ) : (
                             <div className="flex flex-col gap-2.5 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
-                                {topDomains.map((d, idx) => {
+                                {masterTopDomains.map((d, idx) => {
                                     const fillPercent = Math.max(8, (d.count / maxDomainCount) * 100);
                                     return (
                                         <button
@@ -304,51 +339,60 @@ export default function BecDashboardClient() {
                             <div className="flex items-center gap-2">
                                 <Key className="w-4 h-4 text-indigo-400" />
                                 <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
-                                    Non-Microsoft Third-Party OAuth / SSO Discoveries ({oauthLinks.length})
+                                    Non-Microsoft Third-Party OAuth / SSO Discoveries ({activeOauthLinks.length})
                                 </h4>
                             </div>
-                            <span className="text-[11px] text-[var(--text-secondary)]">External IdP & Auth Links</span>
+                            <span className="text-[11px] text-[var(--text-secondary)]">Click card to drill down</span>
                         </div>
 
                         {loading ? (
                             <div className="py-12 text-center text-xs text-[var(--text-secondary)]">
                                 Aggregating third-party identity providers...
                             </div>
-                        ) : oauthLinks.length === 0 ? (
+                        ) : activeOauthLinks.length === 0 ? (
                             <div className="py-12 text-center text-xs text-[var(--text-secondary)]">
                                 No non-Microsoft OAuth or SSO links detected in selected timeframe.
                             </div>
                         ) : (
                             <div className="flex flex-col gap-3 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
-                                {oauthLinks.map((item, idx) => (
-                                    <button
+                                {activeOauthLinks.map((item, idx) => (
+                                    <div
                                         key={`${item.provider}-${idx}`}
-                                        onClick={() => setSearchQuery(item.provider)}
-                                        className="group text-left p-3 rounded-lg bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)] flex flex-col gap-2 text-xs transition-colors"
+                                        className="p-3.5 rounded-xl bg-[var(--bg-default)] border border-[var(--border-color)] flex flex-col gap-2.5 text-xs shadow-2xs hover:border-indigo-500/40 transition-colors"
                                     >
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono">
+                                                <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono">
                                                     {item.provider}
                                                 </span>
-                                                <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
-                                                    {item.uniqueRecipientsCount} Employee Inboxes Targeted
+                                                <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+                                                    {item.uniqueRecipientsCount} Employee Inboxes
                                                 </span>
                                             </div>
-                                            <div className="flex items-center gap-1 font-mono font-bold text-[var(--text-primary)] group-hover:text-indigo-400">
+                                            <div className="flex items-center gap-2 font-mono font-bold text-[var(--text-primary)]">
                                                 <span>{item.count} Links</span>
                                                 <span className="text-[10px] text-[var(--text-secondary)]">({item.percentage})</span>
                                             </div>
                                         </div>
 
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                            {item.topHosts.map((h, hIdx) => (
-                                                <span key={hIdx} className="px-2 py-0.5 rounded bg-[var(--bg-surface)] text-[var(--text-primary)] font-mono text-[10px] border border-[var(--border-color)]">
-                                                    {h}
-                                                </span>
-                                            ))}
+                                        <div className="flex items-center justify-between pt-1 border-t border-[var(--border-color)]/50">
+                                            <div className="flex items-center gap-1.5 flex-wrap max-w-[70%]">
+                                                {item.topHosts.map((h, hIdx) => (
+                                                    <span key={hIdx} className="px-2 py-0.5 rounded bg-[var(--bg-surface)] text-[var(--text-primary)] font-mono text-[10px] border border-[var(--border-color)] truncate max-w-[180px]">
+                                                        {h}
+                                                    </span>
+                                                ))}
+                                            </div>
+
+                                            <button
+                                                onClick={() => setSelectedProvider(item)}
+                                                className="px-2.5 py-1 rounded bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/20 font-semibold text-[11px] flex items-center gap-1 transition-colors"
+                                            >
+                                                <span>Drill Down</span>
+                                                <ArrowUpRight className="w-3 h-3" />
+                                            </button>
                                         </div>
-                                    </button>
+                                    </div>
                                 ))}
                             </div>
                         )}
@@ -488,6 +532,92 @@ export default function BecDashboardClient() {
                     </div>
                 )}
             </div>
+
+            {/* Panel B Provider Drill-Down Modal */}
+            {selectedProvider && (
+                <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl max-w-4xl w-full p-6 shadow-2xl flex flex-col max-h-[85vh]">
+                        <div className="flex items-center justify-between pb-4 border-b border-[var(--border-color)]">
+                            <div className="flex items-center gap-2.5">
+                                <Key className="w-5 h-5 text-indigo-400" />
+                                <div>
+                                    <h3 className="text-base font-bold text-[var(--text-primary)]">
+                                        Third-Party Identity Provider Drill-Down: <span className="text-indigo-400 font-mono">{selectedProvider.provider}</span>
+                                    </h3>
+                                    <p className="text-xs text-[var(--text-secondary)]">
+                                        Targeting {selectedProvider.uniqueRecipientsCount} Employee Inboxes across {selectedProvider.count} Auth Links
+                                    </p>
+                                </div>
+                            </div>
+                            <button onClick={() => setSelectedProvider(null)} className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-default)]">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Detailed Targeted Inbox List Table */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar my-4 pr-1">
+                            <table className="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr className="border-b border-[var(--border-color)] bg-[var(--bg-default)] text-[var(--text-secondary)] font-semibold uppercase">
+                                        <th className="py-2.5 px-3">Delivery Time</th>
+                                        <th className="py-2.5 px-3">Message MID</th>
+                                        <th className="py-2.5 px-3">Target Employee Inbox (Recipient)</th>
+                                        <th className="py-2.5 px-3">Sender Email</th>
+                                        <th className="py-2.5 px-3">Destination Host & URL</th>
+                                        <th className="py-2.5 px-3 text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[var(--border-color)]">
+                                    {selectedProvider.items.map((item, idx) => (
+                                        <tr key={`${item.mid}-${idx}`} className="hover:bg-[var(--bg-default)]">
+                                            <td className="py-2.5 px-3 font-mono text-[var(--text-secondary)] whitespace-nowrap">
+                                                {item.timestamp ? new Date(item.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "N/A"}
+                                            </td>
+                                            <td className="py-2.5 px-3 font-mono font-bold text-blue-400 whitespace-nowrap">
+                                                MID {item.mid}
+                                            </td>
+                                            <td className="py-2.5 px-3 font-mono font-bold text-indigo-400 max-w-[200px] truncate" title={item.recipient || "unknown"}>
+                                                {item.recipient || "unknown"}
+                                            </td>
+                                            <td className="py-2.5 px-3 font-mono text-[var(--text-secondary)] max-w-[180px] truncate" title={item.sender || "unknown"}>
+                                                {item.sender || "unknown"}
+                                            </td>
+                                            <td className="py-2.5 px-3 max-w-[240px] truncate">
+                                                <div className="font-mono font-bold text-amber-400 text-[11px]" title={item.host}>
+                                                    {item.host}
+                                                </div>
+                                                <div className="font-mono text-[10px] text-[var(--text-secondary)] truncate" title={item.destUrl}>
+                                                    {item.destUrl}
+                                                </div>
+                                            </td>
+                                            <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                                                <a
+                                                    href={`/queries/ironport?query=esa_mid:${item.mid}`}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="px-2.5 py-1 rounded bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/20 font-semibold text-[11px] inline-flex items-center gap-1 transition-colors"
+                                                >
+                                                    <span>Trace MID</span>
+                                                    <ExternalLink className="w-3 h-3" />
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div className="pt-4 border-t border-[var(--border-color)] flex justify-end">
+                            <button
+                                onClick={() => setSelectedProvider(null)}
+                                className="px-4 py-2 bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] border border-[var(--border-color)] rounded-lg font-semibold text-xs"
+                            >
+                                Close Drill-Down
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Official Auth Endpoints Registry Modal */}
             {showEndpointModal && (
