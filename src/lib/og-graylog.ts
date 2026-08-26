@@ -1075,6 +1075,13 @@ export class OgGraylogClient {
                 becHits = await this.searchMessages(query, 10000, rangeSeconds);
             }
 
+            // Dedicated Parallel Stream Search for 3rd-Party OAuth & Identity Providers to prevent marketing links from crowding out Panel B
+            const oauthQuery = `message:"okta.com" OR message:"accounts.google.com" OR message:"duosecurity.com" OR message:"docusign.com" OR message:"docusign.net" OR message:"pingidentity.com" OR message:"auth0.com" OR message:"b2clogin.com" OR message:"cayuse.com" OR message:"/oauth2/" OR message:"/authorize"`;
+            const dedicatedOauthHits = await this.searchMessages(oauthQuery, 2000, rangeSeconds).catch(() => []);
+            if (dedicatedOauthHits && dedicatedOauthHits.length > 0) {
+                becHits.push(...dedicatedOauthHits);
+            }
+
             const becMap: Record<string, GraylogBecImpersonationAggregation> = {};
             const domainCounts: Record<string, number> = {};
             const oauthDiscoveriesMap: Record<string, GraylogThirdPartyOAuthDiscovery> = {};
