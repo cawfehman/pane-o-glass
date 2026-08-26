@@ -268,15 +268,14 @@ export interface GraylogTopDomainAggregation {
     percentage: string;
 }
 
-export interface GraylogThirdPartyOAuthDiscovery {
-    mid: string;
-    host: string;
-    destUrl: string;
+export interface GraylogThirdPartyOAuthAggregation {
     provider: string;
-    sender?: string;
-    recipient?: string;
-    subject?: string;
-    timestamp: string;
+    count: number;
+    percentage: string;
+    uniqueRecipientsCount: number;
+    topHosts: string[];
+    sampleMids: string[];
+    latestTimestamp: string;
 }
 
 export interface GraylogStats {
@@ -300,7 +299,7 @@ export interface GraylogStats {
     targetRecipients?: GraylogTargetRecipientAggregation[];
     becThreats?: GraylogBecImpersonationAggregation[];
     topUnwrappedDomains?: GraylogTopDomainAggregation[];
-    thirdPartyOAuthLinks?: GraylogThirdPartyOAuthDiscovery[];
+    thirdPartyOAuthLinks?: GraylogThirdPartyOAuthAggregation[];
     totalEvaluatedUrls?: number;
     totalEvaluatedMessages?: number;
 }
@@ -1134,18 +1133,24 @@ export class OgGraylogClient {
                     }
 
                     if (provider) {
-                        const key = `${mid}-${host}`;
+                        const key = provider;
                         if (!oauthDiscoveriesMap[key]) {
                             oauthDiscoveriesMap[key] = {
-                                mid,
-                                host,
-                                destUrl,
                                 provider,
-                                sender: h.message.esa_mail_from,
-                                recipient: h.message.esa_rcpt_to,
-                                subject: h.message.esa_subject,
-                                timestamp: h.message.timestamp
-                            };
+                                count: 0,
+                                recipients: new Set(),
+                                hosts: new Set(),
+                                mids: new Set(),
+                                latestTimestamp: h.message.timestamp
+                            } as any;
+                        }
+                        const entry = oauthDiscoveriesMap[key] as any;
+                        entry.count += 1;
+                        if (h.message.esa_rcpt_to) entry.recipients.add(h.message.esa_rcpt_to);
+                        if (host) entry.hosts.add(host);
+                        if (mid) entry.mids.add(mid);
+                        if (h.message.timestamp && (!entry.latestTimestamp || new Date(h.message.timestamp) > new Date(entry.latestTimestamp))) {
+                            entry.latestTimestamp = h.message.timestamp;
                         }
                     }
                 });
@@ -1164,9 +1169,21 @@ export class OgGraylogClient {
                 percentage: `${((count / Math.max(1, totalEvaluatedUrls)) * 100).toFixed(1)}%`
             }));
 
-            // Process Third-Party OAuth Discoveries
-            const thirdPartyOAuthLinks = Object.values(oauthDiscoveriesMap).slice(0, 20);
-            await this.enrichMidsWithEnvelopeHeaders(thirdPartyOAuthLinks as any, rangeSeconds);
+            // Process Aggregated Third-Party OAuth Discoveries
+            const rawOauthList = Object.values(oauthDiscoveriesMap) as any[];
+            const totalOAuthCount = rawOauthList.reduce((acc, curr) => acc + curr.count, 0);
+
+            const thirdPartyOAuthLinks: GraylogThirdPartyOAuthAggregation[] = rawOauthList.map(item => ({
+                provider: item.provider,
+                count: item.count,
+                percentage: `${((item.count / Math.max(1, totalOAuthCount)) * 100).toFixed(1)}%`,
+                uniqueRecipientsCount: item.recipients.size,
+                topHosts: Array.from(item.hosts as Set<string>).slice(0, 5),
+                sampleMids: Array.from(item.mids as Set<string>).slice(0, 5),
+                latestTimestamp: item.latestTimestamp
+            }));
+
+            thirdPartyOAuthLinks.sort((a, b) => b.count - a.count);
 
             return {
                 becThreats: becThreats.slice(0, limit),

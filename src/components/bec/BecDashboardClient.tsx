@@ -26,7 +26,7 @@ import {
     M365AuthEndpoint,
     GraylogBecImpersonationAggregation,
     GraylogTopDomainAggregation,
-    GraylogThirdPartyOAuthDiscovery
+    GraylogThirdPartyOAuthAggregation
 } from "@/lib/og-graylog";
 
 export default function BecDashboardClient() {
@@ -37,7 +37,7 @@ export default function BecDashboardClient() {
     
     const [becData, setBecData] = useState<GraylogBecImpersonationAggregation[]>([]);
     const [topDomains, setTopDomains] = useState<GraylogTopDomainAggregation[]>([]);
-    const [oauthLinks, setOauthLinks] = useState<GraylogThirdPartyOAuthDiscovery[]>([]);
+    const [oauthLinks, setOauthLinks] = useState<GraylogThirdPartyOAuthAggregation[]>([]);
     const [totalEvaluatedUrls, setTotalEvaluatedUrls] = useState<number>(0);
     const [totalEvaluatedMessages, setTotalEvaluatedMessages] = useState<number>(0);
     
@@ -312,43 +312,43 @@ export default function BecDashboardClient() {
 
                         {loading ? (
                             <div className="py-12 text-center text-xs text-[var(--text-secondary)]">
-                                Scanning for third-party identity links...
+                                Aggregating third-party identity providers...
                             </div>
                         ) : oauthLinks.length === 0 ? (
                             <div className="py-12 text-center text-xs text-[var(--text-secondary)]">
-                                No third-party OAuth or SSO links detected in selected timeframe.
+                                No non-Microsoft OAuth or SSO links detected in selected timeframe.
                             </div>
                         ) : (
                             <div className="flex flex-col gap-3 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
                                 {oauthLinks.map((item, idx) => (
-                                    <div key={`${item.mid}-${idx}`} className="p-3 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] flex flex-col gap-1.5 text-xs">
+                                    <button
+                                        key={`${item.provider}-${idx}`}
+                                        onClick={() => setSearchQuery(item.provider)}
+                                        className="group text-left p-3 rounded-lg bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)] flex flex-col gap-2 text-xs transition-colors"
+                                    >
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
-                                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono">
+                                                <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono">
                                                     {item.provider}
                                                 </span>
-                                                <span className="font-mono text-blue-400 font-bold">MID {item.mid}</span>
+                                                <span className="text-[11px] font-semibold text-[var(--text-secondary)]">
+                                                    {item.uniqueRecipientsCount} Employee Inboxes Targeted
+                                                </span>
                                             </div>
-                                            <a
-                                                href={`/queries/ironport?query=esa_mid:${item.mid}`}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1"
-                                            >
-                                                <span>Trace MID</span>
-                                                <ExternalLink className="w-3 h-3" />
-                                            </a>
+                                            <div className="flex items-center gap-1 font-mono font-bold text-[var(--text-primary)] group-hover:text-indigo-400">
+                                                <span>{item.count} Links</span>
+                                                <span className="text-[10px] text-[var(--text-secondary)]">({item.percentage})</span>
+                                            </div>
                                         </div>
 
-                                        <div className="font-mono font-bold text-[var(--text-primary)] truncate" title={item.destUrl}>
-                                            {item.host}
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            {item.topHosts.map((h, hIdx) => (
+                                                <span key={hIdx} className="px-2 py-0.5 rounded bg-[var(--bg-surface)] text-[var(--text-primary)] font-mono text-[10px] border border-[var(--border-color)]">
+                                                    {h}
+                                                </span>
+                                            ))}
                                         </div>
-
-                                        <div className="flex items-center justify-between text-[11px] text-[var(--text-secondary)] pt-1 border-t border-[var(--border-color)]/40">
-                                            <span className="truncate max-w-[200px]" title={item.sender}>From: {item.sender || "unknown"}</span>
-                                            <span className="truncate max-w-[200px]" title={item.recipient}>To: {item.recipient || "unknown"}</span>
-                                        </div>
-                                    </div>
+                                    </button>
                                 ))}
                             </div>
                         )}
