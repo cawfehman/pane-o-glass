@@ -128,7 +128,9 @@ export function classifyM365Url(
         "linkedin.com",
         "marinisksolutions.com",
         "wolterskluwer.com",
-        "constantcontact.com"
+        "constantcontact.com",
+        "advarracloud.com",
+        "advarra.com"
     ];
 
     const isLegitVendor = LEGITIMATE_VENDOR_DOMAINS.some(d => lowerHost === d || lowerHost.endsWith(`.${d}`));
@@ -1178,6 +1180,7 @@ export class OgGraylogClient {
                         else if (lowerHost.includes("onelogin.com")) provider = "OneLogin SSO";
                         else if (lowerHost.includes("b2clogin.com")) provider = "Azure AD B2C Portal";
                         else if (lowerHost.includes("cayuse.com")) provider = "Cayuse Identity";
+                        else if (lowerHost.includes("advarracloud.com") || lowerHost.includes("advarra.com")) provider = "Advarra Identity";
                         else if (lowerUrl.includes("/oauth2/") || lowerUrl.includes("/authorize") || lowerUrl.includes("/oidc/") || lowerUrl.includes("/saml/")) provider = "Third-Party OAuth / SSO";
                     }
 
