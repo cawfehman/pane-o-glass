@@ -14,12 +14,19 @@ import {
     X,
     Bell,
     Mail,
-    UserCheck
+    Globe,
+    Lock,
+    BarChart3,
+    Key,
+    Layers,
+    Filter
 } from "lucide-react";
 import { 
     OFFICIAL_M365_AUTH_ENDPOINTS, 
     M365AuthEndpoint,
-    GraylogBecImpersonationAggregation
+    GraylogBecImpersonationAggregation,
+    GraylogTopDomainAggregation,
+    GraylogThirdPartyOAuthDiscovery
 } from "@/lib/og-graylog";
 
 export default function BecDashboardClient() {
@@ -29,7 +36,10 @@ export default function BecDashboardClient() {
     const [searchQuery, setSearchQuery] = useState<string>("");
     
     const [becData, setBecData] = useState<GraylogBecImpersonationAggregation[]>([]);
-    const [dbIncidents, setDbIncidents] = useState<any[]>([]);
+    const [topDomains, setTopDomains] = useState<GraylogTopDomainAggregation[]>([]);
+    const [oauthLinks, setOauthLinks] = useState<GraylogThirdPartyOAuthDiscovery[]>([]);
+    const [totalEvaluatedUrls, setTotalEvaluatedUrls] = useState<number>(0);
+    const [totalEvaluatedMessages, setTotalEvaluatedMessages] = useState<number>(0);
     
     // Auth Endpoints Modal State
     const [showEndpointModal, setShowEndpointModal] = useState<boolean>(false);
@@ -50,12 +60,24 @@ export default function BecDashboardClient() {
         setError(null);
 
         try {
-            const res = await fetch(`/api/ironport/stats?timeframe=${rangeSeconds}`);
+            const res = await fetch(`/api/ironport/stats?range=${rangeSeconds}`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             
             if (data.becThreats) {
                 setBecData(data.becThreats);
+            }
+            if (data.topUnwrappedDomains) {
+                setTopDomains(data.topUnwrappedDomains);
+            }
+            if (data.thirdPartyOAuthLinks) {
+                setOauthLinks(data.thirdPartyOAuthLinks);
+            }
+            if (data.totalEvaluatedUrls !== undefined) {
+                setTotalEvaluatedUrls(data.totalEvaluatedUrls);
+            }
+            if (data.totalEvaluatedMessages !== undefined) {
+                setTotalEvaluatedMessages(data.totalEvaluatedMessages);
             }
         } catch (err: any) {
             console.error("Failed to fetch BEC threat data:", err);
@@ -106,26 +128,28 @@ export default function BecDashboardClient() {
     const fakePortalCount = becData.filter(d => d.threatTier === "CRITICAL").length;
     const tokenTheftCount = becData.filter(d => d.threatTier === "HIGH").length;
 
+    const maxDomainCount = topDomains.length > 0 ? Math.max(...topDomains.map(d => d.count)) : 1;
+
     return (
         <div className="flex flex-col gap-6">
             {/* 24x7 Daemon Health & Alert Target Banner */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] shadow-xs">
                 <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+                    <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                     <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="text-sm font-bold text-[var(--text-primary)]">24x7 BEC Threat Monitor Daemon</h3>
                             <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                 ACTIVE (60s Cycle)
                             </span>
                         </div>
                         <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                            Continuous server-side background ingestion | Instant HTML Alerting Target: <strong className="text-blue-400 font-mono">rivera-robert@cooperhealth.edu</strong>
+                            Continuous server-side background ingestion | Instant Alert Target: <strong className="text-blue-400 font-mono">rivera-robert@cooperhealth.edu</strong>
                         </p>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                     <button
                         onClick={() => setShowEndpointModal(true)}
                         className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] border border-[var(--border-color)] flex items-center gap-1.5 transition-colors"
@@ -173,10 +197,13 @@ export default function BecDashboardClient() {
             {/* Metric Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)]">
-                    <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Total Evaluated Auth Links</span>
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">Unwrapped URLs Evaluated</span>
+                        <Globe className="w-4 h-4 text-blue-400" />
+                    </div>
                     <div className="flex items-baseline justify-between mt-2">
-                        <span className="text-2xl font-black text-[var(--text-primary)]">{becData.length}</span>
-                        <span className="text-xs text-[var(--text-secondary)]">Strict Auth Scope</span>
+                        <span className="text-2xl font-black text-[var(--text-primary)]">{totalEvaluatedUrls.toLocaleString()}</span>
+                        <span className="text-xs text-[var(--text-secondary)]">{totalEvaluatedMessages.toLocaleString()} msgs</span>
                     </div>
                 </div>
 
@@ -202,28 +229,164 @@ export default function BecDashboardClient() {
                     </div>
                 </div>
 
-                <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-emerald-500/20 bg-emerald-500/5">
+                <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-indigo-500/20 bg-indigo-500/5">
                     <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Unwrapped Destinations</span>
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Non-MS OAuth Links</span>
+                        <Key className="w-4 h-4 text-indigo-400" />
                     </div>
                     <div className="flex items-baseline justify-between mt-2">
-                        <span className="text-2xl font-black text-emerald-400">100%</span>
-                        <span className="text-xs text-emerald-400/80">Real Hostnames Exposed</span>
+                        <span className="text-2xl font-black text-indigo-400">{oauthLinks.length}</span>
+                        <span className="text-xs text-indigo-400/80">3rd-Party SSO</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Split Visual Telemetry Grid: Top Unwrapped Hostnames + Non-MS OAuth Discoveries */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Panel A: Top Unwrapped Destination Domains */}
+                <div className="p-5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center justify-between pb-3 mb-4 border-b border-[var(--border-color)]">
+                            <div className="flex items-center gap-2">
+                                <BarChart3 className="w-4 h-4 text-blue-400" />
+                                <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
+                                    Top Unwrapped Destination Domains (Top 15)
+                                </h4>
+                            </div>
+                            <span className="text-[11px] text-[var(--text-secondary)]">Click to filter table</span>
+                        </div>
+
+                        {loading ? (
+                            <div className="py-12 text-center text-xs text-[var(--text-secondary)]">
+                                Aggregating unwrapped hostnames...
+                            </div>
+                        ) : topDomains.length === 0 ? (
+                            <div className="py-12 text-center text-xs text-[var(--text-secondary)]">
+                                No unwrapped destination domains found in selected timeframe.
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-2.5 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
+                                {topDomains.map((d, idx) => {
+                                    const fillPercent = Math.max(8, (d.count / maxDomainCount) * 100);
+                                    return (
+                                        <button
+                                            key={d.domain}
+                                            onClick={() => setSearchQuery(d.domain)}
+                                            className="group flex flex-col gap-1 text-left w-full hover:bg-[var(--bg-default)] p-1.5 rounded-lg transition-colors"
+                                        >
+                                            <div className="flex items-center justify-between text-xs font-mono">
+                                                <span className="font-bold text-[var(--text-primary)] group-hover:text-blue-400 truncate max-w-[280px]">
+                                                    #{idx + 1} {d.domain}
+                                                </span>
+                                                <div className="flex items-center gap-2 text-[var(--text-secondary)]">
+                                                    <span className="font-bold text-[var(--text-primary)]">{d.count}</span>
+                                                    <span className="text-[10px]">({d.percentage})</span>
+                                                </div>
+                                            </div>
+                                            <div className="w-full bg-[var(--bg-default)] rounded-full h-1.5 overflow-hidden">
+                                                <div 
+                                                    className="bg-blue-500 h-1.5 rounded-full group-hover:bg-blue-400 transition-all duration-300"
+                                                    style={{ width: `${fillPercent}%` }}
+                                                />
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Panel B: Non-Microsoft Third-Party OAuth & Identity Discoveries */}
+                <div className="p-5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center justify-between pb-3 mb-4 border-b border-[var(--border-color)]">
+                            <div className="flex items-center gap-2">
+                                <Key className="w-4 h-4 text-indigo-400" />
+                                <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
+                                    Non-Microsoft Third-Party OAuth / SSO Discoveries ({oauthLinks.length})
+                                </h4>
+                            </div>
+                            <span className="text-[11px] text-[var(--text-secondary)]">External IdP & Auth Links</span>
+                        </div>
+
+                        {loading ? (
+                            <div className="py-12 text-center text-xs text-[var(--text-secondary)]">
+                                Scanning for third-party identity links...
+                            </div>
+                        ) : oauthLinks.length === 0 ? (
+                            <div className="py-12 text-center text-xs text-[var(--text-secondary)]">
+                                No third-party OAuth or SSO links detected in selected timeframe.
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-3 max-h-[340px] overflow-y-auto custom-scrollbar pr-1">
+                                {oauthLinks.map((item, idx) => (
+                                    <div key={`${item.mid}-${idx}`} className="p-3 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] flex flex-col gap-1.5 text-xs">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono">
+                                                    {item.provider}
+                                                </span>
+                                                <span className="font-mono text-blue-400 font-bold">MID {item.mid}</span>
+                                            </div>
+                                            <a
+                                                href={`/queries/ironport?query=esa_mid:${item.mid}`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1"
+                                            >
+                                                <span>Trace MID</span>
+                                                <ExternalLink className="w-3 h-3" />
+                                            </a>
+                                        </div>
+
+                                        <div className="font-mono font-bold text-[var(--text-primary)] truncate" title={item.destUrl}>
+                                            {item.host}
+                                        </div>
+
+                                        <div className="flex items-center justify-between text-[11px] text-[var(--text-secondary)] pt-1 border-t border-[var(--border-color)]/40">
+                                            <span className="truncate max-w-[200px]" title={item.sender}>From: {item.sender || "unknown"}</span>
+                                            <span className="truncate max-w-[200px]" title={item.recipient}>To: {item.recipient || "unknown"}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
             {/* Filter Search Bar */}
-            <div className="relative">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
-                <input
-                    type="text"
-                    placeholder="Search by MID, Subject, Sender, Target Recipient, Target Host, or Threat Category..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] focus:outline-none focus:border-blue-500 transition-colors"
-                />
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="relative flex-1 w-full">
+                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+                    <input
+                        type="text"
+                        placeholder="Search by MID, Subject, Sender, Target Recipient, Target Host, or Threat Category..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] focus:outline-none focus:border-blue-500 transition-colors"
+                    />
+                    {searchQuery && (
+                        <button
+                            onClick={() => setSearchQuery("")}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1"
+                            title="Clear search filter"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    )}
+                </div>
+
+                {searchQuery && (
+                    <button
+                        onClick={() => setSearchQuery("")}
+                        className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors"
+                    >
+                        <Filter className="w-3.5 h-3.5" />
+                        <span>Filter: "{searchQuery}" (Clear)</span>
+                    </button>
+                )}
             </div>
 
             {/* BEC Threat Table */}

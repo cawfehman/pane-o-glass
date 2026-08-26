@@ -262,18 +262,33 @@ export interface GraylogBecImpersonationAggregation {
     source: string;
 }
 
+export interface GraylogTopDomainAggregation {
+    domain: string;
+    count: number;
+    percentage: string;
+}
+
+export interface GraylogThirdPartyOAuthDiscovery {
+    mid: string;
+    host: string;
+    destUrl: string;
+    provider: string;
+    sender?: string;
+    recipient?: string;
+    subject?: string;
+    timestamp: string;
+}
+
 export interface GraylogStats {
     rangeSeconds: number;
     volumeQuery: string;
     totalVolume: number;
     totalVolumeChart: GraylogHistogramData[];
     delayedMessages: number;
-    delayedMessagesChart: GraylogHistogramData[];
-    urlRewrites: number;
-    urlRewritesChart: GraylogHistogramData[];
-    malwareAlerts: number;
-    malwareAlertsChart: GraylogHistogramData[];
-    inboundCategories: GraylogCategoryBreakdown[];
+    urlRewritesCount: number;
+    malwareBlocked: number;
+    whitelistedCount: number;
+    inboundCategories?: GraylogCategoryBreakdown[];
     esaBreakdown?: GraylogEsaBreakdown;
     recentUrls?: GraylogUrlSample[];
     recentAmpVerdicts?: GraylogAmpSample[];
@@ -284,6 +299,10 @@ export interface GraylogStats {
     spoofingAlerts?: GraylogSpoofingAuthAggregation[];
     targetRecipients?: GraylogTargetRecipientAggregation[];
     becThreats?: GraylogBecImpersonationAggregation[];
+    topUnwrappedDomains?: GraylogTopDomainAggregation[];
+    thirdPartyOAuthLinks?: GraylogThirdPartyOAuthDiscovery[];
+    totalEvaluatedUrls?: number;
+    totalEvaluatedMessages?: number;
 }
 
 export class OgGraylogClient {
@@ -997,30 +1016,43 @@ export class OgGraylogClient {
     }
 
     /**
-     * Aggregates inbound emails containing M365 / Microsoft login URLs, detecting Typosquatting, Fake Portals, and OAuth Token Theft vectors.
+     * Aggregates inbound emails containing M365 / Microsoft login URLs, top unwrapped destination domains, and third-party OAuth discoveries.
      */
     async getM365BecThreatAggregations(
         rangeSeconds: number = 86400,
         limit: number = 20
-    ): Promise<GraylogBecImpersonationAggregation[]> {
+    ): Promise<{
+        becThreats: GraylogBecImpersonationAggregation[];
+        topUnwrappedDomains: GraylogTopDomainAggregation[];
+        thirdPartyOAuthLinks: GraylogThirdPartyOAuthDiscovery[];
+        totalEvaluatedUrls: number;
+        totalEvaluatedMessages: number;
+    }> {
         try {
-            const rawLimit = rangeSeconds > 259200 ? 3000 : (rangeSeconds > 86400 ? 2000 : 1000);
+            const rawLimit = rangeSeconds > 259200 ? 3500 : (rangeSeconds > 86400 ? 2500 : 1500);
+            // Search broadly for inbound links and auth keywords
             const becHits = await this.searchMessages(
-                `message:"microsoft" OR message:"office365" OR message:"sharepoint" OR message:"login.microsoftonline" OR message:"outlook.com" OR message:"devicelogin" OR message:"forms.office"`,
+                `_exists_:esa_url_rep_score OR message:"http" OR message:"URL" OR message:"devicelogin" OR message:"authorize" OR message:"oauth"`,
                 rawLimit,
                 rangeSeconds
             );
 
             const becMap: Record<string, GraylogBecImpersonationAggregation> = {};
+            const domainCounts: Record<string, number> = {};
+            const oauthDiscoveriesMap: Record<string, GraylogThirdPartyOAuthDiscovery> = {};
+            
+            let totalEvaluatedUrls = 0;
+            const uniqueMids = new Set<string>();
 
             becHits.forEach((h: any) => {
                 const raw = h.message.message || "";
                 const midMatch = raw.match(/MID (\d+)/);
-                const urlMatch = raw.match(/https?:\/\/[^\s"'\)>]+/i) || raw.match(/URL\s+(['"]?)(\S+)\1/i);
-                const repMatch = raw.match(/reputation ([\-\d\.]+)/i);
-
                 const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
-                if (!mid || !urlMatch) return;
+                if (!mid) return;
+                uniqueMids.add(mid);
+
+                const urlMatches = raw.match(/https?:\/\/[^\s"'\)>]+/gi) || [];
+                const repMatch = raw.match(/reputation ([\-\d\.]+)/i);
 
                 let score = 0.0;
                 if (h.message.esa_url_rep_score !== undefined) {
@@ -1029,38 +1061,108 @@ export class OgGraylogClient {
                     score = parseFloat(repMatch[1]);
                 }
 
-                const rawUrl = urlMatch[0].startsWith("URL ") ? urlMatch[2] : urlMatch[0];
-                const analysis = classifyM365Url(rawUrl, h.message.esa_mail_from || "", OFFICIAL_M365_AUTH_ENDPOINTS, score);
+                urlMatches.forEach(rawUrl => {
+                    totalEvaluatedUrls++;
+                    const destUrl = unwrapUrl(rawUrl);
+                    const host = parseDomain(destUrl);
+                    if (!host) return;
 
-                if (analysis && analysis.impersonationBoost > 0) {
-                    if (!becMap[mid] || analysis.impersonationBoost > becMap[mid].impersonationBoost) {
-                        becMap[mid] = {
-                            mid,
-                            messageId: h.message.esa_rfc_message_id || "",
-                            subject: h.message.esa_subject,
-                            sender: h.message.esa_mail_from,
-                            recipient: h.message.esa_rcpt_to,
-                            rawUrl,
-                            destUrl: analysis.destUrl,
-                            targetHost: analysis.targetHost,
-                            threatTier: analysis.threatTier,
-                            threatCategory: analysis.threatCategory,
-                            impersonationBoost: analysis.impersonationBoost,
-                            worstScore: score,
-                            timestamp: h.message.timestamp,
-                            source: h.message.source ? h.message.source.split('.')[0] : "esa"
-                        };
+                    // Aggregate Top Unwrapped Domains
+                    domainCounts[host] = (domainCounts[host] || 0) + 1;
+
+                    // 1. Evaluate for M365 Auth / Fake Login Portals
+                    const analysis = classifyM365Url(rawUrl, h.message.esa_mail_from || "", OFFICIAL_M365_AUTH_ENDPOINTS, score);
+                    if (analysis && analysis.impersonationBoost > 0) {
+                        if (!becMap[mid] || analysis.impersonationBoost > becMap[mid].impersonationBoost) {
+                            becMap[mid] = {
+                                mid,
+                                messageId: h.message.esa_rfc_message_id || "",
+                                subject: h.message.esa_subject,
+                                sender: h.message.esa_mail_from,
+                                recipient: h.message.esa_rcpt_to,
+                                rawUrl,
+                                destUrl: analysis.destUrl,
+                                targetHost: analysis.targetHost,
+                                threatTier: analysis.threatTier,
+                                threatCategory: analysis.threatCategory,
+                                impersonationBoost: analysis.impersonationBoost,
+                                worstScore: score,
+                                timestamp: h.message.timestamp,
+                                source: h.message.source ? h.message.source.split('.')[0] : "esa"
+                            };
+                        }
                     }
-                }
+
+                    // 2. Evaluate for Non-Microsoft Third-Party OAuth / Identity Providers
+                    const lowerHost = host.toLowerCase();
+                    const lowerUrl = destUrl.toLowerCase();
+
+                    const isMicrosoftAuth = OFFICIAL_AUTH_HOSTS.some(h => lowerHost === h || lowerHost.endsWith(`.${h}`));
+                    let provider = "";
+
+                    if (!isMicrosoftAuth) {
+                        if (lowerHost.includes("okta.com") || lowerHost.includes("oktapreview.com")) provider = "Okta Identity";
+                        else if (lowerHost.includes("accounts.google.com")) provider = "Google OAuth 2.0";
+                        else if (lowerHost.includes("duosecurity.com") || lowerHost.includes("duo.com")) provider = "Duo MFA Auth";
+                        else if (lowerHost.includes("docusign.net") || lowerHost.includes("docusign.com")) provider = "DocuSign Auth";
+                        else if (lowerHost.includes("pingidentity.com") || lowerHost.includes("pingone.com")) provider = "Ping Identity";
+                        else if (lowerHost.includes("auth0.com")) provider = "Auth0 SSO";
+                        else if (lowerHost.includes("onelogin.com")) provider = "OneLogin SSO";
+                        else if (lowerHost.includes("b2clogin.com")) provider = "Azure AD B2C Portal";
+                        else if (lowerHost.includes("cayuse.com")) provider = "Cayuse Identity";
+                        else if (lowerUrl.includes("/oauth2/") || lowerUrl.includes("/authorize") || lowerUrl.includes("/oidc/") || lowerUrl.includes("/saml/")) provider = "Third-Party OAuth / SSO";
+                    }
+
+                    if (provider) {
+                        const key = `${mid}-${host}`;
+                        if (!oauthDiscoveriesMap[key]) {
+                            oauthDiscoveriesMap[key] = {
+                                mid,
+                                host,
+                                destUrl,
+                                provider,
+                                sender: h.message.esa_mail_from,
+                                recipient: h.message.esa_rcpt_to,
+                                subject: h.message.esa_subject,
+                                timestamp: h.message.timestamp
+                            };
+                        }
+                    }
+                });
             });
 
-            const list = Object.values(becMap);
-            await this.enrichMidsWithEnvelopeHeaders(list as any, rangeSeconds);
+            // Process BEC Threats List
+            const becThreats = Object.values(becMap);
+            await this.enrichMidsWithEnvelopeHeaders(becThreats as any, rangeSeconds);
+            becThreats.sort((a, b) => b.impersonationBoost - a.impersonationBoost || a.worstScore - b.worstScore);
 
-            list.sort((a, b) => b.impersonationBoost - a.impersonationBoost || a.worstScore - b.worstScore);
-            return list.slice(0, limit);
+            // Process Top Unwrapped Domains (Top 15)
+            const sortedDomains = Object.entries(domainCounts).sort((a, b) => b[1] - a[1]);
+            const topUnwrappedDomains: GraylogTopDomainAggregation[] = sortedDomains.slice(0, 15).map(([domain, count]) => ({
+                domain,
+                count,
+                percentage: `${((count / Math.max(1, totalEvaluatedUrls)) * 100).toFixed(1)}%`
+            }));
+
+            // Process Third-Party OAuth Discoveries
+            const thirdPartyOAuthLinks = Object.values(oauthDiscoveriesMap).slice(0, 20);
+            await this.enrichMidsWithEnvelopeHeaders(thirdPartyOAuthLinks as any, rangeSeconds);
+
+            return {
+                becThreats: becThreats.slice(0, limit),
+                topUnwrappedDomains,
+                thirdPartyOAuthLinks,
+                totalEvaluatedUrls,
+                totalEvaluatedMessages: uniqueMids.size
+            };
         } catch (e) {
-            return [];
+            return {
+                becThreats: [],
+                topUnwrappedDomains: [],
+                thirdPartyOAuthLinks: [],
+                totalEvaluatedUrls: 0,
+                totalEvaluatedMessages: 0
+            };
         }
     }
 

@@ -80,9 +80,13 @@ export async function GET(req: Request) {
                 let spoofingAlertsList: any[] = [];
                 let targetRecipientsList: any[] = [];
                 let becThreatsList: any[] = [];
+                let topUnwrappedDomainsList: any[] = [];
+                let thirdPartyOAuthList: any[] = [];
+                let totalEvaluatedUrlsCount = 0;
+                let totalEvaluatedMessagesCount = 0;
 
                 try {
-                    const [wHist, esaData, tSamples, fAgg, tThreats, ampList, spfList, rcptList, becList] = await Promise.all([
+                    const [wHist, esaData, tSamples, fAgg, tThreats, ampList, spfList, rcptList, becRes] = await Promise.all([
                         client.getHistogram('message:"Whitelisted Addresses"', rangeSeconds),
                         client.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
                         client.getRecentTelemetrySamples(rangeSeconds),
@@ -102,7 +106,11 @@ export async function GET(req: Request) {
                     ampIocsList = ampList;
                     spoofingAlertsList = spfList;
                     targetRecipientsList = rcptList;
-                    becThreatsList = becList;
+                    becThreatsList = becRes.becThreats;
+                    topUnwrappedDomainsList = becRes.topUnwrappedDomains;
+                    thirdPartyOAuthList = becRes.thirdPartyOAuthLinks;
+                    totalEvaluatedUrlsCount = becRes.totalEvaluatedUrls;
+                    totalEvaluatedMessagesCount = becRes.totalEvaluatedMessages;
 
                     // Ensure top card delayedMessages & totalVolume match exact sum of ESA01 + ESA02 direct receiver numbers!
                     if (esaBreakdown) {
@@ -154,6 +162,10 @@ export async function GET(req: Request) {
                     spoofingAlerts: spoofingAlertsList || [],
                     targetRecipients: targetRecipientsList || [],
                     becThreats: becThreatsList || [],
+                    topUnwrappedDomains: topUnwrappedDomainsList || [],
+                    thirdPartyOAuthLinks: thirdPartyOAuthList || [],
+                    totalEvaluatedUrls: totalEvaluatedUrlsCount,
+                    totalEvaluatedMessages: totalEvaluatedMessagesCount,
                     fromCache: true
                 }, {
                     headers: {
