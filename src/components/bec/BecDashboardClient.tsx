@@ -134,16 +134,21 @@ export default function BecDashboardClient() {
                         <span>Official Auth Registry ({authEndpoints.length})</span>
                     </button>
 
-                    <div className="flex items-center bg-[var(--bg-default)] p-1 rounded-lg border border-[var(--border-color)] text-xs">
+                    <div className="flex items-center bg-[var(--bg-default)] p-1 rounded-lg border border-[var(--border-color)] text-xs overflow-x-auto custom-scrollbar">
                         {[
-                            { label: "24 Hours", value: 86400 },
-                            { label: "7 Days", value: 604800 },
-                            { label: "30 Days", value: 2592000 }
+                            { label: "10m", value: 600 },
+                            { label: "30m", value: 1800 },
+                            { label: "1h", value: 3600 },
+                            { label: "4h", value: 14400 },
+                            { label: "12h", value: 43200 },
+                            { label: "24h", value: 86400 },
+                            { label: "7d", value: 604800 },
+                            { label: "30d", value: 2592000 }
                         ].map(t => (
                             <button
                                 key={t.value}
                                 onClick={() => setTimeframe(t.value)}
-                                className={`px-3 py-1 rounded-md transition-colors font-medium ${
+                                className={`px-2.5 py-1 rounded-md transition-colors font-medium whitespace-nowrap ${
                                     timeframe === t.value 
                                         ? "bg-blue-600 text-white font-semibold shadow-xs" 
                                         : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
