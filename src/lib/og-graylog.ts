@@ -46,15 +46,22 @@ export const OFFICIAL_M365_AUTH_ENDPOINTS: M365AuthEndpoint[] = [
 
 export const OFFICIAL_AUTH_HOSTS = [
     "login.microsoftonline.com",
+    "microsoftonline.com",
     "microsoft.com",
     "aka.ms",
     "login.microsoft.com",
     "login.windows.net",
+    "windows.net",
     "login.live.com",
+    "live.com",
     "login.microsoftonline.us",
     "device.login.microsoftonline.com",
     "passwordreset.microsoftonline.com",
-    "account.microsoft.com"
+    "account.microsoft.com",
+    "office.com",
+    "office365.com",
+    "sharepoint.com",
+    "outlook.com"
 ];
 
 export function unwrapUrl(rawUrl: string): string {
