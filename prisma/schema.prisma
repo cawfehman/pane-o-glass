@@ -324,4 +324,15 @@ model BecIncident {
   @@index([threatTier])
 }
 
+model BecStatsCache {
+  id                     String   @id @default(cuid())
+  rangeSeconds           Int      @unique
+  totalEvaluatedMessages Int      @default(0)
+  totalEvaluatedUrls     Int      @default(0)
+  becThreatsJson         String   // JSON string of BecIncident aggregations
+  topDomainsJson         String   // JSON string of Top Destination Domains
+  oauthLinksJson         String   // JSON string of 3rd-Party OAuth Discoveries
+  updatedAt              DateTime @updatedAt
+}
+
 

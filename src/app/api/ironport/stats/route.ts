@@ -86,6 +86,24 @@ export async function GET(req: Request) {
                 let totalEvaluatedMessagesCount = 0;
 
                 try {
+                    // 1. Check local SQLite DB Cache (BecStatsCache) for pre-computed BEC metrics (<5ms response time!)
+                    let cachedBecRes: any = null;
+                    const becCache = await (prisma as any).becStatsCache.findUnique({
+                        where: { rangeSeconds }
+                    }).catch(() => null);
+
+                    if (becCache && (Date.now() - new Date(becCache.updatedAt).getTime()) < 180000) {
+                        try {
+                            cachedBecRes = {
+                                becThreats: JSON.parse(becCache.becThreatsJson),
+                                topUnwrappedDomains: JSON.parse(becCache.topDomainsJson),
+                                thirdPartyOAuthLinks: JSON.parse(becCache.oauthLinksJson),
+                                totalEvaluatedUrls: becCache.totalEvaluatedUrls,
+                                totalEvaluatedMessages: becCache.totalEvaluatedMessages
+                            };
+                        } catch (parseErr) {}
+                    }
+
                     const [wHist, esaData, tSamples, fAgg, tThreats, ampList, spfList, rcptList, becRes] = await Promise.all([
                         client.getHistogram('message:"Whitelisted Addresses"', rangeSeconds),
                         client.getEsaApplianceBreakdown(rangeSeconds, volumeQuery),
@@ -95,7 +113,7 @@ export async function GET(req: Request) {
                         client.getAmpIocAggregations(rangeSeconds, 10),
                         client.getSpoofingAuthAggregations(rangeSeconds, 10),
                         client.getTargetRecipientAggregations(rangeSeconds, 10),
-                        client.getM365BecThreatAggregations(rangeSeconds, 20)
+                        cachedBecRes ? Promise.resolve(cachedBecRes) : client.getM365BecThreatAggregations(rangeSeconds, 20)
                     ]);
                     whitelistedSeries = wHist.series;
                     whitelistedTotal = wHist.total;
@@ -111,6 +129,28 @@ export async function GET(req: Request) {
                     thirdPartyOAuthList = becRes.thirdPartyOAuthLinks;
                     totalEvaluatedUrlsCount = becRes.totalEvaluatedUrls;
                     totalEvaluatedMessagesCount = becRes.totalEvaluatedMessages;
+
+                    // Async hydrate BecStatsCache in SQLite if this request ran a live Graylog search
+                    if (!cachedBecRes && becRes) {
+                        (prisma as any).becStatsCache.upsert({
+                            where: { rangeSeconds },
+                            create: {
+                                rangeSeconds,
+                                totalEvaluatedMessages: becRes.totalEvaluatedMessages,
+                                totalEvaluatedUrls: becRes.totalEvaluatedUrls,
+                                becThreatsJson: JSON.stringify(becRes.becThreats || []),
+                                topDomainsJson: JSON.stringify(becRes.topUnwrappedDomains || []),
+                                oauthLinksJson: JSON.stringify(becRes.thirdPartyOAuthLinks || [])
+                            },
+                            update: {
+                                totalEvaluatedMessages: becRes.totalEvaluatedMessages,
+                                totalEvaluatedUrls: becRes.totalEvaluatedUrls,
+                                becThreatsJson: JSON.stringify(becRes.becThreats || []),
+                                topDomainsJson: JSON.stringify(becRes.topUnwrappedDomains || []),
+                                oauthLinksJson: JSON.stringify(becRes.thirdPartyOAuthLinks || [])
+                            }
+                        }).catch(() => {});
+                    }
 
                     // Ensure top card delayedMessages & totalVolume match exact sum of ESA01 + ESA02 direct receiver numbers!
                     if (esaBreakdown) {

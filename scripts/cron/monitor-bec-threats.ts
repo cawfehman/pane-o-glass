@@ -177,6 +177,32 @@ async function runBecMonitorCron() {
             }
         }
 
+        // Pre-compute and hydrate local SQLite DB Cache (BecStatsCache) for 1-hour default load window
+        try {
+            const becRes = await client.getM365BecThreatAggregations(3600, 20);
+            await (prisma as any).becStatsCache.upsert({
+                where: { rangeSeconds: 3600 },
+                create: {
+                    rangeSeconds: 3600,
+                    totalEvaluatedMessages: becRes.totalEvaluatedMessages,
+                    totalEvaluatedUrls: becRes.totalEvaluatedUrls,
+                    becThreatsJson: JSON.stringify(becRes.becThreats || []),
+                    topDomainsJson: JSON.stringify(becRes.topUnwrappedDomains || []),
+                    oauthLinksJson: JSON.stringify(becRes.thirdPartyOAuthLinks || [])
+                },
+                update: {
+                    totalEvaluatedMessages: becRes.totalEvaluatedMessages,
+                    totalEvaluatedUrls: becRes.totalEvaluatedUrls,
+                    becThreatsJson: JSON.stringify(becRes.becThreats || []),
+                    topDomainsJson: JSON.stringify(becRes.topUnwrappedDomains || []),
+                    oauthLinksJson: JSON.stringify(becRes.thirdPartyOAuthLinks || [])
+                }
+            });
+            console.log(`[BEC Monitor] Pre-computed & hydrated local DB cache (BecStatsCache) for 1-hour window.`);
+        } catch (cacheErr: any) {
+            console.error(`[BEC Monitor] DB Cache hydration error:`, cacheErr.message || cacheErr);
+        }
+
         const durationMs = Date.now() - startTime;
         console.log(`[${new Date().toISOString()}] BEC Monitor Cron Completed in ${durationMs}ms. Incidents evaluated: ${incidentsCount}, Alerts sent: ${alertsSent}`);
 
