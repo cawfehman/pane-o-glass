@@ -836,27 +836,27 @@ export default function IronportDashboardClient() {
                                     <button 
                                         onClick={() => setThreatStatusFilter("active_only")}
                                         className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${threatStatusFilter === "active_only" ? "bg-emerald-500 text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
-                                        title="Hide messages purged by ETD or quarantined by ESA"
+                                        title="Filter to messages delivered to M365 without recorded remediation action"
                                     >
-                                        Active Inboxes Only
+                                        Delivered Messages Only
                                     </button>
                                 </div>
 
                                 {/* Sorting Controls */}
                                 <div className="flex items-center bg-[var(--bg-default)] border border-[var(--border-color)] rounded-lg p-1">
                                     <button 
-                                        onClick={() => setThreatSortMode("priority")}
-                                        className={`px-2 py-1 text-xs font-bold rounded transition-colors flex items-center gap-1 ${threatSortMode === "priority" ? "bg-orange-500 text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
-                                        title="Sort by Composite Priority Index (Severity x Recency)"
-                                    >
-                                        🔥 Priority Index
-                                    </button>
-                                    <button 
                                         onClick={() => setThreatSortMode("worst")}
                                         className={`px-2 py-1 text-xs font-bold rounded transition-colors flex items-center gap-1 ${threatSortMode === "worst" ? "bg-red-500 text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
                                         title="Sort strictly by absolute worst WRS reputation score"
                                     >
                                         🔴 Worst Score
+                                    </button>
+                                    <button 
+                                        onClick={() => setThreatSortMode("priority")}
+                                        className={`px-2 py-1 text-xs font-bold rounded transition-colors flex items-center gap-1 ${threatSortMode === "priority" ? "bg-orange-500 text-white" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+                                        title="Sort by Composite Priority Index (Severity x Recency)"
+                                    >
+                                        🔥 Priority Index
                                     </button>
                                     <button 
                                         onClick={() => setThreatSortMode("recent")}
@@ -881,22 +881,23 @@ export default function IronportDashboardClient() {
                             <table className="w-full text-left border-collapse">
                                 <thead>
                                     <tr className="border-b border-[var(--border-color)] text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
-                                        <th className="py-2 px-3">Message MID</th>
-                                        <th className="py-2 px-3">Subject Line</th>
-                                        <th className="py-2 px-3">Sender & Recipient Envelope</th>
-                                        <th className="py-2 px-3">Remediation Status</th>
-                                        <th className="py-2 px-3">WRS Score</th>
-                                        <th className="py-2 px-3">Priority Index</th>
-                                        <th className="py-2 px-3">Primary Threat URL Preview</th>
-                                        <th className="py-2 px-3 text-right">Correlation Action</th>
+                                        <th className="py-2.5 px-3">Delivery Time</th>
+                                        <th className="py-2.5 px-3">Message MID</th>
+                                        <th className="py-2.5 px-3">Subject Line</th>
+                                        <th className="py-2.5 px-3">Sender & Recipient Envelope</th>
+                                        <th className="py-2.5 px-3">Status</th>
+                                        <th className="py-2.5 px-3">Exposure Window</th>
+                                        <th className="py-2.5 px-3">WRS Score</th>
+                                        <th className="py-2.5 px-3">Primary Threat URL Preview</th>
+                                        <th className="py-2.5 px-3 text-right">Correlation Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[var(--border-color)] text-xs">
                                     {(() => {
                                         let rawList = stats?.topMessageThreats ? stats.topMessageThreats : [
-                                            { mid: "286944146", subject: "Urgent: Verification of Wire Transfer Request", sender: "security-alert@external-secure.com", recipient: "finance-dept@cooperhealth.edu", threatLevel: "CRITICAL", worstScore: -7.5, priorityScore: 7.5, remediationStatus: "DELIVERED_TO_INBOX", riskyUrlCount: 3, totalUrls: 14, primaryThreatUrl: "http://malicious-phish-domain.com/login", timestamp: new Date().toISOString(), source: "esa01" },
-                                            { mid: "286944138", subject: "Important Document Pending Review", sender: "support@document-review-portal.net", recipient: "executive-assistant@cooperhealth.edu", threatLevel: "RISKY", worstScore: -3.8, priorityScore: 3.8, remediationStatus: "PURGED_BY_ETD", riskyUrlCount: 1, totalUrls: 22, primaryThreatUrl: "https://suspicious-checkout-link.net/pay", timestamp: new Date().toISOString(), source: "esa02" },
-                                            { mid: "286944151", subject: "Marketing Newsletter - Weekly Summary", sender: "newsletters@marketing-digest.org", recipient: "staff-all@cooperhealth.edu", threatLevel: "LOW_SUSPECT", worstScore: -1.2, priorityScore: 1.2, remediationStatus: "QUARANTINED_BY_ESA", riskyUrlCount: 1, totalUrls: 8, primaryThreatUrl: "https://unverified-tracking-pixel.org/img", timestamp: new Date().toISOString(), source: "esa01" }
+                                            { mid: "286944146", subject: "Urgent: Verification of Wire Transfer Request", sender: "security-alert@external-secure.com", recipient: "finance-dept@cooperhealth.edu", threatLevel: "CRITICAL", worstScore: -7.5, priorityScore: 7.5, remediationStatus: "DELIVERED", exposureDeltaMinutes: undefined, riskyUrlCount: 3, totalUrls: 14, primaryThreatUrl: "http://malicious-phish-domain.com/login", timestamp: new Date().toISOString(), source: "esa01" },
+                                            { mid: "286944138", subject: "Important Document Pending Review", sender: "support@document-review-portal.net", recipient: "executive-assistant@cooperhealth.edu", threatLevel: "RISKY", worstScore: -3.8, priorityScore: 3.8, remediationStatus: "PURGED_BY_ETD", exposureDeltaMinutes: 14, riskyUrlCount: 1, totalUrls: 22, primaryThreatUrl: "https://suspicious-checkout-link.net/pay", timestamp: new Date().toISOString(), source: "esa02" },
+                                            { mid: "286944151", subject: "Marketing Newsletter - Weekly Summary", sender: "newsletters@marketing-digest.org", recipient: "staff-all@cooperhealth.edu", threatLevel: "LOW_SUSPECT", worstScore: -1.2, priorityScore: 1.2, remediationStatus: "QUARANTINED_BY_ESA", exposureDeltaMinutes: 0, riskyUrlCount: 1, totalUrls: 8, primaryThreatUrl: "https://unverified-tracking-pixel.org/img", timestamp: new Date().toISOString(), source: "esa01" }
                                         ] as any[];
 
                                         if (stats?.topMessageThreats) {
@@ -904,14 +905,14 @@ export default function IronportDashboardClient() {
                                         }
 
                                         if (threatStatusFilter === "active_only") {
-                                            rawList = rawList.filter(m => m.remediationStatus === "DELIVERED_TO_INBOX" || !m.remediationStatus);
+                                            rawList = rawList.filter(m => m.remediationStatus === "DELIVERED" || m.remediationStatus === "DELIVERED_TO_INBOX" || !m.remediationStatus);
                                         }
 
                                         const sortedList = [...rawList];
-                                        if (threatSortMode === "priority") {
-                                            sortedList.sort((a, b) => (b.priorityScore || Math.abs(b.worstScore)) - (a.priorityScore || Math.abs(a.worstScore)));
-                                        } else if (threatSortMode === "worst") {
+                                        if (threatSortMode === "worst") {
                                             sortedList.sort((a, b) => a.worstScore - b.worstScore);
+                                        } else if (threatSortMode === "priority") {
+                                            sortedList.sort((a, b) => (b.priorityScore || Math.abs(b.worstScore)) - (a.priorityScore || Math.abs(a.worstScore)));
                                         } else if (threatSortMode === "recent") {
                                             sortedList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
                                         }
@@ -924,7 +925,7 @@ export default function IronportDashboardClient() {
                                         if (paginatedList.length === 0) {
                                             return (
                                                 <tr>
-                                                    <td colSpan={8} className="py-8 text-center text-[var(--text-muted)] italic">
+                                                    <td colSpan={9} className="py-8 text-center text-[var(--text-muted)] italic">
                                                         No evaluated high-risk threat messages found matching current filter criteria.
                                                     </td>
                                                 </tr>
@@ -934,28 +935,66 @@ export default function IronportDashboardClient() {
                                         return (
                                             <>
                                                 {paginatedList.map((m, idx) => {
-                                                    let remBadge = <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono font-bold flex items-center gap-1 w-fit"><Inbox size={10} /> INBOX ACTIVE</span>;
+                                                    let statusBadge = (
+                                                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono font-bold flex items-center gap-1 w-fit">
+                                                            <CheckCircle2 size={10} /> DELIVERED
+                                                        </span>
+                                                    );
 
                                                     if (m.remediationStatus === "PURGED_BY_ETD") {
-                                                        remBadge = <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-mono font-bold flex items-center gap-1 w-fit"><Mail size={10} /> PURGED BY ETD</span>;
+                                                        statusBadge = (
+                                                            <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-mono font-bold flex items-center gap-1 w-fit">
+                                                                <Mail size={10} /> PURGED BY ETD
+                                                            </span>
+                                                        );
                                                     } else if (m.remediationStatus === "QUARANTINED_BY_ESA") {
-                                                        remBadge = <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/30 font-mono font-bold flex items-center gap-1 w-fit"><ShieldCheck size={10} /> QUARANTINED</span>;
+                                                        statusBadge = (
+                                                            <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/30 font-mono font-bold flex items-center gap-1 w-fit">
+                                                                <ShieldCheck size={10} /> QUARANTINED
+                                                            </span>
+                                                        );
+                                                    }
+
+                                                    let exposureBadge = <span className="text-xs text-[var(--text-muted)] font-mono">—</span>;
+                                                    if (m.remediationStatus === "PURGED_BY_ETD") {
+                                                        const delta = m.exposureDeltaMinutes || 1;
+                                                        if (delta >= 15) {
+                                                            exposureBadge = (
+                                                                <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono font-bold flex items-center gap-1 w-fit" title="High exposure time before ETD cloud clawback">
+                                                                    <AlertCircle size={10} /> {delta} mins (High)
+                                                                </span>
+                                                            );
+                                                        } else {
+                                                            exposureBadge = (
+                                                                <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono font-semibold flex items-center gap-1 w-fit">
+                                                                    <Clock size={10} /> {delta} mins
+                                                                </span>
+                                                            );
+                                                        }
+                                                    } else if (m.remediationStatus === "QUARANTINED_BY_ESA") {
+                                                        exposureBadge = (
+                                                            <span className="text-[10px] px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-mono font-semibold flex items-center gap-1 w-fit">
+                                                                0 mins (Edge)
+                                                            </span>
+                                                        );
                                                     }
 
                                                     return (
                                                         <tr key={idx} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
-                                                            <td className="py-2 px-3 font-mono shrink-0">
+                                                            <td className="py-2.5 px-3 font-mono text-xs text-[var(--text-primary)] font-semibold shrink-0">
+                                                                <div className="flex items-center gap-1.5 whitespace-nowrap" title={`Delivered Timestamp: ${m.timestamp}`}>
+                                                                    <Clock size={12} className="text-cyan-400 shrink-0" />
+                                                                    <span>{formatDateTime(m.timestamp)}</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-2.5 px-3 font-mono">
                                                                 <button 
                                                                     onClick={() => handleSearch(`esa_mid:"${m.mid}" OR message:"MID ${m.mid}"`)}
-                                                                    className="font-bold text-blue-400 hover:underline text-left block text-xs"
+                                                                    className="font-bold text-blue-400 hover:underline text-xs bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded inline-block"
                                                                     title={`Click to trace full message thread for MID ${m.mid}`}
                                                                 >
                                                                     MID {m.mid}
                                                                 </button>
-                                                                <span className="text-[10px] text-[var(--text-muted)] flex items-center gap-1 mt-0.5" title={`Gateway Arrival Timestamp: ${m.timestamp}`}>
-                                                                    <Clock size={10} className="text-cyan-500 shrink-0" />
-                                                                    {formatDateTime(m.timestamp)}
-                                                                </span>
                                                             </td>
                                                             <td className="py-2 px-3 font-semibold text-[var(--text-primary)] max-w-[220px] truncate" title={m.subject ? `Subject: ${m.subject}` : "No Subject Header"}>
                                                                 {m.subject || <span className="text-[var(--text-muted)] italic font-normal">No Subject Header</span>}
@@ -977,15 +1016,15 @@ export default function IronportDashboardClient() {
                                                                 </div>
                                                             </td>
                                                             <td className="py-2.5 px-3">
-                                                                {remBadge}
+                                                                {statusBadge}
+                                                            </td>
+                                                            <td className="py-2.5 px-3">
+                                                                {exposureBadge}
                                                             </td>
                                                             <td className="py-2.5 px-3 font-mono font-bold">
                                                                 <span className={m.worstScore < 0 ? (m.worstScore <= -5.0 ? "text-red-400" : "text-orange-400") : "text-[var(--text-secondary)]"}>
                                                                     {m.worstScore.toFixed(1)}
                                                                 </span>
-                                                            </td>
-                                                            <td className="py-2.5 px-3 font-mono font-extrabold text-amber-400">
-                                                                {m.priorityScore !== undefined ? m.priorityScore.toFixed(1) : Math.abs(m.worstScore).toFixed(1)}
                                                             </td>
                                                             <td className="py-2.5 px-3 font-mono text-[11px] text-[var(--text-primary)] max-w-[220px] truncate" title={`Full Target URL: ${m.primaryThreatUrl}`}>
                                                                 {m.primaryThreatUrl.startsWith("http") ? (

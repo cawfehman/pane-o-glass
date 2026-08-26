@@ -365,14 +365,14 @@ export const helpData: Record<string, TooltipDetails> = {
                 tag: "Decayed Risk Engine"
             },
             {
-                title: "Cisco ETD & ESA Remediation Lifecycle Tracking",
-                detail: "Tracks email remediation status with glowing badges: INBOX ACTIVE (🟢), PURGED BY ETD (🩵), and QUARANTINED BY ESA (🟣) across post-delivery clawback events.",
-                tag: "Remediation Badges"
+                title: "Cisco ETD & ESA Remediation Lifecycle & Exposure Window Tracking",
+                detail: "Tracks email delivery status with clear badges: DELIVERED (🟢), PURGED BY ETD (🩵), and QUARANTINED BY ESA (🟣). Calculates the exact elapsed exposure timeframe between delivery and cloud clawback.",
+                tag: "Status & Exposure"
             },
             {
-                title: "Active Inboxes Only Triage Toggle",
-                detail: "1-click toggle to isolate active un-remediated threats sitting in user inboxes from auto-purged or edge-quarantined messages.",
-                tag: "Active Inbox Filter"
+                title: "Delivered Messages Only Filter Toggle",
+                detail: "1-click toggle to isolate messages delivered to M365 without recorded remediation actions from auto-purged or edge-quarantined emails.",
+                tag: "Delivered Filter"
             },
             {
                 title: "50-Item Capacity with 10-per-Page Pagination",
@@ -411,9 +411,10 @@ export const helpData: Record<string, TooltipDetails> = {
             }
         ],
         colors: [
-            { name: "🟢 INBOX ACTIVE", meaning: "Email delivered to target user inbox and currently remains active.", rgb: "#10b981" },
+            { name: "🟢 DELIVERED", meaning: "Email delivered through gateway to M365 mail system (no recorded post-delivery remediation action).", rgb: "#10b981" },
             { name: "🩵 PURGED BY ETD", meaning: "Post-delivery clawback executed by Cisco Email Threat Defense.", rgb: "#06b6d4" },
             { name: "🟣 QUARANTINED BY ESA", meaning: "Held in Cisco ESA policy quarantine or dropped at edge.", rgb: "#a855f7" },
+            { name: "🟨 Exposure Window (Delta Mins)", meaning: "Elapsed minutes between original delivery timestamp and Cisco ETD cloud clawback.", rgb: "#f59e0b" },
             { name: "Deep Red (Score -6.0 to -10.0)", meaning: "Malicious / Critical Block URL score.", rgb: "#ef4444" },
             { name: "Orange (Score -3.0 to -5.9)", meaning: "Risky / Policy Trigger URL scores (aligned 100% to Cisco -3.0 policy trigger).", rgb: "#f97316" },
             { name: "Amber (Score -0.1 to -2.9)", meaning: "Low Suspect URL reputation scores.", rgb: "#f59e0b" },
@@ -423,7 +424,7 @@ export const helpData: Record<string, TooltipDetails> = {
         shortcuts: [
             "Click [Trace MID] on any row in the High-Risk Messages table to inspect syntax-highlighted raw syslog threads.",
             "Click [Weekly Executive Report] to view executive threat statistics and export CSV reports.",
-            "Use [Active Inboxes Only] toggle to focus exclusively on active, un-handled inbox threats.",
+            "Use [Delivered Messages Only] toggle to focus exclusively on un-handled delivered inbox messages.",
             "Click [Shun Sender IP] in the Spoofing Center to push bad senders directly into your Cisco ASA Shun database.",
             "Click [VirusTotal Lookup] on any AMP SHA256 hash to trigger an instant file threat intelligence report."
         ],

@@ -60,7 +60,8 @@ export interface GraylogMessageThreatAggregation {
     primaryThreatUrl: string;
     threatLevel: "CRITICAL" | "RISKY" | "LOW_SUSPECT" | "NEUTRAL" | "CLEAN";
     priorityScore: number;
-    remediationStatus: "DELIVERED_TO_INBOX" | "PURGED_BY_ETD" | "QUARANTINED_BY_ESA" | "BLOCKED_POLICY";
+    remediationStatus: "DELIVERED" | "PURGED_BY_ETD" | "QUARANTINED_BY_ESA" | "BLOCKED_POLICY";
+    exposureDeltaMinutes?: number;
     timestamp: string;
     source: string;
 }
@@ -309,8 +310,15 @@ export class OgGraylogClient {
 
         try {
             // Use timestamp:asc with high limit (2000) so initial Ingest logs containing Subject/From/To are retrieved
-            const envelopeLogs = await this.searchMessages(batchQuery, 2000, rangeSeconds);
-            const midHeaderMap: Record<string, { sender?: string; recipient?: string; subject?: string; status?: string }> = {};
+            const envelopeLogs = await this.searchMessages(batchQuery, 2500, rangeSeconds);
+            const midHeaderMap: Record<string, { 
+                sender?: string; 
+                recipient?: string; 
+                subject?: string; 
+                status?: string;
+                deliveryTimestamp?: string;
+                remediationTimestamp?: string;
+            }> = {};
             targetMids.forEach(m => { midHeaderMap[m] = {}; });
 
             envelopeLogs.forEach((h: any) => {
@@ -318,6 +326,10 @@ export class OgGraylogClient {
                 const midMatch = raw.match(/MID (\d+)/);
                 const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
                 if (!mid || !midHeaderMap[mid]) return;
+
+                if (!midHeaderMap[mid].deliveryTimestamp && h.message.timestamp) {
+                    midHeaderMap[mid].deliveryTimestamp = h.message.timestamp;
+                }
 
                 const fromMatch = raw.match(/ready \d+ bytes from <([^>]+)>/i) || 
                                   raw.match(/From:?\s*=?\s*["']?[^<]*["']?\s*<([^>]+)>/i) || 
@@ -347,9 +359,11 @@ export class OgGraylogClient {
                 const rawLower = raw.toLowerCase();
                 if (rawLower.includes("etd") || rawLower.includes("auto-remediated") || rawLower.includes("clawback") || rawLower.includes("purged")) {
                     midHeaderMap[mid].status = "PURGED_BY_ETD";
+                    midHeaderMap[mid].remediationTimestamp = h.message.timestamp;
                 } else if (rawLower.includes("quarantined") || rawLower.includes("dropped") || rawLower.includes("policy drop")) {
                     if (midHeaderMap[mid].status !== "PURGED_BY_ETD") {
                         midHeaderMap[mid].status = "QUARANTINED_BY_ESA";
+                        midHeaderMap[mid].remediationTimestamp = h.message.timestamp;
                     }
                 }
             });
@@ -360,7 +374,15 @@ export class OgGraylogClient {
                     if (!item.sender && headers.sender) item.sender = headers.sender;
                     if (!item.recipient && headers.recipient) item.recipient = headers.recipient;
                     if (!item.subject && headers.subject) item.subject = headers.subject;
-                    if (headers.status) item.remediationStatus = headers.status;
+                    if (headers.status) item.remediationStatus = headers.status as any;
+
+                    if (headers.status === "PURGED_BY_ETD" && headers.remediationTimestamp && item.timestamp) {
+                        const remMs = new Date(headers.remediationTimestamp).getTime();
+                        const arrMs = new Date(headers.deliveryTimestamp || item.timestamp).getTime();
+                        item.exposureDeltaMinutes = Math.max(1, Math.round(Math.abs(remMs - arrMs) / 60000));
+                    } else if (headers.status === "QUARANTINED_BY_ESA") {
+                        item.exposureDeltaMinutes = 0;
+                    }
                 }
             });
         } catch (e) {
@@ -401,8 +423,10 @@ export class OgGraylogClient {
         volumeQuery: string = 'message:"inbound table"'
     ): Promise<GraylogMessageThreatAggregation[]> {
         try {
+            const rawLimit = rangeSeconds > 259200 ? 3500 : (rangeSeconds > 86400 ? 2500 : 1500);
+
             const [riskyHits, generalHits] = await Promise.all([
-                this.searchMessages(`esa_url_rep_score:[-10.0 TO -0.1] OR (message:"reputation -" AND message:"URL")`, 1000, rangeSeconds).catch(() => []),
+                this.searchMessages(`esa_url_rep_score:[-10.0 TO -0.1] OR (message:"reputation -" AND message:"URL")`, rawLimit, rangeSeconds).catch(() => []),
                 this.searchMessages(`_exists_:esa_url_rep_score OR (message:"URL" AND message:"reputation")`, 500, rangeSeconds).catch(() => [])
             ]);
 
@@ -448,7 +472,7 @@ export class OgGraylogClient {
                         primaryThreatUrl: primaryUrl,
                         threatLevel: "CLEAN",
                         priorityScore: 0.0,
-                        remediationStatus: "DELIVERED_TO_INBOX",
+                        remediationStatus: "DELIVERED",
                         timestamp: h.message.timestamp,
                         source: h.message.source ? h.message.source.split('.')[0] : "esa"
                     };
@@ -502,6 +526,7 @@ export class OgGraylogClient {
             const negativeThreats = aggregatedList.filter(m => m.worstScore < 0);
             const nonNegativeThreats = aggregatedList.filter(m => m.worstScore >= 0);
 
+            // Consistently sort negative threats by worstScore ascending (-10.0 first) so critical threats stay at top across all timeframes
             negativeThreats.sort((a, b) => a.worstScore - b.worstScore);
             nonNegativeThreats.sort((a, b) => b.priorityScore - a.priorityScore);
 
