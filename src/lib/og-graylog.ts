@@ -1044,6 +1044,10 @@ export class OgGraylogClient {
             const volumeHist = await this.getHistogram('message:"inbound table"', rangeSeconds).catch(() => ({ total: 0 }));
             const totalInboundVolume = volumeHist.total || 0;
 
+            // Fetch Total Graylog URL Events Count to match IronPort Tool 100%
+            const urlHist = await this.getHistogram('message:"URL redirected to Cisco Security proxy" OR message:"Rewrite_Unknown_URLs" OR (_exists_:esa_url_rep_score)', rangeSeconds).catch(() => ({ total: 0 }));
+            const totalFullDatasetUrls = urlHist.total || 0;
+
             const query = `_exists_:esa_url_rep_score OR message:"URL" OR message:"devicelogin" OR message:"authorize" OR message:"oauth"`;
             let becHits: any[] = [];
 
@@ -1221,7 +1225,7 @@ export class OgGraylogClient {
                 becThreats: becThreats.slice(0, limit),
                 topUnwrappedDomains,
                 thirdPartyOAuthLinks,
-                totalEvaluatedUrls,
+                totalEvaluatedUrls: totalFullDatasetUrls || totalEvaluatedUrls,
                 totalEvaluatedMessages: totalInboundVolume || uniqueMids.size
             };
         } catch (e) {
