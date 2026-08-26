@@ -46,22 +46,15 @@ export const OFFICIAL_M365_AUTH_ENDPOINTS: M365AuthEndpoint[] = [
 
 export const OFFICIAL_AUTH_HOSTS = [
     "login.microsoftonline.com",
-    "microsoftonline.com",
     "microsoft.com",
     "aka.ms",
     "login.microsoft.com",
     "login.windows.net",
-    "windows.net",
     "login.live.com",
-    "live.com",
     "login.microsoftonline.us",
     "device.login.microsoftonline.com",
     "passwordreset.microsoftonline.com",
-    "account.microsoft.com",
-    "office.com",
-    "office365.com",
-    "sharepoint.com",
-    "outlook.com"
+    "account.microsoft.com"
 ];
 
 export function unwrapUrl(rawUrl: string): string {
@@ -105,25 +98,11 @@ export function classifyM365Url(
     const lowerUrl = destUrl.toLowerCase();
     const lowerHost = host.toLowerCase();
 
-    // 1. Is it an Official Microsoft Auth Host or Endpoint?
+    // 1. Is it an EXACT Official Authentication Endpoint from the Registry?
     const matchedOfficial = customEndpoints.find(ep => lowerUrl.startsWith(ep.url.toLowerCase()));
-    const isOfficialHost = OFFICIAL_AUTH_HOSTS.some(h => lowerHost === h || lowerHost.endsWith(`.${h}`));
+    const isOfficialAuthHost = OFFICIAL_AUTH_HOSTS.some(h => lowerHost === h || lowerHost.endsWith(`.${h}`));
 
-    // 2. Is it an EXPLICIT Microsoft Branded Host or URL?
-    const isMsBranded = lowerHost.includes("microsoft") || 
-                        lowerHost.includes("office365") || 
-                        lowerHost.includes("m365") || 
-                        lowerHost.includes("sharepoint") || 
-                        lowerHost.includes("outlook") || 
-                        lowerHost.includes("onmicrosoft") || 
-                        lowerUrl.includes("devicelogin") || 
-                        lowerUrl.includes("forms.office");
-
-    // Scenario A: Official Microsoft Endpoint / Auth Path
-    if (isOfficialHost) {
-        const isAuthEndpoint = matchedOfficial || lowerUrl.includes("oauth2") || lowerUrl.includes("devicelogin") || lowerUrl.includes("deviceauth") || lowerUrl.includes("authorize") || lowerUrl.includes("forms.office");
-        if (!isAuthEndpoint) return null;
-
+    if (matchedOfficial || (isOfficialAuthHost && (lowerUrl.includes("devicelogin") || lowerUrl.includes("oauth2") || lowerUrl.includes("authorize") || lowerUrl.includes("deviceauth") || lowerUrl.includes("passwordreset")))) {
         return {
             destUrl,
             targetHost: host,
@@ -134,10 +113,21 @@ export function classifyM365Url(
         };
     }
 
-    // Scenario B: Explicit Microsoft Impersonation / Typosquatted Fake Portal
-    if (isMsBranded && !isOfficialHost) {
+    // 2. Is it an Impersonated / Typosquatted / Fake Version of an Auth Endpoint?
+    // MUST host an authentication path or auth pattern AND be hosted on a non-official host!
+    const isAuthPathPattern = lowerUrl.includes("oauth2") || 
+                              lowerUrl.includes("authorize") || 
+                              lowerUrl.includes("devicelogin") || 
+                              lowerUrl.includes("deviceauth") || 
+                              lowerUrl.includes("passwordreset") || 
+                              lowerHost.includes("login.microsoft") || 
+                              lowerHost.includes("login-microsoft") || 
+                              lowerHost.includes("login-windows") || 
+                              lowerHost.includes("m365-login");
+
+    if (isAuthPathPattern && !isOfficialAuthHost) {
         let boost = 10.0;
-        let categories = ["🚨 Fake M365 Login Portal / Typosquatted Domain (+10.0 Boost)"];
+        let categories = ["🚨 Fake M365 Login Portal / Typosquatted Auth Endpoint (+10.0 Boost)"];
 
         if (wrsScore < 0) {
             const wrsPenalty = Math.abs(wrsScore) * 2.0;
@@ -154,7 +144,7 @@ export function classifyM365Url(
         };
     }
 
-    // Non-Microsoft Third-Party URLs (Mimecast, LabCorp, Cisco, RoundTrip) -> 0 BOOST!
+    // ALL OTHER SITES (SharePoint, Forms, Teams, Office.com, email footers) -> IGNORE COMPLETELY!
     return null;
 }
 
