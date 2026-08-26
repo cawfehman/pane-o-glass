@@ -1029,7 +1029,8 @@ export class OgGraylogClient {
         totalEvaluatedMessages: number;
     }> {
         try {
-            const rawLimit = rangeSeconds > 259200 ? 3500 : (rangeSeconds > 86400 ? 2500 : 1500);
+            // Scale up sample limit for comprehensive live dashboard coverage (up to 5000 syslog entries)
+            const rawLimit = rangeSeconds > 259200 ? 6000 : (rangeSeconds > 86400 ? 5000 : (rangeSeconds <= 3600 ? 2000 : 4000));
             // Search broadly for inbound links and auth keywords
             const becHits = await this.searchMessages(
                 `_exists_:esa_url_rep_score OR message:"http" OR message:"URL" OR message:"devicelogin" OR message:"authorize" OR message:"oauth"`,
