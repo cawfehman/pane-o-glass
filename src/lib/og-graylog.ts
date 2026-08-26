@@ -80,7 +80,8 @@ export function parseDomain(urlStr: string): string {
 export function classifyM365Url(
     rawUrl: string, 
     sender: string = "",
-    customEndpoints: M365AuthEndpoint[] = OFFICIAL_M365_AUTH_ENDPOINTS
+    customEndpoints: M365AuthEndpoint[] = OFFICIAL_M365_AUTH_ENDPOINTS,
+    wrsScore: number = 0.0
 ): {
     destUrl: string;
     targetHost: string;
@@ -97,24 +98,10 @@ export function classifyM365Url(
     const lowerUrl = destUrl.toLowerCase();
     const lowerHost = host.toLowerCase();
 
-    // 1. Check if URL matches official legitimate authentication endpoints
+    // 1. Check if URL matches official legitimate authentication endpoints or general auth patterns
     const matchedOfficial = customEndpoints.find(ep => lowerUrl.startsWith(ep.url.toLowerCase()));
+    const isOfficialHost = OFFICIAL_AUTH_HOSTS.some(h => lowerHost === h || lowerHost.endsWith(`.${h}`));
 
-    if (matchedOfficial) {
-        const isExternal = sender && !sender.includes("@cooperhealth.edu") && !sender.includes("microsoft");
-        return {
-            destUrl,
-            targetHost: host,
-            threatTier: isExternal ? "HIGH" : "INFO",
-            threatCategory: isExternal 
-                ? `Official Auth Link from External Sender (${matchedOfficial.role})` 
-                : `Official Auth Infrastructure (${matchedOfficial.role})`,
-            impersonationBoost: isExternal ? 6.0 : 0.0,
-            officialRole: matchedOfficial.role
-        };
-    }
-
-    // 2. Check if URL is an illegitimate / fake login portal (auth patterns on non-official hosts)
     const isAuthPattern = lowerUrl.includes("oauth2") || 
                           lowerUrl.includes("authorize") || 
                           lowerUrl.includes("devicelogin") || 
@@ -125,19 +112,45 @@ export function classifyM365Url(
                           lowerHost.includes("login-windows") || 
                           lowerHost.includes("m365-login");
 
-    const isOfficialHost = OFFICIAL_AUTH_HOSTS.some(h => lowerHost === h || lowerHost.endsWith(`.${h}`));
+    if (!matchedOfficial && !isAuthPattern) return null;
 
-    if (isAuthPattern && !isOfficialHost) {
-        return {
-            destUrl,
-            targetHost: host,
-            threatTier: "CRITICAL",
-            threatCategory: "Fake M365 Login Portal / Impersonated Auth Endpoint",
-            impersonationBoost: 10.0
-        };
+    // All IronPort inbound emails are from external senders!
+    // BASE BOOST for ALL external inbound emails containing M365 Auth links (+6.0)
+    let boost = 6.0;
+    let threatTier: "CRITICAL" | "HIGH" | "MEDIUM" | "INFO" = "HIGH";
+    let categoryParts = matchedOfficial 
+        ? [`Official Auth Link (${matchedOfficial.role})`] 
+        : ["Auth Endpoint Pattern Link"];
+
+    // Penalty Check 1: Non-Official Host / Fake Portal (+10.0 Penalty)
+    if (!isOfficialHost) {
+        boost += 10.0;
+        threatTier = "CRITICAL";
+        categoryParts.push("Fake M365 Host (+10.0 Penalty)");
     }
 
-    return null;
+    // Penalty Check 2: Typosquatted Brand Impersonation (+10.0 Penalty)
+    if (!isOfficialHost && (lowerHost.includes("microsoft") || lowerHost.includes("office") || lowerHost.includes("m365") || lowerHost.includes("sharepoint") || lowerHost.includes("docusign"))) {
+        boost += 10.0;
+        threatTier = "CRITICAL";
+        categoryParts.push("Typosquatted Brand Impersonation (+10.0 Penalty)");
+    }
+
+    // Penalty Check 3: Negative WRS Reputation Score
+    if (wrsScore < 0) {
+        const wrsPenalty = Math.abs(wrsScore) * 2.0;
+        boost += wrsPenalty;
+        categoryParts.push(`Negative WRS Penalty (+${wrsPenalty.toFixed(1)})`);
+    }
+
+    return {
+        destUrl,
+        targetHost: host,
+        threatTier,
+        threatCategory: categoryParts.join(" | "),
+        impersonationBoost: parseFloat(boost.toFixed(1)),
+        officialRole: matchedOfficial ? matchedOfficial.role : undefined
+    };
 }
 
 export interface GraylogHistogramData {
@@ -1014,17 +1027,17 @@ export class OgGraylogClient {
                 const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
                 if (!mid || !urlMatch) return;
 
+                let score = 0.0;
+                if (h.message.esa_url_rep_score !== undefined) {
+                    score = parseFloat(h.message.esa_url_rep_score);
+                } else if (repMatch) {
+                    score = parseFloat(repMatch[1]);
+                }
+
                 const rawUrl = urlMatch[0].startsWith("URL ") ? urlMatch[2] : urlMatch[0];
-                const analysis = classifyM365Url(rawUrl, h.message.esa_mail_from || "");
+                const analysis = classifyM365Url(rawUrl, h.message.esa_mail_from || "", OFFICIAL_M365_AUTH_ENDPOINTS, score);
 
                 if (analysis && analysis.impersonationBoost > 0) {
-                    let score = 0.0;
-                    if (h.message.esa_url_rep_score !== undefined) {
-                        score = parseFloat(h.message.esa_url_rep_score);
-                    } else if (repMatch) {
-                        score = parseFloat(repMatch[1]);
-                    }
-
                     if (!becMap[mid] || analysis.impersonationBoost > becMap[mid].impersonationBoost) {
                         becMap[mid] = {
                             mid,
