@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { OgGraylogClient } from "@/lib/og-graylog";
+import { logAudit } from "@/lib/audit";
 
 export async function POST(req: Request) {
     try {
@@ -21,6 +22,11 @@ export async function POST(req: Request) {
 
         const client = new OgGraylogClient();
         const messages = await client.searchMessages(query, limit, range);
+
+        // Audit Log for IronPort / ETD search pivots
+        const clientIp = req.headers.get("x-forwarded-for") || "127.0.0.1";
+        const userId = session?.user?.id || "unknown";
+        await logAudit("IRONPORT_SEARCH", `Executed IronPort / ETD log trace query: ${query} (Range: ${range}s)`, userId, clientIp);
 
         return NextResponse.json(messages);
     } catch (error: any) {

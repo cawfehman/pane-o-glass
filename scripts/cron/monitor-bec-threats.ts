@@ -156,6 +156,17 @@ async function runBecMonitorCron() {
                                         alertRecipient: DEFAULT_ALERT_RECIPIENT
                                     }
                                 });
+
+                                // Log to Audit Table
+                                await prisma.auditLog.create({
+                                    data: {
+                                        action: "BEC_ALERT_EMAIL_DISPATCHED",
+                                        details: `Dispatched 24x7 BEC ${analysis.threatTier} threat alert email for MID ${mid} (${analysis.targetHost}) to ${DEFAULT_ALERT_RECIPIENT}`,
+                                        userId: "system-bec-daemon",
+                                        ipAddress: "127.0.0.1"
+                                    }
+                                });
+
                                 console.log(`[ALERT DISPATCHED] Email sent to ${DEFAULT_ALERT_RECIPIENT} for MID ${mid} (MessageID: ${res.messageId})`);
                             }
                         } catch (mailErr: any) {
