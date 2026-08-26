@@ -423,14 +423,9 @@ export const helpData: Record<string, TooltipDetails> = {
             { name: "🟣 QUARANTINED BY ESA", meaning: "Held in Cisco ESA policy quarantine or dropped at edge.", rgb: "#a855f7" },
             { name: "🟨 Exposure Window (Delta Mins)", meaning: "Elapsed minutes between original delivery timestamp and Cisco ETD cloud clawback.", rgb: "#f59e0b" },
             { name: "Deep Red (Score -6.0 to -10.0)", meaning: "Malicious / Critical Block URL score.", rgb: "#ef4444" },
-            { name: "Orange (Score -3.0 to -5.9)", meaning: "Risky / Policy Trigger URL scores (aligned 100% to Cisco -3.0 policy trigger).", rgb: "#f97316" },
-            { name: "Amber (Score -0.1 to -2.9)", meaning: "Low Suspect URL reputation scores.", rgb: "#f59e0b" },
-            { name: "Blue (MIDs & Syslog Tokens)", meaning: "Message ID header & trace highlight token.", rgb: "#3b82f6" },
-            { name: "Amber Underline (Syslog URLs)", meaning: "Embedded web links inside raw trace payloads.", rgb: "#f59e0b" }
+            { name: "Orange (Score -3.0 to -5.9)", meaning: "Risky / Policy Trigger URL scores (aligned 100% to Cisco -3.0 policy trigger).", rgb: "#f97316" }
         ],
         shortcuts: [
-            "Click [Trace MID] on any row in the High-Risk Messages table to inspect syntax-highlighted raw syslog threads.",
-            "Click [M365 BEC & Impersonation] subtab to hunt for fake Microsoft login portals and OAuth token theft links.",
             "Click [Weekly Executive Report] to view executive threat statistics and export CSV reports.",
             "Use [Delivered Messages Only] toggle to focus exclusively on un-handled delivered inbox messages.",
             "Click [Shun Sender IP] in the Spoofing Center to push bad senders directly into your Cisco ASA Shun database.",
@@ -439,6 +434,29 @@ export const helpData: Record<string, TooltipDetails> = {
         backgroundJobs: [
             "Graylog Stream 5d7ff82fb209026ab43e167b: Ingests raw ESA syslog events from ESA01 and ESA02.",
             "2-Step Batch MID Lookup: Correlates separate syslog lines (URL score, From, To, Subject) in memory."
+        ]
+    },
+    bec: {
+        title: "M365 BEC Threat Hunter",
+        version: "2.9.0",
+        category: "24x7 Active Monitoring, OAuth Token Theft & Fake Login Portal Hunter",
+        description: "Standalone command center for hunting Microsoft 365 Business Email Compromise (BEC), OAuth token theft vectors, and fake login portals. Features 24x7 background server-side monitoring, instant email alerts, and an authoritative 14-endpoint Official M365 Auth Registry.",
+        capabilities: [
+            {
+                title: "24x7 Background Daemon & Instant Email Alerting",
+                detail: "Runs around the clock every 60 seconds on the server. Evaluates inbound IronPort syslog streams and dispatches immediate HTML alert emails to rivera-robert@cooperhealth.edu the second a BEC threat hits the edge.",
+                tag: "24x7 Daemon Alerts"
+            },
+            {
+                title: "Official M365 Auth Endpoints Registry & Role Matrix",
+                detail: "Authoritative registry of 14 official Entra ID, SSPR, and OAuth authorization endpoints. Evaluates exact auth endpoints (+6.0 boost) and fake/typosquatted login portals (+10.0 boost).",
+                tag: "Auth Registry"
+            },
+            {
+                title: "SafeLinks & Security Proxy Unwrapping Engine",
+                detail: "Automatically unwraps SafeLinks, Cisco Security Proxy, and AWS Track URLs to expose the true unwrapped destination host and query string.",
+                tag: "URL Unwrapper"
+            }
         ]
     },
     etd: {

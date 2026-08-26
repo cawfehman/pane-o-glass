@@ -146,10 +146,21 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                     href="/queries/ironport" 
                                     onClick={closeMobile}
                                     title={isCollapsed ? "IronPort Telemetry" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/ironport") ? "active" : ""}`}
+                                    className={`nav-link text-[0.9rem] ${pathname === "/queries/ironport" ? "active" : ""}`}
                                 >
                                     <Mail size={18} className="shrink-0" />
                                     <span className="nav-text">IronPort Telemetry</span>
+                                </Link>
+                            )}
+                            {hasPermission('ironport') && (
+                                <Link 
+                                    href="/queries/bec" 
+                                    onClick={closeMobile}
+                                    title={isCollapsed ? "M365 BEC Threat Hunter" : undefined}
+                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/bec") ? "active" : ""}`}
+                                >
+                                    <ShieldAlert size={18} className="shrink-0 text-amber-400" />
+                                    <span className="nav-text">M365 BEC Threat Hunter</span>
                                 </Link>
                             )}
                             {hasPermission('etd') && (

@@ -643,6 +643,20 @@ export default function IronportDashboardClient() {
             {/* Inbound Telemetry Tab */}
             {activeTab === "inbound" && (
                 <>
+                    {/* Standalone BEC Tool Promotion Banner */}
+                    <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
+                        <div className="flex items-center gap-2.5">
+                            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                            <span className="text-[var(--text-primary)] font-medium">
+                                <strong>M365 BEC Threat Hunter</strong> has been promoted to a standalone top-level tool! 24x7 Active Monitoring, OAuth Token Theft, and Fake Portal analysis are now accessible in the left sidebar.
+                            </span>
+                        </div>
+                        <a href="/queries/bec" className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold whitespace-nowrap transition-colors flex items-center gap-1.5">
+                            <span>Open M365 BEC Threat Hunter</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                    </div>
+
                     {/* Dedicated Cisco ETD Message-ID 1-Click Correlation Bar */}
                     <div className="glass-card bg-[var(--bg-surface)] border border-[var(--accent-primary)]/40 p-4 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-md">
                         <div className="flex items-center gap-3">
