@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { prisma } from "@/lib/prisma";
+import { OgGraylogClient } from "@/lib/og-graylog";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -20,17 +21,14 @@ export async function GET(req: Request) {
         const rangeSeconds = rangeParam ? parseInt(rangeParam, 10) : 3600;
         const cutoffDate = new Date(Date.now() - rangeSeconds * 1000);
 
-        // 1. Fetch pre-computed stats snapshot from BecStatsCache in local SQLite DB
+        // 1. Fetch pre-computed stats snapshot from BecStatsCache in local SQLite DB for exact rangeSeconds
         let becCache = await (prisma as any).becStatsCache.findUnique({
             where: { rangeSeconds }
         }).catch(() => null);
 
-        // Fallback to closest cache record if exact timeframe entry is missing
-        if (!becCache) {
-            becCache = await (prisma as any).becStatsCache.findFirst({
-                orderBy: { updatedAt: "desc" }
-            }).catch(() => null);
-        }
+        const isCacheStale = !becCache || 
+            (becCache.totalEvaluatedUrls === 0) || 
+            ((Date.now() - new Date(becCache.updatedAt).getTime()) > 300000);
 
         let topUnwrappedDomains: any[] = [];
         let thirdPartyOAuthLinks: any[] = [];
@@ -38,7 +36,41 @@ export async function GET(req: Request) {
         let totalEvaluatedMessages = 0;
         let cacheBecThreats: any[] = [];
 
-        if (becCache) {
+        if (isCacheStale) {
+            // Hydrate live from Graylog for this exact timeframe window if cache is cold/empty
+            try {
+                const client = new OgGraylogClient();
+                const becRes = await client.getM365BecThreatAggregations(rangeSeconds, 20);
+                
+                totalEvaluatedUrls = becRes.totalEvaluatedUrls || 0;
+                totalEvaluatedMessages = becRes.totalEvaluatedMessages || 0;
+                topUnwrappedDomains = becRes.topUnwrappedDomains || [];
+                thirdPartyOAuthLinks = becRes.thirdPartyOAuthLinks || [];
+                cacheBecThreats = becRes.becThreats || [];
+
+                // Persist snapshot to SQLite BecStatsCache for instant subsequent loads
+                await (prisma as any).becStatsCache.upsert({
+                    where: { rangeSeconds },
+                    create: {
+                        rangeSeconds,
+                        totalEvaluatedMessages,
+                        totalEvaluatedUrls,
+                        becThreatsJson: JSON.stringify(cacheBecThreats),
+                        topDomainsJson: JSON.stringify(topUnwrappedDomains),
+                        oauthLinksJson: JSON.stringify(thirdPartyOAuthLinks)
+                    },
+                    update: {
+                        totalEvaluatedMessages,
+                        totalEvaluatedUrls,
+                        becThreatsJson: JSON.stringify(cacheBecThreats),
+                        topDomainsJson: JSON.stringify(topUnwrappedDomains),
+                        oauthLinksJson: JSON.stringify(thirdPartyOAuthLinks)
+                    }
+                });
+            } catch (graylogErr: any) {
+                console.error(`[BEC Stats API] Live Graylog hydration error for ${rangeSeconds}s:`, graylogErr.message || graylogErr);
+            }
+        } else if (becCache) {
             try {
                 cacheBecThreats = JSON.parse(becCache.becThreatsJson || "[]");
                 topUnwrappedDomains = JSON.parse(becCache.topDomainsJson || "[]");
@@ -111,7 +143,7 @@ export async function GET(req: Request) {
             becThreats,
             topUnwrappedDomains: Array.isArray(topUnwrappedDomains) ? topUnwrappedDomains : [],
             thirdPartyOAuthLinks: Array.isArray(thirdPartyOAuthLinks) ? thirdPartyOAuthLinks : [],
-            fromLocalDb: true
+            fromLocalDb: !isCacheStale
         }, {
             headers: {
                 "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate"
