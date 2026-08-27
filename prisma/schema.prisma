@@ -335,4 +335,25 @@ model BecStatsCache {
   updatedAt              DateTime @updatedAt
 }
 
+model BecRawUrl {
+  id           String   @id @default(cuid())
+  mid          String
+  rfcMessageId String?
+  subject      String?
+  sender       String?
+  recipient    String?
+  targetHost   String
+  destUrl      String
+  isOauth      Boolean  @default(false)
+  provider     String?  // e.g. "DocuSign Auth", "Google OAuth 2.0", "Advarra Identity"
+  score        Float    @default(0.0)
+  createdAt    DateTime @default(now())
+
+  @@unique([mid, destUrl])
+  @@index([createdAt])
+  @@index([targetHost])
+  @@index([isOauth])
+  @@index([provider])
+}
+
 

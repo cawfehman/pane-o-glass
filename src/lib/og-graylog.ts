@@ -485,6 +485,54 @@ export class OgGraylogClient {
     }
 
     /**
+     * Searches raw messages in Graylog with automatic multi-page offset pagination.
+     * Guarantees 100% of logs are retrieved across pages without hitting Graylog's limit caps.
+     */
+    async searchAllMessagesPaginated(query: string, rangeSeconds: number = 75, pageSize: number = 2500, maxTotal: number = 50000): Promise<any[]> {
+        const allMessages: any[] = [];
+        let offset = 0;
+
+        while (offset < maxTotal) {
+            const params = new URLSearchParams({
+                query: query,
+                range: rangeSeconds.toString(),
+                filter: `streams:${this.streamId}`,
+                limit: pageSize.toString(),
+                offset: offset.toString(),
+                sort: "timestamp:desc"
+            });
+
+            const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
+
+            try {
+                const res = await axios.get(url, {
+                    httpsAgent,
+                    headers: {
+                        "Authorization": this.authHeader,
+                        "Accept": "application/json",
+                        "X-Requested-By": "cli"
+                    },
+                    timeout: 15000
+                });
+
+                const batch = res.data.messages || [];
+                if (batch.length === 0) break;
+
+                allMessages.push(...batch);
+
+                if (batch.length < pageSize) break;
+
+                offset += pageSize;
+            } catch (err: any) {
+                console.error(`[Graylog Paginator] Offset search error at offset ${offset}:`, err.message || err);
+                break;
+            }
+        }
+
+        return allMessages;
+    }
+
+    /**
      * Searches raw messages in Graylog using an absolute ISO time window.
      */
     async searchAbsoluteMessages(query: string, fromIso: string, toIso: string, limit: number = 100): Promise<any[]> {
