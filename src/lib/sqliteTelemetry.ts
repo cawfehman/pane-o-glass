@@ -379,6 +379,7 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
             pageCount,
             freelistCount,
             fragmentationPct,
+            activeConnections,
             integrity
         },
         tables,

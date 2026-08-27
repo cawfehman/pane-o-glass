@@ -321,14 +321,14 @@ export default function SystemHealthPage() {
 
                             <div className="p-4 rounded-xl bg-black/20 border border-white/5 flex flex-col justify-between">
                                 <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-2">
-                                    <span>WAL Journal Log</span>
+                                    <span>{sqlite.storage.journalMode.includes("postgresql") ? "Active DB Connections" : "WAL Journal Log"}</span>
                                     <Zap size={16} className="text-amber-400" />
                                 </div>
                                 <div className="text-2xl font-extrabold text-text-primary font-mono">
-                                    {sqlite.storage.walSizeFormatted}
+                                    {sqlite.storage.journalMode.includes("postgresql") ? `${sqlite.storage.activeConnections || 1} Sessions` : sqlite.storage.walSizeFormatted}
                                 </div>
                                 <div className="text-[0.72rem] text-text-muted mt-1.5">
-                                    Busy Timeout: <span className="text-text-secondary font-mono">{sqlite.storage.busyTimeoutMs}ms</span>
+                                    {sqlite.storage.journalMode.includes("postgresql") ? "PostgreSQL Pool: MVCC Active" : `Busy Timeout: ${sqlite.storage.busyTimeoutMs}ms`}
                                 </div>
                             </div>
 
