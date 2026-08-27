@@ -305,9 +305,9 @@ async function runBecMonitorCron() {
 
         // Update BackgroundJob status in Prisma
         await prisma.backgroundJob.upsert({
-            where: { name: "bec-threat-monitor" },
+            where: { name: "BEC 24x7 Threat Monitor" },
             create: {
-                name: "bec-threat-monitor",
+                name: "BEC 24x7 Threat Monitor",
                 status: "SUCCESS",
                 lastRun: new Date(),
                 message: `Ingested URLs: ${urlsIngested}, Incidents: ${incidentsCount}, Alerts: ${alertsSent} in ${durationMs}ms`
@@ -322,9 +322,9 @@ async function runBecMonitorCron() {
     } catch (error: any) {
         console.error(`[${new Date().toISOString()}] BEC Monitor Cron Failure:`, error);
         await prisma.backgroundJob.upsert({
-            where: { name: "bec-threat-monitor" },
+            where: { name: "BEC 24x7 Threat Monitor" },
             create: {
-                name: "bec-threat-monitor",
+                name: "BEC 24x7 Threat Monitor",
                 status: "FAILED",
                 lastRun: new Date(),
                 message: error.message || String(error)
