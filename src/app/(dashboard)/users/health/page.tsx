@@ -416,7 +416,7 @@ export default function SystemHealthPage() {
                                         </tr>
                                         <tr>
                                             <td className="py-2.5 px-3.5 font-sans font-medium text-text-primary">
-                                                <div>WAL Write & Commit</div>
+                                                <div>{sqlite.storage.journalMode.includes("postgresql") ? "PostgreSQL Transaction Commit" : "WAL Write & Commit"}</div>
                                                 <div className="text-[0.68rem] text-text-muted font-mono">prisma.healthProbe.create() transaction</div>
                                             </td>
                                             <td className="py-2.5 px-3.5 text-right">{sqlite.benchmarks.walWriteCommit.avg} ms</td>

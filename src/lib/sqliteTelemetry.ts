@@ -197,13 +197,21 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
     let pageCount = 0;
     let pageSizeBytes = 4096;
     let freelistCount = 0;
+    let activeConnections = 1;
     const integrity = "ok";
 
     try {
-        const pgSizeRes = await prisma.$queryRaw<any[]>`SELECT pg_database_size(current_database()) as size;`.catch(() => []);
+        const [pgSizeRes, pgConnRes] = await Promise.all([
+            prisma.$queryRaw<any[]>`SELECT pg_database_size(current_database())::text as size;`.catch(() => []),
+            prisma.$queryRaw<any[]>`SELECT count(*)::int as active_conns FROM pg_stat_activity;`.catch(() => [])
+        ]);
+
         if (pgSizeRes && pgSizeRes[0] && pgSizeRes[0].size !== undefined) {
             dbSizeBytes = Number(pgSizeRes[0].size);
             journalMode = "postgresql (mvcc)";
+            if (pgConnRes && pgConnRes[0] && pgConnRes[0].active_conns) {
+                activeConnections = Number(pgConnRes[0].active_conns);
+            }
         } else {
             const [journalRes, busyRes, pageCountRes, pageSizeRes, freelistRes] = await Promise.all([
                 prisma.$queryRawUnsafe<any[]>("PRAGMA journal_mode;").catch(() => []),
