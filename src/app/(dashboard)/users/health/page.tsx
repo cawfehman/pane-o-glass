@@ -582,7 +582,7 @@ export default function SystemHealthPage() {
                                 <div className="flex justify-between items-center flex-wrap gap-2">
                                     <div>
                                         <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider m-0">
-                                            Query Latency & WAL Commit Timeline
+                                            {sqlite?.storage?.journalMode?.includes("postgresql") ? "Query Latency & Transaction Commit Timeline" : "Query Latency & WAL Commit Timeline"}
                                         </h4>
                                         <p className="text-[0.7rem] text-text-muted m-0 mt-0.5">
                                             Correlate write latency spikes with background cron executions
