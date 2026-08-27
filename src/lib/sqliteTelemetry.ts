@@ -179,16 +179,25 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
 
     const startTime = performance.now();
 
-    // 1. Locate physical SQLite and WAL database files
-    const candidates = [
-        path.resolve(process.cwd(), "prisma/dev.db"),
-        path.resolve(process.cwd(), "prisma/prisma/dev.db"),
-        path.resolve(process.cwd(), "dev.db")
-    ];
-    const dbPath = candidates.find(p => fs.existsSync(p)) || candidates[0];
+    // 1. Locate physical database or PostgreSQL instance name
+    const dbUrl = process.env.DATABASE_URL || "";
+    let dbPath = "pane_o_glass";
+    if (dbUrl.includes("postgres")) {
+        const match = dbUrl.match(/\/([^?#]+)(\?|$)/);
+        if (match && match[1]) {
+            dbPath = match[1];
+        }
+    } else {
+        const candidates = [
+            path.resolve(process.cwd(), "prisma/dev.db"),
+            path.resolve(process.cwd(), "prisma/prisma/dev.db"),
+            path.resolve(process.cwd(), "dev.db")
+        ];
+        dbPath = candidates.find(p => fs.existsSync(p)) || candidates[0];
+    }
     const walPath = `${dbPath}-wal`;
 
-    let dbSizeBytes = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
+    let dbSizeBytes = 0;
     const walSizeBytes = fs.existsSync(walPath) ? fs.statSync(walPath).size : 0;
 
     // 2. Query engine metrics (PostgreSQL or SQLite fallback)
