@@ -177,8 +177,8 @@ async function runBecMonitorCron() {
             }
         }
 
-        // Pre-compute and hydrate local SQLite DB Cache (BecStatsCache) for 1h and 24h windows
-        for (const rSec of [3600, 86400]) {
+        // Pre-compute and hydrate local SQLite DB Cache (BecStatsCache) for all 6 UI timeframe windows (10m, 30m, 1h, 4h, 12h, 24h)
+        for (const rSec of [600, 1800, 3600, 14400, 43200, 86400]) {
             try {
                 const becRes = await client.getM365BecThreatAggregations(rSec, 20);
                 await (prisma as any).becStatsCache.upsert({

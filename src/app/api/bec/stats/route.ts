@@ -18,26 +18,29 @@ export async function GET(req: Request) {
         const { searchParams } = new URL(req.url);
         const rangeParam = searchParams.get("range");
         const rangeSeconds = rangeParam ? parseInt(rangeParam, 10) : 3600;
+        const cutoffDate = new Date(Date.now() - rangeSeconds * 1000);
 
         // 1. Fetch pre-computed stats snapshot from BecStatsCache in local SQLite DB
-        const cacheRecord = await (prisma as any).becStatsCache.findUnique({
+        let becCache = await (prisma as any).becStatsCache.findUnique({
             where: { rangeSeconds }
         }).catch(() => null);
 
-        // Fallback to latest cache record if exact timeframe entry is missing
-        const becCache = cacheRecord || await (prisma as any).becStatsCache.findFirst({
-            orderBy: { updatedAt: "desc" }
-        }).catch(() => null);
+        // Fallback to closest cache record if exact timeframe entry is missing
+        if (!becCache) {
+            becCache = await (prisma as any).becStatsCache.findFirst({
+                orderBy: { updatedAt: "desc" }
+            }).catch(() => null);
+        }
 
-        let becThreats: any[] = [];
         let topUnwrappedDomains: any[] = [];
         let thirdPartyOAuthLinks: any[] = [];
         let totalEvaluatedUrls = 0;
         let totalEvaluatedMessages = 0;
+        let cacheBecThreats: any[] = [];
 
         if (becCache) {
             try {
-                becThreats = JSON.parse(becCache.becThreatsJson || "[]");
+                cacheBecThreats = JSON.parse(becCache.becThreatsJson || "[]");
                 topUnwrappedDomains = JSON.parse(becCache.topDomainsJson || "[]");
                 thirdPartyOAuthLinks = JSON.parse(becCache.oauthLinksJson || "[]");
                 totalEvaluatedUrls = becCache.totalEvaluatedUrls || 0;
@@ -45,33 +48,67 @@ export async function GET(req: Request) {
             } catch (e) {}
         }
 
-        // 2. Fetch logged incidents from BecIncident table for additional context if needed
-        const incidents = await (prisma as any).becIncident.findMany({
-            take: 100,
+        // 2. Query ALL logged threat incidents from the BecIncident DB table within the requested cutoff Date!
+        const dbIncidents = await (prisma as any).becIncident.findMany({
+            where: {
+                createdAt: { gte: cutoffDate }
+            },
             orderBy: { createdAt: "desc" }
         }).catch(() => []);
 
-        // Combine any fresh incidents if becThreats array is empty
-        if (becThreats.length === 0 && incidents.length > 0) {
-            becThreats = incidents.map((inc: any) => ({
-                mid: inc.mid,
-                subject: inc.subject || "No Subject Header",
-                sender: inc.sender || "unknown",
-                recipient: inc.recipient || "unknown",
-                targetHost: inc.targetHost,
-                destUrl: inc.destUrl,
-                threatTier: inc.threatTier,
-                threatCategory: inc.threatCategory,
-                impersonationBoost: inc.impersonationBoost,
-                timestamp: inc.createdAt.toISOString()
-            }));
+        // Map DB incidents to Threat Feed items
+        const dbBecThreats = dbIncidents.map((inc: any) => ({
+            mid: inc.mid,
+            subject: inc.subject || "No Subject Header",
+            sender: inc.sender || "unknown",
+            recipient: inc.recipient || "unknown",
+            targetHost: inc.targetHost,
+            destUrl: inc.destUrl,
+            threatTier: inc.threatTier,
+            threatCategory: inc.threatCategory,
+            impersonationBoost: inc.impersonationBoost,
+            timestamp: inc.createdAt.toISOString()
+        }));
+
+        // Deduplicate and combine DB incidents + Cache threats (DB incidents take priority)
+        const combinedThreatsMap = new Map<string, any>();
+        cacheBecThreats.forEach((t: any) => {
+            if (t.mid) combinedThreatsMap.set(t.mid, t);
+        });
+        dbBecThreats.forEach((t: any) => {
+            if (t.mid) combinedThreatsMap.set(t.mid, t);
+        });
+
+        // If no incidents found within exact cutoff, include all recent incidents in DB up to 100
+        if (combinedThreatsMap.size === 0) {
+            const allRecentIncidents = await (prisma as any).becIncident.findMany({
+                take: 100,
+                orderBy: { createdAt: "desc" }
+            }).catch(() => []);
+
+            allRecentIncidents.forEach((inc: any) => {
+                combinedThreatsMap.set(inc.mid, {
+                    mid: inc.mid,
+                    subject: inc.subject || "No Subject Header",
+                    sender: inc.sender || "unknown",
+                    recipient: inc.recipient || "unknown",
+                    targetHost: inc.targetHost,
+                    destUrl: inc.destUrl,
+                    threatTier: inc.threatTier,
+                    threatCategory: inc.threatCategory,
+                    impersonationBoost: inc.impersonationBoost,
+                    timestamp: inc.createdAt.toISOString()
+                });
+            });
         }
+
+        const becThreats = Array.from(combinedThreatsMap.values());
 
         return NextResponse.json({
             rangeSeconds,
             totalEvaluatedUrls,
             totalEvaluatedMessages,
-            becThreats: Array.isArray(becThreats) ? becThreats : [],
+            becThreats,
             topUnwrappedDomains: Array.isArray(topUnwrappedDomains) ? topUnwrappedDomains : [],
             thirdPartyOAuthLinks: Array.isArray(thirdPartyOAuthLinks) ? thirdPartyOAuthLinks : [],
             fromLocalDb: true
