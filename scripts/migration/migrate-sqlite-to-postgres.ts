@@ -46,193 +46,241 @@ async function migrateData() {
     const sqliteClient = new SqliteClient();
 
     try {
-        // 1. Migrate Users (Match on unique username)
-        const users = await sqliteClient.user.findMany();
-        console.log(`[1/12] Migrating Users (${users.length})...`);
-        for (const u of users) {
-            try {
-                await postgresClient.user.upsert({
-                    where: { username: u.username },
-                    create: u,
-                    update: {
-                        password: u.password,
-                        firstName: u.firstName,
-                        lastName: u.lastName,
-                        role: u.role,
-                        isExternal: u.isExternal,
-                        isRoleOverridden: u.isRoleOverridden,
-                        lastLogin: u.lastLogin,
-                        sessionTimeout: u.sessionTimeout
-                    }
-                });
-            } catch (e: any) {
-                console.warn(`⚠️ Warning migrating user ${u.username}: ${e.message}`);
+        // 1. Migrate Users
+        try {
+            const users = await sqliteClient.user.findMany();
+            console.log(`[1/12] Migrating Users (${users.length})...`);
+            for (const u of users) {
+                try {
+                    await postgresClient.user.upsert({
+                        where: { username: u.username },
+                        create: u,
+                        update: {
+                            password: u.password,
+                            firstName: u.firstName,
+                            lastName: u.lastName,
+                            role: u.role,
+                            isExternal: u.isExternal,
+                            isRoleOverridden: u.isRoleOverridden,
+                            lastLogin: u.lastLogin,
+                            sessionTimeout: u.sessionTimeout
+                        }
+                    });
+                } catch (e: any) {
+                    console.warn(`⚠️ Warning migrating user ${u.username}: ${e.message}`);
+                }
             }
+        } catch (e: any) {
+            console.warn(`⚠️ Warning reading User table from SQLite: ${e.message || e}`);
         }
 
         // 2. Migrate Audit Logs
-        const auditLogs = await sqliteClient.auditLog.findMany();
-        console.log(`[2/12] Migrating Audit Logs (${auditLogs.length})...`);
-        for (const a of auditLogs) {
-            try {
-                await postgresClient.auditLog.upsert({
-                    where: { id: a.id },
-                    create: a,
-                    update: a
-                });
-            } catch (e: any) {
-                // Ignore duplicate audit logs
+        try {
+            const auditLogs = await sqliteClient.auditLog.findMany();
+            console.log(`[2/12] Migrating Audit Logs (${auditLogs.length})...`);
+            for (const a of auditLogs) {
+                try {
+                    await postgresClient.auditLog.upsert({
+                        where: { id: a.id },
+                        create: a,
+                        update: a
+                    });
+                } catch (e: any) {
+                    // Ignore duplicates
+                }
             }
+        } catch (e: any) {
+            console.warn(`⚠️ Warning reading AuditLog table from SQLite: ${e.message || e}`);
         }
 
         // 3. Migrate BEC Incidents
-        const incidents = await sqliteClient.becIncident.findMany();
-        console.log(`[3/12] Migrating BEC Incidents (${incidents.length})...`);
-        for (const inc of incidents) {
-            try {
-                await postgresClient.becIncident.upsert({
-                    where: { id: inc.id },
-                    create: inc,
-                    update: inc
-                });
-            } catch (e: any) {
-                // Ignore duplicates
+        try {
+            const incidents = await sqliteClient.becIncident.findMany();
+            console.log(`[3/12] Migrating BEC Incidents (${incidents.length})...`);
+            for (const inc of incidents) {
+                try {
+                    await postgresClient.becIncident.upsert({
+                        where: { id: inc.id },
+                        create: inc,
+                        update: inc
+                    });
+                } catch (e: any) {
+                    // Ignore duplicates
+                }
             }
+        } catch (e: any) {
+            console.warn(`⚠️ Warning reading BecIncident table from SQLite: ${e.message || e}`);
         }
 
         // 4. Migrate BEC Raw URLs
-        const rawUrls = await sqliteClient.becRawUrl.findMany();
-        console.log(`[4/12] Migrating BEC Raw URLs (${rawUrls.length})...`);
-        for (const r of rawUrls) {
-            try {
-                await postgresClient.becRawUrl.upsert({
-                    where: { id: r.id },
-                    create: r,
-                    update: r
-                });
-            } catch (e: any) {
-                // Ignore duplicates
+        try {
+            const rawUrls = await sqliteClient.becRawUrl.findMany();
+            console.log(`[4/12] Migrating BEC Raw URLs (${rawUrls.length})...`);
+            for (const r of rawUrls) {
+                try {
+                    await postgresClient.becRawUrl.upsert({
+                        where: { id: r.id },
+                        create: r,
+                        update: r
+                    });
+                } catch (e: any) {
+                    // Ignore duplicates
+                }
             }
+        } catch (e: any) {
+            console.warn(`⚠️ Warning reading BecRawUrl table from SQLite: ${e.message || e}`);
         }
 
         // 5. Migrate BEC Stats Cache
-        const statsCache = await sqliteClient.becStatsCache.findMany();
-        console.log(`[5/12] Migrating BEC Stats Cache (${statsCache.length})...`);
-        for (const s of statsCache) {
-            try {
-                await postgresClient.becStatsCache.upsert({
-                    where: { rangeSeconds: s.rangeSeconds },
-                    create: s,
-                    update: s
-                });
-            } catch (e: any) {
-                // Ignore duplicates
+        try {
+            const statsCache = await sqliteClient.becStatsCache.findMany();
+            console.log(`[5/12] Migrating BEC Stats Cache (${statsCache.length})...`);
+            for (const s of statsCache) {
+                try {
+                    await postgresClient.becStatsCache.upsert({
+                        where: { rangeSeconds: s.rangeSeconds },
+                        create: s,
+                        update: s
+                    });
+                } catch (e: any) {
+                    // Ignore duplicates
+                }
             }
+        } catch (e: any) {
+            console.warn(`⚠️ Warning reading BecStatsCache table from SQLite: ${e.message || e}`);
         }
 
         // 6. Migrate Firewall Query History
-        const firewallHistory = await sqliteClient.firewallQueryHistory.findMany();
-        console.log(`[6/12] Migrating Firewall Query History (${firewallHistory.length})...`);
-        for (const f of firewallHistory) {
-            try {
-                await postgresClient.firewallQueryHistory.upsert({
-                    where: { id: f.id },
-                    create: f,
-                    update: f
-                });
-            } catch (e: any) {
-                // Ignore duplicates
+        try {
+            const firewallHistory = await sqliteClient.firewallQueryHistory.findMany();
+            console.log(`[6/12] Migrating Firewall Query History (${firewallHistory.length})...`);
+            for (const f of firewallHistory) {
+                try {
+                    await postgresClient.firewallQueryHistory.upsert({
+                        where: { id: f.id },
+                        create: f,
+                        update: f
+                    });
+                } catch (e: any) {
+                    // Ignore duplicates
+                }
             }
+        } catch (e: any) {
+            console.warn(`⚠️ Warning reading FirewallQueryHistory table from SQLite: ${e.message || e}`);
         }
 
         // 7. Migrate Guardian Events
-        const guardianEvents = await sqliteClient.guardianEvent.findMany();
-        console.log(`[7/12] Migrating Guardian Events (${guardianEvents.length})...`);
-        for (const ge of guardianEvents) {
-            try {
-                await postgresClient.guardianEvent.upsert({
-                    where: { id: ge.id },
-                    create: ge,
-                    update: ge
-                });
-            } catch (e: any) {
-                // Ignore duplicates
+        try {
+            const guardianEvents = await sqliteClient.guardianEvent.findMany();
+            console.log(`[7/12] Migrating Guardian Events (${guardianEvents.length})...`);
+            for (const ge of guardianEvents) {
+                try {
+                    await postgresClient.guardianEvent.upsert({
+                        where: { id: ge.id },
+                        create: ge,
+                        update: ge
+                    });
+                } catch (e: any) {
+                    // Ignore duplicates
+                }
             }
+        } catch (e: any) {
+            console.warn(`⚠️ Warning reading GuardianEvent table from SQLite: ${e.message || e}`);
         }
 
         // 8. Migrate Guardian Blacklist
-        const blacklist = await sqliteClient.guardianBlacklist.findMany();
-        console.log(`[8/12] Migrating Guardian Blacklist (${blacklist.length})...`);
-        for (const b of blacklist) {
-            try {
-                await postgresClient.guardianBlacklist.upsert({
-                    where: { ip: b.ip },
-                    create: b,
-                    update: b
-                });
-            } catch (e: any) {
-                // Ignore duplicates
+        try {
+            const blacklist = await sqliteClient.guardianBlacklist.findMany();
+            console.log(`[8/12] Migrating Guardian Blacklist (${blacklist.length})...`);
+            for (const b of blacklist) {
+                try {
+                    await postgresClient.guardianBlacklist.upsert({
+                        where: { ip: b.ip },
+                        create: b,
+                        update: b
+                    });
+                } catch (e: any) {
+                    // Ignore duplicates
+                }
             }
+        } catch (e: any) {
+            console.warn(`⚠️ Warning reading GuardianBlacklist table from SQLite: ${e.message || e}`);
         }
 
         // 9. Migrate VPN Events
-        const vpnEvents = await sqliteClient.vpnEvent.findMany();
-        console.log(`[9/12] Migrating VPN Events (${vpnEvents.length})...`);
-        for (const v of vpnEvents) {
-            try {
-                await postgresClient.vpnEvent.upsert({
-                    where: { id: v.id },
-                    create: v,
-                    update: v
-                });
-            } catch (e: any) {
-                // Ignore duplicates
+        try {
+            const vpnEvents = await sqliteClient.vpnEvent.findMany();
+            console.log(`[9/12] Migrating VPN Events (${vpnEvents.length})...`);
+            for (const v of vpnEvents) {
+                try {
+                    await postgresClient.vpnEvent.upsert({
+                        where: { id: v.id },
+                        create: v,
+                        update: v
+                    });
+                } catch (e: any) {
+                    // Ignore duplicates
+                }
             }
+        } catch (e: any) {
+            console.warn(`⚠️ Warning reading VpnEvent table from SQLite: ${e.message || e}`);
         }
 
         // 10. Migrate Site Map Versions
-        const siteVersions = await sqliteClient.siteMapVersion.findMany();
-        console.log(`[10/12] Migrating Site Map Versions (${siteVersions.length})...`);
-        for (const sv of siteVersions) {
-            try {
-                await postgresClient.siteMapVersion.upsert({
-                    where: { id: sv.id },
-                    create: sv,
-                    update: sv
-                });
-            } catch (e: any) {
-                // Ignore duplicates
+        try {
+            const siteVersions = await sqliteClient.siteMapVersion.findMany();
+            console.log(`[10/12] Migrating Site Map Versions (${siteVersions.length})...`);
+            for (const sv of siteVersions) {
+                try {
+                    await postgresClient.siteMapVersion.upsert({
+                        where: { id: sv.id },
+                        create: sv,
+                        update: sv
+                    });
+                } catch (e: any) {
+                    // Ignore duplicates
+                }
             }
+        } catch (e: any) {
+            console.warn(`⚠️ Warning reading SiteMapVersion table from SQLite: ${e.message || e}`);
         }
 
         // 11. Migrate Background Jobs
-        const jobs = await sqliteClient.backgroundJob.findMany();
-        console.log(`[11/12] Migrating Background Jobs (${jobs.length})...`);
-        for (const j of jobs) {
-            try {
-                await postgresClient.backgroundJob.upsert({
-                    where: { name: j.name },
-                    create: j,
-                    update: j
-                });
-            } catch (e: any) {
-                // Ignore duplicates
+        try {
+            const jobs = await sqliteClient.backgroundJob.findMany();
+            console.log(`[11/12] Migrating Background Jobs (${jobs.length})...`);
+            for (const j of jobs) {
+                try {
+                    await postgresClient.backgroundJob.upsert({
+                        where: { name: j.name },
+                        create: j,
+                        update: j
+                    });
+                } catch (e: any) {
+                    // Ignore duplicates
+                }
             }
+        } catch (e: any) {
+            console.warn(`⚠️ Warning reading BackgroundJob table from SQLite: ${e.message || e}`);
         }
 
         // 12. Migrate User Feedback
-        const feedback = await sqliteClient.feedback.findMany();
-        console.log(`[12/12] Migrating User Feedback (${feedback.length})...`);
-        for (const fb of feedback) {
-            try {
-                await postgresClient.feedback.upsert({
-                    where: { id: fb.id },
-                    create: fb,
-                    update: fb
-                });
-            } catch (e: any) {
-                // Ignore duplicates
+        try {
+            const feedback = await sqliteClient.feedback.findMany();
+            console.log(`[12/12] Migrating User Feedback (${feedback.length})...`);
+            for (const fb of feedback) {
+                try {
+                    await postgresClient.feedback.upsert({
+                        where: { id: fb.id },
+                        create: fb,
+                        update: fb
+                    });
+                } catch (e: any) {
+                    // Ignore duplicates
+                }
             }
+        } catch (e: any) {
+            console.warn(`⚠️ Warning reading Feedback table from SQLite: ${e.message || e}`);
         }
 
         const duration = ((Date.now() - startTime) / 1000).toFixed(2);

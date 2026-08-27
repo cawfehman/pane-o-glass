@@ -22,9 +22,6 @@ model User {
   sessionTimeout Int        @default(10)
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
-  auditLogs      AuditLog[]
-  firewallQueries FirewallQueryHistory[]
-  feedback       Feedback[]
 }
 
 model Permission {
@@ -40,11 +37,9 @@ model Permission {
 model AuditLog {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   action    String
   details   String?
   ipAddress String?
-  userAgent String?
   createdAt DateTime @default(now())
 }
 
@@ -88,7 +83,6 @@ model BecStatsCache {
 model FirewallQueryHistory {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   queryType String
   target    String
   resultCount Int
@@ -141,7 +135,6 @@ model BackgroundJob {
 model Feedback {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   category  String
   rating    Int
   comment   String?
