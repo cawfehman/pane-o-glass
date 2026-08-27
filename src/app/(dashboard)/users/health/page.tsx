@@ -742,7 +742,13 @@ export default function SystemHealthPage() {
                                                         <span className={job.status === "SUCCESS" ? "text-emerald-400" : "text-rose-400"}>
                                                             {job.status === "SUCCESS" ? "🟢" : "🔴"}
                                                         </span>
-                                                        <span className="font-bold text-text-primary">{job.name}</span>
+                                                        <span className="font-bold text-text-primary">
+                                                            {job.name === "bec-threat-monitor" ? "BEC 24x7 Threat Monitor" 
+                                                            : job.name === "sync-vpn-logs" ? "VPN Event Sync Daemon" 
+                                                            : job.name === "auto-unshun" ? "Firewall Auto-Unshun Cron" 
+                                                            : job.name === "shun-snapshot" ? "Shun Database Snapshot" 
+                                                            : job.name}
+                                                        </span>
                                                     </div>
                                                     <div className="flex items-center gap-3 font-mono text-[0.72rem] text-text-muted">
                                                         <span>{new Date(job.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
