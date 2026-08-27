@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import path from "path";
 import dotenv from "dotenv";
-import { OgGraylogClient, classifyM365Url, unwrapUrl, parseDomain, OFFICIAL_M365_AUTH_ENDPOINTS, OAUTH_IDENTITY_PATTERNS } from "../../src/lib/og-graylog";
+import { OgGraylogClient, classifyM365Url, unwrapUrl, parseDomain, OFFICIAL_M365_AUTH_ENDPOINTS, classifyOAuthProvider } from "../../src/lib/og-graylog";
 import { sendNotificationMail } from "../../src/lib/smtp";
 
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
@@ -19,9 +19,9 @@ async function runBecMonitorCron() {
 
     try {
         const client = new OgGraylogClient();
-        // Allow CLI parameter --backfill or env variable BEC_LOOKBACK_SECONDS (defaults to 75s rolling window)
+        // Allow CLI parameter --backfill or env variable BEC_LOOKBACK_SECONDS (defaults to 600s / 10m rolling window)
         const isBackfill = process.argv.includes('--backfill');
-        const windowSeconds = isBackfill ? 86400 : (process.env.BEC_LOOKBACK_SECONDS ? parseInt(process.env.BEC_LOOKBACK_SECONDS, 10) : 75);
+        const windowSeconds = isBackfill ? 86400 : (process.env.BEC_LOOKBACK_SECONDS ? parseInt(process.env.BEC_LOOKBACK_SECONDS, 10) : 600);
         const query = `message:"microsoft" OR message:"office365" OR message:"sharepoint" OR message:"login.microsoftonline" OR message:"outlook.com" OR message:"devicelogin" OR message:"forms.office"`;
         
         console.log(`[BEC Monitor] Ingesting Graylog syslog traffic (Window: ${windowSeconds}s, Backfill: ${isBackfill})...`);
@@ -55,15 +55,7 @@ async function runBecMonitorCron() {
                 if (!host) continue;
 
                 // Check OAuth provider pattern
-                let isOauth = false;
-                let providerName: string | null = null;
-                for (const pat of OAUTH_IDENTITY_PATTERNS) {
-                    if (pat.pattern.test(destUrl)) {
-                        isOauth = true;
-                        providerName = pat.name;
-                        break;
-                    }
-                }
+                const { isOauth, provider: providerName } = classifyOAuthProvider(destUrl, host);
 
                 // 1. Ingest raw URL telemetry into SQLite (BecRawUrl)
                 try {

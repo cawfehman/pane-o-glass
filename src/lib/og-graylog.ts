@@ -173,6 +173,29 @@ export function classifyM365Url(
     return null;
 }
 
+export function classifyOAuthProvider(destUrl: string, host: string): { isOauth: boolean; provider: string | null } {
+    const lowerHost = (host || "").toLowerCase();
+    const lowerUrl = (destUrl || "").toLowerCase();
+
+    const isMicrosoftAuth = OFFICIAL_AUTH_HOSTS.some(h => lowerHost === h || lowerHost.endsWith(`.${h}`));
+    if (isMicrosoftAuth) return { isOauth: false, provider: null };
+
+    let provider: string | null = null;
+    if (lowerHost.includes("okta.com") || lowerHost.includes("oktapreview.com")) provider = "Okta Identity";
+    else if (lowerHost.includes("accounts.google.com")) provider = "Google OAuth 2.0";
+    else if (lowerHost.includes("duosecurity.com") || lowerHost.includes("duo.com")) provider = "Duo MFA Auth";
+    else if (lowerHost.includes("docusign.net") || lowerHost.includes("docusign.com")) provider = "DocuSign Auth";
+    else if (lowerHost.includes("pingidentity.com") || lowerHost.includes("pingone.com")) provider = "Ping Identity";
+    else if (lowerHost.includes("auth0.com")) provider = "Auth0 SSO";
+    else if (lowerHost.includes("onelogin.com")) provider = "OneLogin SSO";
+    else if (lowerHost.includes("b2clogin.com")) provider = "Azure AD B2C Portal";
+    else if (lowerHost.includes("cayuse.com")) provider = "Cayuse Identity";
+    else if (lowerHost.includes("advarracloud.com") || lowerHost.includes("advarra.com")) provider = "Advarra Identity";
+    else if (lowerUrl.includes("/oauth2/") || lowerUrl.includes("/authorize") || lowerUrl.includes("/oidc/") || lowerUrl.includes("/saml/")) provider = "Third-Party OAuth / SSO";
+
+    return { isOauth: provider !== null, provider };
+}
+
 export interface GraylogHistogramData {
     timestamp: number;
     count: number;
@@ -1212,27 +1235,9 @@ export class OgGraylogClient {
                     }
 
                     // 2. Evaluate for Non-Microsoft Third-Party OAuth / Identity Providers
-                    const lowerHost = host.toLowerCase();
-                    const lowerUrl = destUrl.toLowerCase();
-
-                    const isMicrosoftAuth = OFFICIAL_AUTH_HOSTS.some(h => lowerHost === h || lowerHost.endsWith(`.${h}`));
-                    let provider = "";
-
-                    if (!isMicrosoftAuth) {
-                        if (lowerHost.includes("okta.com") || lowerHost.includes("oktapreview.com")) provider = "Okta Identity";
-                        else if (lowerHost.includes("accounts.google.com")) provider = "Google OAuth 2.0";
-                        else if (lowerHost.includes("duosecurity.com") || lowerHost.includes("duo.com")) provider = "Duo MFA Auth";
-                        else if (lowerHost.includes("docusign.net") || lowerHost.includes("docusign.com")) provider = "DocuSign Auth";
-                        else if (lowerHost.includes("pingidentity.com") || lowerHost.includes("pingone.com")) provider = "Ping Identity";
-                        else if (lowerHost.includes("auth0.com")) provider = "Auth0 SSO";
-                        else if (lowerHost.includes("onelogin.com")) provider = "OneLogin SSO";
-                        else if (lowerHost.includes("b2clogin.com")) provider = "Azure AD B2C Portal";
-                        else if (lowerHost.includes("cayuse.com")) provider = "Cayuse Identity";
-                        else if (lowerHost.includes("advarracloud.com") || lowerHost.includes("advarra.com")) provider = "Advarra Identity";
-                        else if (lowerUrl.includes("/oauth2/") || lowerUrl.includes("/authorize") || lowerUrl.includes("/oidc/") || lowerUrl.includes("/saml/")) provider = "Third-Party OAuth / SSO";
-                    }
-
-                    if (provider) {
+                    const oauthRes = classifyOAuthProvider(destUrl, host);
+                    if (oauthRes.provider) {
+                        const provider = oauthRes.provider;
                         const key = provider;
                         if (!oauthDiscoveriesMap[key]) {
                             oauthDiscoveriesMap[key] = {
