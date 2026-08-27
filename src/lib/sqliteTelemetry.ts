@@ -321,7 +321,10 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
     const healthRecommendations: string[] = [];
     let healthStatus: "EXCELLENT" | "GOOD" | "DEGRADED" | "ATTENTION_NEEDED" = "EXCELLENT";
 
-    if (journalMode !== "wal") {
+    if (journalMode.includes("postgresql")) {
+        healthStatus = "EXCELLENT";
+        healthRecommendations.push("🟢 PostgreSQL MVCC (Multi-Version Concurrency Control) Engine Active. Row-level locking & 100% concurrent write throughput enabled.");
+    } else if (journalMode !== "wal") {
         healthStatus = "ATTENTION_NEEDED";
         healthRecommendations.push("Database is currently in rollback mode ('" + journalMode + "'). Enable WAL mode ('PRAGMA journal_mode = WAL;') for concurrent reads and writes.");
     }

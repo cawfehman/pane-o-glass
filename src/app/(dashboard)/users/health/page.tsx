@@ -250,9 +250,11 @@ export default function SystemHealthPage() {
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-2.5">
-                                        <h2 className="text-xl font-extrabold m-0 text-text-primary">SQLite Engine & Storage Telemetry</h2>
+                                        <h2 className="text-xl font-extrabold m-0 text-text-primary">
+                                            {sqlite.storage.journalMode.includes("postgresql") ? "PostgreSQL Engine & Storage Telemetry" : "SQLite Engine & Storage Telemetry"}
+                                        </h2>
                                         <span className="text-xs px-2.5 py-0.5 rounded-full font-mono font-bold uppercase tracking-wider bg-white/5 border border-white/10 text-text-secondary">
-                                            {sqlite.storage.journalMode.toUpperCase()} MODE
+                                            {sqlite.storage.journalMode.toUpperCase()}
                                         </span>
                                     </div>
                                     <p className="text-xs text-text-muted m-0 mt-0.5">
