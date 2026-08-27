@@ -671,7 +671,7 @@ export default function SystemHealthPage() {
                                 {/* Storage & WAL Growth Chart */}
                                 <div className="p-4 rounded-xl bg-black/25 border border-white/5 flex flex-col gap-3">
                                     <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider m-0">
-                                        Database & WAL Storage Growth
+                                        {sqlite?.storage?.journalMode?.includes("postgresql") ? "PostgreSQL Storage Growth" : "Database & WAL Storage Growth"}
                                     </h4>
                                     <div className="h-[180px] w-full">
                                         {historyData && historyData.snapshots && historyData.snapshots.length > 0 ? (
@@ -709,21 +709,23 @@ export default function SystemHealthPage() {
                                                     <Area 
                                                         type="monotone" 
                                                         dataKey="dbSizeMB" 
-                                                        name="Main DB (MB)" 
+                                                        name={sqlite?.storage?.journalMode?.includes("postgresql") ? "PostgreSQL Size (MB)" : "Main DB (MB)"} 
                                                         stroke="#818cf8" 
                                                         fillOpacity={1} 
                                                         fill="url(#dbGrad)" 
                                                         strokeWidth={2}
                                                     />
-                                                    <Area 
-                                                        type="monotone" 
-                                                        dataKey="walSizeMB" 
-                                                        name="WAL Journal (MB)" 
-                                                        stroke="#f43f5e" 
-                                                        fillOpacity={1} 
-                                                        fill="url(#walGrad)" 
-                                                        strokeWidth={2}
-                                                    />
+                                                    {!sqlite?.storage?.journalMode?.includes("postgresql") && (
+                                                        <Area 
+                                                            type="monotone" 
+                                                            dataKey="walSizeMB" 
+                                                            name="WAL Journal (MB)" 
+                                                            stroke="#f43f5e" 
+                                                            fillOpacity={1} 
+                                                            fill="url(#walGrad)" 
+                                                            strokeWidth={2}
+                                                        />
+                                                    )}
                                                 </AreaChart>
                                             </ResponsiveContainer>
                                         ) : (
