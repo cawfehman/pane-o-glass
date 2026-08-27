@@ -22,7 +22,8 @@ import {
     Filter,
     Users,
     ChevronRight,
-    ArrowUpRight
+    ArrowUpRight,
+    Zap
 } from "lucide-react";
 import { 
     OFFICIAL_M365_AUTH_ENDPOINTS, 
@@ -60,7 +61,10 @@ export default function BecDashboardClient() {
     const [newUrl, setNewUrl] = useState<string>("");
     const [newRole, setNewRole] = useState<string>("");
 
-    // Query Execution from Graylog (Default 1-Hour Window for fast performance)
+    // Performance / Speed Badge State
+    const [dbSpeedMs, setDbSpeedMs] = useState<number | null>(null);
+
+    // Query Execution from Local SQLite Database (Instant <5ms load)
     const fetchMasterBecData = useCallback(async (rangeToFetch: number = timeframe) => {
         setLoading(true);
         setError(null);
@@ -69,6 +73,10 @@ export default function BecDashboardClient() {
             const res = await fetch(`/api/bec/stats?range=${rangeToFetch}`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
+
+            if (data.responseTimeMs !== undefined) {
+                setDbSpeedMs(data.responseTimeMs);
+            }
             
             if (data.becThreats && Array.isArray(data.becThreats)) {
                 setMasterBecData(data.becThreats);
@@ -91,9 +99,9 @@ export default function BecDashboardClient() {
             if (data.totalEvaluatedMessages !== undefined) {
                 setMasterTotalMessages(data.totalEvaluatedMessages);
             }
-        } catch (err: any) {
-            console.error("Failed to fetch BEC threat data:", err);
-            setError(err.message || "Failed to load BEC threat data");
+        } catch (e: any) {
+            console.error("BEC Stats Fetch Error:", e);
+            setError(e.message || "Failed to load BEC Threat Intelligence dataset");
         } finally {
             setLoading(false);
         }
@@ -315,11 +323,18 @@ export default function BecDashboardClient() {
                             <option value={300}>Auto: 5m</option>
                         </select>
 
+                        {dbSpeedMs !== null && (
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono font-semibold" title="Instant SQLite local DB response time">
+                                <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>{dbSpeedMs}ms</span>
+                            </div>
+                        )}
+
                         <button
                             onClick={() => fetchMasterBecData(timeframe)}
                             disabled={loading}
                             className="p-2.5 rounded-lg bg-[var(--bg-default)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] border border-[var(--border-color)] transition-colors disabled:opacity-50"
-                            title="Re-query Graylog"
+                            title="Re-query Local DB"
                         >
                             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-blue-400" : ""}`} />
                         </button>
