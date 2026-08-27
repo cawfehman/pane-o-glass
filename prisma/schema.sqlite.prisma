@@ -1,0 +1,149 @@
+// Temporary SQLite schema for zero-dependency migration
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/@prisma/sqlite-client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id         String     @id @default(cuid())
+  username   String     @unique
+  password   String?
+  firstName  String?
+  lastName   String?
+  role       String     @default("USER")
+  isExternal Boolean    @default(false)
+  isRoleOverridden Boolean @default(false)
+  lastLogin  DateTime?
+  sessionTimeout Int        @default(10)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  auditLogs      AuditLog[]
+  firewallQueries FirewallQueryHistory[]
+  feedback       Feedback[]
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  role        String
+  permission  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([role, permission])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  details   String?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+}
+
+model BecIncident {
+  id                    String   @id @default(cuid())
+  threatType            String
+  severity              String   @default("HIGH")
+  subject               String
+  sender                String
+  recipient             String
+  suspiciousUrl         String?
+  targetBrand           String?
+  unwrappedUrl          String?
+  authEndpointMatch     String?
+  graylogMessageId      String?
+  rawPayload            String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model BecRawUrl {
+  id              String   @id @default(cuid())
+  rawUrl          String
+  unwrappedUrl    String?
+  targetBrand     String?
+  graylogMessageId String?
+  createdAt       DateTime @default(now())
+}
+
+model BecStatsCache {
+  id                      String   @id @default(cuid())
+  rangeSeconds            Int      @unique
+  totalEvaluatedMessages  Int
+  totalEvaluatedUrls      Int
+  becThreats              String
+  topUnwrappedDomains     String
+  thirdPartyOAuthLinks    String
+  updatedAt               DateTime @updatedAt
+}
+
+model FirewallQueryHistory {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  queryType String
+  target    String
+  resultCount Int
+  createdAt DateTime @default(now())
+}
+
+model GuardianEvent {
+  id        String   @id @default(cuid())
+  ip        String
+  action    String
+  reason    String?
+  source    String   @default("AUTOMATED")
+  createdAt DateTime @default(now())
+}
+
+model GuardianBlacklist {
+  ip        String   @id
+  reason    String?
+  addedBy   String   @default("SYSTEM")
+  createdAt DateTime @default(now())
+}
+
+model VpnEvent {
+  id          String   @id @default(cuid())
+  username    String
+  ipAddress   String?
+  userGroup   String?
+  durationSec Int?
+  bytesTransferred BigInt?
+  createdAt   DateTime @default(now())
+}
+
+model SiteMapVersion {
+  id        String   @id @default(cuid())
+  version   Int
+  csvData   String
+  createdBy String
+  createdAt DateTime @default(now())
+}
+
+model BackgroundJob {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  status    String   @default("IDLE")
+  lastRun   DateTime?
+  details   String?
+  updatedAt DateTime @updatedAt
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category  String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+}
