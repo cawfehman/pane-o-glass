@@ -251,10 +251,10 @@ export default function SystemHealthPage() {
                                 <div>
                                     <div className="flex items-center gap-2.5">
                                         <h2 className="text-xl font-extrabold m-0 text-text-primary">
-                                            {sqlite.storage.journalMode.includes("postgresql") ? "PostgreSQL Engine & Storage Telemetry" : "SQLite Engine & Storage Telemetry"}
+                                            PostgreSQL Engine & Storage Telemetry
                                         </h2>
                                         <span className="text-xs px-2.5 py-0.5 rounded-full font-mono font-bold uppercase tracking-wider bg-white/5 border border-white/10 text-text-secondary">
-                                            {sqlite.storage.journalMode.toUpperCase()}
+                                            POSTGRESQL (MVCC)
                                         </span>
                                     </div>
                                     <p className="text-xs text-text-muted m-0 mt-0.5">
@@ -506,17 +506,17 @@ export default function SystemHealthPage() {
                                     </div>
 
                                     <div className="p-3.5 rounded-xl bg-black/20 border border-white/5 flex flex-col justify-between">
-                                        <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-1">
-                                            <span>{sqlite?.storage?.journalMode?.includes("postgresql") ? "PostgreSQL DB Size" : "Peak WAL Size"}</span>
-                                            <Zap size={15} className="text-purple-400" />
-                                        </div>
-                                        <div className="text-xl font-extrabold font-mono text-text-primary">
-                                            {sqlite?.storage?.journalMode?.includes("postgresql") ? sqlite.storage.dbSizeFormatted : `${historyData.summary.maxWalSizeMB} MB`}
-                                        </div>
-                                        <div className="text-[0.7rem] text-text-muted mt-1">
-                                            Lock Wait Events: <span className="font-mono text-emerald-400 font-bold">{sqlite?.storage?.journalMode?.includes("postgresql") ? "0 (MVCC Active)" : historyData.summary.contentionIncidents}</span>
-                                        </div>
-                                    </div>
+                                         <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-1">
+                                             <span>PostgreSQL Engine Size</span>
+                                             <Zap size={15} className="text-purple-400" />
+                                         </div>
+                                         <div className="text-xl font-extrabold font-mono text-text-primary">
+                                             {sqlite.storage.dbSizeFormatted}
+                                         </div>
+                                         <div className="text-[0.7rem] text-text-muted mt-1">
+                                             Lock Wait Events: <span className="font-mono text-emerald-400 font-bold">0 (MVCC Active)</span>
+                                         </div>
+                                     </div>
                                 </div>
                             )}
 
