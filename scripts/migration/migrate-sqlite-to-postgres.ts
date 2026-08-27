@@ -1,10 +1,25 @@
-import { PrismaClient as PostgresClient } from "@prisma/client";
-import { PrismaClient as SqliteClient } from "@prisma/sqlite-client";
 import path from "path";
 import fs from "fs";
+import { execSync } from "child_process";
 import dotenv from "dotenv";
 
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+
+// Auto-generate SQLite client if not present in node_modules
+const sqliteClientPath = path.resolve(__dirname, "../../node_modules/@prisma/sqlite-client");
+const sqliteSchemaPath = path.resolve(__dirname, "../../prisma/schema.sqlite.prisma");
+
+if (!fs.existsSync(sqliteClientPath) && fs.existsSync(sqliteSchemaPath)) {
+    console.log("⚡ Auto-generating temporary SQLite migration client...");
+    try {
+        execSync(`npx prisma generate --schema="${sqliteSchemaPath}"`, { stdio: "inherit" });
+    } catch (e: any) {
+        console.error("Failed to generate sqlite client:", e.message || e);
+    }
+}
+
+import { PrismaClient as PostgresClient } from "@prisma/client";
+import { PrismaClient as SqliteClient } from "@prisma/sqlite-client";
 
 const targetPostgresUrl = process.env.DATABASE_URL;
 
