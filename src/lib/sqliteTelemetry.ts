@@ -188,11 +188,11 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
     const dbPath = candidates.find(p => fs.existsSync(p)) || candidates[0];
     const walPath = `${dbPath}-wal`;
 
-    const dbSizeBytes = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
+    let dbSizeBytes = fs.existsSync(dbPath) ? fs.statSync(dbPath).size : 0;
     const walSizeBytes = fs.existsSync(walPath) ? fs.statSync(walPath).size : 0;
 
-    // 2. Query lightweight engine PRAGMAs
-    let journalMode = "unknown";
+    // 2. Query engine metrics (PostgreSQL or SQLite fallback)
+    let journalMode = "postgresql (mvcc)";
     let busyTimeoutMs = 0;
     let pageCount = 0;
     let pageSizeBytes = 4096;
@@ -200,31 +200,37 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
     const integrity = "ok";
 
     try {
-        const [journalRes, busyRes, pageCountRes, pageSizeRes, freelistRes] = await Promise.all([
-            prisma.$queryRawUnsafe<any[]>("PRAGMA journal_mode;").catch(() => []),
-            prisma.$queryRawUnsafe<any[]>("PRAGMA busy_timeout;").catch(() => []),
-            prisma.$queryRawUnsafe<any[]>("PRAGMA page_count;").catch(() => []),
-            prisma.$queryRawUnsafe<any[]>("PRAGMA page_size;").catch(() => []),
-            prisma.$queryRawUnsafe<any[]>("PRAGMA freelist_count;").catch(() => [])
-        ]);
+        const pgSizeRes = await prisma.$queryRaw<any[]>`SELECT pg_database_size(current_database()) as size;`.catch(() => []);
+        if (pgSizeRes && pgSizeRes[0] && pgSizeRes[0].size !== undefined) {
+            dbSizeBytes = Number(pgSizeRes[0].size);
+            journalMode = "postgresql (mvcc)";
+        } else {
+            const [journalRes, busyRes, pageCountRes, pageSizeRes, freelistRes] = await Promise.all([
+                prisma.$queryRawUnsafe<any[]>("PRAGMA journal_mode;").catch(() => []),
+                prisma.$queryRawUnsafe<any[]>("PRAGMA busy_timeout;").catch(() => []),
+                prisma.$queryRawUnsafe<any[]>("PRAGMA page_count;").catch(() => []),
+                prisma.$queryRawUnsafe<any[]>("PRAGMA page_size;").catch(() => []),
+                prisma.$queryRawUnsafe<any[]>("PRAGMA freelist_count;").catch(() => [])
+            ]);
 
-        if (journalRes && journalRes[0]) {
-            journalMode = String(journalRes[0].journal_mode || "unknown").toLowerCase();
-        }
-        if (busyRes && busyRes[0]) {
-            busyTimeoutMs = Number(busyRes[0].timeout || 0);
-        }
-        if (pageCountRes && pageCountRes[0]) {
-            pageCount = Number(pageCountRes[0].page_count || 0);
-        }
-        if (pageSizeRes && pageSizeRes[0]) {
-            pageSizeBytes = Number(pageSizeRes[0].page_size || 4096);
-        }
-        if (freelistRes && freelistRes[0]) {
-            freelistCount = Number(freelistRes[0].freelist_count || 0);
+            if (journalRes && journalRes[0]) {
+                journalMode = String(journalRes[0].journal_mode || "unknown").toLowerCase();
+            }
+            if (busyRes && busyRes[0]) {
+                busyTimeoutMs = Number(busyRes[0].timeout || 0);
+            }
+            if (pageCountRes && pageCountRes[0]) {
+                pageCount = Number(pageCountRes[0].page_count || 0);
+            }
+            if (pageSizeRes && pageSizeRes[0]) {
+                pageSizeBytes = Number(pageSizeRes[0].page_size || 4096);
+            }
+            if (freelistRes && freelistRes[0]) {
+                freelistCount = Number(freelistRes[0].freelist_count || 0);
+            }
         }
     } catch (e) {
-        console.error("[SqliteTelemetry] Error reading PRAGMA stats:", e);
+        console.error("[Telemetry] Error reading engine stats:", e);
     }
 
     const fragmentationPct = pageCount > 0 ? Number(((freelistCount / pageCount) * 100).toFixed(2)) : 0;
