@@ -15,6 +15,9 @@ async function verifyMigration() {
         const guardianEvents = await prisma.guardianEvent.count();
         const guardianBlacklist = await prisma.guardianBlacklist.count();
         const vpnEvents = await prisma.vpnEvent.count();
+        const shunIps = await prisma.shunDatabaseIp.count();
+        const shunStats = await prisma.firewallShunStats.count();
+        const shunSnapshots = await prisma.firewallShunSnapshot.count();
         const siteMapVersions = await prisma.siteMapVersion.count();
         const backgroundJobs = await prisma.backgroundJob.count();
         const feedback = await prisma.feedback.count();
@@ -28,6 +31,9 @@ async function verifyMigration() {
         console.log(`✅ Guardian Events:                ${guardianEvents.toLocaleString()}`);
         console.log(`✅ Guardian Blacklist Entries:     ${guardianBlacklist.toLocaleString()}`);
         console.log(`✅ VPN Historical Events:          ${vpnEvents.toLocaleString()}`);
+        console.log(`✅ Shun Database IPs:              ${shunIps.toLocaleString()}`);
+        console.log(`✅ Firewall Shun Stats:            ${shunStats.toLocaleString()}`);
+        console.log(`✅ Firewall Shun Snapshots:        ${shunSnapshots.toLocaleString()}`);
         console.log(`✅ Site Map Versions:              ${siteMapVersions.toLocaleString()}`);
         console.log(`✅ Background Job Statuses:        ${backgroundJobs.toLocaleString()}`);
         console.log(`✅ User Feedback Entries:          ${feedback.toLocaleString()}`);
