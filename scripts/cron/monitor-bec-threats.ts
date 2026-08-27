@@ -19,10 +19,12 @@ async function runBecMonitorCron() {
 
     try {
         const client = new OgGraylogClient();
-        // Query recent 75 seconds of Graylog traffic with automatic multi-page offset pagination
-        const windowSeconds = 75;
+        // Allow CLI parameter --backfill or env variable BEC_LOOKBACK_SECONDS (defaults to 75s rolling window)
+        const isBackfill = process.argv.includes('--backfill');
+        const windowSeconds = isBackfill ? 86400 : (process.env.BEC_LOOKBACK_SECONDS ? parseInt(process.env.BEC_LOOKBACK_SECONDS, 10) : 75);
         const query = `message:"microsoft" OR message:"office365" OR message:"sharepoint" OR message:"login.microsoftonline" OR message:"outlook.com" OR message:"devicelogin" OR message:"forms.office"`;
         
+        console.log(`[BEC Monitor] Ingesting Graylog syslog traffic (Window: ${windowSeconds}s, Backfill: ${isBackfill})...`);
         const becHits = await client.searchAllMessagesPaginated(query, windowSeconds, 2500, 50000);
         console.log(`[BEC Monitor] Ingested ${becHits.length} matching syslog events across paginated Graylog calls (Last ${windowSeconds}s).`);
 
