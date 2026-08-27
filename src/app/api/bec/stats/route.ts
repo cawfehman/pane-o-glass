@@ -18,17 +18,18 @@ export async function GET(req: Request) {
 
         const { searchParams } = new URL(req.url);
         const rangeParam = searchParams.get("range");
-        const rangeSeconds = rangeParam ? parseInt(rangeParam, 10) : 3600;
-        const cutoffDate = new Date(Date.now() - rangeSeconds * 1000);
+        const rangeSeconds = rangeParam !== null ? parseInt(rangeParam, 10) : 3600;
+        const isAllTime = rangeSeconds === 0;
+        const cutoffDate = isAllTime ? new Date(0) : new Date(Date.now() - rangeSeconds * 1000);
 
         // 1. Fetch pre-computed stats snapshot from BecStatsCache in local SQLite DB for exact rangeSeconds
-        let becCache = await (prisma as any).becStatsCache.findUnique({
+        let becCache = isAllTime ? null : await (prisma as any).becStatsCache.findUnique({
             where: { rangeSeconds }
         }).catch(() => null);
 
-        const isCacheStale = !becCache || 
+        const isCacheStale = !isAllTime && (!becCache || 
             (becCache.totalEvaluatedUrls === 0) || 
-            ((Date.now() - new Date(becCache.updatedAt).getTime()) > 300000);
+            ((Date.now() - new Date(becCache.updatedAt).getTime()) > 300000));
 
         let topUnwrappedDomains: any[] = [];
         let thirdPartyOAuthLinks: any[] = [];
@@ -36,7 +37,7 @@ export async function GET(req: Request) {
         let totalEvaluatedMessages = 0;
         let cacheBecThreats: any[] = [];
 
-        if (isCacheStale) {
+        if (isCacheStale && rangeSeconds > 0) {
             // Hydrate live from Graylog for this exact timeframe window if cache is cold/empty
             try {
                 const client = new OgGraylogClient();
@@ -78,15 +79,33 @@ export async function GET(req: Request) {
                 totalEvaluatedUrls = becCache.totalEvaluatedUrls || 0;
                 totalEvaluatedMessages = becCache.totalEvaluatedMessages || 0;
             } catch (e) {}
+        } else if (isAllTime) {
+            // Fallback for All Time: query largest available cache snapshot for macro domain counts
+            const maxCache = await (prisma as any).becStatsCache.findFirst({
+                orderBy: { rangeSeconds: "desc" }
+            }).catch(() => null);
+
+            if (maxCache) {
+                try {
+                    topUnwrappedDomains = JSON.parse(maxCache.topDomainsJson || "[]");
+                    thirdPartyOAuthLinks = JSON.parse(maxCache.oauthLinksJson || "[]");
+                    totalEvaluatedUrls = maxCache.totalEvaluatedUrls || 0;
+                    totalEvaluatedMessages = maxCache.totalEvaluatedMessages || 0;
+                } catch (e) {}
+            }
         }
 
-        // 2. Query ALL logged threat incidents from the BecIncident DB table within the requested cutoff Date!
-        const dbIncidents = await (prisma as any).becIncident.findMany({
-            where: {
-                createdAt: { gte: cutoffDate }
-            },
-            orderBy: { createdAt: "desc" }
-        }).catch(() => []);
+        // 2. Query ALL logged threat incidents from the BecIncident DB table based on cutoffDate or All Time
+        const dbIncidents = isAllTime ? 
+            await (prisma as any).becIncident.findMany({
+                orderBy: { createdAt: "desc" }
+            }).catch(() => []) :
+            await (prisma as any).becIncident.findMany({
+                where: {
+                    createdAt: { gte: cutoffDate }
+                },
+                orderBy: { createdAt: "desc" }
+            }).catch(() => []);
 
         // Map DB incidents to Threat Feed items
         const dbBecThreats = dbIncidents.map((inc: any) => ({
@@ -111,7 +130,7 @@ export async function GET(req: Request) {
             if (t.mid) combinedThreatsMap.set(t.mid, t);
         });
 
-        // If no incidents found within exact cutoff, include all recent incidents in DB up to 100
+        // If no incidents found within cutoff, pull all recent incidents in DB up to 100
         if (combinedThreatsMap.size === 0) {
             const allRecentIncidents = await (prisma as any).becIncident.findMany({
                 take: 100,
@@ -138,12 +157,13 @@ export async function GET(req: Request) {
 
         return NextResponse.json({
             rangeSeconds,
+            isAllTime,
             totalEvaluatedUrls,
             totalEvaluatedMessages,
             becThreats,
             topUnwrappedDomains: Array.isArray(topUnwrappedDomains) ? topUnwrappedDomains : [],
             thirdPartyOAuthLinks: Array.isArray(thirdPartyOAuthLinks) ? thirdPartyOAuthLinks : [],
-            fromLocalDb: !isCacheStale
+            fromLocalDb: true
         }, {
             headers: {
                 "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate"

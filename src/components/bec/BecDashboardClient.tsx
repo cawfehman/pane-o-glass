@@ -281,7 +281,10 @@ export default function BecDashboardClient() {
                             { label: "1h", value: 3600 },
                             { label: "4h", value: 14400 },
                             { label: "12h", value: 43200 },
-                            { label: "24h", value: 86400 }
+                            { label: "24h", value: 86400 },
+                            { label: "7d", value: 604800 },
+                            { label: "30d", value: 2592000 },
+                            { label: "All", value: 0 }
                         ].map(t => (
                             <button
                                 key={t.value}
