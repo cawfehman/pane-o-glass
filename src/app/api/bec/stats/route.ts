@@ -83,25 +83,32 @@ export async function GET(req: Request) {
                 orderBy: { createdAt: "desc" }
             }).catch(() => []);
 
+        const safeIsoString = (d: any) => {
+            try {
+                if (!d) return new Date().toISOString();
+                if (d instanceof Date) return d.toISOString();
+                return new Date(d).toISOString();
+            } catch (e) {
+                return new Date().toISOString();
+            }
+        };
+
         // Map DB incidents to Threat Feed items
         const dbBecThreats = dbIncidents.map((inc: any) => ({
             mid: inc.mid,
             subject: inc.subject || "No Subject Header",
             sender: inc.sender || "unknown",
             recipient: inc.recipient || "unknown",
-            targetHost: inc.targetHost,
-            destUrl: inc.destUrl,
-            threatTier: inc.threatTier,
-            threatCategory: inc.threatCategory,
-            impersonationBoost: inc.impersonationBoost,
-            timestamp: inc.createdAt.toISOString()
+            targetHost: inc.targetHost || "",
+            destUrl: inc.destUrl || "",
+            threatTier: inc.threatTier || "LOW",
+            threatCategory: inc.threatCategory || "SUSPICIOUS",
+            impersonationBoost: inc.impersonationBoost || 0,
+            timestamp: safeIsoString(inc.createdAt)
         }));
 
-        // Deduplicate and combine DB incidents + Cache threats (DB incidents take priority)
+        // Deduplicate and combine DB incidents
         const combinedThreatsMap = new Map<string, any>();
-        cacheBecThreats.forEach((t: any) => {
-            if (t.mid) combinedThreatsMap.set(t.mid, t);
-        });
         dbBecThreats.forEach((t: any) => {
             if (t.mid) combinedThreatsMap.set(t.mid, t);
         });
@@ -119,12 +126,12 @@ export async function GET(req: Request) {
                     subject: inc.subject || "No Subject Header",
                     sender: inc.sender || "unknown",
                     recipient: inc.recipient || "unknown",
-                    targetHost: inc.targetHost,
-                    destUrl: inc.destUrl,
-                    threatTier: inc.threatTier,
-                    threatCategory: inc.threatCategory,
-                    impersonationBoost: inc.impersonationBoost,
-                    timestamp: inc.createdAt.toISOString()
+                    targetHost: inc.targetHost || "",
+                    destUrl: inc.destUrl || "",
+                    threatTier: inc.threatTier || "LOW",
+                    threatCategory: inc.threatCategory || "SUSPICIOUS",
+                    impersonationBoost: inc.impersonationBoost || 0,
+                    timestamp: safeIsoString(inc.createdAt)
                 });
             });
         }
