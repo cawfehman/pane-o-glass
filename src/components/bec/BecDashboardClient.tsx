@@ -66,7 +66,7 @@ export default function BecDashboardClient() {
         setError(null);
 
         try {
-            const res = await fetch(`/api/ironport/stats?range=${rangeToFetch}`);
+            const res = await fetch(`/api/bec/stats?range=${rangeToFetch}`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             
