@@ -22,28 +22,9 @@ export async function GET(req: Request) {
         const isAllTime = rangeSeconds === 0;
         const cutoffDate = isAllTime ? new Date(0) : new Date(Date.now() - rangeSeconds * 1000);
 
-        // 1. Fetch pre-computed stats snapshot from BecStatsCache in local SQLite DB for exact rangeSeconds
-        let becCache = isAllTime ? null : await (prisma as any).becStatsCache.findUnique({
-            where: { rangeSeconds }
-        }).catch(() => null);
-
-        // Fallback to largest available cache snapshot if exact range entry is missing
-        if (!becCache && !isAllTime) {
-            becCache = await (prisma as any).becStatsCache.findFirst({
-                where: { rangeSeconds: { lte: rangeSeconds } },
-                orderBy: { rangeSeconds: "desc" }
-            }).catch(() => null);
-
-            if (!becCache) {
-                becCache = await (prisma as any).becStatsCache.findFirst({
-                    orderBy: { updatedAt: "desc" }
-                }).catch(() => null);
-            }
-        } else if (isAllTime) {
-            becCache = await (prisma as any).becStatsCache.findFirst({
-                orderBy: { rangeSeconds: "desc" }
-            }).catch(() => null);
-        }
+        // 1. Fetch pre-computed stats snapshot from BecStatsCache ONLY if exact rangeSeconds matches
+        let becCache = isAllTime ? await (prisma as any).becStatsCache.findFirst({ orderBy: { rangeSeconds: "desc" } }).catch(() => null)
+            : await (prisma as any).becStatsCache.findUnique({ where: { rangeSeconds } }).catch(() => null);
 
         let topUnwrappedDomains: any[] = [];
         let thirdPartyOAuthLinks: any[] = [];
@@ -51,7 +32,58 @@ export async function GET(req: Request) {
         let totalEvaluatedMessages = 0;
         let cacheBecThreats: any[] = [];
 
-        if (becCache) {
+        // 2. Query dynamic raw URL counts and domain aggregations from BecRawUrl for cutoffDate
+        const rawCount = isAllTime
+            ? await (prisma as any).becRawUrl.count().catch(() => 0)
+            : await (prisma as any).becRawUrl.count({ where: { createdAt: { gte: cutoffDate } } }).catch(() => 0);
+
+        if (rawCount > 0) {
+            totalEvaluatedUrls = rawCount;
+
+            // Fetch top unwrapped destination domains from BecRawUrl for selected timeframe
+            const rawUrls = isAllTime
+                ? await (prisma as any).becRawUrl.findMany({ take: 5000, orderBy: { createdAt: "desc" } }).catch(() => [])
+                : await (prisma as any).becRawUrl.findMany({ where: { createdAt: { gte: cutoffDate } }, take: 5000, orderBy: { createdAt: "desc" } }).catch(() => []);
+
+            const domainCounts: Record<string, number> = {};
+            const oauthMap: Record<string, { provider: string; count: number; links: Set<string>; inboxes: Set<string> }> = {};
+            const uniqueMsgs = new Set<string>();
+
+            for (const r of rawUrls) {
+                if (r.mid) uniqueMsgs.add(r.mid);
+                if (r.targetHost) {
+                    domainCounts[r.targetHost] = (domainCounts[r.targetHost] || 0) + 1;
+                }
+                if (r.isOauth && r.provider) {
+                    if (!oauthMap[r.provider]) {
+                        oauthMap[r.provider] = { provider: r.provider, count: 0, links: new Set(), inboxes: new Set() };
+                    }
+                    oauthMap[r.provider].count++;
+                    if (r.destUrl) oauthMap[r.provider].links.add(r.destUrl);
+                    if (r.recipient) oauthMap[r.provider].inboxes.add(r.recipient);
+                }
+            }
+
+            totalEvaluatedMessages = uniqueMsgs.size;
+
+            topUnwrappedDomains = Object.entries(domainCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 15)
+                .map(([domain, count]) => ({
+                    domain,
+                    count,
+                    percentage: totalEvaluatedUrls > 0 ? Number(((count / totalEvaluatedUrls) * 100).toFixed(1)) : 0
+                }));
+
+            thirdPartyOAuthLinks = Object.values(oauthMap).map(o => ({
+                provider: o.provider,
+                count: o.count,
+                linksCount: o.links.size,
+                inboxesCount: o.inboxes.size,
+                sampleLinks: Array.from(o.links).slice(0, 3),
+                sharePct: totalEvaluatedUrls > 0 ? Number(((o.count / totalEvaluatedUrls) * 100).toFixed(1)) : 0
+            }));
+        } else if (becCache) {
             try {
                 cacheBecThreats = JSON.parse(becCache.becThreatsJson || "[]");
                 topUnwrappedDomains = JSON.parse(becCache.topDomainsJson || "[]");
@@ -61,15 +93,13 @@ export async function GET(req: Request) {
             } catch (e) {}
         }
 
-        // 2. Query ALL logged threat incidents from the BecIncident DB table based on cutoffDate or All Time
+        // 3. Query ALL logged threat incidents from BecIncident table for cutoffDate
         const dbIncidents = isAllTime ? 
             await (prisma as any).becIncident.findMany({
                 orderBy: { createdAt: "desc" }
             }).catch(() => []) :
             await (prisma as any).becIncident.findMany({
-                where: {
-                    createdAt: { gte: cutoffDate }
-                },
+                where: { createdAt: { gte: cutoffDate } },
                 orderBy: { createdAt: "desc" }
             }).catch(() => []);
 
