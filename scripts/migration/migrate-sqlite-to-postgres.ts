@@ -18,9 +18,6 @@ if (!fs.existsSync(sqliteClientPath) && fs.existsSync(sqliteSchemaPath)) {
     }
 }
 
-import { PrismaClient as PostgresClient } from "@prisma/client";
-import { PrismaClient as SqliteClient } from "@prisma/sqlite-client";
-
 const targetPostgresUrl = process.env.DATABASE_URL;
 
 if (!targetPostgresUrl || (!targetPostgresUrl.startsWith("postgres://") && !targetPostgresUrl.startsWith("postgresql://"))) {
@@ -30,9 +27,14 @@ if (!targetPostgresUrl || (!targetPostgresUrl.startsWith("postgres://") && !targ
 }
 
 const sqliteDbPath = path.resolve(__dirname, "../../prisma/dev.db");
-const postgresClient = new PostgresClient();
 
 async function migrateData() {
+    // Dynamic requires executed after client generation
+    const { PrismaClient: PostgresClient } = require("@prisma/client");
+    const { PrismaClient: SqliteClient } = require("@prisma/sqlite-client");
+
+    const postgresClient = new PostgresClient();
+
     const startTime = Date.now();
     console.log(`\n================ 🚀 Starting SQLite to PostgreSQL Migration ================`);
     console.log(`Source SQLite Database: ${sqliteDbPath}`);
