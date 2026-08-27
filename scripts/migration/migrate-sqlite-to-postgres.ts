@@ -74,7 +74,7 @@ async function migrateData() {
         // 1. Migrate Users
         try {
             const users = await getSqliteRows("User");
-            console.log(`[1/12] Migrating Users (${users.length})...`);
+            console.log(`[1/12] Migrating Users (${users.length.toLocaleString()})...`);
             for (const raw of users) {
                 const u = parseRow(raw);
                 try {
@@ -100,19 +100,19 @@ async function migrateData() {
             console.warn(`⚠️ Warning reading User table: ${e.message || e}`);
         }
 
-        // 2. Migrate Audit Logs
+        // 2. Migrate Audit Logs (Bulk 5,000 chunks)
         try {
             const auditLogs = await getSqliteRows("AuditLog");
-            console.log(`[2/12] Migrating Audit Logs (${auditLogs.length})...`);
-            for (const raw of auditLogs) {
-                const a = parseRow(raw);
+            console.log(`[2/12] Bulk Migrating Audit Logs (${auditLogs.length.toLocaleString()})...`);
+            const CHUNK = 5000;
+            for (let i = 0; i < auditLogs.length; i += CHUNK) {
+                const chunk = auditLogs.slice(i, i + CHUNK).map(parseRow);
                 try {
-                    await postgresClient.auditLog.upsert({
-                        where: { id: a.id },
-                        create: a,
-                        update: a
+                    await postgresClient.auditLog.createMany({
+                        data: chunk,
+                        skipDuplicates: true
                     });
-                } catch (e: any) {
+                } catch (e) {
                     // Ignore duplicates
                 }
             }
@@ -123,7 +123,7 @@ async function migrateData() {
         // 3. Migrate BEC Incidents
         try {
             const incidents = await getSqliteRows("BecIncident");
-            console.log(`[3/12] Migrating BEC Incidents (${incidents.length})...`);
+            console.log(`[3/12] Migrating BEC Incidents (${incidents.length.toLocaleString()})...`);
             for (const raw of incidents) {
                 const inc = parseRow(raw);
                 try {
@@ -143,16 +143,16 @@ async function migrateData() {
         // 4. Migrate BEC Raw URLs
         try {
             const rawUrls = await getSqliteRows("BecRawUrl");
-            console.log(`[4/12] Migrating BEC Raw URLs (${rawUrls.length})...`);
-            for (const raw of rawUrls) {
-                const r = parseRow(raw);
+            console.log(`[4/12] Bulk Migrating BEC Raw URLs (${rawUrls.length.toLocaleString()})...`);
+            const CHUNK = 5000;
+            for (let i = 0; i < rawUrls.length; i += CHUNK) {
+                const chunk = rawUrls.slice(i, i + CHUNK).map(parseRow);
                 try {
-                    await postgresClient.becRawUrl.upsert({
-                        where: { id: r.id },
-                        create: r,
-                        update: r
+                    await postgresClient.becRawUrl.createMany({
+                        data: chunk,
+                        skipDuplicates: true
                     });
-                } catch (e: any) {
+                } catch (e) {
                     // Ignore duplicates
                 }
             }
@@ -163,7 +163,7 @@ async function migrateData() {
         // 5. Migrate BEC Stats Cache
         try {
             const statsCache = await getSqliteRows("BecStatsCache");
-            console.log(`[5/12] Migrating BEC Stats Cache (${statsCache.length})...`);
+            console.log(`[5/12] Migrating BEC Stats Cache (${statsCache.length.toLocaleString()})...`);
             for (const raw of statsCache) {
                 const s = parseRow(raw);
                 try {
@@ -183,16 +183,16 @@ async function migrateData() {
         // 6. Migrate Firewall Query History
         try {
             const firewallHistory = await getSqliteRows("FirewallQueryHistory");
-            console.log(`[6/12] Migrating Firewall Query History (${firewallHistory.length})...`);
-            for (const raw of firewallHistory) {
-                const f = parseRow(raw);
+            console.log(`[6/12] Bulk Migrating Firewall Query History (${firewallHistory.length.toLocaleString()})...`);
+            const CHUNK = 5000;
+            for (let i = 0; i < firewallHistory.length; i += CHUNK) {
+                const chunk = firewallHistory.slice(i, i + CHUNK).map(parseRow);
                 try {
-                    await postgresClient.firewallQueryHistory.upsert({
-                        where: { id: f.id },
-                        create: f,
-                        update: f
+                    await postgresClient.firewallQueryHistory.createMany({
+                        data: chunk,
+                        skipDuplicates: true
                     });
-                } catch (e: any) {
+                } catch (e) {
                     // Ignore duplicates
                 }
             }
@@ -203,16 +203,16 @@ async function migrateData() {
         // 7. Migrate Guardian Events
         try {
             const guardianEvents = await getSqliteRows("GuardianEvent");
-            console.log(`[7/12] Migrating Guardian Events (${guardianEvents.length})...`);
-            for (const raw of guardianEvents) {
-                const ge = parseRow(raw);
+            console.log(`[7/12] Bulk Migrating Guardian Events (${guardianEvents.length.toLocaleString()})...`);
+            const CHUNK = 5000;
+            for (let i = 0; i < guardianEvents.length; i += CHUNK) {
+                const chunk = guardianEvents.slice(i, i + CHUNK).map(parseRow);
                 try {
-                    await postgresClient.guardianEvent.upsert({
-                        where: { id: ge.id },
-                        create: ge,
-                        update: ge
+                    await postgresClient.guardianEvent.createMany({
+                        data: chunk,
+                        skipDuplicates: true
                     });
-                } catch (e: any) {
+                } catch (e) {
                     // Ignore duplicates
                 }
             }
@@ -223,7 +223,7 @@ async function migrateData() {
         // 8. Migrate Guardian Blacklist
         try {
             const blacklist = await getSqliteRows("GuardianBlacklist");
-            console.log(`[8/12] Migrating Guardian Blacklist (${blacklist.length})...`);
+            console.log(`[8/12] Migrating Guardian Blacklist (${blacklist.length.toLocaleString()})...`);
             for (const raw of blacklist) {
                 const b = parseRow(raw);
                 try {
@@ -240,18 +240,23 @@ async function migrateData() {
             console.warn(`⚠️ Warning reading GuardianBlacklist table: ${e.message || e}`);
         }
 
-        // 9. Migrate VPN Events
+        // 9. Migrate VPN Events (Bulk 5,000 chunks for 1M+ rows)
         try {
             const vpnEvents = await getSqliteRows("VpnEvent");
-            console.log(`[9/12] Migrating VPN Events (${vpnEvents.length})...`);
-            for (const raw of vpnEvents) {
-                const v = parseRow(raw);
+            console.log(`[9/12] 🚀 Bulk Migrating VPN Events (${vpnEvents.length.toLocaleString()})...`);
+            const CHUNK = 5000;
+            let processed = 0;
+            for (let i = 0; i < vpnEvents.length; i += CHUNK) {
+                const chunk = vpnEvents.slice(i, i + CHUNK).map(parseRow);
                 try {
-                    await postgresClient.vpnEvent.upsert({
-                        where: { id: v.id },
-                        create: v,
-                        update: v
+                    await postgresClient.vpnEvent.createMany({
+                        data: chunk,
+                        skipDuplicates: true
                     });
+                    processed += chunk.length;
+                    if (processed % 100000 === 0 || processed === vpnEvents.length) {
+                        console.log(`   ↳ Migrated ${processed.toLocaleString()} / ${vpnEvents.length.toLocaleString()} VPN records...`);
+                    }
                 } catch (e: any) {
                     // Ignore duplicates
                 }
@@ -263,7 +268,7 @@ async function migrateData() {
         // 10. Migrate Site Map Versions
         try {
             const siteVersions = await getSqliteRows("SiteMapVersion");
-            console.log(`[10/12] Migrating Site Map Versions (${siteVersions.length})...`);
+            console.log(`[10/12] Migrating Site Map Versions (${siteVersions.length.toLocaleString()})...`);
             for (const raw of siteVersions) {
                 const sv = parseRow(raw);
                 try {
@@ -283,7 +288,7 @@ async function migrateData() {
         // 11. Migrate Background Jobs
         try {
             const jobs = await getSqliteRows("BackgroundJob");
-            console.log(`[11/12] Migrating Background Jobs (${jobs.length})...`);
+            console.log(`[11/12] Migrating Background Jobs (${jobs.length.toLocaleString()})...`);
             for (const raw of jobs) {
                 const j = parseRow(raw);
                 try {
@@ -303,7 +308,7 @@ async function migrateData() {
         // 12. Migrate User Feedback
         try {
             const feedback = await getSqliteRows("Feedback");
-            console.log(`[12/12] Migrating User Feedback (${feedback.length})...`);
+            console.log(`[12/12] Migrating User Feedback (${feedback.length.toLocaleString()})...`);
             for (const raw of feedback) {
                 const fb = parseRow(raw);
                 try {
