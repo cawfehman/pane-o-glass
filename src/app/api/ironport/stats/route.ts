@@ -35,7 +35,7 @@ export async function GET(req: Request) {
         });
 
         // If we have DB records and user requested standard inbound/outbound query, validate DB cache
-        if (dbStats && dbStats.length >= 3 && (volumeQuery.includes("inbound") || volumeQuery.includes("outbound"))) {
+        if (dbStats && dbStats.length >= 1 && (volumeQuery.includes("inbound") || volumeQuery.includes("outbound"))) {
             const isOutbound = volumeQuery.includes("outbound");
             
             let totalVolume = 0;
@@ -219,8 +219,19 @@ export async function GET(req: Request) {
         }
 
         // Live Graylog Fallback
-        const stats = await client.getDashboardStats(rangeSeconds, volumeQuery);
-        return NextResponse.json(stats, {
+        const [stats, becRes] = await Promise.all([
+            client.getDashboardStats(rangeSeconds, volumeQuery),
+            client.getM365BecThreatAggregations(rangeSeconds, 20)
+        ]);
+        const responsePayload = {
+            ...stats,
+            becThreats: becRes.becThreats || [],
+            topUnwrappedDomains: becRes.topUnwrappedDomains || [],
+            thirdPartyOAuthLinks: becRes.thirdPartyOAuthLinks || [],
+            totalEvaluatedUrls: becRes.totalEvaluatedUrls || 0,
+            totalEvaluatedMessages: becRes.totalEvaluatedMessages || 0
+        };
+        return NextResponse.json(responsePayload, {
             headers: {
                 "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate"
             }

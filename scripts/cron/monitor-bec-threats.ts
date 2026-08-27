@@ -177,30 +177,32 @@ async function runBecMonitorCron() {
             }
         }
 
-        // Pre-compute and hydrate local SQLite DB Cache (BecStatsCache) for 1-hour default load window
-        try {
-            const becRes = await client.getM365BecThreatAggregations(3600, 20);
-            await (prisma as any).becStatsCache.upsert({
-                where: { rangeSeconds: 3600 },
-                create: {
-                    rangeSeconds: 3600,
-                    totalEvaluatedMessages: becRes.totalEvaluatedMessages,
-                    totalEvaluatedUrls: becRes.totalEvaluatedUrls,
-                    becThreatsJson: JSON.stringify(becRes.becThreats || []),
-                    topDomainsJson: JSON.stringify(becRes.topUnwrappedDomains || []),
-                    oauthLinksJson: JSON.stringify(becRes.thirdPartyOAuthLinks || [])
-                },
-                update: {
-                    totalEvaluatedMessages: becRes.totalEvaluatedMessages,
-                    totalEvaluatedUrls: becRes.totalEvaluatedUrls,
-                    becThreatsJson: JSON.stringify(becRes.becThreats || []),
-                    topDomainsJson: JSON.stringify(becRes.topUnwrappedDomains || []),
-                    oauthLinksJson: JSON.stringify(becRes.thirdPartyOAuthLinks || [])
-                }
-            });
-            console.log(`[BEC Monitor] Pre-computed & hydrated local DB cache (BecStatsCache) for 1-hour window.`);
-        } catch (cacheErr: any) {
-            console.error(`[BEC Monitor] DB Cache hydration error:`, cacheErr.message || cacheErr);
+        // Pre-compute and hydrate local SQLite DB Cache (BecStatsCache) for 1h and 24h windows
+        for (const rSec of [3600, 86400]) {
+            try {
+                const becRes = await client.getM365BecThreatAggregations(rSec, 20);
+                await (prisma as any).becStatsCache.upsert({
+                    where: { rangeSeconds: rSec },
+                    create: {
+                        rangeSeconds: rSec,
+                        totalEvaluatedMessages: becRes.totalEvaluatedMessages,
+                        totalEvaluatedUrls: becRes.totalEvaluatedUrls,
+                        becThreatsJson: JSON.stringify(becRes.becThreats || []),
+                        topDomainsJson: JSON.stringify(becRes.topUnwrappedDomains || []),
+                        oauthLinksJson: JSON.stringify(becRes.thirdPartyOAuthLinks || [])
+                    },
+                    update: {
+                        totalEvaluatedMessages: becRes.totalEvaluatedMessages,
+                        totalEvaluatedUrls: becRes.totalEvaluatedUrls,
+                        becThreatsJson: JSON.stringify(becRes.becThreats || []),
+                        topDomainsJson: JSON.stringify(becRes.topUnwrappedDomains || []),
+                        oauthLinksJson: JSON.stringify(becRes.thirdPartyOAuthLinks || [])
+                    }
+                });
+                console.log(`[BEC Monitor] Pre-computed & hydrated local DB cache (BecStatsCache) for ${rSec}s window.`);
+            } catch (cacheErr: any) {
+                console.error(`[BEC Monitor] DB Cache hydration error for ${rSec}s:`, cacheErr.message || cacheErr);
+            }
         }
 
         const durationMs = Date.now() - startTime;
