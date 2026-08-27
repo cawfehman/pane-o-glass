@@ -94,12 +94,15 @@ export async function GET(req: Request) {
 
                     if (becCache && (Date.now() - new Date(becCache.updatedAt).getTime()) < 180000) {
                         try {
+                            const parsedThreats = JSON.parse(becCache.becThreatsJson);
+                            const parsedDomains = JSON.parse(becCache.topDomainsJson);
+                            const parsedOAuth = JSON.parse(becCache.oauthLinksJson);
                             cachedBecRes = {
-                                becThreats: JSON.parse(becCache.becThreatsJson),
-                                topUnwrappedDomains: JSON.parse(becCache.topDomainsJson),
-                                thirdPartyOAuthLinks: JSON.parse(becCache.oauthLinksJson),
-                                totalEvaluatedUrls: becCache.totalEvaluatedUrls,
-                                totalEvaluatedMessages: becCache.totalEvaluatedMessages
+                                becThreats: Array.isArray(parsedThreats) ? parsedThreats : [],
+                                topUnwrappedDomains: Array.isArray(parsedDomains) ? parsedDomains : [],
+                                thirdPartyOAuthLinks: Array.isArray(parsedOAuth) ? parsedOAuth : [],
+                                totalEvaluatedUrls: becCache.totalEvaluatedUrls || 0,
+                                totalEvaluatedMessages: becCache.totalEvaluatedMessages || 0
                             };
                         } catch (parseErr) {}
                     }
@@ -124,11 +127,11 @@ export async function GET(req: Request) {
                     ampIocsList = ampList;
                     spoofingAlertsList = spfList;
                     targetRecipientsList = rcptList;
-                    becThreatsList = becRes.becThreats;
-                    topUnwrappedDomainsList = becRes.topUnwrappedDomains;
-                    thirdPartyOAuthList = becRes.thirdPartyOAuthLinks;
-                    totalEvaluatedUrlsCount = becRes.totalEvaluatedUrls;
-                    totalEvaluatedMessagesCount = becRes.totalEvaluatedMessages;
+                    becThreatsList = Array.isArray(becRes?.becThreats) ? becRes.becThreats : [];
+                    topUnwrappedDomainsList = Array.isArray(becRes?.topUnwrappedDomains) ? becRes.topUnwrappedDomains : [];
+                    thirdPartyOAuthList = Array.isArray(becRes?.thirdPartyOAuthLinks) ? becRes.thirdPartyOAuthLinks : [];
+                    totalEvaluatedUrlsCount = becRes?.totalEvaluatedUrls || 0;
+                    totalEvaluatedMessagesCount = becRes?.totalEvaluatedMessages || 0;
 
                     // Async hydrate BecStatsCache in SQLite if this request ran a live Graylog search
                     if (!cachedBecRes && becRes) {

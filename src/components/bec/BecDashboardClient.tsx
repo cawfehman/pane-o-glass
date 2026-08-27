@@ -70,14 +70,20 @@ export default function BecDashboardClient() {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             
-            if (data.becThreats) {
+            if (data.becThreats && Array.isArray(data.becThreats)) {
                 setMasterBecData(data.becThreats);
+            } else {
+                setMasterBecData([]);
             }
-            if (data.topUnwrappedDomains) {
+            if (data.topUnwrappedDomains && Array.isArray(data.topUnwrappedDomains)) {
                 setMasterTopDomains(data.topUnwrappedDomains);
+            } else {
+                setMasterTopDomains([]);
             }
-            if (data.thirdPartyOAuthLinks) {
+            if (data.thirdPartyOAuthLinks && Array.isArray(data.thirdPartyOAuthLinks)) {
                 setMasterOauthLinks(data.thirdPartyOAuthLinks);
+            } else {
+                setMasterOauthLinks([]);
             }
             if (data.totalEvaluatedUrls !== undefined) {
                 setMasterTotalUrls(data.totalEvaluatedUrls);
@@ -111,8 +117,8 @@ export default function BecDashboardClient() {
     }, [autoRefreshInterval, timeframe, fetchMasterBecData]);
 
     // Active Dataset derived directly from API range query (no double filtering required)
-    const activeBecData = useMemo(() => masterBecData || [], [masterBecData]);
-    const activeOauthLinks = useMemo(() => masterOauthLinks || [], [masterOauthLinks]);
+    const activeBecData = useMemo(() => Array.isArray(masterBecData) ? masterBecData : [], [masterBecData]);
+    const activeOauthLinks = useMemo(() => Array.isArray(masterOauthLinks) ? masterOauthLinks : [], [masterOauthLinks]);
 
     const handleSaveEndpoints = (updated: M365AuthEndpoint[]) => {
         setAuthEndpoints(updated);
@@ -137,25 +143,38 @@ export default function BecDashboardClient() {
         handleSaveEndpoints(OFFICIAL_M365_AUTH_ENDPOINTS);
     };
 
-    // Filter BEC threats based on search query
-    const filteredBecData = activeBecData.filter(item => {
-        if (!searchQuery) return true;
-        const q = searchQuery.toLowerCase();
-        return (
-            item.mid.toLowerCase().includes(q) ||
-            (item.subject && item.subject.toLowerCase().includes(q)) ||
-            (item.sender && item.sender.toLowerCase().includes(q)) ||
-            (item.recipient && item.recipient.toLowerCase().includes(q)) ||
-            item.targetHost.toLowerCase().includes(q) ||
-            item.destUrl.toLowerCase().includes(q) ||
-            item.threatCategory.toLowerCase().includes(q)
-        );
-    });
+    // Filter BEC threats based on search query safely
+    const filteredBecData = useMemo(() => {
+        if (!Array.isArray(activeBecData)) return [];
+        return activeBecData.filter(item => {
+            if (!searchQuery) return true;
+            const q = searchQuery.toLowerCase();
+            return (
+                (item.mid && item.mid.toLowerCase().includes(q)) ||
+                (item.subject && item.subject.toLowerCase().includes(q)) ||
+                (item.sender && item.sender.toLowerCase().includes(q)) ||
+                (item.recipient && item.recipient.toLowerCase().includes(q)) ||
+                (item.targetHost && item.targetHost.toLowerCase().includes(q)) ||
+                (item.destUrl && item.destUrl.toLowerCase().includes(q)) ||
+                (item.threatCategory && item.threatCategory.toLowerCase().includes(q))
+            );
+        });
+    }, [activeBecData, searchQuery]);
 
-    const fakePortalCount = activeBecData.filter(d => d.threatTier === "CRITICAL").length;
-    const tokenTheftCount = activeBecData.filter(d => d.threatTier === "HIGH").length;
+    const fakePortalCount = useMemo(() => {
+        if (!Array.isArray(activeBecData)) return 0;
+        return activeBecData.filter(d => d.threatTier === "CRITICAL").length;
+    }, [activeBecData]);
 
-    const maxDomainCount = masterTopDomains.length > 0 ? Math.max(...masterTopDomains.map(d => d.count)) : 1;
+    const tokenTheftCount = useMemo(() => {
+        if (!Array.isArray(activeBecData)) return 0;
+        return activeBecData.filter(d => d.threatTier === "HIGH").length;
+    }, [activeBecData]);
+
+    const maxDomainCount = useMemo(() => {
+        if (!Array.isArray(masterTopDomains) || masterTopDomains.length === 0) return 1;
+        return Math.max(...masterTopDomains.map(d => d.count));
+    }, [masterTopDomains]);
 
     // Modal Unique Targeted Recipients List
     const modalUniqueRecipients = useMemo(() => {
