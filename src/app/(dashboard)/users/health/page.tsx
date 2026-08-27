@@ -642,7 +642,7 @@ export default function SystemHealthPage() {
                                                 <Area 
                                                     type="monotone" 
                                                     dataKey="walWriteMs" 
-                                                    name="WAL Write / Commit (ms)" 
+                                                    name={sqlite?.storage?.journalMode?.includes("postgresql") ? "Transaction Commit (ms)" : "WAL Write / Commit (ms)"} 
                                                     stroke="#f59e0b" 
                                                     fillOpacity={1} 
                                                     fill="url(#writeGrad)" 
