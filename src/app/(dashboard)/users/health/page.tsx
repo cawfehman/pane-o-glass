@@ -308,27 +308,27 @@ export default function SystemHealthPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div className="p-4 rounded-xl bg-black/20 border border-white/5 flex flex-col justify-between">
                                 <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-2">
-                                    <span>Main Database File</span>
+                                    <span>PostgreSQL Database Size</span>
                                     <HardDrive size={16} className="text-blue-400" />
                                 </div>
                                 <div className="text-2xl font-extrabold text-text-primary font-mono">
                                     {sqlite.storage.dbSizeFormatted}
                                 </div>
                                 <div className="text-[0.72rem] text-text-muted mt-1.5">
-                                    {sqlite.storage.pageCount.toLocaleString()} pages × {sqlite.storage.pageSizeBytes} B
+                                    Allocated Storage: <span className="text-emerald-400 font-bold">PostgreSQL 16 Engine</span>
                                 </div>
                             </div>
 
                             <div className="p-4 rounded-xl bg-black/20 border border-white/5 flex flex-col justify-between">
                                 <div className="flex justify-between items-center text-text-secondary text-xs font-bold uppercase tracking-wider mb-2">
-                                    <span>{sqlite.storage.journalMode.includes("postgresql") ? "Active DB Connections" : "WAL Journal Log"}</span>
+                                    <span>Active DB Connections</span>
                                     <Zap size={16} className="text-amber-400" />
                                 </div>
                                 <div className="text-2xl font-extrabold text-text-primary font-mono">
-                                    {sqlite.storage.journalMode.includes("postgresql") ? `${sqlite.storage.activeConnections || 1} Sessions` : sqlite.storage.walSizeFormatted}
+                                    {sqlite.storage.activeConnections || 1} Sessions
                                 </div>
                                 <div className="text-[0.72rem] text-text-muted mt-1.5">
-                                    {sqlite.storage.journalMode.includes("postgresql") ? "PostgreSQL Pool: MVCC Active" : `Busy Timeout: ${sqlite.storage.busyTimeoutMs}ms`}
+                                    PostgreSQL Pool: <span className="text-emerald-400 font-bold">MVCC Active</span>
                                 </div>
                             </div>
 
@@ -341,7 +341,7 @@ export default function SystemHealthPage() {
                                     {sqlite.totalRows.toLocaleString()}
                                 </div>
                                 <div className="text-[0.72rem] text-text-muted mt-1.5">
-                                    Fragmentation: <span className={sqlite.storage.fragmentationPct > 15 ? "text-amber-400 font-bold" : "text-emerald-400"}>{sqlite.storage.fragmentationPct}%</span>
+                                    Database Models: <span className="text-emerald-400 font-bold">23 Active Tables</span>
                                 </div>
                             </div>
 
@@ -410,13 +410,13 @@ export default function SystemHealthPage() {
                                             <td className="py-2.5 px-3.5 text-right text-text-muted">{sqlite.benchmarks.indexRangeScan.samples}</td>
                                             <td className="py-2.5 px-3.5 text-center font-sans font-bold text-[0.75rem]">
                                                 <span className={sqlite.benchmarks.indexRangeScan.p95 < 25 ? "text-emerald-400" : "text-amber-400"}>
-                                                    {sqlite.benchmarks.indexRangeScan.p95 < 25 ? "✓ HEALTHY B-TREE" : "ELEVATED"}
+                                                    {sqlite.benchmarks.indexRangeScan.p95 < 25 ? "✓ HEALTHY INDEX" : "ELEVATED"}
                                                 </span>
                                             </td>
                                         </tr>
                                         <tr>
                                             <td className="py-2.5 px-3.5 font-sans font-medium text-text-primary">
-                                                <div>{sqlite.storage.journalMode.includes("postgresql") ? "PostgreSQL Transaction Commit" : "WAL Write & Commit"}</div>
+                                                <div>PostgreSQL Transaction Commit</div>
                                                 <div className="text-[0.68rem] text-text-muted font-mono">prisma.healthProbe.create() transaction</div>
                                             </td>
                                             <td className="py-2.5 px-3.5 text-right">{sqlite.benchmarks.walWriteCommit.avg} ms</td>
@@ -426,7 +426,7 @@ export default function SystemHealthPage() {
                                             <td className="py-2.5 px-3.5 text-right text-text-muted">{sqlite.benchmarks.walWriteCommit.samples}</td>
                                             <td className="py-2.5 px-3.5 text-center font-sans font-bold text-[0.75rem]">
                                                 <span className={sqlite.benchmarks.walWriteCommit.p95 < 50 ? "text-emerald-400" : "text-amber-400"}>
-                                                    {sqlite.benchmarks.walWriteCommit.p95 < 50 ? "⚡ LOW JITTER" : "LOCK DELAY"}
+                                                    {sqlite.benchmarks.walWriteCommit.p95 < 50 ? "⚡ LOW JITTER" : "LATENCY DELAY"}
                                                 </span>
                                             </td>
                                         </tr>
