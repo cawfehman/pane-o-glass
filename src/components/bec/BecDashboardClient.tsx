@@ -110,32 +110,9 @@ export default function BecDashboardClient() {
         return () => clearInterval(timer);
     }, [autoRefreshInterval, timeframe, fetchMasterBecData]);
 
-    // Fast In-Memory Cutoff Filter across Client Master Dataset (0ms re-query delay!)
-    const cutoffTime = useMemo(() => Date.now() - timeframe * 1000, [timeframe]);
-
-    const activeBecData = useMemo(() => {
-        if (timeframe >= 86400) return masterBecData;
-        return masterBecData.filter(d => d.timestamp && new Date(d.timestamp).getTime() >= cutoffTime);
-    }, [masterBecData, timeframe, cutoffTime]);
-
-    const activeOauthLinks = useMemo(() => {
-        if (timeframe >= 86400) return masterOauthLinks;
-        return masterOauthLinks.map(p => {
-            const filteredItems = p.items ? p.items.filter(i => i.timestamp && new Date(i.timestamp).getTime() >= cutoffTime) : [];
-            if (filteredItems.length === 0) return null;
-
-            const recipients = new Set(filteredItems.map(i => i.recipient).filter(Boolean));
-            const hosts = new Set(filteredItems.map(i => i.host).filter(Boolean));
-
-            return {
-                ...p,
-                count: filteredItems.length,
-                uniqueRecipientsCount: recipients.size,
-                topHosts: Array.from(hosts).slice(0, 5),
-                items: filteredItems
-            };
-        }).filter(Boolean) as GraylogThirdPartyOAuthAggregation[];
-    }, [masterOauthLinks, timeframe, cutoffTime]);
+    // Active Dataset derived directly from API range query (no double filtering required)
+    const activeBecData = useMemo(() => masterBecData || [], [masterBecData]);
+    const activeOauthLinks = useMemo(() => masterOauthLinks || [], [masterOauthLinks]);
 
     const handleSaveEndpoints = (updated: M365AuthEndpoint[]) => {
         setAuthEndpoints(updated);
@@ -182,7 +159,7 @@ export default function BecDashboardClient() {
 
     // Modal Unique Targeted Recipients List
     const modalUniqueRecipients = useMemo(() => {
-        if (!selectedProvider) return [];
+        if (!selectedProvider || !selectedProvider.items) return [];
         const rcptMap: Record<string, number> = {};
         selectedProvider.items.forEach(it => {
             const email = it.recipient && it.recipient.includes("@") && !it.recipient.startsWith("Not") && !it.recipient.startsWith("unknown") ? it.recipient : "Unknown Inbox";
@@ -195,7 +172,7 @@ export default function BecDashboardClient() {
 
     // Modal Filtered Items by Recipient & Search Text
     const filteredModalItems = useMemo(() => {
-        if (!selectedProvider) return [];
+        if (!selectedProvider || !selectedProvider.items) return [];
         let list = selectedProvider.items;
         if (selectedModalRecipient) {
             list = list.filter(it => it.recipient === selectedModalRecipient);
