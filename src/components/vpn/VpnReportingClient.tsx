@@ -332,7 +332,7 @@ export default function VpnReportingClient() {
                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
                         <input
                             type="text"
-                            placeholder="Search (e.g. (rivera-robert OR doe-john) AND 10.20.30.40 or rivera-robert, 10.20.30.40)..."
+                            placeholder="Search (e.g. (smith-jane OR doe-john) AND 10.20.30.40 or smith-jane, 10.20.30.40)..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             onKeyDown={(e) => e.key === "Enter" && fetchReportData()}

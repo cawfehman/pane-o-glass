@@ -7,7 +7,7 @@ import { sendNotificationMail } from "../../src/lib/smtp";
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 const prisma = new PrismaClient();
-const DEFAULT_ALERT_RECIPIENT = "rivera-robert@cooperhealth.edu";
+const DEFAULT_ALERT_RECIPIENT = process.env.BEC_ALERT_RECIPIENT || "infosec@cooperhealth.edu";
 
 async function runBecMonitorCron() {
     const startTime = Date.now();

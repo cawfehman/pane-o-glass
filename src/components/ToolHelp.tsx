@@ -192,7 +192,7 @@ export const helpData: Record<string, TooltipDetails> = {
             },
             {
                 title: "SIEM-Grade Boolean & Multi-Term Search",
-                detail: "Supports complex boolean search logic with parentheses, AND/OR/NOT operators, and prefix exclusion—e.g. '(rivera-robert OR doe-john) AND NOT 10.20.30.40' or 'comcast -10.20.30.40'—or simple comma/space delimited lists.",
+                detail: "Supports complex boolean search logic with parentheses, AND/OR/NOT operators, and prefix exclusion—e.g. '(smith-jane OR doe-john) AND NOT 10.20.30.40' or 'comcast -10.20.30.40'—or simple comma/space delimited lists.",
                 tag: "Boolean AST Search"
             },
             {

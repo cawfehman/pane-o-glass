@@ -1,7 +1,7 @@
 /**
  * Boolean Search Query Parser for Prisma / PostgreSQL Queries
  * Parses complex search expressions with (), AND, OR operators.
- * Example: "(rivera-robert OR doe-john) AND 10.20.30.40"
+ * Example: "(smith-jane OR doe-john) AND 10.20.30.40"
  */
 
 export interface FieldMatchGenerator {

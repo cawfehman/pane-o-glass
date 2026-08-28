@@ -273,7 +273,7 @@ export default function BecDashboardClient() {
                             </span>
                         </div>
                         <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5">
-                            Continuous server-side background ingestion | Instant Alert Target: <strong className="text-blue-400 font-mono font-semibold">rivera-robert@cooperhealth.edu</strong>
+                            Continuous server-side background ingestion | Instant Alert Target: <strong className="text-blue-400 font-mono font-semibold">Designated Security Admins</strong>
                         </p>
                     </div>
                 </div>
