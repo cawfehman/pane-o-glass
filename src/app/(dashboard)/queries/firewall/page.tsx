@@ -1065,7 +1065,6 @@ export default function CiscoFirewallPage() {
                     </div>
                 </div>
             )}
-            </div>
 
             {/* Reusable Confirm Dialog */}
             <ConfirmDialog
@@ -1076,6 +1075,6 @@ export default function CiscoFirewallPage() {
                 onConfirm={confirmModal.onConfirm}
                 onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
             />
-    </div>
+        </div>
     );
 }
