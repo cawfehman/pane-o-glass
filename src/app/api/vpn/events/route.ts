@@ -8,6 +8,7 @@ import https from "https";
 import { auth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { verifyRotatingPassword } from "@/lib/rotatingPassword";
+import { parseBooleanSearchQuery } from "@/lib/booleanQueryParser";
 
 // Helper to parse duration string (e.g. 0h:05m:30s or 1d 0h:05m:30s) to seconds
 function parseDuration(durationStr: string): number | null {
@@ -673,13 +674,10 @@ export async function GET(req: NextRequest) {
 
             const searchConditions: any[] = [];
             if (term) {
-                searchConditions.push({
-                    OR: [
-                        { username: { contains: term } },
-                        { sourceIp: { contains: term } },
-                        { assignedIp: { contains: term } }
-                    ]
-                });
+                const parsedWhere = parseBooleanSearchQuery(term);
+                if (parsedWhere) {
+                    searchConditions.push(parsedWhere);
+                }
             }
             if (dateFilter) {
                 searchConditions.push(dateFilter);
