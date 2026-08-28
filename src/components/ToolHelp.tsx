@@ -181,28 +181,33 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     'vpn-reporting': {
         title: "VPN Event Reporting & Audit Suite",
-        version: "1.0.0",
+        version: "2.0.0",
         category: "Historical Telemetry & Compliance Audit",
-        description: "Historical Remote Access VPN audit engine supporting deep multi-condition queries by username, IP address, event status, and custom date ranges with 1-click CSV export.",
+        description: "Enterprise Remote Access VPN audit engine supporting point-in-time Active Directory identity snapshots, SIEM-grade boolean search queries, unique valid corporate user analytics, and 1-click CSV export.",
         capabilities: [
             {
-                title: "Targeted User & IP Audit Search",
-                detail: "Query historic VPN events by exact or partial username, assigned IP, or public source IP across the entire telemetry dataset.",
-                tag: "Multi-Field Query"
+                title: "Point-in-Time AD Identity Snapshots",
+                detail: "Captures and persists Active Directory Account Status (Active/Disabled/Not Found), Full Display Name, Department, Job Title, and verification date at the exact moment each VPN event is ingested.",
+                tag: "AD Identity Snapshot"
+            },
+            {
+                title: "SIEM-Grade Boolean & Multi-Term Search",
+                detail: "Supports complex boolean search logic with parentheses and AND/OR operators—e.g. '(rivera-robert OR doe-john) AND 10.20.30.40'—or simple comma/space delimited lists.",
+                tag: "Boolean AST Search"
+            },
+            {
+                title: "Unique Valid Corporate User Analytics",
+                detail: "Evaluates official corporate username naming conventions (name-name / name-name-name / @cooperhealth.edu) and categorizes Active vs. Disabled AD accounts across the query timeframe.",
+                tag: "User Validation"
             },
             {
                 title: "Flexible Timeframe & Custom Date Ranges",
-                detail: "Filter by 1 Hour, 24 Hours, 7 Days, 30 Days, All Time, or select custom start and end date boundaries for precise audit investigations.",
+                detail: "Filter by 1 Hour, 24 Hours, 7 Days, 30 Days, All Time, or select custom start and end date boundaries for precise compliance and incident timelines.",
                 tag: "Date Filtering"
             },
             {
-                title: "Status & Event Type Isolation",
-                detail: "Isolate successful connections (SUCCESS), authentication failures (FAILURE), or clean session tear-downs (DISCONNECT).",
-                tag: "Status Filter"
-            },
-            {
                 title: "1-Click Un-Truncated CSV Export",
-                detail: "Export complete query results with full log payloads, byte totals, session durations, failure reasons, and ISP/geo details into CSV format.",
+                detail: "Export complete query results with full log payloads, byte totals, session durations, failure reasons, AD snapshot identity data, and ISP/geo details into CSV format.",
                 tag: "CSV Export"
             },
             {
@@ -212,13 +217,15 @@ export const helpData: Record<string, TooltipDetails> = {
             }
         ],
         colors: [
-            { name: "Green (SUCCESS)", meaning: "Successful VPN authentication and tunnel establishment.", rgb: "#22c55e" },
-            { name: "Red (FAILURE)", meaning: "Rejected VPN authentication attempt with failure reason.", rgb: "#ef4444" },
+            { name: "Emerald Green (Active AD)", meaning: "Active corporate account in Active Directory at ingest time.", rgb: "#34d399" },
+            { name: "Strikethrough Rose (Disabled AD)", meaning: "Disabled or terminated account in Active Directory at ingest time.", rgb: "#fb7185" },
+            { name: "Amber (Not In AD)", meaning: "Username not found in corporate Active Directory at ingest time.", rgb: "#fbbf24" },
             { name: "Blue (DISCONNECT)", meaning: "Session termination event with total duration and data usage.", rgb: "#3b82f6" }
         ],
         shortcuts: [
-            "Click [Export CSV] to download the full dataset for audit reports.",
-            "Use Custom Date Range for compliance and security incident timelines."
+            "Use boolean logic in search bar: e.g. (user1 OR user2) AND 10.20.30.40",
+            "Hover over any username status pill to inspect employee title, department, and ingest verification timestamp.",
+            "Click [Export CSV] to download un-truncated datasets for compliance and incident reports."
         ]
     },
     'ise-tacacs': {
