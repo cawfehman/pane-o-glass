@@ -19,9 +19,9 @@ async function runBecMonitorCron() {
 
     try {
         const client = new OgGraylogClient();
-        // Allow CLI parameter --backfill or env variable BEC_LOOKBACK_SECONDS (defaults to 600s / 10m rolling window)
+        // Allow CLI parameter --backfill or env variable BEC_LOOKBACK_SECONDS (defaults to 75s rolling window)
         const isBackfill = process.argv.includes('--backfill');
-        const windowSeconds = isBackfill ? 86400 : (process.env.BEC_LOOKBACK_SECONDS ? parseInt(process.env.BEC_LOOKBACK_SECONDS, 10) : 600);
+        const windowSeconds = isBackfill ? 86400 : (process.env.BEC_LOOKBACK_SECONDS ? parseInt(process.env.BEC_LOOKBACK_SECONDS, 10) : 75);
         const query = `message:"microsoft" OR message:"office365" OR message:"sharepoint" OR message:"login.microsoftonline" OR message:"outlook.com" OR message:"devicelogin" OR message:"forms.office"`;
         
         console.log(`[BEC Monitor] Ingesting Graylog syslog traffic (Window: ${windowSeconds}s, Backfill: ${isBackfill})...`);
