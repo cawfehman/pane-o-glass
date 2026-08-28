@@ -2,12 +2,12 @@ import { syncFromGraylog } from "@/app/api/vpn/events/route";
 import { prisma } from "@/lib/prisma";
 
 async function main() {
-    console.log("Triggering 24h sync to populate SQLite database...");
+    console.log("Triggering 24h sync to populate PostgreSQL database...");
     const res = await syncFromGraylog(86400); // sync last 24 hours of logs
     console.log("Sync response:", res);
 
     const totalEvents = await prisma.vpnEvent.count();
-    console.log("Total VPN events in SQLite database:", totalEvents);
+    console.log("Total VPN events in PostgreSQL database:", totalEvents);
 
     // Let's count active sessions
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);

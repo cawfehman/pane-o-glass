@@ -129,12 +129,12 @@ async function run() {
                 name: "Telemetry Collector",
                 lastRun: new Date(),
                 status: classification.healthStatus === "CRITICAL" ? "FAILURE" : "SUCCESS",
-                message: `[${classification.healthStatus}] Read: ${pointReadMs}ms | Scan: ${rangeScanMs}ms | Write: ${walWriteMs}ms | DB: ${(dbSizeBytes/(1024*1024)).toFixed(1)}MB | WAL: ${(walSizeBytes/(1024*1024)).toFixed(1)}MB`
+                message: `[${classification.healthStatus}] Read: ${pointReadMs}ms | Scan: ${rangeScanMs}ms | Write: ${walWriteMs}ms | Total Rows: ${totalRows}`
             },
             update: {
                 lastRun: new Date(),
                 status: classification.healthStatus === "CRITICAL" ? "FAILURE" : "SUCCESS",
-                message: `[${classification.healthStatus}] Read: ${pointReadMs}ms | Scan: ${rangeScanMs}ms | Write: ${walWriteMs}ms | DB: ${(dbSizeBytes/(1024*1024)).toFixed(1)}MB | WAL: ${(walSizeBytes/(1024*1024)).toFixed(1)}MB`
+                message: `[${classification.healthStatus}] Read: ${pointReadMs}ms | Scan: ${rangeScanMs}ms | Write: ${walWriteMs}ms | Total Rows: ${totalRows}`
             }
         });
 

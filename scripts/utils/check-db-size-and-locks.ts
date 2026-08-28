@@ -5,15 +5,12 @@ import path from "path";
 const prisma = new PrismaClient();
 
 async function checkDbMetrics() {
-    console.log("=== PANE-O-GLASS DATABASE HEALTH & SIZE METRICS ===");
-    const dbPath = path.resolve(__dirname, "../../prisma/dev.db");
-    
-    if (fs.existsSync(dbPath)) {
-        const stats = fs.statSync(dbPath);
-        const sizeMb = (stats.size / (1024 * 1024)).toFixed(2);
-        console.log(`SQLite DB File Size: ${sizeMb} MB (${stats.size.toLocaleString()} bytes)`);
-    } else {
-        console.log("DB File Path:", dbPath);
+    console.log("=== PANE-O-GLASS POSTGRESQL DATABASE HEALTH & SIZE METRICS ===");
+    try {
+        const pgSize: any[] = await prisma.$queryRaw`SELECT pg_size_pretty(pg_database_size(current_database())) as size;`;
+        console.log(`PostgreSQL Database Size: ${pgSize[0]?.size || 'unknown'}`);
+    } catch (e: any) {
+        console.log("Could not query PostgreSQL size directly:", e.message);
     }
 
     try {
