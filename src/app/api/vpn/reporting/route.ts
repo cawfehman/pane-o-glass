@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { prisma } from "@/lib/prisma";
 import { getBulkUserAdStatus } from "@/lib/ldap";
+import { parseBooleanSearchQuery } from "@/lib/booleanQueryParser";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -54,30 +55,40 @@ export async function GET(req: Request) {
 
         const searchMode = searchParams.get("searchMode")?.toUpperCase() === "AND" ? "AND" : "OR";
 
-        // 3. Multi-Term Username / IP / Reason search (supports OR vs AND mode)
+        // 3. Multi-Term & Full Boolean Expression Search Parser (supports (), AND, OR)
         if (query) {
-            const tokens = query.split(/[,;\s]+/).map(t => t.trim()).filter(Boolean);
-            if (tokens.length > 0) {
-                if (searchMode === "AND") {
-                    whereConditions.AND = tokens.map(token => ({
-                        OR: [
+            const isExplicitBoolean = /\b(AND|OR)\b|\(|\)/i.test(query);
+            if (isExplicitBoolean) {
+                const parsedWhere = parseBooleanSearchQuery(query);
+                if (parsedWhere) {
+                    if (parsedWhere.AND) whereConditions.AND = parsedWhere.AND;
+                    else if (parsedWhere.OR) whereConditions.OR = parsedWhere.OR;
+                    else Object.assign(whereConditions, parsedWhere);
+                }
+            } else {
+                const tokens = query.split(/[,;\s]+/).map(t => t.trim()).filter(Boolean);
+                if (tokens.length > 0) {
+                    if (searchMode === "AND") {
+                        whereConditions.AND = tokens.map(token => ({
+                            OR: [
+                                { username: { contains: token, mode: 'insensitive' } },
+                                { sourceIp: { contains: token } },
+                                { assignedIp: { contains: token } },
+                                { failureReason: { contains: token, mode: 'insensitive' } },
+                                { vpnStream: { contains: token, mode: 'insensitive' } },
+                                { ipAsName: { contains: token, mode: 'insensitive' } }
+                            ]
+                        }));
+                    } else {
+                        whereConditions.OR = tokens.flatMap(token => [
                             { username: { contains: token, mode: 'insensitive' } },
                             { sourceIp: { contains: token } },
                             { assignedIp: { contains: token } },
                             { failureReason: { contains: token, mode: 'insensitive' } },
                             { vpnStream: { contains: token, mode: 'insensitive' } },
                             { ipAsName: { contains: token, mode: 'insensitive' } }
-                        ]
-                    }));
-                } else {
-                    whereConditions.OR = tokens.flatMap(token => [
-                        { username: { contains: token, mode: 'insensitive' } },
-                        { sourceIp: { contains: token } },
-                        { assignedIp: { contains: token } },
-                        { failureReason: { contains: token, mode: 'insensitive' } },
-                        { vpnStream: { contains: token, mode: 'insensitive' } },
-                        { ipAsName: { contains: token, mode: 'insensitive' } }
-                    ]);
+                        ]);
+                    }
                 }
             }
         }
