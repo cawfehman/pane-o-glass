@@ -587,7 +587,7 @@ export class OgGraylogClient {
      * Searches raw messages in Graylog using an absolute ISO time window with automatic multi-page offset pagination.
      * Guarantees 100% Zero Message Loss even during high-volume email bursts exceeding 2,500 messages per hour.
      */
-    async searchAllAbsoluteMessagesPaginated(query: string, fromIso: string, toIso: string, pageSize: number = 2500, maxTotal: number = 50000): Promise<any[]> {
+    async searchAllAbsoluteMessagesPaginated(query: string, fromIso: string, toIso: string, pageSize: number = 2500, maxTotal: number = 9900): Promise<any[]> {
         const allMessages: any[] = [];
         let offset = 0;
 

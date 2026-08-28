@@ -55,11 +55,11 @@ async function runBecMonitorCron() {
         const displayDays = (windowSeconds / 86400).toFixed(1);
         console.log(`[BEC Monitor] Starting Ingestion (Window: ${windowSeconds}s / ~${displayDays} days, Backfill: ${isBackfill})...`);
 
-        if (windowSeconds > 3600) {
-            const numChunks = Math.max(1, Math.ceil(windowSeconds / 3600));
-            const chunkSeconds = 3600;
+        if (windowSeconds > 600) {
+            const chunkSeconds = 600; // 10-minute chunks to stay safely under Elasticsearch 10k offset limit
+            const numChunks = Math.max(1, Math.ceil(windowSeconds / chunkSeconds));
             const nowSec = Math.floor(Date.now() / 1000);
-            console.log(`[BEC Monitor Backfill] Processing ${numChunks} 1-hour time blocks sequentially across ${displayDays} days...`);
+            console.log(`[BEC Monitor Backfill] Processing ${numChunks} 10-minute time blocks sequentially across ${displayDays} days...`);
 
             for (let i = 0; i < numChunks; i++) {
                 const chunkStartSec = nowSec - windowSeconds + (i * chunkSeconds);
@@ -67,8 +67,8 @@ async function runBecMonitorCron() {
                 const fromIso = new Date(chunkStartSec * 1000).toISOString();
                 const toIso = new Date(chunkEndSec * 1000).toISOString();
 
-                const chunkHits = await client.searchAllAbsoluteMessagesPaginated(query, fromIso, toIso, 2500, 50000).catch(() => []);
-                console.log(`[BEC Backfill] Block ${i + 1}/${numChunks} (${fromIso.slice(0, 16)} to ${toIso.slice(0, 16)}): ${chunkHits.length} events retrieved (Multi-Page).`);
+                const chunkHits = await client.searchAllAbsoluteMessagesPaginated(query, fromIso, toIso, 2500, 9900).catch(() => []);
+                console.log(`[BEC Backfill] Block ${i + 1}/${numChunks} (${fromIso.slice(11, 16)} -> ${toIso.slice(11, 16)}): ${chunkHits.length} events retrieved.`);
 
                 let chunkUrls = 0;
                 for (const h of chunkHits) {
