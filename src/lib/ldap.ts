@@ -240,3 +240,87 @@ export async function getBulkUserDetails(emails: string[]) {
 
     return results;
 }
+
+/**
+ * Performs fast batch Active Directory verification for an array of usernames.
+ * Returns AD Account Status ("ACTIVE", "DISABLED", "NOT_FOUND"), displayName, department, title, and timestamp.
+ */
+export async function getBulkUserAdStatus(rawUsernames: string[]): Promise<Record<string, { adStatus: "ACTIVE" | "DISABLED" | "NOT_FOUND"; displayName: string; department: string; title: string; adLastCheckedAt: string }>> {
+    const url = process.env.AD_URL;
+    const bindDN = process.env.AD_BIND_DN;
+    const bindPassword = process.env.AD_BIND_PASSWORD;
+    const baseDN = process.env.AD_BASE_DN;
+    const rejectUnauthorized = process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false";
+
+    const results: Record<string, { adStatus: "ACTIVE" | "DISABLED" | "NOT_FOUND"; displayName: string; department: string; title: string; adLastCheckedAt: string }> = {};
+    const nowIso = new Date().toISOString();
+
+    if (!url || !bindDN || !bindPassword || !baseDN || rawUsernames.length === 0) {
+        return results;
+    }
+
+    const cleanUserMap = new Map<string, string>(); // cleanName -> originalInput
+    for (const raw of rawUsernames) {
+        if (!raw) continue;
+        let clean = raw.trim().toLowerCase();
+        if (clean.endsWith("@cooperhealth.edu")) {
+            clean = clean.slice(0, -17);
+        }
+        cleanUserMap.set(clean, raw);
+        // Default entry to NOT_FOUND
+        results[raw] = {
+            adStatus: "NOT_FOUND",
+            displayName: "Not Found in AD",
+            department: "",
+            title: "",
+            adLastCheckedAt: nowIso
+        };
+    }
+
+    const cleanList = Array.from(cleanUserMap.keys());
+    if (cleanList.length === 0) return results;
+
+    const client = new Client({
+        url,
+        tlsOptions: url.startsWith("ldaps") ? { rejectUnauthorized } : undefined,
+    });
+
+    try {
+        await client.bind(bindDN, bindPassword);
+
+        for (let i = 0; i < cleanList.length; i += 50) {
+            const batch = cleanList.slice(i, i + 50).map(escapeLDAPSearchFilter);
+            const filter = `(|${batch.map(u => `(sAMAccountName=${u})`).join("")})`;
+
+            const { searchEntries } = await client.search(baseDN, {
+                filter,
+                scope: "sub",
+                attributes: ["sAMAccountName", "displayName", "department", "title", "userAccountControl"],
+            });
+
+            searchEntries.forEach(entry => {
+                const sName = String(entry.sAMAccountName || "").toLowerCase();
+                const originalRaw = cleanUserMap.get(sName);
+                if (!originalRaw) return;
+
+                const uac = Number(entry.userAccountControl || 0);
+                const isEnabled = !(uac & 2);
+
+                results[originalRaw] = {
+                    adStatus: isEnabled ? "ACTIVE" : "DISABLED",
+                    displayName: String(entry.displayName || ""),
+                    department: String(entry.department || ""),
+                    title: String(entry.title || ""),
+                    adLastCheckedAt: nowIso
+                };
+            });
+        }
+    } catch (err: any) {
+        logger.error("LDAP Bulk User AD Status Lookup Error:", err.message || err);
+    } finally {
+        try { await client.unbind(); } catch (e: any) { }
+    }
+
+    return results;
+}
+

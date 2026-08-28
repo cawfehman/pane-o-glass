@@ -13,12 +13,17 @@ import {
     Network, 
     Users, 
     UserCheck,
+    UserX,
+    UserMinus,
     Globe, 
     ArrowDownUp, 
     Activity, 
     Shield, 
     Clock, 
-    Filter
+    Filter,
+    ChevronLeft,
+    ChevronRight,
+    Info
 } from "lucide-react";
 import { ToolHelp } from "../ToolHelp";
 
@@ -41,6 +46,13 @@ export interface VpnReportEvent {
     ipCountry?: string | null;
     ipCountryCode?: string | null;
     createdAt: string;
+
+    // AD Enrichment
+    adStatus?: "ACTIVE" | "DISABLED" | "NOT_FOUND";
+    adLastCheckedAt?: string;
+    adDisplayName?: string;
+    adDepartment?: string;
+    adTitle?: string;
 }
 
 export default function VpnReportingClient() {
@@ -51,16 +63,25 @@ export default function VpnReportingClient() {
     const [endDate, setEndDate] = useState<string>("");
     const [statusFilter, setStatusFilter] = useState<string>("ALL");
     
+    // Dataset & Loading State
     const [events, setEvents] = useState<VpnReportEvent[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState<number>(1);
+    const [itemsPerPage, setItemsPerPage] = useState<number>(50);
+
     // Summary Metrics
-    const [totalEvents, setTotalEvents] = useState<number>(0);
+    const [totalEventsReturned, setTotalEventsReturned] = useState<number>(0);
+    const [totalTimeframeEvents, setTotalTimeframeEvents] = useState<number>(0);
     const [dbTotalCount, setDbTotalCount] = useState<number>(0);
     const [earliestRecordDate, setEarliestRecordDate] = useState<string | null>(null);
     const [uniqueUsers, setUniqueUsers] = useState<number>(0);
     const [uniqueValidUsers, setUniqueValidUsers] = useState<number>(0);
+    const [activeAdUsersCount, setActiveAdUsersCount] = useState<number>(0);
+    const [disabledAdUsersCount, setDisabledAdUsersCount] = useState<number>(0);
+    const [notFoundAdUsersCount, setNotFoundAdUsersCount] = useState<number>(0);
     const [uniqueIps, setUniqueIps] = useState<number>(0);
     const [successCount, setSuccessCount] = useState<number>(0);
     const [failureCount, setFailureCount] = useState<number>(0);
@@ -71,6 +92,7 @@ export default function VpnReportingClient() {
     const fetchReportData = useCallback(async () => {
         setLoading(true);
         setError(null);
+        setCurrentPage(1); // Reset page to 1 on new query
 
         try {
             const params = new URLSearchParams();
@@ -100,11 +122,15 @@ export default function VpnReportingClient() {
             const data = await res.json();
 
             setEvents(data.events || []);
-            setTotalEvents(data.totalEvents || 0);
+            setTotalEventsReturned(data.totalEventsReturned || 0);
+            setTotalTimeframeEvents(data.totalTimeframeEvents || 0);
             setDbTotalCount(data.dbTotalCount || 0);
             setEarliestRecordDate(data.earliestRecordDate || null);
             setUniqueUsers(data.uniqueUsersCount || 0);
             setUniqueValidUsers(data.uniqueValidUsersCount || 0);
+            setActiveAdUsersCount(data.activeAdUsersCount || 0);
+            setDisabledAdUsersCount(data.disabledAdUsersCount || 0);
+            setNotFoundAdUsersCount(data.notFoundAdUsersCount || 0);
             setUniqueIps(data.uniqueIpsCount || 0);
             setSuccessCount(data.successCount || 0);
             setFailureCount(data.failureCount || 0);
@@ -123,6 +149,13 @@ export default function VpnReportingClient() {
     useEffect(() => {
         fetchReportData();
     }, [fetchReportData]);
+
+    // Client-side pagination calculations
+    const totalPages = Math.ceil(events.length / itemsPerPage) || 1;
+    const paginatedEvents = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return events.slice(start, start + itemsPerPage);
+    }, [events, currentPage, itemsPerPage]);
 
     // Format bytes cleanly (KB, MB, GB, TB)
     const formatBytes = (bytes?: number | null) => {
@@ -149,9 +182,15 @@ export default function VpnReportingClient() {
         if (events.length === 0) return;
 
         const headers = [
+            "Row #",
             "Timestamp (ISO)",
             "Username",
-            "Status",
+            "AD Account Status",
+            "AD Display Name",
+            "AD Department",
+            "AD Title",
+            "AD Status Verified Date",
+            "Event Status",
             "Source IP",
             "Assigned IP",
             "Duration (Seconds)",
@@ -174,9 +213,15 @@ export default function VpnReportingClient() {
             return `"${str}"`;
         };
 
-        const rows = events.map(e => [
+        const rows = events.map((e, idx) => [
+            escapeCsv(idx + 1),
             escapeCsv(new Date(e.createdAt).toISOString()),
             escapeCsv(e.username),
+            escapeCsv(e.adStatus || "NOT_FOUND"),
+            escapeCsv(e.adDisplayName || ""),
+            escapeCsv(e.adDepartment || ""),
+            escapeCsv(e.adTitle || ""),
+            escapeCsv(e.adLastCheckedAt ? new Date(e.adLastCheckedAt).toLocaleString() : ""),
             escapeCsv(e.status),
             escapeCsv(e.sourceIp),
             escapeCsv(e.assignedIp || ""),
@@ -205,6 +250,69 @@ export default function VpnReportingClient() {
         link.click();
         document.body.removeChild(link);
     };
+
+    // Shared Pagination Controls Render Function
+    const renderPaginationBar = (position: "top" | "bottom") => (
+        <div className={`p-3 bg-[var(--bg-default)] border-[var(--border-color)] flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--text-secondary)] font-mono ${
+            position === "top" ? "border-b rounded-t-xl" : "border-t rounded-b-xl"
+        }`}>
+            <div className="flex items-center gap-3">
+                <span className="font-semibold text-[var(--text-primary)]">
+                    Showing {events.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} – {Math.min(currentPage * itemsPerPage, events.length)} of {events.length.toLocaleString()} returned records
+                </span>
+                {totalTimeframeEvents > events.length && (
+                    <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[11px]">
+                        Query capped at {events.length.toLocaleString()} of {totalTimeframeEvents.toLocaleString()} timeframe matches
+                    </span>
+                )}
+            </div>
+
+            <div className="flex items-center gap-4">
+                {/* Items per page selector */}
+                <div className="flex items-center gap-2">
+                    <span>Rows per page:</span>
+                    <select
+                        value={itemsPerPage}
+                        onChange={(e) => {
+                            setItemsPerPage(Number(e.target.value));
+                            setCurrentPage(1);
+                        }}
+                        className="px-2 py-1 rounded bg-[var(--bg-surface)] border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none"
+                    >
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                        <option value={250}>250</option>
+                    </select>
+                </div>
+
+                {/* Page Navigation Buttons */}
+                <div className="flex items-center gap-1.5">
+                    <button
+                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                        disabled={currentPage === 1 || loading}
+                        className="px-2.5 py-1 rounded bg-[var(--bg-surface)] border border-[var(--border-color)] hover:bg-[var(--border-color)]/50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-semibold transition-colors"
+                    >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span>Prev</span>
+                    </button>
+
+                    <span className="px-2 font-bold text-[var(--text-primary)]">
+                        Page {currentPage} of {totalPages}
+                    </span>
+
+                    <button
+                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                        disabled={currentPage >= totalPages || loading}
+                        className="px-2.5 py-1 rounded bg-[var(--bg-surface)] border border-[var(--border-color)] hover:bg-[var(--border-color)]/50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 font-semibold transition-colors"
+                    >
+                        <span>Next</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
 
     return (
         <div className="flex flex-col gap-5">
@@ -368,14 +476,14 @@ export default function VpnReportingClient() {
             )}
 
             {/* Summary KPI Metrics Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
                 <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] flex flex-col gap-1">
                     <div className="flex items-center justify-between text-xs text-[var(--text-secondary)] font-medium">
                         <span>Total Events</span>
                         <FileText className="w-4 h-4 text-indigo-400" />
                     </div>
                     <span className="text-lg font-bold font-mono text-[var(--text-primary)]">
-                        {loading ? "--" : totalEvents.toLocaleString()}
+                        {loading ? "--" : totalTimeframeEvents.toLocaleString()}
                     </span>
                 </div>
 
@@ -390,12 +498,22 @@ export default function VpnReportingClient() {
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-emerald-500/30 flex flex-col gap-1 bg-emerald-500/5">
-                    <div className="flex items-center justify-between text-xs text-emerald-400 font-semibold" title="Usernames matching valid corporate format (name-name or name-name-name)">
-                        <span>Valid Users</span>
+                    <div className="flex items-center justify-between text-xs text-emerald-400 font-semibold" title="AD LDAP verified active accounts">
+                        <span>Active AD Users</span>
                         <UserCheck className="w-4 h-4 text-emerald-400" />
                     </div>
                     <span className="text-lg font-bold font-mono text-emerald-300">
-                        {loading ? "--" : uniqueValidUsers.toLocaleString()}
+                        {loading ? "--" : activeAdUsersCount.toLocaleString()}
+                    </span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-rose-500/30 flex flex-col gap-1 bg-rose-500/5">
+                    <div className="flex items-center justify-between text-xs text-rose-400 font-semibold" title="AD LDAP accounts currently disabled or terminated">
+                        <span>Disabled AD Users</span>
+                        <UserX className="w-4 h-4 text-rose-400" />
+                    </div>
+                    <span className="text-lg font-bold font-mono text-rose-300">
+                        {loading ? "--" : disabledAdUsersCount.toLocaleString()}
                     </span>
                 </div>
 
@@ -440,15 +558,21 @@ export default function VpnReportingClient() {
                 </div>
             </div>
 
-            {/* Main Log Table */}
-            <div className="rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] overflow-hidden shadow-2xs">
+            {/* Main Log Table Container */}
+            <div className="rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] overflow-hidden shadow-2xs flex flex-col">
+                
+                {/* TOP PAGINATION BAR */}
+                {renderPaginationBar("top")}
+
+                {/* Zebra-Striped Table */}
                 <div className="overflow-x-auto custom-scrollbar">
                     <table className="w-full text-left text-xs sm:text-sm border-collapse">
                         <thead>
                             <tr className="bg-[var(--bg-default)] border-b border-[var(--border-color)] text-[var(--text-secondary)] font-mono text-xs uppercase tracking-wider">
+                                <th className="p-3 w-12 text-center">#</th>
                                 <th className="p-3">Timestamp</th>
-                                <th className="p-3">Username</th>
-                                <th className="p-3">Status</th>
+                                <th className="p-3">Username & AD Status</th>
+                                <th className="p-3">Event Status</th>
                                 <th className="p-3">Source IP</th>
                                 <th className="p-3">Assigned IP</th>
                                 <th className="p-3">Duration</th>
@@ -457,104 +581,151 @@ export default function VpnReportingClient() {
                                 <th className="p-3">Details / Failure Reason</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-[var(--border-color)]/60">
+                        <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={9} className="p-8 text-center text-sm text-[var(--text-secondary)]">
-                                        Querying PostgreSQL VPN Telemetry Database...
+                                    <td colSpan={10} className="p-8 text-center text-sm text-[var(--text-secondary)]">
+                                        Querying PostgreSQL VPN Telemetry Database & Verifying Active Directory Status...
                                     </td>
                                 </tr>
-                            ) : events.length === 0 ? (
+                            ) : paginatedEvents.length === 0 ? (
                                 <tr>
-                                    <td colSpan={9} className="p-8 text-center text-sm text-[var(--text-secondary)]">
+                                    <td colSpan={10} className="p-8 text-center text-sm text-[var(--text-secondary)]">
                                         No VPN events match the specified query and timeframe filters.
                                     </td>
                                 </tr>
                             ) : (
-                                events.map((evt) => (
-                                    <tr key={evt.id} className="hover:bg-[var(--bg-default)]/50 transition-colors">
-                                        {/* Timestamp */}
-                                        <td className="p-3 font-mono whitespace-nowrap text-xs text-[var(--text-secondary)]">
-                                            {new Date(evt.createdAt).toLocaleString()}
-                                        </td>
+                                paginatedEvents.map((evt, idx) => {
+                                    const rowNumber = (currentPage - 1) * itemsPerPage + idx + 1;
+                                    const isEven = idx % 2 === 0;
 
-                                        {/* Username */}
-                                        <td className="p-3 font-semibold font-mono text-indigo-400">
-                                            {evt.username || "unknown"}
-                                        </td>
+                                    return (
+                                        <tr 
+                                            key={evt.id} 
+                                            className={`transition-colors ${
+                                                isEven 
+                                                    ? "bg-[var(--bg-surface)] hover:bg-indigo-500/10" 
+                                                    : "bg-[var(--bg-default)]/40 hover:bg-indigo-500/10"
+                                            }`}
+                                        >
+                                            {/* Row Number */}
+                                            <td className="p-3 text-center font-mono text-xs text-[var(--text-secondary)] font-semibold select-none">
+                                                {rowNumber}
+                                            </td>
 
-                                        {/* Status Badge */}
-                                        <td className="p-3 whitespace-nowrap">
-                                            {evt.status === "SUCCESS" && (
-                                                <span className="px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold text-xs font-mono inline-flex items-center gap-1">
-                                                    <CheckCircle2 className="w-3 h-3" />
-                                                    SUCCESS
-                                                </span>
-                                            )}
-                                            {evt.status === "FAILURE" && (
-                                                <span className="px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold text-xs font-mono inline-flex items-center gap-1">
-                                                    <XCircle className="w-3 h-3" />
-                                                    FAILURE
-                                                </span>
-                                            )}
-                                            {evt.status === "DISCONNECT" && (
-                                                <span className="px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 font-bold text-xs font-mono inline-flex items-center gap-1">
-                                                    <Activity className="w-3 h-3" />
-                                                    DISCONNECT
-                                                </span>
-                                            )}
-                                        </td>
+                                            {/* Timestamp */}
+                                            <td className="p-3 font-mono whitespace-nowrap text-xs text-[var(--text-secondary)]">
+                                                {new Date(evt.createdAt).toLocaleString()}
+                                            </td>
 
-                                        {/* Source IP */}
-                                        <td className="p-3 font-mono text-[var(--text-primary)]">
-                                            {evt.sourceIp}
-                                        </td>
+                                            {/* Username & AD Status Badge */}
+                                            <td className="p-3 font-mono">
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="font-semibold text-indigo-400">
+                                                        {evt.username || "unknown"}
+                                                    </span>
+                                                    
+                                                    {/* AD Status Indicator */}
+                                                    {evt.adStatus === "ACTIVE" && (
+                                                        <span 
+                                                            className="inline-flex items-center gap-1 text-[11px] font-sans font-bold text-emerald-400"
+                                                            title={`AD Verified Active User: ${evt.adDisplayName || evt.username}${evt.adTitle ? ` (${evt.adTitle})` : ""}${evt.adDepartment ? ` - ${evt.adDepartment}` : ""}\nVerified as of: ${new Date(evt.adLastCheckedAt || Date.now()).toLocaleString()}`}
+                                                        >
+                                                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                                            ACTIVE IN AD
+                                                        </span>
+                                                    )}
 
-                                        {/* Assigned IP */}
-                                        <td className="p-3 font-mono text-[var(--text-secondary)]">
-                                            {evt.assignedIp || "--"}
-                                        </td>
+                                                    {evt.adStatus === "DISABLED" && (
+                                                        <span 
+                                                            className="inline-flex items-center gap-1 text-[11px] font-sans font-bold text-rose-400"
+                                                            title={`AD Account Disabled / Terminated: ${evt.adDisplayName || evt.username}\nVerified as of: ${new Date(evt.adLastCheckedAt || Date.now()).toLocaleString()}`}
+                                                        >
+                                                            <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                                                            DISABLED IN AD
+                                                        </span>
+                                                    )}
 
-                                        {/* Duration */}
-                                        <td className="p-3 font-mono whitespace-nowrap text-xs text-[var(--text-primary)]">
-                                            {formatDuration(evt.duration)}
-                                        </td>
-
-                                        {/* Data Transfer */}
-                                        <td className="p-3 font-mono whitespace-nowrap text-xs text-[var(--text-primary)]">
-                                            {formatBytes(evt.bytesTotal)}
-                                        </td>
-
-                                        {/* Gateway Stream / ISP */}
-                                        <td className="p-3 text-xs max-w-[180px]">
-                                            <div className="font-semibold text-[var(--text-primary)] truncate">
-                                                {evt.vpnStream || "AnyConnect Cluster"}
-                                            </div>
-                                            {evt.ipAsName && (
-                                                <div className="text-[11px] text-[var(--text-secondary)] truncate">
-                                                    {evt.ipAsName}
+                                                    {evt.adStatus === "NOT_FOUND" && (
+                                                        <span 
+                                                            className="inline-flex items-center gap-1 text-[11px] font-sans font-medium text-amber-400/80"
+                                                            title={`Account Not Found in AD as of ${new Date(evt.adLastCheckedAt || Date.now()).toLocaleString()}`}
+                                                        >
+                                                            <span className="w-2 h-2 rounded-full bg-amber-400/80"></span>
+                                                            NOT IN AD
+                                                        </span>
+                                                    )}
                                                 </div>
-                                            )}
-                                        </td>
+                                            </td>
 
-                                        {/* Details / Failure Reason */}
-                                        <td className="p-3 text-xs max-w-[240px] truncate text-[var(--text-secondary)]">
-                                            {evt.failureReason || (evt.status === "SUCCESS" ? "Session Authenticated" : "Clean Teardown")}
-                                        </td>
-                                    </tr>
-                                ))
+                                            {/* Event Status Badge */}
+                                            <td className="p-3 whitespace-nowrap">
+                                                {evt.status === "SUCCESS" && (
+                                                    <span className="px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold text-xs font-mono inline-flex items-center gap-1">
+                                                        <CheckCircle2 className="w-3 h-3" />
+                                                        SUCCESS
+                                                    </span>
+                                                )}
+                                                {evt.status === "FAILURE" && (
+                                                    <span className="px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold text-xs font-mono inline-flex items-center gap-1">
+                                                        <XCircle className="w-3 h-3" />
+                                                        FAILURE
+                                                    </span>
+                                                )}
+                                                {evt.status === "DISCONNECT" && (
+                                                    <span className="px-2.5 py-1 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 font-bold text-xs font-mono inline-flex items-center gap-1">
+                                                        <Activity className="w-3 h-3" />
+                                                        DISCONNECT
+                                                    </span>
+                                                )}
+                                            </td>
+
+                                            {/* Source IP */}
+                                            <td className="p-3 font-mono text-[var(--text-primary)]">
+                                                {evt.sourceIp}
+                                            </td>
+
+                                            {/* Assigned IP */}
+                                            <td className="p-3 font-mono text-[var(--text-secondary)]">
+                                                {evt.assignedIp || "--"}
+                                            </td>
+
+                                            {/* Duration */}
+                                            <td className="p-3 font-mono whitespace-nowrap text-xs text-[var(--text-primary)]">
+                                                {formatDuration(evt.duration)}
+                                            </td>
+
+                                            {/* Data Transfer */}
+                                            <td className="p-3 font-mono whitespace-nowrap text-xs text-[var(--text-primary)]">
+                                                {formatBytes(evt.bytesTotal)}
+                                            </td>
+
+                                            {/* Gateway Stream / ISP */}
+                                            <td className="p-3 text-xs max-w-[180px]">
+                                                <div className="font-semibold text-[var(--text-primary)] truncate">
+                                                    {evt.vpnStream || "AnyConnect Cluster"}
+                                                </div>
+                                                {evt.ipAsName && (
+                                                    <div className="text-[11px] text-[var(--text-secondary)] truncate">
+                                                        {evt.ipAsName}
+                                                    </div>
+                                                )}
+                                            </td>
+
+                                            {/* Details / Failure Reason */}
+                                            <td className="p-3 text-xs max-w-[240px] truncate text-[var(--text-secondary)]">
+                                                {evt.failureReason || (evt.status === "SUCCESS" ? "Session Authenticated" : "Clean Teardown")}
+                                            </td>
+                                        </tr>
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>
                 </div>
 
-                {/* Footer Bar */}
-                <div className="p-3 bg-[var(--bg-default)] border-t border-[var(--border-color)] flex items-center justify-between text-xs text-[var(--text-secondary)] font-mono">
-                    <span>Showing {events.length.toLocaleString()} matching records</span>
-                    {dbSpeedMs !== null && (
-                        <span>Query executed in {dbSpeedMs}ms</span>
-                    )}
-                </div>
+                {/* BOTTOM PAGINATION BAR */}
+                {renderPaginationBar("bottom")}
             </div>
         </div>
     );

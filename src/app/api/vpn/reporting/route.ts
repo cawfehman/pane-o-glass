@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { prisma } from "@/lib/prisma";
+import { getBulkUserAdStatus } from "@/lib/ldap";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -63,8 +64,8 @@ export async function GET(req: Request) {
             ];
         }
 
-        // 4. Query PostgreSQL database
-        const [events, earliestRecord, dbTotalCount] = await Promise.all([
+        // 4. Query PostgreSQL database & calculate exact timeframe event count
+        const [events, earliestRecord, dbTotalCount, totalTimeframeEvents] = await Promise.all([
             prisma.vpnEvent.findMany({
                 where: whereConditions,
                 orderBy: { createdAt: 'desc' },
@@ -74,10 +75,11 @@ export async function GET(req: Request) {
                 select: { createdAt: true },
                 orderBy: { createdAt: 'asc' }
             }),
-            prisma.vpnEvent.count()
+            prisma.vpnEvent.count(),
+            prisma.vpnEvent.count({ where: whereConditions })
         ]);
 
-        // 5. Calculate summary metrics
+        // 5. Extract unique usernames for Active Directory enrichment
         const uniqueUserSet = new Set<string>();
         const uniqueValidUserSet = new Set<string>();
         const uniqueIpSet = new Set<string>();
@@ -102,21 +104,63 @@ export async function GET(req: Request) {
             if (evt.bytesTotal) totalBytes += evt.bytesTotal;
         }
 
+        // 6. Perform fast batch AD status lookup for unique usernames
+        const userAdMap = await getBulkUserAdStatus(Array.from(uniqueUserSet)).catch(() => ({}));
+
+        let activeAdUsersCount = 0;
+        let disabledAdUsersCount = 0;
+        let notFoundAdUsersCount = 0;
+
+        for (const u of Array.from(uniqueUserSet)) {
+            const adInfo = userAdMap[u];
+            if (adInfo) {
+                if (adInfo.adStatus === "ACTIVE") activeAdUsersCount++;
+                else if (adInfo.adStatus === "DISABLED") disabledAdUsersCount++;
+                else notFoundAdUsersCount++;
+            } else {
+                notFoundAdUsersCount++;
+            }
+        }
+
+        // 7. Enrich events array with AD Status & metadata
+        const enrichedEvents = events.map(evt => {
+            const u = (evt.username || "").toLowerCase();
+            const adInfo = userAdMap[u] || {
+                adStatus: "NOT_FOUND",
+                displayName: "Not Found in AD",
+                department: "",
+                title: "",
+                adLastCheckedAt: new Date().toISOString()
+            };
+            return {
+                ...evt,
+                adStatus: adInfo.adStatus,
+                adLastCheckedAt: adInfo.adLastCheckedAt,
+                adDisplayName: adInfo.displayName,
+                adDepartment: adInfo.department,
+                adTitle: adInfo.title
+            };
+        });
+
         const responseTimeMs = Date.now() - startTime;
 
         return NextResponse.json({
             responseTimeMs,
-            totalEvents: events.length,
+            totalEventsReturned: events.length,
+            totalTimeframeEvents,
             dbTotalCount,
             earliestRecordDate: earliestRecord?.createdAt ? earliestRecord.createdAt.toISOString() : null,
             uniqueUsersCount: uniqueUserSet.size,
             uniqueValidUsersCount: uniqueValidUserSet.size,
+            activeAdUsersCount,
+            disabledAdUsersCount,
+            notFoundAdUsersCount,
             uniqueIpsCount: uniqueIpSet.size,
             successCount,
             failureCount,
             disconnectCount,
             totalBytesTransferred: totalBytes,
-            events
+            events: enrichedEvents
         }, {
             headers: {
                 "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate"
