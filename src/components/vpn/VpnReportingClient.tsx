@@ -23,7 +23,8 @@ import {
     Filter,
     ChevronLeft,
     ChevronRight,
-    Info
+    Info,
+    ExternalLink
 } from "lucide-react";
 import { ToolHelp } from "../ToolHelp";
 
@@ -699,8 +700,21 @@ export default function VpnReportingClient() {
                                             </td>
 
                                             {/* Source IP */}
-                                            <td className="p-3 font-mono text-[var(--text-primary)]">
-                                                {evt.sourceIp}
+                                            <td className="p-3 font-mono">
+                                                {evt.sourceIp ? (
+                                                    <a
+                                                        href={`https://ipinfo.io/${evt.sourceIp}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-indigo-400 hover:text-indigo-300 font-semibold hover:underline inline-flex items-center gap-1 group whitespace-nowrap"
+                                                        title={`Source IP Enrichment Details:\nLocation: ${evt.ipCity ? `${evt.ipCity}, ` : ''}${evt.ipCountry || 'Unknown'}${evt.ipCountryCode ? ` (${evt.ipCountryCode})` : ''}\nNetwork: ${evt.ipAsn || ''}${evt.ipAsName ? ` - ${evt.ipAsName}` : ''}${evt.ipAsDomain ? ` (${evt.ipAsDomain})` : ''}`}
+                                                    >
+                                                        <span>{evt.sourceIp}</span>
+                                                        <ExternalLink className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-[var(--text-muted)]">--</span>
+                                                )}
                                             </td>
 
                                             {/* Assigned IP */}
@@ -719,13 +733,18 @@ export default function VpnReportingClient() {
                                             </td>
 
                                             {/* Gateway Stream / ISP */}
-                                            <td className="p-3 text-xs max-w-[180px]">
+                                            <td className="p-3 text-xs max-w-[200px]">
                                                 <div className="font-semibold text-[var(--text-primary)] truncate">
                                                     {evt.vpnStream || "AnyConnect Cluster"}
                                                 </div>
-                                                {evt.ipAsName && (
-                                                    <div className="text-[11px] text-[var(--text-secondary)] truncate">
-                                                        {evt.ipAsName}
+                                                {(evt.ipAsName || evt.ipCountry) && (
+                                                    <div className="text-[11px] text-[var(--text-secondary)] truncate flex items-center gap-1" title={`${evt.ipAsn ? `${evt.ipAsn} - ` : ''}${evt.ipAsName || ''}${evt.ipCountry ? ` (${evt.ipCountry})` : ''}`}>
+                                                        {evt.ipCountryCode && (
+                                                            <span className="font-mono text-[10px] font-bold text-indigo-400 uppercase">
+                                                                [{evt.ipCountryCode}]
+                                                            </span>
+                                                        )}
+                                                        <span className="truncate">{evt.ipAsName || evt.ipCountry}</span>
                                                     </div>
                                                 )}
                                             </td>

@@ -91,18 +91,44 @@ export async function GET(req: Request) {
         let disconnectCount = 0;
         let totalBytes = 0;
 
-        // Check if any legacy events are missing adStatus
+        // Check if any legacy events are missing adStatus or IP enrichment
         const missingAdUsernames = new Set<string>();
+        const missingIpSet = new Set<string>();
         for (const evt of events) {
             if (!evt.adStatus && evt.username) {
                 missingAdUsernames.add(evt.username);
             }
+            if (evt.sourceIp && (!evt.ipAsn || !evt.ipCountry)) {
+                missingIpSet.add(evt.sourceIp);
+            }
         }
 
-        // Live fallback lookup only for un-enriched legacy rows
+        // Live fallback lookup for un-enriched legacy AD rows
         const fallbackAdMap = missingAdUsernames.size > 0 
             ? await getBulkUserAdStatus(Array.from(missingAdUsernames)).catch(() => ({} as any))
             : {};
+
+        // Batch lookup IpLookupCache for source IPs missing ASN/Country info
+        const ipCacheMap: Record<string, any> = {};
+        if (missingIpSet.size > 0) {
+            const cachedIps = await prisma.ipLookupCache.findMany({
+                where: { ip: { in: Array.from(missingIpSet) } }
+            }).catch(() => []);
+
+            for (const c of cachedIps) {
+                try {
+                    const raw = JSON.parse(c.rawJson);
+                    ipCacheMap[c.ip] = {
+                        ipAsn: raw.asn?.asn || raw.asn || null,
+                        ipAsName: raw.asn?.name || raw.company?.name || raw.org || null,
+                        ipAsDomain: raw.asn?.domain || raw.company?.domain || null,
+                        ipCountry: raw.country || null,
+                        ipCountryCode: raw.country_code || c.countryCode || null,
+                        city: c.city || raw.city || null
+                    };
+                } catch (e) {}
+            }
+        }
 
         const enrichedEvents = events.map(evt => {
             const u = (evt.username || "").toLowerCase();
@@ -132,8 +158,22 @@ export async function GET(req: Request) {
                 else notFoundAdUserSet.add(u);
             }
 
+            const fallbackIp = ipCacheMap[evt.sourceIp] || {};
+            const ipAsn = evt.ipAsn || fallbackIp.ipAsn || null;
+            const ipAsName = evt.ipAsName || fallbackIp.ipAsName || null;
+            const ipAsDomain = evt.ipAsDomain || fallbackIp.ipAsDomain || null;
+            const ipCountry = evt.ipCountry || fallbackIp.ipCountry || null;
+            const ipCountryCode = evt.ipCountryCode || fallbackIp.ipCountryCode || null;
+            const ipCity = fallbackIp.city || null;
+
             return {
                 ...evt,
+                ipAsn,
+                ipAsName,
+                ipAsDomain,
+                ipCountry,
+                ipCountryCode,
+                ipCity,
                 adStatus,
                 adDisplayName,
                 adDepartment,
