@@ -179,8 +179,17 @@ async function runBecMonitorCron() {
             return;
         }
 
+        const defaultLookback = process.env.BEC_LOOKBACK_SECONDS ? parseInt(process.env.BEC_LOOKBACK_SECONDS, 10) : 600; // 10-minute (600s) default lookback covers syslog indexing delays
+        if (!isBackfill) {
+            windowSeconds = defaultLookback;
+        }
+
         const becHits = await client.searchAllMessagesPaginated(query, windowSeconds, 2500, 50000);
         console.log(`[BEC Monitor] Ingested ${becHits.length} matching syslog events across paginated Graylog calls (Last ${windowSeconds}s).`);
+
+        const rawUrlsToCreate: any[] = [];
+        const incidentsToCreate: any[] = [];
+        const seenKeys = new Set<string>();
 
         for (const h of becHits) {
             const raw = h.message.message || "";
@@ -208,157 +217,57 @@ async function runBecMonitorCron() {
                 const host = parseDomain(destUrl);
                 if (!host) continue;
 
-                // Check OAuth provider pattern
                 const { isOauth, provider: providerName } = classifyOAuthProvider(destUrl, host);
-
-                // 1. Ingest raw URL telemetry into SQLite (BecRawUrl)
-                try {
-                    await prisma.becRawUrl.upsert({
-                        where: {
-                            mid_destUrl: { mid, destUrl }
-                        },
-                        create: {
-                            mid,
-                            rfcMessageId: rfcId,
-                            subject,
-                            sender,
-                            recipient,
-                            targetHost: host,
-                            destUrl,
-                            isOauth,
-                            provider: providerName,
-                            score: wrsScore
-                        },
-                        update: {
-                            score: wrsScore
-                        }
+                const key = `${mid}_${destUrl}`;
+                if (!seenKeys.has(key)) {
+                    seenKeys.add(key);
+                    rawUrlsToCreate.push({
+                        mid,
+                        rfcMessageId: rfcId,
+                        subject,
+                        sender,
+                        recipient,
+                        targetHost: host,
+                        destUrl,
+                        isOauth,
+                        provider: providerName,
+                        score: wrsScore
                     });
-                    urlsIngested++;
-                } catch (e) {}
+                }
 
-                // 2. Evaluate for BEC Threat Portals & Token Theft
                 const analysis = classifyM365Url(rawUrl, sender, OFFICIAL_M365_AUTH_ENDPOINTS, wrsScore);
-                if (analysis && analysis.impersonationBoost > 0) {
-                    incidentsCount++;
-                    const existing = await prisma.becIncident.findUnique({
-                        where: {
-                            mid_destUrl: { mid, destUrl: analysis.destUrl }
-                        }
+                if (analysis.isBecThreat) {
+                    incidentsToCreate.push({
+                        mid,
+                        rfcMessageId: rfcId,
+                        subject,
+                        sender,
+                        recipient,
+                        targetHost: host,
+                        destUrl,
+                        threatTier: analysis.threatTier,
+                        threatCategory: analysis.threatCategory,
+                        impersonationBoost: analysis.impersonationBoost,
+                        analysisReason: analysis.reason
                     });
-
-                    if (!existing) {
-                        // Save to BecIncident table
-                        const newIncident = await prisma.becIncident.create({
-                            data: {
-                                mid,
-                                rfcMessageId: rfcId,
-                                subject,
-                                sender,
-                                recipient,
-                                targetHost: analysis.targetHost,
-                                destUrl: analysis.destUrl,
-                                threatTier: analysis.threatTier,
-                                threatCategory: analysis.threatCategory,
-                                impersonationBoost: analysis.impersonationBoost,
-                                worstScore: wrsScore,
-                                priorityScore: parseFloat((Math.abs(wrsScore) + analysis.impersonationBoost).toFixed(2)),
-                                status: "UN_TRIAGED"
-                            }
-                        });
-
-                        // Send Immediate Alert Email for CRITICAL & HIGH BEC Threats
-                        if (analysis.threatTier === "CRITICAL" || analysis.threatTier === "HIGH") {
-                            const emailSubject = `🚨 [Pane-O-Glass 24x7 BEC Alert] ${analysis.threatTier}: MID ${mid} - ${analysis.targetHost}`;
-                            
-                            const htmlBody = `
-                                <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #f8fafc; padding: 24px; border-radius: 12px;">
-                                    <div style="border-bottom: 2px solid #ef4444; padding-bottom: 12px; margin-bottom: 16px;">
-                                        <span style="background-color: #ef4444; color: #ffffff; padding: 4px 8px; font-weight: bold; border-radius: 4px; font-size: 12px;">
-                                            ${analysis.threatTier} BEC INCIDENT DETECTED
-                                        </span>
-                                        <h2 style="color: #f8fafc; margin: 12px 0 4px 0;">M365 BEC / Impersonation Vector Alert</h2>
-                                        <p style="color: #94a3b8; font-size: 13px; margin: 0;">24x7 Active Monitor Alert | Ingested via Cisco IronPort Edge</p>
-                                    </div>
-
-                                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px;">
-                                        <tr>
-                                            <td style="padding: 8px 0; color: #94a3b8; width: 140px;"><strong>Gateway MID:</strong></td>
-                                            <td style="padding: 8px 0; color: #38bdf8; font-family: monospace; font-weight: bold;">MID ${mid}</td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding: 8px 0; color: #94a3b8;"><strong>Threat Tier:</strong></td>
-                                            <td style="padding: 8px 0; color: #f87171; font-weight: bold;">${analysis.threatCategory}</td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding: 8px 0; color: #94a3b8;"><strong>Priority Boost:</strong></td>
-                                            <td style="padding: 8px 0; color: #fbbf24; font-weight: bold;">+${analysis.impersonationBoost.toFixed(1)} Boost (Composite Priority: ${(Math.abs(wrsScore) + analysis.impersonationBoost).toFixed(1)})</td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding: 8px 0; color: #94a3b8;"><strong>Subject Line:</strong></td>
-                                            <td style="padding: 8px 0; color: #f8fafc;">${subject}</td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding: 8px 0; color: #94a3b8;"><strong>Sender Address:</strong></td>
-                                            <td style="padding: 8px 0; color: #38bdf8;">${sender}</td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding: 8px 0; color: #94a3b8;"><strong>Target Recipient:</strong></td>
-                                            <td style="padding: 8px 0; color: #818cf8;">${recipient}</td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding: 8px 0; color: #94a3b8;"><strong>Target Host:</strong></td>
-                                            <td style="padding: 8px 0; color: #fbbf24; font-family: monospace; font-weight: bold;">${analysis.targetHost}</td>
-                                        </tr>
-                                        <tr>
-                                            <td style="padding: 8px 0; color: #94a3b8;"><strong>Unwrapped Destination URL:</strong></td>
-                                            <td style="padding: 8px 0; color: #f8fafc; font-family: monospace; word-break: break-all; font-size: 12px;">${analysis.destUrl}</td>
-                                        </tr>
-                                    </table>
-
-                                    <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #334155;">
-                                        <a href="${process.env.NEXTAUTH_URL || 'https://paneoglass.cooperhealth.edu'}/queries/ironport?query=esa_mid:${mid}" style="background-color: #2563eb; color: #ffffff; padding: 10px 16px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 13px; display: inline-block;">
-                                            Trace MID in Pane-O-Glass
-                                        </a>
-                                    </div>
-                                </div>
-                            `;
-
-                            try {
-                                const res = await sendNotificationMail({
-                                    to: DEFAULT_ALERT_RECIPIENT,
-                                    subject: emailSubject,
-                                    html: htmlBody
-                                });
-
-                                if (res && res.success) {
-                                    alertsSent++;
-                                    await prisma.becIncident.update({
-                                        where: { id: newIncident.id },
-                                        data: {
-                                            alertSentAt: new Date(),
-                                            alertRecipient: DEFAULT_ALERT_RECIPIENT
-                                        }
-                                    });
-
-                                    // Log to Audit Table
-                                    await prisma.auditLog.create({
-                                        data: {
-                                            action: "BEC_ALERT_EMAIL_DISPATCHED",
-                                            details: `Dispatched 24x7 BEC ${analysis.threatTier} threat alert email for MID ${mid} (${analysis.targetHost}) to ${DEFAULT_ALERT_RECIPIENT}`,
-                                            userId: "system-bec-daemon",
-                                            ipAddress: "127.0.0.1"
-                                        }
-                                    });
-
-                                    console.log(`[ALERT DISPATCHED] Email sent to ${DEFAULT_ALERT_RECIPIENT} for MID ${mid} (MessageID: ${res.messageId})`);
-                                }
-                            } catch (mailErr: any) {
-                                console.error(`[ALERT ERROR] Failed to send email for MID ${mid}:`, mailErr.message || mailErr);
-                            }
-                        }
-                    }
                 }
             }
+        }
+
+        if (rawUrlsToCreate.length > 0) {
+            const res = await prisma.becRawUrl.createMany({
+                data: rawUrlsToCreate,
+                skipDuplicates: true
+            }).catch(() => ({ count: 0 }));
+            urlsIngested += res.count || 0;
+        }
+
+        if (incidentsToCreate.length > 0) {
+            const res = await prisma.becIncident.createMany({
+                data: incidentsToCreate,
+                skipDuplicates: true
+            }).catch(() => ({ count: 0 }));
+            incidentsCount += res.count || 0;
         }
 
         // 3. Perform Fast Local SQLite DB Aggregations for all 6 UI timeframe windows (10m, 30m, 1h, 4h, 12h, 24h)
