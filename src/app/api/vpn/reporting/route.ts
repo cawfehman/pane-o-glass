@@ -4,6 +4,7 @@ import { hasPermission } from "@/app/actions/permissions";
 import { prisma } from "@/lib/prisma";
 import { getBulkUserAdStatus } from "@/lib/ldap";
 import { parseBooleanSearchQuery } from "@/lib/booleanQueryParser";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -141,11 +142,23 @@ export async function GET(req: Request) {
             };
         });
 
-        const responseTimeMs = Date.now() - startTime;
+        // Log audit event for reporting query
+        try {
+            const forwardedFor = req.headers.get("x-forwarded-for");
+            const clientIp = forwardedFor ? forwardedFor.split(',')[0] : 'unknown';
+            logAudit(
+                "VPN_REPORT_QUERY",
+                `Queried VPN reporting dataset (timeframe: ${rangeSeconds}s, query: "${query || 'none'}", status: ${statusParam}, results: ${events.length})`,
+                session.user.id,
+                clientIp
+            ).catch(() => {});
+        } catch (e) {
+            console.error("Failed to write audit log for VPN reporting query:", e);
+        }
 
         return NextResponse.json({
-            responseTimeMs,
-            totalEventsReturned: events.length,
+            responseTimeMs: Date.now() - startTime,
+            totalEventsReturned: enrichedEvents.length,
             totalTimeframeEvents,
             dbTotalCount,
             earliestRecordDate: earliestRecord?.createdAt ? earliestRecord.createdAt.toISOString() : null,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -12,7 +13,7 @@ export async function GET(req: Request) {
         const session = await auth();
         const role = (session?.user as any)?.role;
 
-        if (!session?.user || !(await hasPermission(role, 'ironport'))) {
+        if (!session?.user || !(await hasPermission(role, 'bec'))) {
             return new NextResponse("Forbidden", { status: 403 });
         }
 
@@ -115,10 +116,23 @@ export async function GET(req: Request) {
 
         const responseTimeMs = Date.now() - startTime;
 
+        // Log audit event for BEC threat hunting query
+        try {
+            const forwardedFor = req.headers.get("x-forwarded-for");
+            const clientIp = forwardedFor ? forwardedFor.split(',')[0] : 'unknown';
+            logAudit(
+                "BEC_THREAT_HUNT_QUERY",
+                `Executed M365 BEC Threat Hunter query (timeframe: ${rangeSeconds}s, evaluated URLs: ${totalEvaluatedUrls}, evaluated MIDs: ${totalEvaluatedMessages})`,
+                session.user.id,
+                clientIp
+            ).catch(() => {});
+        } catch (e) {
+            console.error("Failed to write audit log for BEC query:", e);
+        }
+
         return NextResponse.json({
-            rangeSeconds,
-            isAllTime,
-            responseTimeMs,
+            responseTimeMs: Date.now() - startTime,
+            timeframeSeconds: rangeSeconds,
             totalEvaluatedUrls,
             totalEvaluatedMessages,
             becThreats,
