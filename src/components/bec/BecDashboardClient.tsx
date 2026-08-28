@@ -490,7 +490,7 @@ export default function BecDashboardClient() {
 
                                         <div className="flex items-center justify-between pt-2 border-t border-[var(--border-color)]/50">
                                             <div className="flex items-center gap-1.5 flex-wrap max-w-[70%]">
-                                                {item.topHosts.map((h, hIdx) => (
+                                                {(item.topHosts || item.sampleLinks || []).map((h, hIdx) => (
                                                     <span key={hIdx} className="px-2.5 py-1 rounded bg-[var(--bg-surface)] text-[var(--text-primary)] font-mono text-xs border border-[var(--border-color)] truncate max-w-[180px]">
                                                         {h}
                                                     </span>

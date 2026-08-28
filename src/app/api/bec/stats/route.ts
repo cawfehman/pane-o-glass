@@ -53,15 +53,18 @@ export async function GET(req: Request) {
             select: { provider: true, destUrl: true, recipient: true }
         }).catch(() => []);
 
-        const oauthMap: Record<string, { provider: string; count: number; links: Set<string>; inboxes: Set<string> }> = {};
+        const oauthMap: Record<string, { provider: string; count: number; links: Set<string>; inboxes: Set<string>; items: any[] }> = {};
         for (const item of oauthRawItems) {
             if (!item.provider) continue;
             if (!oauthMap[item.provider]) {
-                oauthMap[item.provider] = { provider: item.provider, count: 0, links: new Set(), inboxes: new Set() };
+                oauthMap[item.provider] = { provider: item.provider, count: 0, links: new Set(), inboxes: new Set(), items: [] };
             }
             oauthMap[item.provider].count++;
             if (item.destUrl) oauthMap[item.provider].links.add(item.destUrl);
             if (item.recipient) oauthMap[item.provider].inboxes.add(item.recipient);
+            if (oauthMap[item.provider].items.length < 50) {
+                oauthMap[item.provider].items.push(item);
+            }
         }
 
         const thirdPartyOAuthLinks = Object.values(oauthMap).map(o => ({
@@ -69,8 +72,14 @@ export async function GET(req: Request) {
             count: o.count,
             linksCount: o.links.size,
             inboxesCount: o.inboxes.size,
+            uniqueRecipientsCount: o.inboxes.size,
             sampleLinks: Array.from(o.links).slice(0, 3),
-            sharePct: totalEvaluatedUrls > 0 ? Number(((o.count / totalEvaluatedUrls) * 100).toFixed(1)) : 0
+            topHosts: Array.from(o.links).slice(0, 3).map(l => {
+                try { return new URL(l).hostname; } catch (e) { return l; }
+            }),
+            items: o.items || [],
+            sharePct: totalEvaluatedUrls > 0 ? Number(((o.count / totalEvaluatedUrls) * 100).toFixed(1)) : 0,
+            percentage: totalEvaluatedUrls > 0 ? `${((o.count / totalEvaluatedUrls) * 100).toFixed(1)}%` : "0%"
         }));
 
         // 4. Query threat incidents strictly within the selected timeframe (NO historical fallback)
