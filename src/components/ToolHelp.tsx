@@ -211,8 +211,8 @@ export const helpData: Record<string, TooltipDetails> = {
                 tag: "CSV Export"
             },
             {
-                title: "Strict Role-Based Access Control",
-                detail: "Restricted by default to ADMIN, ANALYST, and NETWORK roles. Access matrix manageable via Tool Permissions.",
+                title: "Role-Based Access Control",
+                detail: "Access controlled via centralized Tool Permissions matrix.",
                 tag: "RBAC Security"
             }
         ],
@@ -460,7 +460,7 @@ export const helpData: Record<string, TooltipDetails> = {
             },
             {
                 title: "Per-Appliance Health & Load Balance",
-                detail: "Positioned at the top of the Overview tab: monitors ESA01 (esa01.cooperhealth.edu) and ESA02 (esa02.cooperhealth.edu) load distribution and delay queues in real time.",
+                detail: "Positioned at the top of the Overview tab: monitors primary and secondary Email Security Appliance (ESA) load distribution and delay queues in real time.",
                 tag: "Appliance Load"
             }
         ],
@@ -481,7 +481,7 @@ export const helpData: Record<string, TooltipDetails> = {
             "Click [VirusTotal Lookup] on any AMP SHA256 hash to trigger an instant file threat intelligence report."
         ],
         backgroundJobs: [
-            "Graylog Stream 5d7ff82fb209026ab43e167b: Ingests raw ESA syslog events from ESA01 and ESA02.",
+            "Graylog Syslog Ingestion: Ingests raw ESA syslog events from primary and secondary appliances.",
             "2-Step Batch MID Lookup: Correlates separate syslog lines (URL score, From, To, Subject) in memory."
         ]
     },
@@ -493,7 +493,7 @@ export const helpData: Record<string, TooltipDetails> = {
         capabilities: [
             {
                 title: "24x7 Background Daemon & Instant Email Alerting",
-                detail: "Runs around the clock every 60 seconds on the server. Evaluates inbound IronPort syslog streams and dispatches immediate HTML alert emails to rivera-robert@cooperhealth.edu the second a BEC threat hits the edge.",
+                detail: "Runs around the clock every 60 seconds on the server. Evaluates inbound IronPort syslog streams and dispatches immediate HTML alert emails to designated security administrators the second a BEC threat hits the edge.",
                 tag: "24x7 Daemon Alerts"
             },
             {
