@@ -6,6 +6,15 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+function isValidCorporateUsername(uname: string): boolean {
+    if (!uname) return false;
+    let clean = uname.trim().toLowerCase();
+    if (clean.endsWith("@cooperhealth.edu")) {
+        clean = clean.slice(0, -17);
+    }
+    return /^[a-z0-9]+(-[a-z0-9]+){1,2}$/.test(clean);
+}
+
 export async function GET(req: Request) {
     const startTime = Date.now();
     try {
@@ -70,6 +79,7 @@ export async function GET(req: Request) {
 
         // 5. Calculate summary metrics
         const uniqueUserSet = new Set<string>();
+        const uniqueValidUserSet = new Set<string>();
         const uniqueIpSet = new Set<string>();
         let successCount = 0;
         let failureCount = 0;
@@ -77,7 +87,13 @@ export async function GET(req: Request) {
         let totalBytes = 0;
 
         for (const evt of events) {
-            if (evt.username) uniqueUserSet.add(evt.username.toLowerCase());
+            if (evt.username) {
+                const u = evt.username.toLowerCase();
+                uniqueUserSet.add(u);
+                if (isValidCorporateUsername(u)) {
+                    uniqueValidUserSet.add(u);
+                }
+            }
             if (evt.sourceIp) uniqueIpSet.add(evt.sourceIp);
             if (evt.status === "SUCCESS") successCount++;
             else if (evt.status === "FAILURE") failureCount++;
@@ -94,6 +110,7 @@ export async function GET(req: Request) {
             dbTotalCount,
             earliestRecordDate: earliestRecord?.createdAt ? earliestRecord.createdAt.toISOString() : null,
             uniqueUsersCount: uniqueUserSet.size,
+            uniqueValidUsersCount: uniqueValidUserSet.size,
             uniqueIpsCount: uniqueIpSet.size,
             successCount,
             failureCount,

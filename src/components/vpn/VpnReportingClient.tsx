@@ -12,6 +12,7 @@ import {
     AlertCircle, 
     Network, 
     Users, 
+    UserCheck,
     Globe, 
     ArrowDownUp, 
     Activity, 
@@ -59,6 +60,7 @@ export default function VpnReportingClient() {
     const [dbTotalCount, setDbTotalCount] = useState<number>(0);
     const [earliestRecordDate, setEarliestRecordDate] = useState<string | null>(null);
     const [uniqueUsers, setUniqueUsers] = useState<number>(0);
+    const [uniqueValidUsers, setUniqueValidUsers] = useState<number>(0);
     const [uniqueIps, setUniqueIps] = useState<number>(0);
     const [successCount, setSuccessCount] = useState<number>(0);
     const [failureCount, setFailureCount] = useState<number>(0);
@@ -102,6 +104,7 @@ export default function VpnReportingClient() {
             setDbTotalCount(data.dbTotalCount || 0);
             setEarliestRecordDate(data.earliestRecordDate || null);
             setUniqueUsers(data.uniqueUsersCount || 0);
+            setUniqueValidUsers(data.uniqueValidUsersCount || 0);
             setUniqueIps(data.uniqueIpsCount || 0);
             setSuccessCount(data.successCount || 0);
             setFailureCount(data.failureCount || 0);
@@ -365,7 +368,7 @@ export default function VpnReportingClient() {
             )}
 
             {/* Summary KPI Metrics Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
                 <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] flex flex-col gap-1">
                     <div className="flex items-center justify-between text-xs text-[var(--text-secondary)] font-medium">
                         <span>Total Events</span>
@@ -383,6 +386,16 @@ export default function VpnReportingClient() {
                     </div>
                     <span className="text-lg font-bold font-mono text-[var(--text-primary)]">
                         {loading ? "--" : uniqueUsers.toLocaleString()}
+                    </span>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-emerald-500/30 flex flex-col gap-1 bg-emerald-500/5">
+                    <div className="flex items-center justify-between text-xs text-emerald-400 font-semibold" title="Usernames matching valid corporate format (name-name or name-name-name)">
+                        <span>Valid Users</span>
+                        <UserCheck className="w-4 h-4 text-emerald-400" />
+                    </div>
+                    <span className="text-lg font-bold font-mono text-emerald-300">
+                        {loading ? "--" : uniqueValidUsers.toLocaleString()}
                     </span>
                 </div>
 
