@@ -207,7 +207,9 @@ export default function VpnReportingClient() {
             "Failure Reason",
             "ASN",
             "ISP / Organization",
-            "Country"
+            "Country",
+            "Country Code",
+            "City"
         ];
 
         const escapeCsv = (val: any) => {
@@ -239,7 +241,9 @@ export default function VpnReportingClient() {
             escapeCsv(e.failureReason || ""),
             escapeCsv(e.ipAsn || ""),
             escapeCsv(e.ipAsName || ""),
-            escapeCsv(e.ipCountry || "")
+            escapeCsv(e.ipCountry || ""),
+            escapeCsv(e.ipCountryCode || ""),
+            escapeCsv(e.ipCity || "")
         ]);
 
         const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
@@ -577,6 +581,7 @@ export default function VpnReportingClient() {
                                 <th className="p-3">Username & AD Status</th>
                                 <th className="p-3">Event Status</th>
                                 <th className="p-3">Source IP</th>
+                                <th className="p-3">Location (City / Country)</th>
                                 <th className="p-3">Assigned IP</th>
                                 <th className="p-3">Duration</th>
                                 <th className="p-3">Data Transfer</th>
@@ -587,13 +592,13 @@ export default function VpnReportingClient() {
                         <tbody>
                             {loading ? (
                                 <tr>
-                                    <td colSpan={10} className="p-8 text-center text-sm text-[var(--text-secondary)]">
+                                    <td colSpan={11} className="p-8 text-center text-sm text-[var(--text-secondary)]">
                                         Querying PostgreSQL VPN Telemetry Database & Verifying Active Directory Status...
                                     </td>
                                 </tr>
                             ) : paginatedEvents.length === 0 ? (
                                 <tr>
-                                    <td colSpan={10} className="p-8 text-center text-sm text-[var(--text-secondary)]">
+                                    <td colSpan={11} className="p-8 text-center text-sm text-[var(--text-secondary)]">
                                         No VPN events match the specified query and timeframe filters.
                                     </td>
                                 </tr>
@@ -714,6 +719,29 @@ export default function VpnReportingClient() {
                                                     </a>
                                                 ) : (
                                                     <span className="text-[var(--text-muted)]">--</span>
+                                                )}
+                                            </td>
+
+                                            {/* Location (City / Country) */}
+                                            <td className="p-3 text-xs max-w-[180px]">
+                                                {(evt.ipCity || evt.ipCountry || evt.ipCountryCode) ? (
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <div className="font-semibold text-[var(--text-primary)] truncate flex items-center gap-1.5">
+                                                            {evt.ipCountryCode && (
+                                                                <span className="px-1 py-0.2 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono text-[10px] font-bold uppercase tracking-wider shrink-0">
+                                                                    {evt.ipCountryCode}
+                                                                </span>
+                                                            )}
+                                                            <span className="truncate">{evt.ipCity || evt.ipCountry}</span>
+                                                        </div>
+                                                        {evt.ipCity && evt.ipCountry && (
+                                                            <div className="text-[11px] text-[var(--text-secondary)] truncate">
+                                                                {evt.ipCountry}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-[var(--text-muted)] font-mono text-xs">--</span>
                                                 )}
                                             </td>
 
