@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getIpInfoLite } from "@/lib/ipinfo";
-import { getUserDetails } from "@/lib/ldap";
+import { getUserDetails, getBulkUserAdStatus } from "@/lib/ldap";
 import { enrichIp, isStandardUsIsp } from "@/lib/iplocate";
 import axios from "axios";
 import https from "https";
@@ -348,6 +348,15 @@ export async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: num
                 console.error(`Failed to enrich IP ${sourceIp}:`, enrichError);
             }
 
+            // Perform point-in-time AD identity lookup at ingest
+            const adMap = await getBulkUserAdStatus([username]).catch(() => ({} as any));
+            const adInfo = adMap[username] || {
+                adStatus: "NOT_FOUND",
+                displayName: null,
+                department: null,
+                title: null
+            };
+
             // Save to database
             await prisma.vpnEvent.create({
                 data: {
@@ -367,6 +376,14 @@ export async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: num
                     ipAsDomain: ipInfo?.as_domain || null,
                     ipCountry: ipInfo?.country || null,
                     ipCountryCode: ipInfo?.country_code || null,
+
+                    // Point-in-Time AD Snapshot at Ingest
+                    adStatus: adInfo.adStatus,
+                    adDisplayName: adInfo.displayName || null,
+                    adDepartment: adInfo.department || null,
+                    adTitle: adInfo.title || null,
+                    adEnrichedAt: new Date(),
+
                     createdAt: logTimestamp // align with Graylog timestamp
                 }
             });

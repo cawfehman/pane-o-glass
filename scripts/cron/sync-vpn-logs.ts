@@ -4,6 +4,7 @@ import fs from 'fs';
 import https from 'https';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import { getBulkUserAdStatus } from '../../src/lib/ldap';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const prisma = new PrismaClient();
@@ -366,8 +367,18 @@ async function runSync() {
                 }
             }
 
-            // Enrich IPinfo
-            const ipInfo = await getIpInfo(sourceIp);
+            // Enrich IPinfo & Point-in-Time Active Directory Identity
+            const [ipInfo, adMap] = await Promise.all([
+                getIpInfo(sourceIp),
+                getBulkUserAdStatus([username]).catch(() => ({}))
+            ]);
+
+            const adInfo = adMap[username] || {
+                adStatus: "NOT_FOUND",
+                displayName: null,
+                department: null,
+                title: null
+            };
 
             await prisma.vpnEvent.create({
                 data: {
@@ -387,6 +398,14 @@ async function runSync() {
                     ipAsDomain: ipInfo?.as_domain || null,
                     ipCountry: ipInfo?.country || null,
                     ipCountryCode: ipInfo?.country_code || null,
+                    
+                    // Point-in-Time AD Snapshot at Ingest
+                    adStatus: adInfo.adStatus,
+                    adDisplayName: adInfo.displayName || null,
+                    adDepartment: adInfo.department || null,
+                    adTitle: adInfo.title || null,
+                    adEnrichedAt: new Date(),
+
                     createdAt: logTimestamp
                 }
             });

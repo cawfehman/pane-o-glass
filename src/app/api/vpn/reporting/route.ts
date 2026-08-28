@@ -79,18 +79,34 @@ export async function GET(req: Request) {
             prisma.vpnEvent.count({ where: whereConditions })
         ]);
 
-        // 5. Extract unique usernames for Active Directory enrichment
+        // 5. Extract unique usernames & metrics
         const uniqueUserSet = new Set<string>();
         const uniqueValidUserSet = new Set<string>();
+        const activeAdUserSet = new Set<string>();
+        const disabledAdUserSet = new Set<string>();
+        const notFoundAdUserSet = new Set<string>();
         const uniqueIpSet = new Set<string>();
         let successCount = 0;
         let failureCount = 0;
         let disconnectCount = 0;
         let totalBytes = 0;
 
+        // Check if any legacy events are missing adStatus
+        const missingAdUsernames = new Set<string>();
         for (const evt of events) {
-            if (evt.username) {
-                const u = evt.username.toLowerCase();
+            if (!evt.adStatus && evt.username) {
+                missingAdUsernames.add(evt.username);
+            }
+        }
+
+        // Live fallback lookup only for un-enriched legacy rows
+        const fallbackAdMap = missingAdUsernames.size > 0 
+            ? await getBulkUserAdStatus(Array.from(missingAdUsernames)).catch(() => ({} as any))
+            : {};
+
+        const enrichedEvents = events.map(evt => {
+            const u = (evt.username || "").toLowerCase();
+            if (u) {
                 uniqueUserSet.add(u);
                 if (isValidCorporateUsername(u)) {
                     uniqueValidUserSet.add(u);
@@ -102,43 +118,27 @@ export async function GET(req: Request) {
             else if (evt.status === "DISCONNECT") disconnectCount++;
 
             if (evt.bytesTotal) totalBytes += evt.bytesTotal;
-        }
 
-        // 6. Perform fast batch AD status lookup for unique usernames
-        const userAdMap = await getBulkUserAdStatus(Array.from(uniqueUserSet)).catch(() => ({}));
+            // Use persisted point-in-time AD status or fallback
+            const adStatus = evt.adStatus || fallbackAdMap[u]?.adStatus || "NOT_FOUND";
+            const adDisplayName = evt.adDisplayName || fallbackAdMap[u]?.displayName || null;
+            const adDepartment = evt.adDepartment || fallbackAdMap[u]?.department || null;
+            const adTitle = evt.adTitle || fallbackAdMap[u]?.title || null;
+            const adEnrichedAt = evt.adEnrichedAt ? evt.adEnrichedAt.toISOString() : new Date().toISOString();
 
-        let activeAdUsersCount = 0;
-        let disabledAdUsersCount = 0;
-        let notFoundAdUsersCount = 0;
-
-        for (const u of Array.from(uniqueUserSet)) {
-            const adInfo = userAdMap[u];
-            if (adInfo) {
-                if (adInfo.adStatus === "ACTIVE") activeAdUsersCount++;
-                else if (adInfo.adStatus === "DISABLED") disabledAdUsersCount++;
-                else notFoundAdUsersCount++;
-            } else {
-                notFoundAdUsersCount++;
+            if (u) {
+                if (adStatus === "ACTIVE") activeAdUserSet.add(u);
+                else if (adStatus === "DISABLED") disabledAdUserSet.add(u);
+                else notFoundAdUserSet.add(u);
             }
-        }
 
-        // 7. Enrich events array with AD Status & metadata
-        const enrichedEvents = events.map(evt => {
-            const u = (evt.username || "").toLowerCase();
-            const adInfo = userAdMap[u] || {
-                adStatus: "NOT_FOUND",
-                displayName: "Not Found in AD",
-                department: "",
-                title: "",
-                adLastCheckedAt: new Date().toISOString()
-            };
             return {
                 ...evt,
-                adStatus: adInfo.adStatus,
-                adLastCheckedAt: adInfo.adLastCheckedAt,
-                adDisplayName: adInfo.displayName,
-                adDepartment: adInfo.department,
-                adTitle: adInfo.title
+                adStatus,
+                adDisplayName,
+                adDepartment,
+                adTitle,
+                adLastCheckedAt: adEnrichedAt
             };
         });
 
@@ -152,9 +152,9 @@ export async function GET(req: Request) {
             earliestRecordDate: earliestRecord?.createdAt ? earliestRecord.createdAt.toISOString() : null,
             uniqueUsersCount: uniqueUserSet.size,
             uniqueValidUsersCount: uniqueValidUserSet.size,
-            activeAdUsersCount,
-            disabledAdUsersCount,
-            notFoundAdUsersCount,
+            activeAdUsersCount: activeAdUserSet.size,
+            disabledAdUsersCount: disabledAdUserSet.size,
+            notFoundAdUsersCount: notFoundAdUserSet.size,
             uniqueIpsCount: uniqueIpSet.size,
             successCount,
             failureCount,

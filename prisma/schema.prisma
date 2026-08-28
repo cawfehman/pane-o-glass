@@ -117,6 +117,14 @@ model VpnEvent {
   ipAsDomain    String?
   ipCountry     String?
   ipCountryCode String?
+
+  // Point-in-Time Active Directory Identity Snapshot at Ingest
+  adStatus      String?   // "ACTIVE", "DISABLED", "NOT_FOUND"
+  adDisplayName String?
+  adDepartment  String?
+  adTitle       String?
+  adEnrichedAt  DateTime?
+
   createdAt     DateTime @default(now())
 
   @@index([createdAt])
