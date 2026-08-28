@@ -37,15 +37,25 @@ function isPrivateIp(ip: string) {
     }
 }
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 async function backfillVpnIpEnrichment() {
+    // Parse limit from CLI args (e.g. node script.js --limit 20000)
+    const limitArgIndex = process.argv.indexOf('--limit');
+    const targetLimit = (limitArgIndex !== -1 && process.argv[limitArgIndex + 1])
+        ? parseInt(process.argv[limitArgIndex + 1], 10)
+        : 20000;
+
     console.log("==================================================================");
-    console.log("[IP-BACKFILL] Starting VPN Event IP Enrichment Backfill Utility...");
+    console.log(`[IP-BACKFILL] Starting VPN IP Enrichment for Most Recent ${targetLimit.toLocaleString()} IPs...`);
     console.log("==================================================================");
 
     const apiKey = process.env.IPLOCATE_API_KEY;
-    console.log(`[IP-BACKFILL] API Key configured: ${apiKey ? "YES (Live iplocate.io)" : "NO (Simulated high-fidelity)"}`);
+    console.log(`[IP-BACKFILL] API Key status: ${apiKey ? "YES (Live iplocate.io API)" : "NO (Fallback high-fidelity simulation)"}`);
 
-    // Find all unique public source IPs in VpnEvent that are missing ipAsn or ipCountry
+    // Query most recent events missing enrichment ordered by desc timestamp
+    console.log(`[IP-BACKFILL] Querying database for ${targetLimit.toLocaleString()} most recent unique public IPs...`);
+    
     const unEnrichedEvents = await prisma.vpnEvent.findMany({
         where: {
             OR: [
@@ -53,92 +63,140 @@ async function backfillVpnIpEnrichment() {
                 { ipCountry: null }
             ]
         },
+        orderBy: { createdAt: 'desc' },
         select: { sourceIp: true },
-        distinct: ['sourceIp']
+        distinct: ['sourceIp'],
+        take: targetLimit
     });
 
     const publicIps = unEnrichedEvents
         .map(e => e.sourceIp)
         .filter(ip => ip && !isPrivateIp(ip));
 
-    console.log(`[IP-BACKFILL] Found ${publicIps.length} unique public IP addresses requiring enrichment.`);
+    console.log(`[IP-BACKFILL] Isolated ${publicIps.length.toLocaleString()} unique public IPs needing enrichment.`);
 
-    let processedCount = 0;
-    let successCount = 0;
-
-    // Process in batches of 20
-    const chunkSize = 20;
+    // 1. Check local IpLookupCache in PostgreSQL first (0 external API calls)
+    console.log("[IP-BACKFILL] Phase 1: Checking local PostgreSQL IpLookupCache...");
+    const cachedMap = new Map<string, any>();
+    const chunkSize = 2000;
+    
     for (let i = 0; i < publicIps.length; i += chunkSize) {
         const chunk = publicIps.slice(i, i + chunkSize);
-        console.log(`[IP-BACKFILL] Processing batch ${Math.floor(i / chunkSize) + 1} of ${Math.ceil(publicIps.length / chunkSize)} (${chunk.length} IPs)...`);
+        const cachedRecords = await prisma.ipLookupCache.findMany({
+            where: { ip: { in: chunk } }
+        });
+        for (const r of cachedRecords) {
+            try {
+                cachedMap.set(r.ip, JSON.parse(r.rawJson));
+            } catch (e) {}
+        }
+    }
+
+    console.log(`[IP-BACKFILL] Resolved ${cachedMap.size.toLocaleString()} IPs directly from local cache (0 API calls).`);
+
+    // Backfill cached IPs into VpnEvent rows immediately
+    let cacheApplied = 0;
+    for (const [ip, data] of cachedMap.entries()) {
+        const ipAsn = data.asn?.asn || data.asn || null;
+        const ipAsName = data.asn?.name || data.company?.name || data.org || null;
+        const ipAsDomain = data.asn?.domain || data.company?.domain || null;
+        const ipCountry = data.country || null;
+        const ipCountryCode = data.country_code || null;
+
+        await prisma.vpnEvent.updateMany({
+            where: { sourceIp: ip },
+            data: { ipAsn, ipAsName, ipAsDomain, ipCountry, ipCountryCode }
+        });
+        cacheApplied++;
+    }
+    console.log(`[IP-BACKFILL] Applied local cache data to ${cacheApplied.toLocaleString()} IP event groups.`);
+
+    // 2. Identify remaining uncached IPs
+    const uncachedIps = publicIps.filter(ip => !cachedMap.has(ip));
+    console.log(`[IP-BACKFILL] Phase 2: ${uncachedIps.length.toLocaleString()} uncached IPs require external lookup.`);
+
+    if (uncachedIps.length === 0) {
+        console.log("[IP-BACKFILL] All target IPs resolved from cache! Work complete.");
+        return;
+    }
+
+    // Process uncached IPs in controlled batches with rate limit safety
+    let externalSuccess = 0;
+    let rateLimited = false;
+    const batchSize = 10; // 10 per batch with pause
+    const delayMs = 300; // 300ms pause between calls to respect rate limits
+
+    for (let i = 0; i < uncachedIps.length; i += batchSize) {
+        if (rateLimited) {
+            console.log("[IP-BACKFILL-WARNING] Stopping external lookups due to rate limit response.");
+            break;
+        }
+
+        const chunk = uncachedIps.slice(i, i + batchSize);
+        console.log(`[IP-BACKFILL] External Batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(uncachedIps.length / batchSize)} (${externalSuccess + cacheApplied}/${publicIps.length} completed)...`);
 
         for (const ip of chunk) {
-            processedCount++;
             try {
-                // 1. Check IpLookupCache
-                let data: any = null;
-                const cached = await prisma.ipLookupCache.findUnique({ where: { ip } });
-                if (cached) {
-                    data = JSON.parse(cached.rawJson);
-                } else {
-                    const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
-                        headers: apiKey ? { "X-API-KEY": apiKey } : {},
-                        timeout: 5000
-                    }).catch(() => null);
-
-                    if (res?.data) {
-                        data = res.data;
-                        await prisma.ipLookupCache.upsert({
-                            where: { ip },
-                            update: {
-                                latitude: data.latitude || null,
-                                longitude: data.longitude || null,
-                                countryCode: data.country_code || null,
-                                city: data.city || null,
-                                subdivision: data.subdivision || null,
-                                rawJson: JSON.stringify(data)
-                            },
-                            create: {
-                                ip,
-                                latitude: data.latitude || null,
-                                longitude: data.longitude || null,
-                                countryCode: data.country_code || null,
-                                city: data.city || null,
-                                subdivision: data.subdivision || null,
-                                rawJson: JSON.stringify(data)
-                            }
-                        }).catch(() => {});
+                const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
+                    headers: apiKey ? { "X-API-KEY": apiKey } : {},
+                    timeout: 5000
+                }).catch((err) => {
+                    if (err.response && err.response.status === 429) {
+                        rateLimited = true;
+                        console.error("[IP-BACKFILL] Rate limit hit (HTTP 429). Exiting gracefully.");
                     }
-                }
+                    return null;
+                });
 
-                if (data) {
+                if (res?.data) {
+                    const data = res.data;
                     const ipAsn = data.asn?.asn || data.asn || null;
                     const ipAsName = data.asn?.name || data.company?.name || data.org || null;
                     const ipAsDomain = data.asn?.domain || data.company?.domain || null;
                     const ipCountry = data.country || null;
                     const ipCountryCode = data.country_code || null;
 
+                    // Cache in PostgreSQL
+                    await prisma.ipLookupCache.upsert({
+                        where: { ip },
+                        update: {
+                            latitude: data.latitude || null,
+                            longitude: data.longitude || null,
+                            countryCode: ipCountryCode,
+                            city: data.city || null,
+                            subdivision: data.subdivision || null,
+                            rawJson: JSON.stringify(data)
+                        },
+                        create: {
+                            ip,
+                            latitude: data.latitude || null,
+                            longitude: data.longitude || null,
+                            countryCode: ipCountryCode,
+                            city: data.city || null,
+                            subdivision: data.subdivision || null,
+                            rawJson: JSON.stringify(data)
+                        }
+                    }).catch(() => {});
+
+                    // Update VpnEvent records
                     await prisma.vpnEvent.updateMany({
                         where: { sourceIp: ip },
-                        data: {
-                            ipAsn,
-                            ipAsName,
-                            ipAsDomain,
-                            ipCountry,
-                            ipCountryCode
-                        }
+                        data: { ipAsn, ipAsName, ipAsDomain, ipCountry, ipCountryCode }
                     });
 
-                    successCount++;
+                    externalSuccess++;
                 }
+
+                await sleep(delayMs);
             } catch (err: any) {
-                console.error(`[IP-BACKFILL-ERROR] Failed to enrich IP ${ip}:`, err.message);
+                console.error(`[IP-BACKFILL-ERROR] Failed to look up IP ${ip}:`, err.message);
             }
         }
     }
 
     console.log("==================================================================");
-    console.log(`[IP-BACKFILL] Completed! Successfully enriched ${successCount} of ${processedCount} public IPs.`);
+    console.log(`[IP-BACKFILL] Finished! Successfully enriched ${(cacheApplied + externalSuccess).toLocaleString()} of ${publicIps.length.toLocaleString()} target IPs.`);
+    console.log(`[IP-BACKFILL] Local Cache Hits: ${cacheApplied.toLocaleString()} | External API Fetches: ${externalSuccess.toLocaleString()}`);
     console.log("==================================================================");
 }
 
