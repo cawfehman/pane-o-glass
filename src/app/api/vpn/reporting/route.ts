@@ -49,9 +49,14 @@ export async function GET(req: Request) {
             whereConditions.createdAt = { gte: new Date(Date.now() - rangeSeconds * 1000) };
         }
 
-        // 2. Status event type filtering
+        // 2. Status event type filtering (supports multi-select comma separated list)
         if (statusParam && statusParam !== "ALL") {
-            whereConditions.status = statusParam;
+            const statuses = statusParam.split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
+            if (statuses.length === 1) {
+                whereConditions.status = statuses[0];
+            } else if (statuses.length > 1) {
+                whereConditions.status = { in: statuses };
+            }
         }
 
         // 3. Multi-Term & Full Boolean Expression Search Parser (supports (), AND, OR)

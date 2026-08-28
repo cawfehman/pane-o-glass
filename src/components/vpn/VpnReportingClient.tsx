@@ -62,7 +62,26 @@ export default function VpnReportingClient() {
     const [isCustomDate, setIsCustomDate] = useState<boolean>(false);
     const [startDate, setStartDate] = useState<string>("");
     const [endDate, setEndDate] = useState<string>("");
-    const [statusFilter, setStatusFilter] = useState<string>("ALL");
+    const [selectedStatuses, setSelectedStatuses] = useState<string[]>(["SUCCESS", "FAILURE", "DISCONNECT"]);
+
+    const isAllSelected = selectedStatuses.length === 3 || selectedStatuses.length === 0;
+
+    const handleToggleStatus = (status: string) => {
+        if (status === "ALL") {
+            if (isAllSelected) {
+                setSelectedStatuses([]);
+            } else {
+                setSelectedStatuses(["SUCCESS", "FAILURE", "DISCONNECT"]);
+            }
+            return;
+        }
+
+        if (selectedStatuses.includes(status)) {
+            setSelectedStatuses(selectedStatuses.filter(s => s !== status));
+        } else {
+            setSelectedStatuses([...selectedStatuses, status]);
+        }
+    };
 
     // Dataset & Loading State
     const [events, setEvents] = useState<VpnReportEvent[]>([]);
@@ -100,7 +119,11 @@ export default function VpnReportingClient() {
             if (searchQuery) {
                 params.set("query", searchQuery);
             }
-            if (statusFilter !== "ALL") params.set("status", statusFilter);
+
+            const statusParam = isAllSelected ? "ALL" : selectedStatuses.join(",");
+            if (statusParam !== "ALL") {
+                params.set("status", statusParam);
+            }
 
             if (isCustomDate && (startDate || endDate)) {
                 if (startDate) params.set("startDate", new Date(startDate).toISOString());
@@ -147,7 +170,7 @@ export default function VpnReportingClient() {
         } finally {
             setLoading(false);
         }
-    }, [searchQuery, timeframe, isCustomDate, startDate, endDate, statusFilter]);
+    }, [searchQuery, timeframe, isCustomDate, startDate, endDate, selectedStatuses, isAllSelected]);
 
     useEffect(() => {
         fetchReportData();
@@ -348,19 +371,75 @@ export default function VpnReportingClient() {
                         )}
                     </div>
 
-                    {/* Status Filter */}
-                    <div className="flex items-center gap-2 shrink-0">
-                        <Filter className="w-4 h-4 text-indigo-400 shrink-0" />
-                        <select
-                            value={statusFilter}
-                            onChange={(e) => setStatusFilter(e.target.value)}
-                            className="px-3 py-2 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] text-xs sm:text-sm text-[var(--text-primary)] font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer"
-                        >
-                            <option value="ALL">All Event Types</option>
-                            <option value="SUCCESS">SUCCESS Only (🟢)</option>
-                            <option value="FAILURE">FAILURE Only (🔴)</option>
-                            <option value="DISCONNECT">DISCONNECT Only (🔵)</option>
-                        </select>
+                    {/* Multi-Select Status Checkbox Group */}
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] font-mono font-semibold mr-0.5">
+                            <Filter className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                            <span>Events:</span>
+                        </div>
+
+                        {/* ALL Checkbox */}
+                        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold font-mono cursor-pointer transition-all select-none ${
+                            isAllSelected
+                                ? "bg-[var(--accent-primary)]/15 text-[var(--text-primary)] border-[var(--accent-primary)] shadow-2xs font-bold"
+                                : "bg-[var(--bg-default)] text-[var(--text-secondary)] border-[var(--border-color)] hover:border-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                        }`}>
+                            <input
+                                type="checkbox"
+                                checked={isAllSelected}
+                                onChange={() => handleToggleStatus("ALL")}
+                                className="accent-indigo-500 rounded cursor-pointer w-3.5 h-3.5"
+                            />
+                            <span>All Events</span>
+                        </label>
+
+                        {/* SUCCESS Checkbox */}
+                        <label className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold font-mono cursor-pointer transition-all select-none ${
+                            selectedStatuses.includes("SUCCESS")
+                                ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/40 font-bold"
+                                : "bg-[var(--bg-default)] text-[var(--text-secondary)] border-[var(--border-color)] opacity-60 hover:opacity-100"
+                        }`}>
+                            <input
+                                type="checkbox"
+                                checked={selectedStatuses.includes("SUCCESS")}
+                                onChange={() => handleToggleStatus("SUCCESS")}
+                                className="accent-emerald-500 rounded cursor-pointer w-3.5 h-3.5"
+                            />
+                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                            <span>SUCCESS</span>
+                        </label>
+
+                        {/* FAILURE Checkbox */}
+                        <label className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold font-mono cursor-pointer transition-all select-none ${
+                            selectedStatuses.includes("FAILURE")
+                                ? "bg-rose-500/15 text-rose-400 border-rose-500/40 font-bold"
+                                : "bg-[var(--bg-default)] text-[var(--text-secondary)] border-[var(--border-color)] opacity-60 hover:opacity-100"
+                        }`}>
+                            <input
+                                type="checkbox"
+                                checked={selectedStatuses.includes("FAILURE")}
+                                onChange={() => handleToggleStatus("FAILURE")}
+                                className="accent-rose-500 rounded cursor-pointer w-3.5 h-3.5"
+                            />
+                            <XCircle className="w-3 h-3 text-rose-400" />
+                            <span>FAILURE</span>
+                        </label>
+
+                        {/* DISCONNECT Checkbox */}
+                        <label className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold font-mono cursor-pointer transition-all select-none ${
+                            selectedStatuses.includes("DISCONNECT")
+                                ? "bg-blue-500/15 text-blue-400 border-blue-500/40 font-bold"
+                                : "bg-[var(--bg-default)] text-[var(--text-secondary)] border-[var(--border-color)] opacity-60 hover:opacity-100"
+                        }`}>
+                            <input
+                                type="checkbox"
+                                checked={selectedStatuses.includes("DISCONNECT")}
+                                onChange={() => handleToggleStatus("DISCONNECT")}
+                                className="accent-blue-500 rounded cursor-pointer w-3.5 h-3.5"
+                            />
+                            <Activity className="w-3 h-3 text-blue-400" />
+                            <span>DISCONNECT</span>
+                        </label>
                     </div>
                 </div>
 
