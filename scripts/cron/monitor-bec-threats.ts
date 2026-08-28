@@ -25,8 +25,25 @@ async function runBecMonitorCron() {
         const query = `message:"microsoft" OR message:"office365" OR message:"sharepoint" OR message:"login.microsoftonline" OR message:"outlook.com" OR message:"devicelogin" OR message:"forms.office"`;
         
         console.log(`[BEC Monitor] Ingesting Graylog syslog traffic (Window: ${windowSeconds}s, Backfill: ${isBackfill})...`);
-        const becHits = await client.searchAllMessagesPaginated(query, windowSeconds, 2500, 50000);
-        console.log(`[BEC Monitor] Ingested ${becHits.length} matching syslog events across paginated Graylog calls (Last ${windowSeconds}s).`);
+        let becHits: any[] = [];
+
+        if (windowSeconds > 3600) {
+            const numChunks = Math.min(24, Math.max(1, Math.ceil(windowSeconds / 3600)));
+            const chunkSeconds = windowSeconds / numChunks;
+            const nowSec = Math.floor(Date.now() / 1000);
+            console.log(`[BEC Monitor] Executing 24-chunk time-windowed backfill across ${numChunks} 1-hour time blocks...`);
+
+            for (let i = 0; i < numChunks; i++) {
+                const fromIso = new Date((nowSec - (windowSeconds - (i * chunkSeconds))) * 1000).toISOString();
+                const toIso = new Date((nowSec - (windowSeconds - ((i + 1) * chunkSeconds))) * 1000).toISOString();
+                const chunkHits = await client.searchAbsoluteMessages(query, fromIso, toIso, 2500).catch(() => []);
+                becHits.push(...chunkHits);
+            }
+        } else {
+            becHits = await client.searchAllMessagesPaginated(query, windowSeconds, 2500, 50000);
+        }
+
+        console.log(`[BEC Monitor] Ingested ${becHits.length} matching syslog events across ${windowSeconds > 3600 ? '24 hourly time chunks' : 'paginated Graylog calls'} (Last ${windowSeconds}s).`);
 
         for (const h of becHits) {
             const raw = h.message.message || "";
