@@ -67,8 +67,8 @@ async function runBecMonitorCron() {
                 const fromIso = new Date(chunkStartSec * 1000).toISOString();
                 const toIso = new Date(chunkEndSec * 1000).toISOString();
 
-                const chunkHits = await client.searchAbsoluteMessages(query, fromIso, toIso, 2500).catch(() => []);
-                console.log(`[BEC Backfill] Block ${i + 1}/${numChunks} (${fromIso.slice(0, 16)} to ${toIso.slice(0, 16)}): ${chunkHits.length} events retrieved.`);
+                const chunkHits = await client.searchAllAbsoluteMessagesPaginated(query, fromIso, toIso, 2500, 50000).catch(() => []);
+                console.log(`[BEC Backfill] Block ${i + 1}/${numChunks} (${fromIso.slice(0, 16)} to ${toIso.slice(0, 16)}): ${chunkHits.length} events retrieved (Multi-Page).`);
 
                 let chunkUrls = 0;
                 for (const h of chunkHits) {
