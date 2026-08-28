@@ -55,11 +55,11 @@ async function runBecMonitorCron() {
         const displayDays = (windowSeconds / 86400).toFixed(1);
         console.log(`[BEC Monitor] Starting Ingestion (Window: ${windowSeconds}s / ~${displayDays} days, Backfill: ${isBackfill})...`);
 
-        if (windowSeconds > 600) {
-            const chunkSeconds = 600; // 10-minute chunks to stay safely under Elasticsearch 10k offset limit
+        if (windowSeconds > 300) {
+            const chunkSeconds = 300; // 5-minute chunks guarantee max volume per window stays well under Elasticsearch 10k offset limit
             const numChunks = Math.max(1, Math.ceil(windowSeconds / chunkSeconds));
             const nowSec = Math.floor(Date.now() / 1000);
-            console.log(`[BEC Monitor Backfill] Processing ${numChunks} 10-minute time blocks sequentially across ${displayDays} days...`);
+            console.log(`[BEC Monitor Backfill] Processing ${numChunks} 5-minute time blocks sequentially across ${displayDays} days...`);
 
             for (let i = 0; i < numChunks; i++) {
                 const chunkStartSec = nowSec - windowSeconds + (i * chunkSeconds);
@@ -68,7 +68,9 @@ async function runBecMonitorCron() {
                 const toIso = new Date(chunkEndSec * 1000).toISOString();
 
                 const chunkHits = await client.searchAllAbsoluteMessagesPaginated(query, fromIso, toIso, 2500, 9900).catch(() => []);
-                console.log(`[BEC Backfill] Block ${i + 1}/${numChunks} (${fromIso.slice(11, 16)} -> ${toIso.slice(11, 16)}): ${chunkHits.length} events retrieved.`);
+                const pagesCount = Math.ceil(chunkHits.length / 2500);
+                const pageDetail = pagesCount > 1 ? ` across ${pagesCount} paged requests (0..${chunkHits.length})` : '';
+                console.log(`[BEC Backfill] Block ${i + 1}/${numChunks} (${fromIso.slice(11, 16)} -> ${toIso.slice(11, 16)}): ${chunkHits.length} events retrieved${pageDetail}.`);
 
                 const rawUrlsToCreate: any[] = [];
                 const incidentsToCreate: any[] = [];
