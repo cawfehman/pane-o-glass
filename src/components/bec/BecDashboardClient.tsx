@@ -70,7 +70,13 @@ export default function BecDashboardClient() {
         setError(null);
 
         try {
-            const res = await fetch(`/api/bec/stats?range=${rangeToFetch}`);
+            const res = await fetch(`/api/bec/stats?range=${rangeToFetch}&_t=${Date.now()}`, {
+                cache: 'no-store',
+                headers: {
+                    'Pragma': 'no-cache',
+                    'Cache-Control': 'no-cache'
+                }
+            });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
 

@@ -26,11 +26,12 @@ export async function GET(req: Request) {
         // 1. Calculate true total evaluated URLs and unique message MIDs for selected timeframe
         const totalEvaluatedUrls = await prisma.becRawUrl.count({ where: whereClause }).catch(() => 0);
         
-        const uniqueMsgGroups = await prisma.becRawUrl.groupBy({
-            by: ['mid'],
-            where: whereClause
+        const uniqueMsgList = await prisma.becRawUrl.findMany({
+            where: whereClause,
+            select: { mid: true },
+            distinct: ['mid']
         }).catch(() => []);
-        const totalEvaluatedMessages = uniqueMsgGroups.length;
+        const totalEvaluatedMessages = uniqueMsgList.length;
 
         // 2. Query top 15 unwrapped destination domains for selected timeframe
         const domainGroups = await prisma.becRawUrl.groupBy({
