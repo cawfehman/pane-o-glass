@@ -31,7 +31,7 @@ export function defaultVpnFieldMatcher(term: string): any {
  */
 export function tokenizeQuery(query: string): string[] {
     const tokens: string[] = [];
-    const regex = /\(|\)|AND|OR|[^\s()]+/gi;
+    const regex = /\(|\)|AND|OR|NOT|[^\s()]+/gi;
     let match: RegExpExecArray | null;
 
     while ((match = regex.exec(query)) !== null) {
@@ -40,13 +40,14 @@ export function tokenizeQuery(query: string): string[] {
     return tokens;
 }
 
-type ASTNode =
+export type ASTNode =
     | { type: 'TERM'; value: string }
     | { type: 'AND'; left: ASTNode; right: ASTNode }
-    | { type: 'OR'; left: ASTNode; right: ASTNode };
+    | { type: 'OR'; left: ASTNode; right: ASTNode }
+    | { type: 'NOT'; expr: ASTNode };
 
 /**
- * Parse tokens into an Abstract Syntax Tree (AST) with precedence: () > AND > OR
+ * Parse tokens into an Abstract Syntax Tree (AST) with precedence: () > NOT > AND > OR
  */
 export function parseTokensToAST(tokens: string[]): ASTNode | null {
     let index = 0;
@@ -96,6 +97,21 @@ export function parseTokensToAST(tokens: string[]): ASTNode | null {
         if (index >= tokens.length) return null;
 
         const token = tokens[index];
+        const uToken = token.toUpperCase();
+
+        if (uToken === 'NOT') {
+            index++; // consume 'NOT'
+            const expr = parseFactor();
+            if (!expr) return null;
+            return { type: 'NOT', expr };
+        }
+
+        if (token.startsWith('-') && token.length > 1) {
+            const cleanTerm = token.slice(1);
+            index++;
+            return { type: 'NOT', expr: { type: 'TERM', value: cleanTerm } };
+        }
+
         if (token === '(') {
             index++; // consume '('
             const node = parseExpression();
@@ -103,7 +119,7 @@ export function parseTokensToAST(tokens: string[]): ASTNode | null {
                 index++; // consume ')'
             }
             return node;
-        } else if (token === ')' || token.toUpperCase() === 'AND' || token.toUpperCase() === 'OR') {
+        } else if (token === ')' || uToken === 'AND' || uToken === 'OR') {
             return null;
         } else {
             index++;
@@ -132,6 +148,10 @@ export function compileASTToPrisma(node: ASTNode | null, fieldMatcher: FieldMatc
         const rightPrisma = compileASTToPrisma(node.right, fieldMatcher);
         if (leftPrisma && rightPrisma) return { OR: [leftPrisma, rightPrisma] };
         return leftPrisma || rightPrisma || null;
+    } else if (node.type === 'NOT') {
+        const exprPrisma = compileASTToPrisma(node.expr, fieldMatcher);
+        if (exprPrisma) return { NOT: exprPrisma };
+        return null;
     }
     return null;
 }
@@ -144,10 +164,10 @@ export function parseBooleanSearchQuery(query: string, fieldMatcher: FieldMatchG
     const tokens = tokenizeQuery(query);
     if (tokens.length === 0) return null;
 
-    // Check if expression contains boolean syntax (AND, OR, parentheses)
+    // Check if expression contains boolean syntax (AND, OR, NOT, -, parentheses)
     const hasBooleanOperators = tokens.some(t => {
         const u = t.toUpperCase();
-        return u === 'AND' || u === 'OR' || u === '(' || u === ')';
+        return u === 'AND' || u === 'OR' || u === 'NOT' || u === '(' || u === ')' || t.startsWith('-');
     });
 
     if (hasBooleanOperators) {
