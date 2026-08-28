@@ -57,12 +57,13 @@ export interface VpnReportEvent {
 
 export default function VpnReportingClient() {
     const [searchQuery, setSearchQuery] = useState<string>("");
+    const [searchMode, setSearchMode] = useState<"OR" | "AND">("OR");
     const [timeframe, setTimeframe] = useState<number>(86400); // 24h default
     const [isCustomDate, setIsCustomDate] = useState<boolean>(false);
     const [startDate, setStartDate] = useState<string>("");
     const [endDate, setEndDate] = useState<string>("");
     const [statusFilter, setStatusFilter] = useState<string>("ALL");
-    
+
     // Dataset & Loading State
     const [events, setEvents] = useState<VpnReportEvent[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
@@ -96,7 +97,10 @@ export default function VpnReportingClient() {
 
         try {
             const params = new URLSearchParams();
-            if (searchQuery) params.set("query", searchQuery);
+            if (searchQuery) {
+                params.set("query", searchQuery);
+                params.set("searchMode", searchMode);
+            }
             if (statusFilter !== "ALL") params.set("status", statusFilter);
 
             if (isCustomDate && (startDate || endDate)) {
@@ -144,7 +148,7 @@ export default function VpnReportingClient() {
         } finally {
             setLoading(false);
         }
-    }, [searchQuery, timeframe, isCustomDate, startDate, endDate, statusFilter]);
+    }, [searchQuery, searchMode, timeframe, isCustomDate, startDate, endDate, statusFilter]);
 
     useEffect(() => {
         fetchReportData();
@@ -319,7 +323,7 @@ export default function VpnReportingClient() {
             {/* Top Controls & Filter Bar */}
             <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] shadow-2xs">
                 
-                {/* Search Bar & Status Selector */}
+                {/* Search Bar & Mode Selector */}
                 <div className="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-3">
                     <div className="relative flex-1">
                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
@@ -341,8 +345,32 @@ export default function VpnReportingClient() {
                         )}
                     </div>
 
+                    {/* Search Logic Operator (OR vs AND) */}
+                    <div className="flex items-center bg-[var(--bg-default)] p-1 rounded-lg border border-[var(--border-color)] text-xs font-semibold shrink-0" title="Choose whether to match ANY term (OR) or ALL terms (AND)">
+                        <button
+                            onClick={() => setSearchMode("OR")}
+                            className={`px-2.5 py-1 rounded-md transition-colors ${
+                                searchMode === "OR"
+                                    ? "bg-indigo-600 text-white font-bold shadow-xs"
+                                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                            }`}
+                        >
+                            ANY (OR)
+                        </button>
+                        <button
+                            onClick={() => setSearchMode("AND")}
+                            className={`px-2.5 py-1 rounded-md transition-colors ${
+                                searchMode === "AND"
+                                    ? "bg-indigo-600 text-white font-bold shadow-xs"
+                                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                            }`}
+                        >
+                            ALL (AND)
+                        </button>
+                    </div>
+
                     {/* Status Filter */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                         <Filter className="w-4 h-4 text-indigo-400 shrink-0" />
                         <select
                             value={statusFilter}

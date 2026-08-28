@@ -52,18 +52,33 @@ export async function GET(req: Request) {
             whereConditions.status = statusParam;
         }
 
-        // 3. Multi-Term Username / IP / Reason search (supports comma, space, semicolon delimiters)
+        const searchMode = searchParams.get("searchMode")?.toUpperCase() === "AND" ? "AND" : "OR";
+
+        // 3. Multi-Term Username / IP / Reason search (supports OR vs AND mode)
         if (query) {
             const tokens = query.split(/[,;\s]+/).map(t => t.trim()).filter(Boolean);
             if (tokens.length > 0) {
-                whereConditions.OR = tokens.flatMap(token => [
-                    { username: { contains: token, mode: 'insensitive' } },
-                    { sourceIp: { contains: token } },
-                    { assignedIp: { contains: token } },
-                    { failureReason: { contains: token, mode: 'insensitive' } },
-                    { vpnStream: { contains: token, mode: 'insensitive' } },
-                    { ipAsName: { contains: token, mode: 'insensitive' } }
-                ]);
+                if (searchMode === "AND") {
+                    whereConditions.AND = tokens.map(token => ({
+                        OR: [
+                            { username: { contains: token, mode: 'insensitive' } },
+                            { sourceIp: { contains: token } },
+                            { assignedIp: { contains: token } },
+                            { failureReason: { contains: token, mode: 'insensitive' } },
+                            { vpnStream: { contains: token, mode: 'insensitive' } },
+                            { ipAsName: { contains: token, mode: 'insensitive' } }
+                        ]
+                    }));
+                } else {
+                    whereConditions.OR = tokens.flatMap(token => [
+                        { username: { contains: token, mode: 'insensitive' } },
+                        { sourceIp: { contains: token } },
+                        { assignedIp: { contains: token } },
+                        { failureReason: { contains: token, mode: 'insensitive' } },
+                        { vpnStream: { contains: token, mode: 'insensitive' } },
+                        { ipAsName: { contains: token, mode: 'insensitive' } }
+                    ]);
+                }
             }
         }
 
