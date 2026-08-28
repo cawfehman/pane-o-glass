@@ -602,10 +602,10 @@ export default function VpnReportingClient() {
                                     return (
                                         <tr 
                                             key={evt.id} 
-                                            className={`transition-colors ${
+                                            className={`border-b border-[var(--border-color)]/30 transition-colors ${
                                                 isEven 
-                                                    ? "bg-[var(--bg-surface)] hover:bg-indigo-500/10" 
-                                                    : "bg-[var(--bg-default)]/40 hover:bg-indigo-500/10"
+                                                    ? "bg-[var(--bg-surface)] hover:bg-indigo-500/15" 
+                                                    : "bg-indigo-500/[0.06] dark:bg-white/[0.04] hover:bg-indigo-500/15"
                                             }`}
                                         >
                                             {/* Row Number */}
