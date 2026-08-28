@@ -193,7 +193,7 @@ async function runBecMonitorCron() {
             const now = Date.now();
             let fromTime = now - 300000; // 5-minute initial seed window
 
-            if (job && job.lastRun && job.status === "SUCCESS") {
+            if (job && job.lastRun) {
                 const lastRunTime = new Date(job.lastRun).getTime();
                 // If lastRun is within the last 30 minutes, use it (with a 10s safety overlap)
                 if (now - lastRunTime < 1800000 && lastRunTime < now) {
@@ -259,19 +259,19 @@ async function runBecMonitorCron() {
                 }
 
                 const analysis = classifyM365Url(rawUrl, sender, OFFICIAL_M365_AUTH_ENDPOINTS, wrsScore);
-                if (analysis.isBecThreat) {
+                if (analysis && (analysis.isBecThreat || analysis.impersonationBoost > 0)) {
                     incidentsToCreate.push({
                         mid,
                         rfcMessageId: rfcId,
                         subject,
                         sender,
                         recipient,
-                        targetHost: host,
-                        destUrl,
-                        threatTier: analysis.threatTier,
-                        threatCategory: analysis.threatCategory,
-                        impersonationBoost: analysis.impersonationBoost,
-                        analysisReason: analysis.reason
+                        targetHost: analysis.targetHost || host,
+                        destUrl: analysis.destUrl || destUrl,
+                        threatTier: analysis.threatTier || "LOW",
+                        threatCategory: analysis.threatCategory || "SUSPICIOUS",
+                        impersonationBoost: analysis.impersonationBoost || 0,
+                        analysisReason: analysis.reason || ""
                     });
                 }
             }
