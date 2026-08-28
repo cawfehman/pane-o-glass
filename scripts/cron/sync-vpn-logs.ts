@@ -54,38 +54,78 @@ function isPrivateIp(ip: any) {
     }
 }
 
-// IPinfo Fetcher
-function getIpInfo(ip: any) {
-    return new Promise((resolve: any) => {
-        if (isPrivateIp(ip)) {
-            return resolve(null);
+// IP Enrichment Fetcher
+async function getIpInfo(ip: any): Promise<any> {
+    if (!ip || isPrivateIp(ip)) {
+        return null;
+    }
+
+    try {
+        // 1. Check IpLookupCache in PostgreSQL first
+        const cached = await prisma.ipLookupCache.findUnique({ where: { ip } });
+        if (cached) {
+            const raw = JSON.parse(cached.rawJson);
+            return {
+                asn: raw.asn?.asn || raw.asn || null,
+                as_name: raw.asn?.name || raw.company?.name || raw.org || null,
+                as_domain: raw.asn?.domain || raw.company?.domain || null,
+                country: raw.country || null,
+                country_code: raw.country_code || cached.countryCode || null,
+                city: cached.city || raw.city || null
+            };
         }
 
-        const token = process.env.IPINFO_TOKEN!;
-        if (!token) {
-            return resolve(null);
-        }
+        // 2. Fetch live via iplocate.io API
+        const apiKey = process.env.IPLOCATE_API_KEY;
+        const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
+            headers: apiKey ? { "X-API-KEY": apiKey } : {},
+            timeout: 5000
+        }).catch(() => null);
 
-        const url = `https://api.ipinfo.io/lite/${ip}?token=${token}`;
-        https.get(url, (res: any) => {
-            if (res.statusCode !== 200) {
-                return resolve(null);
-            }
+        if (res?.data) {
+            const d = res.data;
+            const asnStr = d.asn?.asn || d.asn || null;
+            const orgStr = d.asn?.name || d.company?.name || d.org || null;
+            const domainStr = d.asn?.domain || d.company?.domain || null;
+            const countryStr = d.country || null;
+            const countryCodeStr = d.country_code || null;
+            const cityStr = d.city || null;
 
-            let rawData = '';
-            res.on('data', (chunk: any) => { rawData += chunk; });
-            res.on('end', () => {
-                try {
-                    const parsedData = JSON.parse(rawData);
-                    resolve(parsedData);
-                } catch (e: any) {
-                    resolve(null);
+            // Persist into IpLookupCache
+            await prisma.ipLookupCache.upsert({
+                where: { ip },
+                update: {
+                    latitude: d.latitude || null,
+                    longitude: d.longitude || null,
+                    countryCode: countryCodeStr,
+                    city: cityStr,
+                    subdivision: d.subdivision || null,
+                    rawJson: JSON.stringify(d)
+                },
+                create: {
+                    ip,
+                    latitude: d.latitude || null,
+                    longitude: d.longitude || null,
+                    countryCode: countryCodeStr,
+                    city: cityStr,
+                    subdivision: d.subdivision || null,
+                    rawJson: JSON.stringify(d)
                 }
-            });
-        }).on('error', () => {
-            resolve(null);
-        });
-    });
+            }).catch(() => {});
+
+            return {
+                asn: asnStr,
+                as_name: orgStr,
+                as_domain: domainStr,
+                country: countryStr,
+                country_code: countryCodeStr,
+                city: cityStr
+            };
+        }
+    } catch (e: any) {
+        console.error(`[VPN-SYNC] IP enrichment error for ${ip}:`, e.message);
+    }
+    return null;
 }
 
 // Helper to parse duration string (e.g. 0h:05m:30s or 1d 0h:05m:30s) to seconds

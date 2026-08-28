@@ -707,7 +707,7 @@ export default function VpnReportingClient() {
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="text-indigo-400 hover:text-indigo-300 font-semibold hover:underline inline-flex items-center gap-1 group whitespace-nowrap"
-                                                        title={`Source IP Enrichment Details:\nLocation: ${evt.ipCity ? `${evt.ipCity}, ` : ''}${evt.ipCountry || 'Unknown'}${evt.ipCountryCode ? ` (${evt.ipCountryCode})` : ''}\nNetwork: ${evt.ipAsn || ''}${evt.ipAsName ? ` - ${evt.ipAsName}` : ''}${evt.ipAsDomain ? ` (${evt.ipAsDomain})` : ''}`}
+                                                        title={`Location: ${evt.ipCity ? `${evt.ipCity}, ` : ''}${evt.ipCountry || 'Unknown'}${evt.ipCountryCode ? ` (${evt.ipCountryCode})` : ''}\nNetwork: ${evt.ipAsn || ''}${evt.ipAsName ? ` - ${evt.ipAsName}` : ''}${evt.ipAsDomain ? ` (${evt.ipAsDomain})` : ''}`}
                                                     >
                                                         <span>{evt.sourceIp}</span>
                                                         <ExternalLink className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-opacity" />
