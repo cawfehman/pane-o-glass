@@ -51,7 +51,7 @@ async function runBecMonitorCron() {
             }
         }
 
-        const query = `_exists_:esa_url_rep_score OR message:"URL" OR message:"devicelogin" OR message:"authorize" OR message:"oauth" OR message:"microsoft" OR message:"office365" OR message:"okta.com" OR message:"google.com" OR message:"docusign" OR message:"sharepoint" OR message:"outlook.com" OR message:"forms.office"`;
+        const query = `_exists_:esa_url_rep_score OR message:"devicelogin" OR message:"authorize" OR message:"oauth" OR message:"microsoft" OR message:"office365" OR message:"login.microsoftonline" OR message:"okta.com" OR message:"google.com" OR message:"docusign" OR message:"sharepoint" OR message:"outlook.com" OR message:"forms.office"`;
         const displayDays = (windowSeconds / 86400).toFixed(1);
         console.log(`[BEC Monitor] Starting Ingestion (Window: ${windowSeconds}s / ~${displayDays} days, Backfill: ${isBackfill})...`);
 
@@ -70,7 +70,10 @@ async function runBecMonitorCron() {
                 const chunkHits = await client.searchAllAbsoluteMessagesPaginated(query, fromIso, toIso, 2500, 9900).catch(() => []);
                 console.log(`[BEC Backfill] Block ${i + 1}/${numChunks} (${fromIso.slice(11, 16)} -> ${toIso.slice(11, 16)}): ${chunkHits.length} events retrieved.`);
 
-                let chunkUrls = 0;
+                const rawUrlsToCreate: any[] = [];
+                const incidentsToCreate: any[] = [];
+                const seenKeys = new Set<string>();
+
                 for (const h of chunkHits) {
                     const raw = h.message.message || "";
                     const midMatch = raw.match(/MID (\d+)/);
@@ -97,57 +100,59 @@ async function runBecMonitorCron() {
                         const host = parseDomain(destUrl);
                         if (!host) continue;
 
-                        const { isOauth, provider: providerName } = classifyOAuthProvider(destUrl, host);
-
-                        try {
-                            await prisma.becRawUrl.upsert({
-                                where: { mid_destUrl: { mid, destUrl } },
-                                create: {
-                                    mid,
-                                    rfcMessageId: rfcId,
-                                    subject,
-                                    sender,
-                                    recipient,
-                                    targetHost: host,
-                                    destUrl,
-                                    isOauth,
-                                    provider: providerName,
-                                    score: wrsScore,
-                                    createdAt: new Date(h.message.timestamp || Date.now())
-                                },
-                                update: { score: wrsScore }
+                        const key = `${mid}_${destUrl}`;
+                        if (!seenKeys.has(key)) {
+                            seenKeys.add(key);
+                            const { isOauth, provider: providerName } = classifyOAuthProvider(destUrl, host);
+                            rawUrlsToCreate.push({
+                                mid,
+                                rfcMessageId: rfcId,
+                                subject,
+                                sender,
+                                recipient,
+                                targetHost: host,
+                                destUrl,
+                                isOauth,
+                                provider: providerName,
+                                score: wrsScore,
+                                createdAt: new Date(h.message.timestamp || Date.now())
                             });
-                            urlsIngested++;
-                            chunkUrls++;
-                        } catch (e) {}
+                        }
 
                         const analysis = classifyM365Url(rawUrl, sender, OFFICIAL_M365_AUTH_ENDPOINTS, wrsScore);
                         if (analysis && analysis.impersonationBoost > 0) {
-                            incidentsCount++;
-                            const existing = await prisma.becIncident.findUnique({
-                                where: { mid_destUrl: { mid, destUrl: analysis.destUrl } }
+                            incidentsToCreate.push({
+                                mid,
+                                rfcMessageId: rfcId,
+                                subject,
+                                sender,
+                                recipient,
+                                targetHost: analysis.targetHost,
+                                destUrl: analysis.destUrl,
+                                threatTier: analysis.threatTier,
+                                threatCategory: analysis.threatCategory,
+                                impersonationBoost: analysis.impersonationBoost,
+                                worstScore: wrsScore,
+                                createdAt: new Date(h.message.timestamp || Date.now())
                             });
-
-                            if (!existing) {
-                                await prisma.becIncident.create({
-                                    data: {
-                                        mid,
-                                        rfcMessageId: rfcId,
-                                        subject,
-                                        sender,
-                                        recipient,
-                                        targetHost: analysis.targetHost,
-                                        destUrl: analysis.destUrl,
-                                        threatTier: analysis.threatTier,
-                                        threatCategory: analysis.threatCategory,
-                                        impersonationBoost: analysis.impersonationBoost,
-                                        worstScore: wrsScore,
-                                        createdAt: new Date(h.message.timestamp || Date.now())
-                                    }
-                                }).catch(() => {});
-                            }
                         }
                     }
+                }
+
+                if (rawUrlsToCreate.length > 0) {
+                    const res = await prisma.becRawUrl.createMany({
+                        data: rawUrlsToCreate,
+                        skipDuplicates: true
+                    }).catch(() => ({ count: 0 }));
+                    urlsIngested += res.count || 0;
+                }
+
+                if (incidentsToCreate.length > 0) {
+                    const res = await prisma.becIncident.createMany({
+                        data: incidentsToCreate,
+                        skipDuplicates: true
+                    }).catch(() => ({ count: 0 }));
+                    incidentsCount += res.count || 0;
                 }
             }
 
