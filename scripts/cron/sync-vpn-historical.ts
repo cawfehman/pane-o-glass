@@ -3,6 +3,7 @@ import path from 'path';
 import https from 'https';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import { getBulkUserAdStatus } from '../../src/lib/ldap';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const prisma = new PrismaClient();
@@ -169,8 +170,8 @@ async function runHistoricalSync() {
         daysToSync = parsedDays;
     }
 
-    // Loop through the last N days, day-by-day
-    console.log(`Starting ${daysToSync}-day historical VPN log sync...`);
+    const adCache = new Map<string, any>();
+    console.log(`=== Starting VPN Historical Ingestion (${daysToSync} Days Back) ===`);
     
     let totalImported = 0;
 
@@ -457,6 +458,18 @@ async function runHistoricalSync() {
 
                     const ipInfo = ipCache.get(sourceIp) || null;
 
+                    // Point-in-Time AD lookup
+                    if (!adCache.has(username)) {
+                        const adMap = await getBulkUserAdStatus([username]).catch(() => ({} as any));
+                        adCache.set(username, adMap[username] || {
+                            adStatus: "NOT_FOUND",
+                            displayName: null,
+                            department: null,
+                            title: null
+                        });
+                    }
+                    const adInfo = adCache.get(username);
+
                     const dataObj = {
                         username,
                         sourceIp,
@@ -474,6 +487,14 @@ async function runHistoricalSync() {
                         ipAsDomain: ipInfo?.as_domain || null,
                         ipCountry: ipInfo?.country || null,
                         ipCountryCode: ipInfo?.country_code || null,
+
+                        // Point-in-Time AD Identity Snapshot
+                        adStatus: adInfo.adStatus,
+                        adDisplayName: adInfo.displayName || null,
+                        adDepartment: adInfo.department || null,
+                        adTitle: adInfo.title || null,
+                        adEnrichedAt: new Date(),
+
                         createdAt: logTimestamp
                     };
 
