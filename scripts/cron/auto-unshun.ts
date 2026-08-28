@@ -489,6 +489,38 @@ async function runAutoUnshun() {
                 const cidr = ipData.asn?.route || ipData.network?.route || "unknown";
                 const asn = typeof ipData.asn === 'object' ? (ipData.asn?.asn || "unknown") : (ipData.asn || "unknown");
 
+                // Check if the IP's ASN is in the Guardian ASN Blacklist
+                if (asn && asn !== "unknown") {
+                    const rawAsnNum = String(asn).toUpperCase().replace(/^AS/, "");
+                    const asnBlacklistEntry = await prisma.guardianAsnBlacklist.findFirst({
+                        where: {
+                            OR: [
+                                { asn: `AS${rawAsnNum}` },
+                                { asn: rawAsnNum }
+                            ]
+                        }
+                    });
+
+                    if (asnBlacklistEntry) {
+                        console.log(`[GUARDIAN] IP ${ip} belongs to blacklisted ASN ${asnBlacklistEntry.asn} (${asnBlacklistEntry.asnName || 'Blacklisted ASN'}). Reason: ${asnBlacklistEntry.reason}. Skipping auto-unshun.`);
+
+                        await prisma.guardianEvent.create({
+                            data: {
+                                ip,
+                                firewall: "ALL",
+                                action: "SKIPPED",
+                                reason: "BLACK_LISTED_ASN",
+                                companyName,
+                                companyType,
+                                cidr,
+                                asn: String(asn),
+                                details: `Retained shun because ASN ${asnBlacklistEntry.asn} is blacklisted (${asnBlacklistEntry.reason})`
+                            }
+                        });
+                        continue;
+                    }
+                }
+
                 const successfulVpnCount = await prisma.vpnEvent.count({
                     where: { sourceIp: ip, status: "SUCCESS" }
                 });

@@ -169,6 +169,16 @@ model GuardianBlacklist {
   createdAt DateTime @default(now())
 }
 
+model GuardianAsnBlacklist {
+  asn       String   @id // e.g. "16509" or "AS16509"
+  asnName   String?  // e.g. "AMAZON-02 - Amazon.com, Inc."
+  reason    String
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([asn])
+}
+
 model ShunDatabaseIp {
   ip            String    @id
   

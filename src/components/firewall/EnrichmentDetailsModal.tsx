@@ -44,6 +44,38 @@ export function EnrichmentDetailsModal({ ip, onClose }: EnrichmentDetailsModalPr
         }
     };
 
+    const [blacklistStatus, setBlacklistStatus] = useState<string | null>(null);
+
+    const parsedData = data ? (() => { try { return JSON.parse(data); } catch (e) { return null; } })() : null;
+    const detectedAsn = parsedData?.asn?.asn || parsedData?.asn || null;
+    const detectedAsnName = parsedData?.asn?.name || parsedData?.company?.name || null;
+
+    const handleBlacklistTarget = async (type: "IP" | "ASN") => {
+        const target = type === "IP" ? ip : detectedAsn;
+        if (!target) return;
+        setBlacklistStatus(`Adding ${type}...`);
+        try {
+            const res = await fetch("/api/firewall/guardian/blacklist", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    type,
+                    target,
+                    reason: `Blacklisted from IP Enrichment Inspector (${ip})`,
+                    asnName: type === "ASN" ? detectedAsnName : undefined
+                })
+            });
+            const resData = await res.json();
+            if (res.ok && resData.success) {
+                setBlacklistStatus(`✅ ${type} ${target} Blacklisted!`);
+            } else {
+                setBlacklistStatus(`❌ ${resData.error || "Failed"}`);
+            }
+        } catch (err: any) {
+            setBlacklistStatus(`❌ ${err.message || "Failed"}`);
+        }
+    };
+
     return (
         <>
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 transition-opacity" onClick={onClose} />
@@ -91,6 +123,29 @@ export function EnrichmentDetailsModal({ ip, onClose }: EnrichmentDetailsModalPr
                             </pre>
                         </div>
                     )}
+                </div>
+
+                {/* Footer Quick Action Buttons */}
+                <div className="px-6 py-3 border-t border-[var(--border-color)] bg-[var(--bg-surface)] flex items-center justify-between shrink-0">
+                    <div className="text-xs font-medium text-[var(--text-muted)]">
+                        {blacklistStatus && <span>{blacklistStatus}</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => handleBlacklistTarget("IP")}
+                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-colors cursor-pointer"
+                        >
+                            Blacklist IP ({ip})
+                        </button>
+                        {detectedAsn && (
+                            <button
+                                onClick={() => handleBlacklistTarget("ASN")}
+                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 border border-purple-500/30 transition-colors cursor-pointer"
+                            >
+                                Blacklist ASN ({detectedAsn})
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
         </>

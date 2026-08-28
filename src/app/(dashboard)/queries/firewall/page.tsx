@@ -31,10 +31,21 @@ export default function CiscoFirewallPage() {
     const [guardianPage, setGuardianPage] = useState(1);
     const [guardianLimit, setGuardianLimit] = useState(25);
 
-    const [blacklist, setBlacklist] = useState<any[]>([]);
+    const [blacklistIps, setBlacklistIps] = useState<any[]>([]);
+    const [blacklistAsns, setBlacklistAsns] = useState<any[]>([]);
+    const [blacklistSubTab, setBlacklistSubTab] = useState<"IP" | "ASN">("IP");
     const [loadingBlacklist, setLoadingBlacklist] = useState(false);
     const [blacklistPage, setBlacklistPage] = useState(1);
     const [blacklistLimit, setBlacklistLimit] = useState(25);
+
+    // Add Blacklist Modal State
+    const [showAddBlacklistModal, setShowAddBlacklistModal] = useState(false);
+    const [addType, setAddType] = useState<"IP" | "ASN">("IP");
+    const [addTarget, setAddTarget] = useState("");
+    const [addReason, setAddReason] = useState("");
+    const [addAsnName, setAddAsnName] = useState("");
+    const [addLoading, setAddLoading] = useState(false);
+    const [addError, setAddError] = useState("");
 
     // Confirm Dialog State
     const [confirmModal, setConfirmModal] = useState<{
@@ -79,11 +90,11 @@ export default function CiscoFirewallPage() {
     const fetchGuardianEvents = async () => {
         setLoadingGuardianEvents(true);
         try {
-            const params = new URLSearchParams();
-            if (guardianSearch) params.append("search", guardianSearch);
-            if (guardianFilter) params.append("action", guardianFilter);
+            const query = new URLSearchParams();
+            if (guardianSearch) query.append("search", guardianSearch);
+            if (guardianFilter) query.append("action", guardianFilter);
             
-            const res = await fetch(`/api/firewall/guardian?${params.toString()}`);
+            const res = await fetch(`/api/firewall/guardian?${query.toString()}`);
             if (res.ok) {
                 const data = await res.json();
                 setGuardianEvents(data);
@@ -101,7 +112,13 @@ export default function CiscoFirewallPage() {
             const res = await fetch("/api/firewall/guardian/blacklist");
             if (res.ok) {
                 const data = await res.json();
-                setBlacklist(data);
+                if (data.ips && data.asns) {
+                    setBlacklistIps(data.ips);
+                    setBlacklistAsns(data.asns);
+                } else if (Array.isArray(data)) {
+                    setBlacklistIps(data);
+                    setBlacklistAsns([]);
+                }
             }
         } catch (e) {
             console.error("Failed to load Guardian blacklist");
@@ -114,7 +131,7 @@ export default function CiscoFirewallPage() {
         setConfirmModal({
             isOpen: true,
             title: `Remove ${ip} from Blacklist?`,
-            message: `Are you sure you want to remove ${ip} from the do-not-unshun blacklist? This will clear the block, but will NOT automatically remove the shun from the firewalls if the shun is currently active.`,
+            message: `Are you sure you want to remove IP ${ip} from the do-not-unshun blacklist? This will clear the block, but will NOT automatically remove the shun from the firewalls if the shun is currently active.`,
             variant: "warning",
             onConfirm: async () => {
                 try {
@@ -122,12 +139,7 @@ export default function CiscoFirewallPage() {
                         method: "DELETE"
                     });
                     if (res.ok) {
-                        const data = await res.json();
-                        if (data.success) {
-                            fetchBlacklist();
-                        } else {
-                            setActionError(data.error || "Failed to remove IP from blacklist");
-                        }
+                        fetchBlacklist();
                     } else {
                         setActionError("Failed to remove IP from blacklist");
                     }
@@ -138,6 +150,67 @@ export default function CiscoFirewallPage() {
                 }
             }
         });
+    };
+
+    const handleRemoveAsnFromBlacklist = (asn: string) => {
+        setConfirmModal({
+            isOpen: true,
+            title: `Remove ASN ${asn} from Blacklist?`,
+            message: `Are you sure you want to remove ASN ${asn} from the Guardian blacklist? Shuns for IPs under this ASN will no longer be automatically retained by ASN rule.`,
+            variant: "warning",
+            onConfirm: async () => {
+                try {
+                    const res = await fetch(`/api/firewall/guardian/blacklist?asn=${encodeURIComponent(asn)}`, {
+                        method: "DELETE"
+                    });
+                    if (res.ok) {
+                        fetchBlacklist();
+                    } else {
+                        setActionError("Failed to remove ASN from blacklist");
+                    }
+                } catch (e: any) {
+                    setActionError(e.message || "Failed to remove ASN from blacklist");
+                } finally {
+                    setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                }
+            }
+        });
+    };
+
+    const handleAddBlacklistSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!addTarget || !addReason) {
+            setAddError("Target (IP/ASN) and reason are required.");
+            return;
+        }
+        setAddLoading(true);
+        setAddError("");
+        try {
+            const res = await fetch("/api/firewall/guardian/blacklist", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    type: addType,
+                    target: addTarget,
+                    reason: addReason,
+                    asnName: addAsnName
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setShowAddBlacklistModal(false);
+                setAddTarget("");
+                setAddReason("");
+                setAddAsnName("");
+                fetchBlacklist();
+            } else {
+                setAddError(data.error || "Failed to add item to blacklist.");
+            }
+        } catch (err: any) {
+            setAddError(err.message || "An unexpected error occurred.");
+        } finally {
+            setAddLoading(false);
+        }
     };
 
     useEffect(() => {
@@ -710,15 +783,48 @@ export default function CiscoFirewallPage() {
             <div className="flex-1 min-h-0 flex flex-col gap-6">
                 <div className="glass-card flex-1 flex flex-col min-h-0 border border-border-color rounded-xl overflow-hidden shadow-sm" style={{ minHeight: '400px', padding: 0 }}>
                     <div className="p-4 border-b border-border-color bg-bg-surface/60 shrink-0">
-                        <h3 className="m-0 text-base font-bold text-text-primary">Guardian Do-Not-Unshun Blacklist ({blacklist.length})</h3>
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
-                            The following IP addresses have triggered automated safety limits (e.g. repeated unshuns or suspicious brute forcing) and are barred from auto-unshunning. They must be manually cleared to allow automated handling again.
-                        </p>
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div>
+                                <h3 className="m-0 text-base font-bold text-text-primary">Guardian Do-Not-Unshun Blacklist</h3>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
+                                    IP addresses and ASNs (Autonomous System Numbers) barred from automated unshunning or safety exceptions.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setAddType("IP");
+                                    setAddTarget("");
+                                    setAddReason("");
+                                    setAddAsnName("");
+                                    setAddError("");
+                                    setShowAddBlacklistModal(true);
+                                }}
+                                className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg text-sm font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+                            >
+                                <span className="text-lg leading-none">+</span> Add to Blacklist
+                            </button>
+                        </div>
+
+                        {/* IP vs ASN Subtabs */}
+                        <div className="flex items-center gap-3 pt-4 border-t border-border-color/60 mt-3">
+                            <button
+                                onClick={() => { setBlacklistSubTab("IP"); setBlacklistPage(1); }}
+                                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${blacklistSubTab === "IP" ? "bg-accent-primary/20 text-accent-primary border border-accent-primary/30" : "text-text-secondary hover:text-text-primary bg-bg-dark/40"}`}
+                            >
+                                Blacklisted IPs ({blacklistIps.length})
+                            </button>
+                            <button
+                                onClick={() => { setBlacklistSubTab("ASN"); setBlacklistPage(1); }}
+                                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${blacklistSubTab === "ASN" ? "bg-accent-primary/20 text-accent-primary border border-accent-primary/30" : "text-text-secondary hover:text-text-primary bg-bg-dark/40"}`}
+                            >
+                                Blacklisted ASNs ({blacklistAsns.length})
+                            </button>
+                        </div>
 
                         {/* Top Pinned Pagination */}
                         <div className="pt-3 mt-3 border-t border-border-color/60">
                             <PaginationControls
-                                totalRecords={blacklist.length}
+                                totalRecords={blacklistSubTab === "IP" ? blacklistIps.length : blacklistAsns.length}
                                 page={blacklistPage}
                                 limit={blacklistLimit}
                                 limitOptions={[25, 50, 100, 200]}
@@ -734,52 +840,104 @@ export default function CiscoFirewallPage() {
 
                     {loadingBlacklist ? (
                         <div className="p-8 text-center text-text-muted">Loading blacklist...</div>
-                    ) : blacklist.length === 0 ? (
-                        <div className="p-8 text-center text-text-muted">No IPs currently blacklisted.</div>
-                    ) : (
-                        <div className="flex-1 overflow-auto custom-scrollbar">
-                            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                                <thead className="sticky top-0 bg-bg-surface z-10">
-                                    <tr style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Blacklisted Date</th>
-                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>IP Address</th>
-                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Reason for Blocking</th>
-                                        <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)', textAlign: 'right' }}>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {blacklist
-                                        .slice((blacklistPage - 1) * blacklistLimit, blacklistPage * blacklistLimit)
-                                        .map((item) => (
-                                        <tr key={item.ip} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }} className="table-row-hover">
-                                            <td style={{ padding: '12px 14px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                                                {new Date(item.createdAt).toLocaleString()}
-                                            </td>
-                                            <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent-primary)' }}>
-                                                {item.ip}
-                                            </td>
-                                            <td style={{ padding: '12px 14px', color: 'var(--text-primary)' }}>
-                                                {item.reason}
-                                            </td>
-                                            <td style={{ padding: '12px 14px', textAlign: 'right' }}>
-                                                <button
-                                                    onClick={() => handleRemoveFromBlacklist(item.ip)}
-                                                    className="px-3 py-1 text-xs font-semibold rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-                                                >
-                                                    Clear Block
-                                                </button>
-                                            </td>
+                    ) : blacklistSubTab === "IP" ? (
+                        blacklistIps.length === 0 ? (
+                            <div className="p-8 text-center text-text-muted">No individual IPs currently blacklisted.</div>
+                        ) : (
+                            <div className="flex-1 overflow-auto custom-scrollbar">
+                                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                    <thead className="sticky top-0 bg-bg-surface z-10">
+                                        <tr style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Blacklisted Date</th>
+                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>IP Address</th>
+                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Reason for Blocking</th>
+                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)', textAlign: 'right' }}>Actions</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                                    </thead>
+                                    <tbody>
+                                        {blacklistIps
+                                            .slice((blacklistPage - 1) * blacklistLimit, blacklistPage * blacklistLimit)
+                                            .map((item) => (
+                                            <tr key={item.ip} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }} className="table-row-hover">
+                                                <td style={{ padding: '12px 14px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                                    {new Date(item.createdAt).toLocaleString()}
+                                                </td>
+                                                <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                                                    {item.ip}
+                                                </td>
+                                                <td style={{ padding: '12px 14px', color: 'var(--text-primary)' }}>
+                                                    {item.reason}
+                                                </td>
+                                                <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                                                    <button
+                                                        onClick={() => handleRemoveFromBlacklist(item.ip)}
+                                                        className="px-3 py-1 text-xs font-semibold rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                                    >
+                                                        Clear Block
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )
+                    ) : (
+                        blacklistAsns.length === 0 ? (
+                            <div className="p-8 text-center text-text-muted">No ASNs currently blacklisted.</div>
+                        ) : (
+                            <div className="flex-1 overflow-auto custom-scrollbar">
+                                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                    <thead className="sticky top-0 bg-bg-surface z-10">
+                                        <tr style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Blacklisted Date</th>
+                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>ASN</th>
+                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Organization / ISP Name</th>
+                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Reason for Blocking</th>
+                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)' }}>Added By</th>
+                                            <th style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)', textAlign: 'right' }}>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {blacklistAsns
+                                            .slice((blacklistPage - 1) * blacklistLimit, blacklistPage * blacklistLimit)
+                                            .map((item) => (
+                                            <tr key={item.asn} style={{ borderBottom: '1px solid var(--border-color)', fontSize: '0.875rem' }} className="table-row-hover">
+                                                <td style={{ padding: '12px 14px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                                    {new Date(item.createdAt).toLocaleString()}
+                                                </td>
+                                                <td style={{ padding: '12px 14px', fontFamily: 'monospace', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                                                    {item.asn}
+                                                </td>
+                                                <td style={{ padding: '12px 14px', color: 'var(--text-secondary)' }}>
+                                                    {item.asnName || "Unknown Org"}
+                                                </td>
+                                                <td style={{ padding: '12px 14px', color: 'var(--text-primary)' }}>
+                                                    {item.reason}
+                                                </td>
+                                                <td style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                                                    {item.createdBy || "System"}
+                                                </td>
+                                                <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                                                    <button
+                                                        onClick={() => handleRemoveAsnFromBlacklist(item.asn)}
+                                                        className="px-3 py-1 text-xs font-semibold rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                                    >
+                                                        Clear ASN Block
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )
                     )}
 
                     {/* Bottom Pinned Pagination */}
                     <div className="p-3 border-t border-border-color bg-bg-surface/80 backdrop-blur-md shrink-0">
                         <PaginationControls
-                            totalRecords={blacklist.length}
+                            totalRecords={blacklistSubTab === "IP" ? blacklistIps.length : blacklistAsns.length}
                             page={blacklistPage}
                             limit={blacklistLimit}
                             onPageChange={setBlacklistPage}
@@ -791,6 +949,122 @@ export default function CiscoFirewallPage() {
         ) : activeTab === "database" ? (
             <ShunDatabaseTab />
         ) : null}
+            </div>
+
+            {/* Add to Blacklist Modal */}
+            {showAddBlacklistModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl max-w-lg w-full p-6 shadow-2xl relative">
+                        <div className="flex items-center justify-between mb-4 pb-3 border-b border-[var(--border-color)]">
+                            <h3 className="text-lg font-bold text-[var(--text-primary)]">Add to Guardian Blacklist</h3>
+                            <button
+                                onClick={() => setShowAddBlacklistModal(false)}
+                                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xl font-bold cursor-pointer"
+                            >
+                                &times;
+                            </button>
+                        </div>
+
+                        <form onSubmit={handleAddBlacklistSubmit} className="flex flex-col gap-4">
+                            <div>
+                                <label className="block text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">
+                                    Entry Type
+                                </label>
+                                <div className="flex gap-4">
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-[var(--text-primary)]">
+                                        <input
+                                            type="radio"
+                                            name="addType"
+                                            value="IP"
+                                            checked={addType === "IP"}
+                                            onChange={() => setAddType("IP")}
+                                            className="accent-[var(--accent-primary)]"
+                                        />
+                                        IP Address (e.g. 198.51.100.45)
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-[var(--text-primary)]">
+                                        <input
+                                            type="radio"
+                                            name="addType"
+                                            value="ASN"
+                                            checked={addType === "ASN"}
+                                            onChange={() => setAddType("ASN")}
+                                            className="accent-[var(--accent-primary)]"
+                                        />
+                                        ASN (e.g. AS16509 / 16509)
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-1">
+                                    {addType === "IP" ? "IP Address" : "ASN Number (or ASXXXXX)"}
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder={addType === "IP" ? "e.g. 198.51.100.45" : "e.g. AS16509 or 16509"}
+                                    value={addTarget}
+                                    onChange={(e) => setAddTarget(e.target.value)}
+                                    required
+                                    className="w-full px-3 py-2 bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-lg text-sm text-[var(--text-primary)] font-mono outline-none focus:border-[var(--accent-primary)]"
+                                />
+                            </div>
+
+                            {addType === "ASN" && (
+                                <div>
+                                    <label className="block text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-1">
+                                        Organization / Provider Name (Optional)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. AMAZON-02 - Amazon.com, Inc."
+                                        value={addAsnName}
+                                        onChange={(e) => setAddAsnName(e.target.value)}
+                                        className="w-full px-3 py-2 bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-lg text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-primary)]"
+                                    />
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="block text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-1">
+                                    Reason for Blacklisting
+                                </label>
+                                <textarea
+                                    placeholder="e.g. Manual security block, repeated malicious probes, or untrusted cloud hosting provider."
+                                    value={addReason}
+                                    onChange={(e) => setAddReason(e.target.value)}
+                                    required
+                                    rows={3}
+                                    className="w-full px-3 py-2 bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-lg text-sm text-[var(--text-primary)] outline-none focus:border-[var(--accent-primary)]"
+                                />
+                            </div>
+
+                            {addError && (
+                                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-medium">
+                                    {addError}
+                                </div>
+                            )}
+
+                            <div className="flex justify-end gap-3 pt-3 border-t border-[var(--border-color)]">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAddBlacklistModal(false)}
+                                    className="px-4 py-2 rounded-lg text-sm font-semibold border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={addLoading}
+                                    className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                    {addLoading ? "Adding..." : "Add to Blacklist"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
             </div>
 
             {/* Reusable Confirm Dialog */}
