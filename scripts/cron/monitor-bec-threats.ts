@@ -179,13 +179,36 @@ async function runBecMonitorCron() {
             return;
         }
 
-        const defaultLookback = process.env.BEC_LOOKBACK_SECONDS ? parseInt(process.env.BEC_LOOKBACK_SECONDS, 10) : 600; // 10-minute (600s) default lookback covers syslog indexing delays
-        if (!isBackfill) {
-            windowSeconds = defaultLookback;
-        }
+        let becHits: any[] = [];
+        let fromIso = "";
+        let toIso = new Date().toISOString();
 
-        const becHits = await client.searchAllMessagesPaginated(query, windowSeconds, 2500, 50000);
-        console.log(`[BEC Monitor] Ingested ${becHits.length} matching syslog events across paginated Graylog calls (Last ${windowSeconds}s).`);
+        if (!isBackfill) {
+            // High-Watermark Checkpoint Ingestion Engine:
+            // Fetch the last successful run timestamp from PostgreSQL to query the exact delta window.
+            const job = await prisma.backgroundJob.findUnique({
+                where: { name: "BEC 24x7 Threat Monitor" }
+            }).catch(() => null);
+
+            const now = Date.now();
+            let fromTime = now - 300000; // 5-minute initial seed window
+
+            if (job && job.lastRun && job.status === "SUCCESS") {
+                const lastRunTime = new Date(job.lastRun).getTime();
+                // If lastRun is within the last 30 minutes, use it (with a 10s safety overlap)
+                if (now - lastRunTime < 1800000 && lastRunTime < now) {
+                    fromTime = lastRunTime - 10000; // 10s safety buffer for clock jitter
+                }
+            }
+
+            fromIso = new Date(fromTime).toISOString();
+            console.log(`[BEC Monitor Checkpoint] Ingesting delta window (${fromIso.slice(11, 19)} -> ${toIso.slice(11, 19)})...`);
+            becHits = await client.searchAllAbsoluteMessagesPaginated(query, fromIso, toIso, 2500, 9900).catch(() => []);
+            console.log(`[BEC Monitor] Ingested ${becHits.length} matching syslog events for window (${fromIso.slice(11, 19)} -> ${toIso.slice(11, 19)}).`);
+        } else {
+            becHits = await client.searchAllMessagesPaginated(query, windowSeconds, 2500, 50000).catch(() => []);
+            console.log(`[BEC Monitor Backfill] Ingested ${becHits.length} matching syslog events across paginated Graylog calls.`);
+        }
 
         const rawUrlsToCreate: any[] = [];
         const incidentsToCreate: any[] = [];
