@@ -53,27 +53,30 @@ async function backfillVpnIpEnrichment() {
     const apiKey = process.env.IPLOCATE_API_KEY;
     console.log(`[IP-BACKFILL] API Key status: ${apiKey ? "YES (Live iplocate.io API)" : "NO (Fallback high-fidelity simulation)"}`);
 
-    // Query most recent events missing enrichment ordered by desc timestamp
-    console.log(`[IP-BACKFILL] Querying database for ${targetLimit.toLocaleString()} most recent unique public IPs...`);
+    // Query most recent unenriched IPs using optimized raw SQL
+    console.log(`[IP-BACKFILL] Executing SQL to pull top ${targetLimit.toLocaleString()} most recent unique public IPs...`);
     
-    const unEnrichedEvents = await prisma.vpnEvent.findMany({
-        where: {
-            OR: [
-                { ipAsn: null },
-                { ipCountry: null }
-            ]
-        },
-        orderBy: { createdAt: 'desc' },
-        select: { sourceIp: true },
-        distinct: ['sourceIp'],
-        take: targetLimit
-    });
+    const rawResults: { sourceIp: string; latest_date: Date }[] = await prisma.$queryRaw`
+        SELECT "sourceIp", MAX("createdAt") as latest_date
+        FROM "VpnEvent"
+        WHERE "sourceIp" IS NOT NULL
+          AND ("ipAsn" IS NULL OR "ipCountry" IS NULL)
+        GROUP BY "sourceIp"
+        ORDER BY latest_date DESC
+        LIMIT ${targetLimit};
+    `;
 
-    const publicIps = unEnrichedEvents
+    const publicIps = rawResults
         .map(e => e.sourceIp)
         .filter(ip => ip && !isPrivateIp(ip));
 
+    const newestDate = rawResults.length > 0 ? rawResults[0].latest_date : null;
+    const oldestDate = rawResults.length > 0 ? rawResults[rawResults.length - 1].latest_date : null;
+
     console.log(`[IP-BACKFILL] Isolated ${publicIps.length.toLocaleString()} unique public IPs needing enrichment.`);
+    if (newestDate && oldestDate) {
+        console.log(`[IP-BACKFILL] Timeframe window: From ${new Date(oldestDate).toLocaleString()} to ${new Date(newestDate).toLocaleString()}`);
+    }
 
     // 1. Check local IpLookupCache in PostgreSQL first (0 external API calls)
     console.log("[IP-BACKFILL] Phase 1: Checking local PostgreSQL IpLookupCache...");
@@ -123,8 +126,8 @@ async function backfillVpnIpEnrichment() {
     // Process uncached IPs in controlled batches with rate limit safety
     let externalSuccess = 0;
     let rateLimited = false;
-    const batchSize = 10; // 10 per batch with pause
-    const delayMs = 300; // 300ms pause between calls to respect rate limits
+    const batchSize = 10;
+    const delayMs = 300; // 300ms pause between calls
 
     for (let i = 0; i < uncachedIps.length; i += batchSize) {
         if (rateLimited) {
