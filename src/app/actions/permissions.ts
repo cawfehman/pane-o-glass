@@ -109,8 +109,8 @@ export async function hasPermission(role: string, toolId: string) {
             }
         });
 
-        // Fallback for ETD: if no explicit entry exists for ETD, default to IronPort permission
-        if (!permission && toolId === 'etd') {
+        // Fallback for ETD and BEC: if no explicit entry exists, default to IronPort permission
+        if (!permission && (toolId === 'etd' || toolId === 'bec')) {
             permission = await prisma.toolPermission.findFirst({
                 where: {
                     role: String(role).toUpperCase(),
@@ -211,6 +211,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'vpn-reporting', role: 'ADMIN', isEnabled: true },
             { toolId: 'threat-intel', role: 'ADMIN', isEnabled: true },
             { toolId: 'ironport', role: 'ADMIN', isEnabled: true },
+            { toolId: 'bec', role: 'ADMIN', isEnabled: true },
             { toolId: 'etd', role: 'ADMIN', isEnabled: true },
 
             { toolId: 'firewall', role: 'ANALYST', isEnabled: true },
@@ -222,6 +223,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'vpn-reporting', role: 'ANALYST', isEnabled: true },
             { toolId: 'threat-intel', role: 'ANALYST', isEnabled: true },
             { toolId: 'ironport', role: 'ANALYST', isEnabled: true },
+            { toolId: 'bec', role: 'ANALYST', isEnabled: true },
             { toolId: 'etd', role: 'ANALYST', isEnabled: true },
 
             { toolId: 'firewall', role: 'USER', isEnabled: false },
@@ -233,6 +235,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'vpn-reporting', role: 'USER', isEnabled: false },
             { toolId: 'threat-intel', role: 'USER', isEnabled: false },
             { toolId: 'ironport', role: 'USER', isEnabled: false },
+            { toolId: 'bec', role: 'USER', isEnabled: false },
             { toolId: 'etd', role: 'USER', isEnabled: false },
 
             { toolId: 'firewall', role: 'NETWORK', isEnabled: true },
@@ -244,6 +247,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'vpn-reporting', role: 'NETWORK', isEnabled: true },
             { toolId: 'threat-intel', role: 'NETWORK', isEnabled: true },
             { toolId: 'ironport', role: 'NETWORK', isEnabled: false },
+            { toolId: 'bec', role: 'NETWORK', isEnabled: false },
             { toolId: 'etd', role: 'NETWORK', isEnabled: false },
 
             { toolId: 'firewall', role: 'DESKTOP', isEnabled: true },
@@ -254,6 +258,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'vpn', role: 'DESKTOP', isEnabled: false },
             { toolId: 'threat-intel', role: 'DESKTOP', isEnabled: false },
             { toolId: 'ironport', role: 'DESKTOP', isEnabled: false },
+            { toolId: 'bec', role: 'DESKTOP', isEnabled: false },
             { toolId: 'etd', role: 'DESKTOP', isEnabled: false },
 
             { toolId: 'firewall', role: 'SYSTEMS', isEnabled: false },
@@ -264,6 +269,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'vpn', role: 'SYSTEMS', isEnabled: false },
             { toolId: 'threat-intel', role: 'SYSTEMS', isEnabled: false },
             { toolId: 'ironport', role: 'SYSTEMS', isEnabled: true },
+            { toolId: 'bec', role: 'SYSTEMS', isEnabled: true },
             { toolId: 'etd', role: 'SYSTEMS', isEnabled: true },
 
             { toolId: 'site-management', role: 'ADMIN', isEnabled: true },

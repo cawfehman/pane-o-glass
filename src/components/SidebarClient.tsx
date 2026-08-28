@@ -163,7 +163,7 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                     <span className="nav-text">IronPort Telemetry</span>
                                 </Link>
                             )}
-                            {hasPermission('ironport') && (
+                            {hasPermission('bec') && (
                                 <Link 
                                     href="/queries/bec" 
                                     onClick={closeMobile}
