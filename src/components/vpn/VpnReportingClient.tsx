@@ -620,40 +620,56 @@ export default function VpnReportingClient() {
 
                                             {/* Username & AD Status Badge */}
                                             <td className="p-3 font-mono">
-                                                <div className="flex flex-col gap-1">
-                                                    <span className="font-semibold text-indigo-400">
-                                                        {evt.username || "unknown"}
-                                                    </span>
-                                                    
-                                                    {/* AD Status Indicator */}
+                                                <div className="flex items-center gap-2 whitespace-nowrap">
                                                     {evt.adStatus === "ACTIVE" && (
-                                                        <span 
-                                                            className="inline-flex items-center gap-1 text-[11px] font-sans font-bold text-emerald-400"
-                                                            title={`AD Verified Active User: ${evt.adDisplayName || evt.username}${evt.adTitle ? ` (${evt.adTitle})` : ""}${evt.adDepartment ? ` - ${evt.adDepartment}` : ""}\nVerified as of: ${new Date(evt.adLastCheckedAt || Date.now()).toLocaleString()}`}
-                                                        >
-                                                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                                                            ACTIVE IN AD
-                                                        </span>
+                                                        <>
+                                                            <span 
+                                                                className="font-semibold text-emerald-400"
+                                                                title={`AD Verified Active User: ${evt.adDisplayName || evt.username}${evt.adTitle ? ` (${evt.adTitle})` : ""}${evt.adDepartment ? ` - ${evt.adDepartment}` : ""}\nCaptured at Ingest: ${new Date(evt.adLastCheckedAt || Date.now()).toLocaleString()}`}
+                                                            >
+                                                                {evt.username || "unknown"}
+                                                            </span>
+                                                            <span 
+                                                                className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-sans font-bold uppercase tracking-wider"
+                                                                title={`AD Active: ${evt.adDisplayName || evt.username}${evt.adTitle ? ` (${evt.adTitle})` : ""}`}
+                                                            >
+                                                                Active
+                                                            </span>
+                                                        </>
                                                     )}
 
                                                     {evt.adStatus === "DISABLED" && (
-                                                        <span 
-                                                            className="inline-flex items-center gap-1 text-[11px] font-sans font-bold text-rose-400"
-                                                            title={`AD Account Disabled / Terminated: ${evt.adDisplayName || evt.username}\nVerified as of: ${new Date(evt.adLastCheckedAt || Date.now()).toLocaleString()}`}
-                                                        >
-                                                            <span className="w-2 h-2 rounded-full bg-rose-400"></span>
-                                                            DISABLED IN AD
-                                                        </span>
+                                                        <>
+                                                            <span 
+                                                                className="font-semibold text-rose-400 line-through decoration-rose-500/60"
+                                                                title={`AD Account Disabled / Terminated: ${evt.adDisplayName || evt.username}${evt.adTitle ? ` (${evt.adTitle})` : ""}${evt.adDepartment ? ` - ${evt.adDepartment}` : ""}\nCaptured at Ingest: ${new Date(evt.adLastCheckedAt || Date.now()).toLocaleString()}`}
+                                                            >
+                                                                {evt.username || "unknown"}
+                                                            </span>
+                                                            <span 
+                                                                className="px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[10px] font-sans font-bold uppercase tracking-wider"
+                                                                title={`AD Disabled: ${evt.adDisplayName || evt.username}`}
+                                                            >
+                                                                Disabled
+                                                            </span>
+                                                        </>
                                                     )}
 
-                                                    {evt.adStatus === "NOT_FOUND" && (
-                                                        <span 
-                                                            className="inline-flex items-center gap-1 text-[11px] font-sans font-medium text-amber-400/80"
-                                                            title={`Account Not Found in AD as of ${new Date(evt.adLastCheckedAt || Date.now()).toLocaleString()}`}
-                                                        >
-                                                            <span className="w-2 h-2 rounded-full bg-amber-400/80"></span>
-                                                            NOT IN AD
-                                                        </span>
+                                                    {(evt.adStatus === "NOT_FOUND" || !evt.adStatus) && (
+                                                        <>
+                                                            <span 
+                                                                className="font-semibold text-amber-400/90"
+                                                                title={`Account Not Found in AD as of Ingest (${new Date(evt.adLastCheckedAt || Date.now()).toLocaleString()})`}
+                                                            >
+                                                                {evt.username || "unknown"}
+                                                            </span>
+                                                            <span 
+                                                                className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400/90 border border-amber-500/20 text-[10px] font-sans font-medium uppercase tracking-wider"
+                                                                title="Username not found in Active Directory"
+                                                            >
+                                                                Not In AD
+                                                            </span>
+                                                        </>
                                                     )}
                                                 </div>
                                             </td>
