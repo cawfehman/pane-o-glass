@@ -52,16 +52,19 @@ export async function GET(req: Request) {
             whereConditions.status = statusParam;
         }
 
-        // 3. Username / IP / Reason multi-field search
+        // 3. Multi-Term Username / IP / Reason search (supports comma, space, semicolon delimiters)
         if (query) {
-            whereConditions.OR = [
-                { username: { contains: query, mode: 'insensitive' } },
-                { sourceIp: { contains: query } },
-                { assignedIp: { contains: query } },
-                { failureReason: { contains: query, mode: 'insensitive' } },
-                { vpnStream: { contains: query, mode: 'insensitive' } },
-                { ipAsName: { contains: query, mode: 'insensitive' } }
-            ];
+            const tokens = query.split(/[,;\s]+/).map(t => t.trim()).filter(Boolean);
+            if (tokens.length > 0) {
+                whereConditions.OR = tokens.flatMap(token => [
+                    { username: { contains: token, mode: 'insensitive' } },
+                    { sourceIp: { contains: token } },
+                    { assignedIp: { contains: token } },
+                    { failureReason: { contains: token, mode: 'insensitive' } },
+                    { vpnStream: { contains: token, mode: 'insensitive' } },
+                    { ipAsName: { contains: token, mode: 'insensitive' } }
+                ]);
+            }
         }
 
         // 4. Query PostgreSQL database & calculate exact timeframe event count
