@@ -19,31 +19,161 @@ async function runBecMonitorCron() {
 
     try {
         const client = new OgGraylogClient();
-        // Allow CLI parameter --backfill or env variable BEC_LOOKBACK_SECONDS (defaults to 75s rolling window)
-        const isBackfill = process.argv.includes('--backfill');
-        const windowSeconds = isBackfill ? 86400 : (process.env.BEC_LOOKBACK_SECONDS ? parseInt(process.env.BEC_LOOKBACK_SECONDS, 10) : 75);
-        const query = `_exists_:esa_url_rep_score OR message:"URL" OR message:"devicelogin" OR message:"authorize" OR message:"oauth" OR message:"microsoft" OR message:"office365" OR message:"okta.com" OR message:"google.com" OR message:"docusign" OR message:"sharepoint" OR message:"outlook.com" OR message:"forms.office"`;
-        
-        console.log(`[BEC Monitor] Ingesting Graylog syslog traffic (Window: ${windowSeconds}s, Backfill: ${isBackfill})...`);
-        let becHits: any[] = [];
+        let isBackfill = false;
+        let windowSeconds = process.env.BEC_LOOKBACK_SECONDS ? parseInt(process.env.BEC_LOOKBACK_SECONDS, 10) : 75;
 
-        if (windowSeconds > 3600) {
-            const numChunks = Math.min(24, Math.max(1, Math.ceil(windowSeconds / 3600)));
-            const chunkSeconds = windowSeconds / numChunks;
-            const nowSec = Math.floor(Date.now() / 1000);
-            console.log(`[BEC Monitor] Executing 24-chunk time-windowed backfill across ${numChunks} 1-hour time blocks...`);
-
-            for (let i = 0; i < numChunks; i++) {
-                const fromIso = new Date((nowSec - (windowSeconds - (i * chunkSeconds))) * 1000).toISOString();
-                const toIso = new Date((nowSec - (windowSeconds - ((i + 1) * chunkSeconds))) * 1000).toISOString();
-                const chunkHits = await client.searchAbsoluteMessages(query, fromIso, toIso, 2500).catch(() => []);
-                becHits.push(...chunkHits);
+        for (const arg of process.argv) {
+            if (arg.startsWith('--backfill')) {
+                isBackfill = true;
+                const val = arg.split('=')[1];
+                if (val) {
+                    if (val.endsWith('d')) {
+                        const d = parseInt(val.replace('d', ''), 10);
+                        if (!isNaN(d)) windowSeconds = d * 86400;
+                    } else if (val.endsWith('h')) {
+                        const h = parseInt(val.replace('h', ''), 10);
+                        if (!isNaN(h)) windowSeconds = h * 3600;
+                    } else {
+                        const parsed = parseInt(val, 10);
+                        if (!isNaN(parsed)) windowSeconds = parsed > 365 ? parsed : parsed * 86400;
+                    }
+                } else {
+                    windowSeconds = 86400;
+                }
+            } else if (arg.startsWith('--days=')) {
+                isBackfill = true;
+                const d = parseInt(arg.split('=')[1], 10);
+                if (!isNaN(d)) windowSeconds = d * 86400;
+            } else if (arg.startsWith('--hours=')) {
+                isBackfill = true;
+                const h = parseInt(arg.split('=')[1], 10);
+                if (!isNaN(h)) windowSeconds = h * 3600;
             }
-        } else {
-            becHits = await client.searchAllMessagesPaginated(query, windowSeconds, 2500, 50000);
         }
 
-        console.log(`[BEC Monitor] Ingested ${becHits.length} matching syslog events across ${windowSeconds > 3600 ? '24 hourly time chunks' : 'paginated Graylog calls'} (Last ${windowSeconds}s).`);
+        const query = `_exists_:esa_url_rep_score OR message:"URL" OR message:"devicelogin" OR message:"authorize" OR message:"oauth" OR message:"microsoft" OR message:"office365" OR message:"okta.com" OR message:"google.com" OR message:"docusign" OR message:"sharepoint" OR message:"outlook.com" OR message:"forms.office"`;
+        const displayDays = (windowSeconds / 86400).toFixed(1);
+        console.log(`[BEC Monitor] Starting Ingestion (Window: ${windowSeconds}s / ~${displayDays} days, Backfill: ${isBackfill})...`);
+
+        if (windowSeconds > 3600) {
+            const numChunks = Math.max(1, Math.ceil(windowSeconds / 3600));
+            const chunkSeconds = 3600;
+            const nowSec = Math.floor(Date.now() / 1000);
+            console.log(`[BEC Monitor Backfill] Processing ${numChunks} 1-hour time blocks sequentially across ${displayDays} days...`);
+
+            for (let i = 0; i < numChunks; i++) {
+                const chunkStartSec = nowSec - windowSeconds + (i * chunkSeconds);
+                const chunkEndSec = Math.min(nowSec, chunkStartSec + chunkSeconds);
+                const fromIso = new Date(chunkStartSec * 1000).toISOString();
+                const toIso = new Date(chunkEndSec * 1000).toISOString();
+
+                const chunkHits = await client.searchAbsoluteMessages(query, fromIso, toIso, 2500).catch(() => []);
+                console.log(`[BEC Backfill] Block ${i + 1}/${numChunks} (${fromIso.slice(0, 16)} to ${toIso.slice(0, 16)}): ${chunkHits.length} events retrieved.`);
+
+                let chunkUrls = 0;
+                for (const h of chunkHits) {
+                    const raw = h.message.message || "";
+                    const midMatch = raw.match(/MID (\d+)/);
+                    const urlMatches = raw.match(/https?:\/\/[^\s"'\)>]+/gi) || [];
+                    const repMatch = raw.match(/reputation ([\-\d\.]+)/i);
+
+                    const mid = h.message.esa_mid || (midMatch ? midMatch[1] : "");
+                    if (!mid || urlMatches.length === 0) continue;
+
+                    let wrsScore = 0.0;
+                    if (h.message.esa_url_rep_score !== undefined) {
+                        wrsScore = parseFloat(h.message.esa_url_rep_score);
+                    } else if (repMatch) {
+                        wrsScore = parseFloat(repMatch[1]);
+                    }
+
+                    const rfcId = h.message.esa_rfc_message_id || "";
+                    const subject = h.message.esa_subject || "No Subject Header";
+                    const sender = h.message.esa_mail_from || "unknown";
+                    const recipient = h.message.esa_rcpt_to || "unknown";
+
+                    for (const rawUrl of urlMatches) {
+                        const destUrl = unwrapUrl(rawUrl);
+                        const host = parseDomain(destUrl);
+                        if (!host) continue;
+
+                        const { isOauth, provider: providerName } = classifyOAuthProvider(destUrl, host);
+
+                        try {
+                            await prisma.becRawUrl.upsert({
+                                where: { mid_destUrl: { mid, destUrl } },
+                                create: {
+                                    mid,
+                                    rfcMessageId: rfcId,
+                                    subject,
+                                    sender,
+                                    recipient,
+                                    targetHost: host,
+                                    destUrl,
+                                    isOauth,
+                                    provider: providerName,
+                                    score: wrsScore,
+                                    createdAt: new Date(h.message.timestamp || Date.now())
+                                },
+                                update: { score: wrsScore }
+                            });
+                            urlsIngested++;
+                            chunkUrls++;
+                        } catch (e) {}
+
+                        const analysis = classifyM365Url(rawUrl, sender, OFFICIAL_M365_AUTH_ENDPOINTS, wrsScore);
+                        if (analysis && analysis.impersonationBoost > 0) {
+                            incidentsCount++;
+                            const existing = await prisma.becIncident.findUnique({
+                                where: { mid_destUrl: { mid, destUrl: analysis.destUrl } }
+                            });
+
+                            if (!existing) {
+                                await prisma.becIncident.create({
+                                    data: {
+                                        mid,
+                                        rfcMessageId: rfcId,
+                                        subject,
+                                        sender,
+                                        recipient,
+                                        targetHost: analysis.targetHost,
+                                        destUrl: analysis.destUrl,
+                                        threatTier: analysis.threatTier,
+                                        threatCategory: analysis.threatCategory,
+                                        impersonationBoost: analysis.impersonationBoost,
+                                        worstScore: wrsScore,
+                                        createdAt: new Date(h.message.timestamp || Date.now())
+                                    }
+                                }).catch(() => {});
+                            }
+                        }
+                    }
+                }
+            }
+
+            const durationMs = Date.now() - startTime;
+            console.log(`[BEC Backfill Complete] Ingested total ${urlsIngested} URLs & ${incidentsCount} threats across ${numChunks} hours in ${(durationMs / 1000).toFixed(1)}s.`);
+
+            await prisma.backgroundJob.upsert({
+                where: { name: "BEC 24x7 Threat Monitor" },
+                create: {
+                    name: "BEC 24x7 Threat Monitor",
+                    status: "SUCCESS",
+                    lastRun: new Date(),
+                    message: `Backfill Complete (${displayDays}d): ${urlsIngested} URLs, ${incidentsCount} Incidents in ${(durationMs / 1000).toFixed(1)}s`
+                },
+                update: {
+                    status: "SUCCESS",
+                    lastRun: new Date(),
+                    message: `Backfill Complete (${displayDays}d): ${urlsIngested} URLs, ${incidentsCount} Incidents in ${(durationMs / 1000).toFixed(1)}s`
+                }
+            });
+
+            return;
+        }
+
+        const becHits = await client.searchAllMessagesPaginated(query, windowSeconds, 2500, 50000);
+        console.log(`[BEC Monitor] Ingested ${becHits.length} matching syslog events across paginated Graylog calls (Last ${windowSeconds}s).`);
 
         for (const h of becHits) {
             const raw = h.message.message || "";
