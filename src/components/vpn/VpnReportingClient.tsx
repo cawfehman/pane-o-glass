@@ -57,7 +57,6 @@ export interface VpnReportEvent {
 
 export default function VpnReportingClient() {
     const [searchQuery, setSearchQuery] = useState<string>("");
-    const [searchMode, setSearchMode] = useState<"OR" | "AND">("OR");
     const [timeframe, setTimeframe] = useState<number>(86400); // 24h default
     const [isCustomDate, setIsCustomDate] = useState<boolean>(false);
     const [startDate, setStartDate] = useState<string>("");
@@ -99,7 +98,6 @@ export default function VpnReportingClient() {
             const params = new URLSearchParams();
             if (searchQuery) {
                 params.set("query", searchQuery);
-                params.set("searchMode", searchMode);
             }
             if (statusFilter !== "ALL") params.set("status", statusFilter);
 
@@ -148,7 +146,7 @@ export default function VpnReportingClient() {
         } finally {
             setLoading(false);
         }
-    }, [searchQuery, searchMode, timeframe, isCustomDate, startDate, endDate, statusFilter]);
+    }, [searchQuery, timeframe, isCustomDate, startDate, endDate, statusFilter]);
 
     useEffect(() => {
         fetchReportData();
@@ -343,30 +341,6 @@ export default function VpnReportingClient() {
                                 Clear
                             </button>
                         )}
-                    </div>
-
-                    {/* Search Logic Operator (OR vs AND) */}
-                    <div className="flex items-center bg-[var(--bg-default)] p-1 rounded-lg border border-[var(--border-color)] text-xs font-semibold shrink-0" title="Choose whether to match ANY term (OR) or ALL terms (AND)">
-                        <button
-                            onClick={() => setSearchMode("OR")}
-                            className={`px-2.5 py-1 rounded-md transition-colors ${
-                                searchMode === "OR"
-                                    ? "bg-indigo-600 text-white font-bold shadow-xs"
-                                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                            }`}
-                        >
-                            ANY (OR)
-                        </button>
-                        <button
-                            onClick={() => setSearchMode("AND")}
-                            className={`px-2.5 py-1 rounded-md transition-colors ${
-                                searchMode === "AND"
-                                    ? "bg-indigo-600 text-white font-bold shadow-xs"
-                                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                            }`}
-                        >
-                            ALL (AND)
-                        </button>
                     </div>
 
                     {/* Status Filter */}

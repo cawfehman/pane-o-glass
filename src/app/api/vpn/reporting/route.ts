@@ -53,43 +53,13 @@ export async function GET(req: Request) {
             whereConditions.status = statusParam;
         }
 
-        const searchMode = searchParams.get("searchMode")?.toUpperCase() === "AND" ? "AND" : "OR";
-
         // 3. Multi-Term & Full Boolean Expression Search Parser (supports (), AND, OR)
         if (query) {
-            const isExplicitBoolean = /\b(AND|OR)\b|\(|\)/i.test(query);
-            if (isExplicitBoolean) {
-                const parsedWhere = parseBooleanSearchQuery(query);
-                if (parsedWhere) {
-                    if (parsedWhere.AND) whereConditions.AND = parsedWhere.AND;
-                    else if (parsedWhere.OR) whereConditions.OR = parsedWhere.OR;
-                    else Object.assign(whereConditions, parsedWhere);
-                }
-            } else {
-                const tokens = query.split(/[,;\s]+/).map(t => t.trim()).filter(Boolean);
-                if (tokens.length > 0) {
-                    if (searchMode === "AND") {
-                        whereConditions.AND = tokens.map(token => ({
-                            OR: [
-                                { username: { contains: token, mode: 'insensitive' } },
-                                { sourceIp: { contains: token } },
-                                { assignedIp: { contains: token } },
-                                { failureReason: { contains: token, mode: 'insensitive' } },
-                                { vpnStream: { contains: token, mode: 'insensitive' } },
-                                { ipAsName: { contains: token, mode: 'insensitive' } }
-                            ]
-                        }));
-                    } else {
-                        whereConditions.OR = tokens.flatMap(token => [
-                            { username: { contains: token, mode: 'insensitive' } },
-                            { sourceIp: { contains: token } },
-                            { assignedIp: { contains: token } },
-                            { failureReason: { contains: token, mode: 'insensitive' } },
-                            { vpnStream: { contains: token, mode: 'insensitive' } },
-                            { ipAsName: { contains: token, mode: 'insensitive' } }
-                        ]);
-                    }
-                }
+            const parsedWhere = parseBooleanSearchQuery(query);
+            if (parsedWhere) {
+                if (parsedWhere.AND) whereConditions.AND = parsedWhere.AND;
+                else if (parsedWhere.OR) whereConditions.OR = parsedWhere.OR;
+                else Object.assign(whereConditions, parsedWhere);
             }
         }
 
