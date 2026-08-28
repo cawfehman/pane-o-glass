@@ -179,6 +179,48 @@ export const helpData: Record<string, TooltipDetails> = {
             "IP Geolocation Cache: Auto-enriches and caches regional lat/long coordinates for domestic & global source IPs."
         ]
     },
+    'vpn-reporting': {
+        title: "VPN Event Reporting & Audit Suite",
+        version: "1.0.0",
+        category: "Historical Telemetry & Compliance Audit",
+        description: "Historical Remote Access VPN audit engine supporting deep multi-condition queries by username, IP address, event status, and custom date ranges with 1-click CSV export.",
+        capabilities: [
+            {
+                title: "Targeted User & IP Audit Search",
+                detail: "Query historic VPN events by exact or partial username, assigned IP, or public source IP across the entire telemetry dataset.",
+                tag: "Multi-Field Query"
+            },
+            {
+                title: "Flexible Timeframe & Custom Date Ranges",
+                detail: "Filter by 1 Hour, 24 Hours, 7 Days, 30 Days, All Time, or select custom start and end date boundaries for precise audit investigations.",
+                tag: "Date Filtering"
+            },
+            {
+                title: "Status & Event Type Isolation",
+                detail: "Isolate successful connections (SUCCESS), authentication failures (FAILURE), or clean session tear-downs (DISCONNECT).",
+                tag: "Status Filter"
+            },
+            {
+                title: "1-Click Un-Truncated CSV Export",
+                detail: "Export complete query results with full log payloads, byte totals, session durations, failure reasons, and ISP/geo details into CSV format.",
+                tag: "CSV Export"
+            },
+            {
+                title: "Strict Role-Based Access Control",
+                detail: "Restricted by default to ADMIN, ANALYST, and NETWORK roles. Access matrix manageable via Tool Permissions.",
+                tag: "RBAC Security"
+            }
+        ],
+        colors: [
+            { name: "Green (SUCCESS)", meaning: "Successful VPN authentication and tunnel establishment.", rgb: "#22c55e" },
+            { name: "Red (FAILURE)", meaning: "Rejected VPN authentication attempt with failure reason.", rgb: "#ef4444" },
+            { name: "Blue (DISCONNECT)", meaning: "Session termination event with total duration and data usage.", rgb: "#3b82f6" }
+        ],
+        shortcuts: [
+            "Click [Export CSV] to download the full dataset for audit reports.",
+            "Use Custom Date Range for compliance and security incident timelines."
+        ]
+    },
     'ise-tacacs': {
         title: "TACACS+ Administration Audit",
         version: "1.5.0",

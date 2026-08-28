@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getPermissionsForRole } from "@/app/actions/permissions";
-import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe, Shield, Server, Network, Mail } from "lucide-react";
+import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe, Shield, Server, Network, Mail, FileText } from "lucide-react";
 import QueriesPageClient from "./QueriesPageClient";
 
 export default async function QueriesPage() {
@@ -34,6 +34,13 @@ export default async function QueriesPage() {
             href: "/queries/vpn",
             description: "Analyze, search, and troubleshoot Secure Client (AnyConnect) VPN session connectivity, duration, bandwidth, and failures.",
             icon: <Network size={24} />
+        },
+        {
+            id: 'vpn-reporting',
+            title: "VPN Reporting & Audit Suite",
+            href: "/queries/vpn-reporting",
+            description: "Query historical VPN event logs by username or IP address with customizable date ranges and 1-click CSV export.",
+            icon: <FileText size={24} className="text-indigo-400" />
         },
         {
             id: 'ise-tacacs',

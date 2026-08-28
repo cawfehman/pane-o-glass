@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { 
     LayoutDashboard, Wrench, Shield, Server, Network, Lock, 
     ShieldAlert, ShieldCheck, Globe, Map, Users, Key, 
-    ClipboardList, Activity, MessageSquare, Mail, BellRing 
+    ClipboardList, Activity, MessageSquare, Mail, BellRing, FileText 
 } from "lucide-react";
 import packageJson from "../../package.json";
 import FeedbackModal from "./FeedbackModal";
@@ -91,10 +91,21 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                     href="/queries/vpn" 
                                     onClick={closeMobile}
                                     title={isCollapsed ? "VPN Troubleshooting" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/vpn") ? "active" : ""}`}
+                                    className={`nav-link text-[0.9rem] ${pathname === "/queries/vpn" ? "active" : ""}`}
                                 >
                                     <Network size={18} className="shrink-0" />
                                     <span className="nav-text">VPN Troubleshooting</span>
+                                </Link>
+                            )}
+                            {hasPermission('vpn-reporting') && (
+                                <Link 
+                                    href="/queries/vpn-reporting" 
+                                    onClick={closeMobile}
+                                    title={isCollapsed ? "VPN Reporting" : undefined}
+                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/vpn-reporting") ? "active" : ""}`}
+                                >
+                                    <FileText size={18} className="shrink-0 text-indigo-400" />
+                                    <span className="nav-text">VPN Reporting</span>
                                 </Link>
                             )}
                             {hasPermission('ise-tacacs') && (

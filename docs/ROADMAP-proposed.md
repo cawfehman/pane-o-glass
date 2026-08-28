@@ -1,13 +1,37 @@
 # Pane-O-Glass — Master Roadmap & Release Tracking
 
-> **Last Updated:** August 25, 2026  
+> **Last Updated:** August 28, 2026  
 > **Status:** Production Release Tracking & Future Milestones
 
 ---
 
 ## 0. Recently Completed & Shipped Releases
 
-### 0.1 IronPort Threat Intelligence & Phishing Triage Suite (v2.5.0)
+### 0.1 VPN Event Reporting & Audit Suite (v1.0.0)
+| | |
+|---|---|
+| **Status** | `Done` (Shipped Aug 28, 2026) |
+| **Effort** | M |
+| **Why** | Provide dedicated audit reporting for AnyConnect / Secure Client VPN events separate from real-time troubleshooting, restricted to Admin, Analyst, and Network roles. |
+| **Capabilities** | • **Targeted User & IP Multi-Field Search:** Instant search by username, assigned IP, public source IP, or failure reason.<br>• **Flexible Timeframes & Custom Date Picker:** Filter by 1h, 24h, 7d, 30d, All Time, or custom ISO start/end date range picker.<br>• **Event Status Isolation:** Isolate `SUCCESS`, `FAILURE`, or `DISCONNECT` event types.<br>• **1-Click Un-Truncated CSV Export:** Export complete telemetry datasets including bytes transferred, session duration, and ISP metadata into CSV format.<br>• **Default RBAC Enforcement:** Enabled by default ONLY for `ADMIN`, `ANALYST`, and `NETWORK` roles (`vpn-reporting` permission key). |
+
+### 0.2 M365 BEC Threat Hunter & High-Watermark Checkpoint Engine (v2.0.0)
+| | |
+|---|---|
+| **Status** | `Done` (Shipped Aug 28, 2026) |
+| **Effort** | L |
+| **Why** | Detect Business Email Compromise (BEC) login link impersonation attacks with a 24x7 High-Watermark checkpoint daemon. |
+| **Capabilities** | • **High-Watermark Delta Windowing:** Queries Graylog using exact timestamp checkpoints stored in PostgreSQL `BackgroundJob`. Eliminates mass-marketing scan redundancy.<br>• **M365 OAuth & Auth Portal Classifier:** Evaluates links against 14 official Microsoft Entra ID endpoints, pinpointing fake login portals (`+10.0`) and OAuth token theft (`+6.0`).<br>• **Real-Time Dynamic Stats API:** Direct PostgreSQL aggregation (`0.3s`) across 6 dynamic timeframes (10m, 30m, 1h, 4h, 12h, 24h). |
+
+### 0.3 Enterprise PostgreSQL Database Migration (v6.0.0)
+| | |
+|---|---|
+| **Status** | `Done` (Shipped Aug 27, 2026) |
+| **Effort** | L |
+| **Why** | Replaced single-threaded SQLite database with enterprise PostgreSQL 16 database instance to eliminate write lock contention. |
+| **Capabilities** | • Complete schema and data migration for `VpnEvent` (1M+ rows), `BecRawUrl` (500k+ rows), `AuditLog`, `User`, and `BackgroundJob`.<br>• Configured PostgreSQL tuning parameters (`shared_buffers = 4GB`, `effective_cache_size = 12GB`, `max_parallel_workers = 4`). |
+
+### 0.4 IronPort Threat Intelligence & Phishing Triage Suite (v2.5.0)
 | | |
 |---|---|
 | **Status** | `Done` (Shipped Aug 25, 2026) |
