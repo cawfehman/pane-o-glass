@@ -56,6 +56,8 @@ export default function VpnReportingClient() {
 
     // Summary Metrics
     const [totalEvents, setTotalEvents] = useState<number>(0);
+    const [dbTotalCount, setDbTotalCount] = useState<number>(0);
+    const [earliestRecordDate, setEarliestRecordDate] = useState<string | null>(null);
     const [uniqueUsers, setUniqueUsers] = useState<number>(0);
     const [uniqueIps, setUniqueIps] = useState<number>(0);
     const [successCount, setSuccessCount] = useState<number>(0);
@@ -97,6 +99,8 @@ export default function VpnReportingClient() {
 
             setEvents(data.events || []);
             setTotalEvents(data.totalEvents || 0);
+            setDbTotalCount(data.dbTotalCount || 0);
+            setEarliestRecordDate(data.earliestRecordDate || null);
             setUniqueUsers(data.uniqueUsersCount || 0);
             setUniqueIps(data.uniqueIpsCount || 0);
             setSuccessCount(data.successCount || 0);
@@ -329,6 +333,26 @@ export default function VpnReportingClient() {
                     >
                         Apply Date Range
                     </button>
+                </div>
+            )}
+
+            {/* Earliest Record Info Banner */}
+            {earliestRecordDate && (
+                <div className="px-4 py-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-xs sm:text-sm text-indigo-300 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-indigo-400 shrink-0" />
+                        <span>
+                            <strong className="text-[var(--text-primary)]">Earliest Record Available:</strong>{" "}
+                            <span className="font-mono text-indigo-200">{new Date(earliestRecordDate).toLocaleString()}</span>
+                            {" "}({Math.floor((Date.now() - new Date(earliestRecordDate).getTime()) / (1000 * 60 * 60 * 24))} days of history stored)
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-3 font-mono text-xs">
+                        <span className="px-2.5 py-0.5 rounded bg-indigo-500/20 text-indigo-200 border border-indigo-500/30">
+                            Total DB Records: {dbTotalCount.toLocaleString()}
+                        </span>
+                        <span className="text-[var(--text-secondary)]">Pruning: Retaining All Records</span>
+                    </div>
                 </div>
             )}
 

@@ -55,11 +55,18 @@ export async function GET(req: Request) {
         }
 
         // 4. Query PostgreSQL database
-        const events = await prisma.vpnEvent.findMany({
-            where: whereConditions,
-            orderBy: { createdAt: 'desc' },
-            take: limit
-        });
+        const [events, earliestRecord, dbTotalCount] = await Promise.all([
+            prisma.vpnEvent.findMany({
+                where: whereConditions,
+                orderBy: { createdAt: 'desc' },
+                take: limit
+            }),
+            prisma.vpnEvent.findFirst({
+                select: { createdAt: true },
+                orderBy: { createdAt: 'asc' }
+            }),
+            prisma.vpnEvent.count()
+        ]);
 
         // 5. Calculate summary metrics
         const uniqueUserSet = new Set<string>();
@@ -84,6 +91,8 @@ export async function GET(req: Request) {
         return NextResponse.json({
             responseTimeMs,
             totalEvents: events.length,
+            dbTotalCount,
+            earliestRecordDate: earliestRecord?.createdAt ? earliestRecord.createdAt.toISOString() : null,
             uniqueUsersCount: uniqueUserSet.size,
             uniqueIpsCount: uniqueIpSet.size,
             successCount,
