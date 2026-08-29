@@ -131,7 +131,7 @@ async function backfillVpnIpEnrichment() {
 
     for (let i = 0; i < uncachedIps.length; i += batchSize) {
         if (rateLimited) {
-            console.log("[IP-BACKFILL-WARNING] Stopping external lookups due to rate limit response.");
+            console.log(`[IP-BACKFILL-WARNING] Stopping external lookups immediately due to rate limit response.`);
             break;
         }
 
@@ -139,24 +139,31 @@ async function backfillVpnIpEnrichment() {
         console.log(`[IP-BACKFILL] External Batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(uncachedIps.length / batchSize)} (${externalSuccess + cacheApplied}/${publicIps.length} completed)...`);
 
         for (const ip of chunk) {
+            if (rateLimited) break;
+
             try {
-                const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
-                    headers: apiKey ? { "X-API-KEY": apiKey } : {},
-                    timeout: 5000
-                }).catch(async (err) => {
+                let res: any = null;
+                try {
+                    res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
+                        headers: apiKey ? { "X-API-KEY": apiKey } : {},
+                        timeout: 5000
+                    });
+                } catch (err: any) {
                     if (err.response && err.response.status === 429) {
                         rateLimited = true;
-                        console.error("[IP-BACKFILL] Rate limit hit (HTTP 429). Exiting gracefully.");
+                        console.error(`[IP-BACKFILL] Rate limit hit (HTTP 429) on IP ${ip}. Halting script execution immediately.`);
                         await prisma.auditLog.create({
                             data: {
                                 action: "IPLOCATE_RATE_LIMIT",
-                                details: `IPLocate.io API Rate Limit Exceeded (HTTP 429) during backfill utility. Script gracefully stopped after enriching ${externalSuccess} IPs.`,
+                                details: `IPLocate.io API Rate Limit Exceeded (HTTP 429) during backfill utility. Script stopped immediately after enriching ${externalSuccess} IPs.`,
                                 ipAddress: ip
                             }
                         }).catch(() => {});
+                        break;
                     }
-                    return null;
-                });
+                }
+
+                if (rateLimited) break;
 
                 if (res?.data) {
                     const data = res.data;
@@ -210,6 +217,11 @@ async function backfillVpnIpEnrichment() {
             } catch (err: any) {
                 console.error(`[IP-BACKFILL-ERROR] Failed to look up IP ${ip}:`, err.message);
             }
+        }
+
+        if (rateLimited) {
+            console.log(`[IP-BACKFILL-WARNING] Halting remaining batches due to HTTP 429 Rate Limit response. Total enriched: ${(cacheApplied + externalSuccess).toLocaleString()}`);
+            break;
         }
     }
 
