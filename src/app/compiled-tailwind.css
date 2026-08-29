@@ -41,6 +41,7 @@
     --color-cyan-600: oklch(60.9% 0.126 221.723);
     --color-sky-400: oklch(74.6% 0.16 232.661);
     --color-blue-100: oklch(93.2% 0.032 255.585);
+    --color-blue-300: oklch(80.9% 0.105 251.813);
     --color-blue-400: oklch(70.7% 0.165 254.624);
     --color-blue-500: oklch(62.3% 0.214 259.815);
     --color-blue-600: oklch(54.6% 0.245 262.881);
@@ -495,6 +496,9 @@
   .mt-auto {
     margin-top: auto;
   }
+  .mr-0\.5 {
+    margin-right: calc(var(--spacing) * 0.5);
+  }
   .mr-1 {
     margin-right: var(--spacing);
   }
@@ -863,6 +867,9 @@
   }
   .max-w-\[280px\] {
     max-width: 280px;
+  }
+  .max-w-\[340px\] {
+    max-width: 340px;
   }
   .max-w-\[400px\] {
     max-width: 400px;
@@ -1358,6 +1365,12 @@
     border-color: color-mix(in srgb, oklch(62.3% 0.214 259.815) 30%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-blue-500) 30%, transparent);
+    }
+  }
+  .border-blue-500\/40 {
+    border-color: color-mix(in srgb, oklch(62.3% 0.214 259.815) 40%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-blue-500) 40%, transparent);
     }
   }
   .border-border-color {
@@ -1986,6 +1999,9 @@
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-emerald-500) 25%, transparent);
     }
+  }
+  .bg-emerald-600 {
+    background-color: var(--color-emerald-600);
   }
   .bg-emerald-600\/10 {
     background-color: color-mix(in srgb, oklch(59.6% 0.145 163.225) 10%, transparent);
@@ -3004,6 +3020,18 @@
   .accent-accent-primary {
     accent-color: var(--color-accent-primary);
   }
+  .accent-blue-500 {
+    accent-color: var(--color-blue-500);
+  }
+  .accent-emerald-500 {
+    accent-color: var(--color-emerald-500);
+  }
+  .accent-indigo-500 {
+    accent-color: var(--color-indigo-500);
+  }
+  .accent-rose-500 {
+    accent-color: var(--color-rose-500);
+  }
   .opacity-0 {
     opacity: 0%;
   }
@@ -3276,6 +3304,9 @@
     .group-hover\:text-amber-300:is(:where(.group):hover *) {
       color: var(--color-amber-300);
     }
+    .group-hover\:text-blue-300:is(:where(.group):hover *) {
+      color: var(--color-blue-300);
+    }
     .group-hover\:text-blue-400:is(:where(.group):hover *) {
       color: var(--color-blue-400);
     }
@@ -3341,6 +3372,9 @@
         border-color: color-mix(in oklab, var(--accent-primary) 40%, transparent);
       }
     }
+    .hover\:border-\[var\(--text-secondary\)\]:hover {
+      border-color: var(--text-secondary);
+    }
     .hover\:border-accent-primary:hover {
       border-color: var(--color-accent-primary);
     }
@@ -3376,6 +3410,14 @@
     }
     .hover\:bg-\[var\(--bg-default\)\]:hover {
       background-color: var(--bg-default);
+    }
+    .hover\:bg-\[var\(--bg-default\)\]\/60:hover {
+      background-color: var(--bg-default);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-\[var\(--bg-default\)\]\/60:hover {
+        background-color: color-mix(in oklab, var(--bg-default) 60%, transparent);
+      }
     }
     .hover\:bg-\[var\(--bg-surface-hover\)\]:hover {
       background-color: var(--bg-surface-hover);
@@ -3518,6 +3560,9 @@
     }
     .hover\:bg-cyan-600:hover {
       background-color: var(--color-cyan-600);
+    }
+    .hover\:bg-emerald-500:hover {
+      background-color: var(--color-emerald-500);
     }
     .hover\:bg-emerald-500\/10:hover {
       background-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 10%, transparent);
@@ -3687,6 +3732,9 @@
     .hover\:text-amber-300:hover {
       color: var(--color-amber-300);
     }
+    .hover\:text-indigo-300:hover {
+      color: var(--color-indigo-300);
+    }
     .hover\:text-red-400:hover {
       color: var(--color-red-400);
     }
@@ -3704,6 +3752,9 @@
     }
     .hover\:opacity-90:hover {
       opacity: 90%;
+    }
+    .hover\:opacity-100:hover {
+      opacity: 100%;
     }
     .hover\:shadow-\[var\(--accent-primary\)\]\/40:hover {
       --tw-shadow-alpha: 40%;

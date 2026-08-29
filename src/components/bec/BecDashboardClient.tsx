@@ -410,6 +410,7 @@ export default function BecDashboardClient() {
                         </button>
                     </div>
                 </div>
+            </div>
             {/* BEC Sub-Tool Navigation Bar */}
             <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3 gap-4 flex-wrap">
                 <div className="flex items-center gap-2">
@@ -604,7 +605,7 @@ export default function BecDashboardClient() {
                                                                 ⚠️ FIRST SEEN &lt;7D
                                                             </span>
                                                         ) : item.isRareLowFrequency ? (
-                                                            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20" title="Established domain (>30d), BUT only seen 3 times or fewer across 500,000 unwrapped URLs! High potential anomaly/phish.">
+                                                            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20" title={'Established domain (>30d), BUT only seen 3 times or fewer across 500,000 unwrapped URLs! High potential anomaly/phish.'}>
                                                                 🚨 RARE (Seen {item.totalSeenCount}x)
                                                             </span>
                                                         ) : (
@@ -680,7 +681,7 @@ export default function BecDashboardClient() {
                     </div>
                 </div>
             ) : (
-                <>
+                <div className="flex flex-col gap-6">
                     {/* Metric Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)]">
@@ -987,6 +988,7 @@ export default function BecDashboardClient() {
                         </table>
                     </div>
                 )}
+            </div>
             </div>
             )}
 
