@@ -61,8 +61,72 @@ export default function BecDashboardClient() {
     const [newUrl, setNewUrl] = useState<string>("");
     const [newRole, setNewRole] = useState<string>("");
 
+    // Module View Tab State
+    const [activeTab, setActiveTab] = useState<"incidents" | "url_search">("incidents");
+
+    // Unwrapped URL & Domain Search Engine State
+    const [urlSearchQuery, setUrlSearchQuery] = useState<string>("");
+    const [urlSearchResults, setUrlSearchResults] = useState<any[]>([]);
+    const [urlSearchLoading, setUrlSearchLoading] = useState<boolean>(false);
+    const [urlSearchTotalMatches, setUrlSearchTotalMatches] = useState<number>(0);
+    const [urlSearchTotalDbCount, setUrlSearchTotalDbCount] = useState<number>(0);
+    const [urlSearchSpeedMs, setUrlSearchSpeedMs] = useState<number | null>(null);
+    const [hasSearchedUrls, setHasSearchedUrls] = useState<boolean>(false);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
+
     // Performance / Speed Badge State
     const [dbSpeedMs, setDbSpeedMs] = useState<number | null>(null);
+
+    // Unwrapped URL Search Handler
+    const executeUrlSearch = useCallback(async (queryToUse?: string) => {
+        const q = queryToUse !== undefined ? queryToUse : urlSearchQuery;
+        setUrlSearchLoading(true);
+        setHasSearchedUrls(true);
+        try {
+            const params = new URLSearchParams();
+            if (q) params.set("query", q);
+            params.set("limit", "500");
+            params.set("_t", Date.now().toString());
+
+            const res = await fetch(`/api/bec/urls/search?${params.toString()}`, { cache: "no-store" });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+
+            setUrlSearchResults(data.urls || []);
+            setUrlSearchTotalMatches(data.totalMatches || 0);
+            setUrlSearchTotalDbCount(data.totalDatabaseUrls || 0);
+            setUrlSearchSpeedMs(data.responseTimeMs || null);
+        } catch (err: any) {
+            console.error("URL Search Error:", err);
+        } finally {
+            setUrlSearchLoading(false);
+        }
+    }, [urlSearchQuery]);
+
+    // CSV Exporter for Unwrapped URL Search Results
+    const exportUrlSearchResultsToCsv = () => {
+        if (!urlSearchResults || urlSearchResults.length === 0) return;
+        const headers = ["Timestamp", "Domain (Target Host)", "Unwrapped Destination URL", "Message ID (MID)", "Recipient", "Sender", "Subject"];
+        const rows = urlSearchResults.map(item => [
+            new Date(item.createdAt).toISOString(),
+            item.targetHost || "",
+            `"${(item.destUrl || "").replace(/"/g, '""')}"`,
+            item.mid || "",
+            item.recipient || "",
+            item.sender || "",
+            `"${(item.subject || "").replace(/"/g, '""')}"`
+        ]);
+
+        const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `unwrapped_urls_search_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     // Query Execution from Local SQLite Database (Instant <5ms load)
     const fetchMasterBecData = useCallback(async (rangeToFetch: number = timeframe) => {
@@ -346,9 +410,219 @@ export default function BecDashboardClient() {
                         </button>
                     </div>
                 </div>
+            {/* BEC Sub-Tool Navigation Bar */}
+            <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3 gap-4 flex-wrap">
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setActiveTab("incidents")}
+                        className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                            activeTab === "incidents"
+                                ? "bg-blue-600 text-white shadow-xs"
+                                : "bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-color)]"
+                        }`}
+                    >
+                        <ShieldAlert className="w-4 h-4" />
+                        <span>BEC Threat Incidents & Impersonation</span>
+                    </button>
+
+                    <button
+                        onClick={() => {
+                            setActiveTab("url_search");
+                            if (!hasSearchedUrls) executeUrlSearch();
+                        }}
+                        className={`px-4 py-2 rounded-lg text-xs sm:text-sm font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                            activeTab === "url_search"
+                                ? "bg-blue-600 text-white shadow-xs"
+                                : "bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-color)]"
+                        }`}
+                    >
+                        <Globe className="w-4 h-4 text-emerald-400" />
+                        <span>Unwrapped URL & Domain Finder</span>
+                    </button>
+                </div>
             </div>
 
-            {/* Metric Summary Cards */}
+            {activeTab === "url_search" ? (
+                <div className="flex flex-col gap-6">
+                    {/* Search Control Box */}
+                    <div className="p-5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] flex flex-col gap-4 shadow-xs">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                                <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                                    <Search className="w-5 h-5 text-emerald-400" />
+                                    <span>Unwrapped URL & Domain Deep Search</span>
+                                </h3>
+                                <p className="text-xs sm:text-sm text-[var(--text-secondary)] mt-0.5">
+                                    Search across <strong className="text-[var(--text-primary)] font-mono">{urlSearchTotalDbCount.toLocaleString()}</strong> historical unwrapped destination URLs by domain name, full URL, Message ID (MID), or recipient inbox.
+                                </p>
+                            </div>
+
+                            {urlSearchResults.length > 0 && (
+                                <button
+                                    onClick={exportUrlSearchResultsToCsv}
+                                    className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center gap-2 transition-colors shrink-0 cursor-pointer shadow-xs"
+                                >
+                                    <ExternalLink className="w-4 h-4" />
+                                    <span>Export CSV ({urlSearchResults.length})</span>
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Search Input Bar */}
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                            <div className="relative flex-1">
+                                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+                                <input
+                                    type="text"
+                                    placeholder="Search domain (e.g. ticketsatwork.com, gstatic.com), full URL, MID (e.g. 287502509), or recipient..."
+                                    value={urlSearchQuery}
+                                    onChange={(e) => setUrlSearchQuery(e.target.value)}
+                                    onKeyDown={(e) => e.key === "Enter" && executeUrlSearch()}
+                                    className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] text-xs sm:text-sm text-[var(--text-primary)] focus:outline-none focus:border-blue-500 font-mono transition-colors"
+                                />
+                                {urlSearchQuery && (
+                                    <button
+                                        onClick={() => { setUrlSearchQuery(""); executeUrlSearch(""); }}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
+
+                            <button
+                                onClick={() => executeUrlSearch()}
+                                disabled={urlSearchLoading}
+                                className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+                            >
+                                {urlSearchLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                                <span>Search URLs</span>
+                            </button>
+                        </div>
+
+                        {/* Results Summary Metadata Bar */}
+                        <div className="flex items-center justify-between text-xs text-[var(--text-secondary)] font-mono border-t border-[var(--border-color)] pt-3 flex-wrap gap-2">
+                            <span>
+                                Matches: <strong className="text-[var(--text-primary)] font-bold">{urlSearchTotalMatches.toLocaleString()}</strong> {urlSearchTotalMatches > 500 && `(Displaying top 500)`}
+                            </span>
+                            {urlSearchSpeedMs !== null && (
+                                <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                                    <Zap className="w-3.5 h-3.5" />
+                                    <span>Query executed in {urlSearchSpeedMs}ms</span>
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Results Table */}
+                    <div className="rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] overflow-hidden shadow-xs">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-[var(--border-color)] bg-[var(--bg-default)] text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+                                        <th className="p-3">Timestamp</th>
+                                        <th className="p-3">Domain (Target Host)</th>
+                                        <th className="p-3">Unwrapped Destination URL</th>
+                                        <th className="p-3">Message ID (MID)</th>
+                                        <th className="p-3">Recipient</th>
+                                        <th className="p-3">Sender / Subject</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[var(--border-color)] text-xs">
+                                    {urlSearchLoading ? (
+                                        <tr>
+                                            <td colSpan={6} className="p-8 text-center text-sm text-[var(--text-secondary)]">
+                                                Querying 500,000+ unwrapped URLs in PostgreSQL database...
+                                            </td>
+                                        </tr>
+                                    ) : urlSearchResults.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={6} className="p-8 text-center text-sm text-[var(--text-secondary)]">
+                                                {hasSearchedUrls ? "No unwrapped URLs match your search query." : "Enter a domain, URL substring, MID, or recipient email to search."}
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        urlSearchResults.map((item) => (
+                                            <tr key={item.id} className="hover:bg-[var(--bg-default)]/60 transition-colors">
+                                                <td className="p-3 text-[var(--text-secondary)] font-mono whitespace-nowrap">
+                                                    {new Date(item.createdAt).toLocaleString()}
+                                                </td>
+
+                                                {/* Domain / Target Host */}
+                                                <td className="p-3 font-mono font-bold text-[var(--text-primary)] whitespace-nowrap">
+                                                    <span 
+                                                        onClick={() => { setUrlSearchQuery(item.targetHost); executeUrlSearch(item.targetHost); }}
+                                                        className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 cursor-pointer transition-colors"
+                                                        title="Click to filter search by this domain"
+                                                    >
+                                                        {item.targetHost}
+                                                    </span>
+                                                </td>
+
+                                                {/* Unwrapped Destination URL */}
+                                                <td className="p-3 font-mono max-w-[340px]">
+                                                    <div className="flex items-center gap-1.5 group">
+                                                        <a
+                                                            href={item.destUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-blue-400 hover:underline truncate group-hover:text-blue-300 font-medium"
+                                                            title={item.destUrl}
+                                                        >
+                                                            {item.destUrl}
+                                                        </a>
+                                                        <a
+                                                            href={item.destUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="text-[var(--text-secondary)] opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                                                            title="Open URL in new tab"
+                                                        >
+                                                            <ExternalLink className="w-3.5 h-3.5" />
+                                                        </a>
+                                                    </div>
+                                                </td>
+
+                                                {/* MID */}
+                                                <td className="p-3 font-mono text-[var(--text-primary)] whitespace-nowrap">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="px-2 py-0.5 rounded bg-[var(--bg-default)] border border-[var(--border-color)] font-bold text-[11px]">
+                                                            MID: {item.mid}
+                                                        </span>
+                                                    </div>
+                                                </td>
+
+                                                {/* Recipient */}
+                                                <td className="p-3 font-semibold text-[var(--text-primary)] max-w-[180px] truncate font-mono">
+                                                    {item.recipient && item.recipient !== "unknown" ? (
+                                                        <span className="text-emerald-400">{item.recipient}</span>
+                                                    ) : (
+                                                        <span className="text-[var(--text-muted)] font-normal italic">unknown</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Sender & Subject */}
+                                                <td className="p-3 max-w-[220px]">
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <div className="font-semibold text-[var(--text-primary)] truncate" title={item.subject || "No Subject"}>
+                                                            {item.subject || "No Subject"}
+                                                        </div>
+                                                        <div className="text-[11px] text-[var(--text-secondary)] font-mono truncate" title={item.sender}>
+                                                            From: {item.sender || "unknown"}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <>
+                    {/* Metric Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)]">
                     <div className="flex items-center justify-between">
@@ -425,7 +699,11 @@ export default function BecDashboardClient() {
                                     return (
                                         <button
                                             key={d.domain}
-                                            onClick={() => setSearchQuery(d.domain)}
+                                            onClick={() => {
+                                                setUrlSearchQuery(d.domain);
+                                                setActiveTab("url_search");
+                                                executeUrlSearch(d.domain);
+                                            }}
                                             className="group flex flex-col gap-1 text-left w-full hover:bg-[var(--bg-default)] p-2 rounded-lg transition-colors"
                                         >
                                             <div className="flex items-center justify-between text-xs sm:text-sm font-mono">
@@ -651,6 +929,7 @@ export default function BecDashboardClient() {
                     </div>
                 )}
             </div>
+            )}
 
             {/* Panel B Provider Drill-Down Modal */}
             {selectedProvider && (
