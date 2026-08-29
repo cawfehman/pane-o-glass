@@ -19,55 +19,134 @@ export async function GET(req: Request) {
 
         const { searchParams } = new URL(req.url);
         const query = searchParams.get("query")?.trim() || "";
+        const nodOnly = searchParams.get("nod") === "true"; // Newly Observed Domains filter
         const rangeParam = searchParams.get("range");
-        const rangeSeconds = rangeParam !== null ? parseInt(rangeParam, 10) : 0; // Default to All Time for domain search
+        const rangeSeconds = rangeParam !== null ? parseInt(rangeParam, 10) : 0;
         const limitParam = parseInt(searchParams.get("limit") || "500", 10);
         const limit = isNaN(limitParam) ? 500 : Math.min(2000, Math.max(1, limitParam));
 
-        const whereConditions: any = {};
+        let urls: any[] = [];
+        let totalMatches = 0;
 
-        // 1. Timeframe boundary if specified
-        if (rangeSeconds > 0) {
-            whereConditions.createdAt = { gte: new Date(Date.now() - rangeSeconds * 1000) };
+        const hasWildcard = query.includes('*') || query.includes('%') || query.startsWith('.');
+        const cleanQuery = query.replace(/^\*\.?/, '.'); // e.g. *.claims -> .claims
+
+        if (hasWildcard) {
+            // Wildcard search using PostgreSQL ILIKE
+            let pattern = cleanQuery.replace(/\*/g, '%');
+            if (cleanQuery.startsWith('.')) {
+                pattern = `%${cleanQuery}`; // e.g. .claims -> %.claims
+            } else if (!pattern.includes('%')) {
+                pattern = `%${pattern}%`;
+            }
+
+            const rawResults = await prisma.$queryRaw<any[]>`
+                SELECT "id", "mid", "rfcMessageId", "subject", "sender", "recipient", "targetHost", "destUrl", "isOauth", "provider", "score", "createdAt"
+                FROM "BecRawUrl"
+                WHERE ("targetHost" ILIKE ${pattern}
+                   OR "destUrl" ILIKE ${pattern}
+                   OR "recipient" ILIKE ${pattern}
+                   OR "sender" ILIKE ${pattern}
+                   OR "subject" ILIKE ${pattern})
+                ORDER BY "createdAt" DESC
+                LIMIT ${limit}
+            `;
+
+            const countRaw = await prisma.$queryRaw<any[]>`
+                SELECT COUNT(*)::int as count
+                FROM "BecRawUrl"
+                WHERE ("targetHost" ILIKE ${pattern}
+                   OR "destUrl" ILIKE ${pattern}
+                   OR "recipient" ILIKE ${pattern}
+                   OR "sender" ILIKE ${pattern}
+                   OR "subject" ILIKE ${pattern})
+            `;
+
+            urls = rawResults || [];
+            totalMatches = countRaw[0]?.count || 0;
+        } else {
+            // Standard Prisma contains search
+            const whereConditions: any = {};
+            if (rangeSeconds > 0) {
+                whereConditions.createdAt = { gte: new Date(Date.now() - rangeSeconds * 1000) };
+            }
+
+            if (query) {
+                const clean = query.trim().toLowerCase();
+                const cleanDomain = clean.replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
+
+                whereConditions.OR = [
+                    { targetHost: { contains: cleanDomain, mode: 'insensitive' } },
+                    { targetHost: { contains: clean, mode: 'insensitive' } },
+                    { destUrl: { contains: clean, mode: 'insensitive' } },
+                    { mid: { contains: clean } },
+                    { recipient: { contains: clean, mode: 'insensitive' } },
+                    { sender: { contains: clean, mode: 'insensitive' } },
+                    { subject: { contains: clean, mode: 'insensitive' } }
+                ];
+            }
+
+            const [foundUrls, matches] = await Promise.all([
+                prisma.becRawUrl.findMany({
+                    where: whereConditions,
+                    orderBy: { createdAt: 'desc' },
+                    take: limit
+                }),
+                prisma.becRawUrl.count({ where: whereConditions })
+            ]);
+
+            urls = foundUrls;
+            totalMatches = matches;
         }
 
-        // 2. Query search across targetHost (domain), destUrl, MID, recipient, sender, subject
-        if (query) {
-            const clean = query.trim().toLowerCase();
+        const totalDatabaseUrls = await prisma.becRawUrl.count().catch(() => 0);
 
-            // Strip protocol if user pasted a full URL to extract domain or search string
-            const cleanDomain = clean.replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
+        // 4. Enrich results with First-Seen Domain Intelligence & Newly Observed Domain (NOD) status
+        const uniqueHosts = Array.from(new Set(urls.map(u => u.targetHost).filter(Boolean)));
 
-            whereConditions.OR = [
-                { targetHost: { contains: cleanDomain, mode: 'insensitive' } },
-                { targetHost: { contains: clean, mode: 'insensitive' } },
-                { destUrl: { contains: clean, mode: 'insensitive' } },
-                { mid: { contains: clean } },
-                { recipient: { contains: clean, mode: 'insensitive' } },
-                { sender: { contains: clean, mode: 'insensitive' } },
-                { subject: { contains: clean, mode: 'insensitive' } }
-            ];
+        let firstSeenMap: Record<string, Date> = {};
+        if (uniqueHosts.length > 0) {
+            const firstSeenRaw = await prisma.$queryRaw<any[]>`
+                SELECT "targetHost", MIN("createdAt") as "firstSeen"
+                FROM "BecRawUrl"
+                WHERE "targetHost" IN (${prisma.join(uniqueHosts)})
+                GROUP BY "targetHost"
+            `.catch(() => []);
+
+            for (const r of firstSeenRaw) {
+                firstSeenMap[r.targetHost] = r.firstSeen;
+            }
         }
 
-        // 3. Query PostgreSQL database
-        const [urls, totalMatches, totalDatabaseUrls] = await Promise.all([
-            prisma.becRawUrl.findMany({
-                where: whereConditions,
-                orderBy: { createdAt: 'desc' },
-                take: limit
-            }),
-            prisma.becRawUrl.count({ where: whereConditions }),
-            prisma.becRawUrl.count()
-        ]);
+        const now = Date.now();
+        const enrichedUrls = urls.map(item => {
+            const firstSeen = firstSeenMap[item.targetHost] || item.createdAt;
+            const ageMs = now - new Date(firstSeen).getTime();
+            const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24));
+            const isNewlyObserved24h = ageMs <= 24 * 60 * 60 * 1000;
+            const isNewlyObserved7d = ageMs <= 7 * 24 * 60 * 60 * 1000;
+
+            return {
+                ...item,
+                firstSeen,
+                ageDays,
+                isNewlyObserved24h,
+                isNewlyObserved7d
+            };
+        });
+
+        // Filter NOD if requested
+        const finalUrls = nodOnly 
+            ? enrichedUrls.filter(u => u.isNewlyObserved7d)
+            : enrichedUrls;
 
         const responseTimeMs = Date.now() - startTime;
 
-        // Log audit for domain searches if query was provided
         if (query) {
             const clientIp = req.headers.get("x-forwarded-for")?.split(',')[0] || 'internal';
             await logAudit(
                 "BEC_URL_DOMAIN_SEARCH",
-                `Searched unwrapped URLs database for query: "${query}" (Returned ${urls.length} of ${totalMatches} matches)`,
+                `Searched unwrapped URLs for query: "${query}" (Wildcard: ${hasWildcard}) - Returned ${finalUrls.length} matches`,
                 session.user.id,
                 clientIp
             ).catch(() => {});
@@ -76,10 +155,11 @@ export async function GET(req: Request) {
         return NextResponse.json({
             success: true,
             query,
-            urls,
+            hasWildcard,
+            urls: finalUrls,
             totalMatches,
             totalDatabaseUrls,
-            returnedCount: urls.length,
+            returnedCount: finalUrls.length,
             responseTimeMs
         });
 
