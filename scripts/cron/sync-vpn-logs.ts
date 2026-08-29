@@ -75,15 +75,55 @@ async function getIpInfo(ip: any): Promise<any> {
             };
         }
 
-        // 2. Fetch live via iplocate.io API
+        // 2. Fetch live via iplocate.io API (Primary)
         const apiKey = process.env.IPLOCATE_API_KEY;
-        const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
-            headers: apiKey ? { "X-API-KEY": apiKey } : {},
-            timeout: 5000
-        }).catch(() => null);
+        let d: any = null;
 
-        if (res?.data) {
-            const d = res.data;
+        try {
+            const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
+                headers: apiKey ? { "X-API-KEY": apiKey } : {},
+                timeout: 4000
+            });
+            if (res.data && (res.data.country || res.data.country_code)) {
+                d = res.data;
+            }
+        } catch (e: any) {
+            // iplocate failed or rate limited (HTTP 429)
+        }
+
+        // 3. Fallback to ip-api.com if iplocate.io failed/rate-limited
+        if (!d) {
+            try {
+                const res = await axios.get(`http://ip-api.com/json/${ip}?fields=status,country,countryCode,regionName,city,lat,lon,isp,org,as`, {
+                    timeout: 4000
+                });
+                if (res.data && res.data.status === 'success') {
+                    const fallbackData = res.data;
+                    const rawAsn = fallbackData.as ? fallbackData.as.split(' ')[0] : null;
+                    const orgName = fallbackData.isp || fallbackData.org || fallbackData.as || null;
+                    d = {
+                        country: fallbackData.country,
+                        country_code: fallbackData.countryCode,
+                        city: fallbackData.city,
+                        subdivision: fallbackData.regionName,
+                        latitude: fallbackData.lat,
+                        longitude: fallbackData.lon,
+                        asn: {
+                            asn: rawAsn,
+                            name: orgName,
+                            domain: null
+                        },
+                        company: {
+                            name: orgName
+                        }
+                    };
+                }
+            } catch (e: any) {
+                // Fallback provider failed
+            }
+        }
+
+        if (d) {
             const asnStr = d.asn?.asn || d.asn || null;
             const orgStr = d.asn?.name || d.company?.name || d.org || null;
             const domainStr = d.asn?.domain || d.company?.domain || null;
