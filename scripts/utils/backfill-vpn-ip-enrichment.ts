@@ -127,7 +127,7 @@ async function backfillVpnIpEnrichment() {
     let externalSuccess = 0;
     let rateLimited = false;
     const batchSize = 10;
-    const delayMs = 300; // 300ms pause between calls
+    const delayMs = 500; // 500ms pause between calls to respect rate limits
 
     for (let i = 0; i < uncachedIps.length; i += batchSize) {
         if (rateLimited) {
@@ -143,10 +143,17 @@ async function backfillVpnIpEnrichment() {
                 const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
                     headers: apiKey ? { "X-API-KEY": apiKey } : {},
                     timeout: 5000
-                }).catch((err) => {
+                }).catch(async (err) => {
                     if (err.response && err.response.status === 429) {
                         rateLimited = true;
                         console.error("[IP-BACKFILL] Rate limit hit (HTTP 429). Exiting gracefully.");
+                        await prisma.auditLog.create({
+                            data: {
+                                action: "IPLOCATE_RATE_LIMIT",
+                                details: `IPLocate.io API Rate Limit Exceeded (HTTP 429) during backfill utility. Script gracefully stopped after enriching ${externalSuccess} IPs.`,
+                                ipAddress: ip
+                            }
+                        }).catch(() => {});
                     }
                     return null;
                 });
@@ -158,6 +165,15 @@ async function backfillVpnIpEnrichment() {
                     const ipAsDomain = data.asn?.domain || data.company?.domain || null;
                     const ipCountry = data.country || null;
                     const ipCountryCode = data.country_code || null;
+
+                    // Log audit query
+                    await prisma.auditLog.create({
+                        data: {
+                            action: "IPLOCATE_API_QUERY",
+                            details: `Executed backfill lookup for IP: ${ip} via IPLocate.io.`,
+                            ipAddress: ip
+                        }
+                    }).catch(() => {});
 
                     // Cache in PostgreSQL
                     await prisma.ipLookupCache.upsert({

@@ -75,92 +75,85 @@ async function getIpInfo(ip: any): Promise<any> {
             };
         }
 
-        // 2. Fetch live via iplocate.io API (Primary)
+        // 2. Fetch live via iplocate.io API ONLY (No third-party fallback)
         const apiKey = process.env.IPLOCATE_API_KEY;
-        let d: any = null;
 
         try {
             const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
                 headers: apiKey ? { "X-API-KEY": apiKey } : {},
-                timeout: 4000
+                timeout: 5000
             });
-            if (res.data && (res.data.country || res.data.country_code)) {
-                d = res.data;
+
+            if (res?.data && (res.data.country || res.data.country_code)) {
+                const d = res.data;
+                const asnStr = d.asn?.asn || d.asn || null;
+                const orgStr = d.asn?.name || d.company?.name || d.org || null;
+                const domainStr = d.asn?.domain || d.company?.domain || null;
+                const countryStr = d.country || null;
+                const countryCodeStr = d.country_code || null;
+                const cityStr = d.city || null;
+
+                // Log successful query tracking to AuditLog
+                try {
+                    const startOfUtcDay = new Date();
+                    startOfUtcDay.setUTCHours(0, 0, 0, 0);
+                    const dailyCount = await prisma.ipLookupCache.count({
+                        where: { updatedAt: { gte: startOfUtcDay } }
+                    });
+                    await prisma.auditLog.create({
+                        data: {
+                            action: "IPLOCATE_API_QUERY",
+                            details: `Executed lookup for IP: ${ip} via IPLocate.io. Daily queries: ${dailyCount + 1}.`,
+                            ipAddress: ip
+                        }
+                    });
+                } catch (auditErr: any) {}
+
+                // Persist into IpLookupCache
+                await prisma.ipLookupCache.upsert({
+                    where: { ip },
+                    update: {
+                        latitude: d.latitude || null,
+                        longitude: d.longitude || null,
+                        countryCode: countryCodeStr,
+                        city: cityStr,
+                        subdivision: d.subdivision || null,
+                        rawJson: JSON.stringify(d)
+                    },
+                    create: {
+                        ip,
+                        latitude: d.latitude || null,
+                        longitude: d.longitude || null,
+                        countryCode: countryCodeStr,
+                        city: cityStr,
+                        subdivision: d.subdivision || null,
+                        rawJson: JSON.stringify(d)
+                    }
+                }).catch(() => {});
+
+                return {
+                    asn: asnStr,
+                    as_name: orgStr,
+                    as_domain: domainStr,
+                    country: countryStr,
+                    country_code: countryCodeStr,
+                    city: cityStr
+                };
             }
         } catch (e: any) {
-            // iplocate failed or rate limited (HTTP 429)
-        }
-
-        // 3. Fallback to ip-api.com if iplocate.io failed/rate-limited
-        if (!d) {
-            try {
-                const res = await axios.get(`http://ip-api.com/json/${ip}?fields=status,country,countryCode,regionName,city,lat,lon,isp,org,as`, {
-                    timeout: 4000
-                });
-                if (res.data && res.data.status === 'success') {
-                    const fallbackData = res.data;
-                    const rawAsn = fallbackData.as ? fallbackData.as.split(' ')[0] : null;
-                    const orgName = fallbackData.isp || fallbackData.org || fallbackData.as || null;
-                    d = {
-                        country: fallbackData.country,
-                        country_code: fallbackData.countryCode,
-                        city: fallbackData.city,
-                        subdivision: fallbackData.regionName,
-                        latitude: fallbackData.lat,
-                        longitude: fallbackData.lon,
-                        asn: {
-                            asn: rawAsn,
-                            name: orgName,
-                            domain: null
-                        },
-                        company: {
-                            name: orgName
-                        }
-                    };
-                }
-            } catch (e: any) {
-                // Fallback provider failed
+            const isRateLimit = e.response?.status === 429 || e.message?.includes("429");
+            if (isRateLimit) {
+                console.warn(`[VPN-SYNC] ⚠️ IPLocate API Rate Limit Exceeded (HTTP 429) for IP ${ip}. Skipping live enrichment.`);
+                await prisma.auditLog.create({
+                    data: {
+                        action: "IPLOCATE_RATE_LIMIT",
+                        details: `IPLocate.io API Rate Limit Exceeded (HTTP 429) during VPN ingestion for IP: ${ip}. IP skipped live enrichment.`,
+                        ipAddress: ip
+                    }
+                }).catch(() => {});
+            } else {
+                console.error(`[VPN-SYNC] IPLocate API error for ${ip}:`, e.message);
             }
-        }
-
-        if (d) {
-            const asnStr = d.asn?.asn || d.asn || null;
-            const orgStr = d.asn?.name || d.company?.name || d.org || null;
-            const domainStr = d.asn?.domain || d.company?.domain || null;
-            const countryStr = d.country || null;
-            const countryCodeStr = d.country_code || null;
-            const cityStr = d.city || null;
-
-            // Persist into IpLookupCache
-            await prisma.ipLookupCache.upsert({
-                where: { ip },
-                update: {
-                    latitude: d.latitude || null,
-                    longitude: d.longitude || null,
-                    countryCode: countryCodeStr,
-                    city: cityStr,
-                    subdivision: d.subdivision || null,
-                    rawJson: JSON.stringify(d)
-                },
-                create: {
-                    ip,
-                    latitude: d.latitude || null,
-                    longitude: d.longitude || null,
-                    countryCode: countryCodeStr,
-                    city: cityStr,
-                    subdivision: d.subdivision || null,
-                    rawJson: JSON.stringify(d)
-                }
-            }).catch(() => {});
-
-            return {
-                asn: asnStr,
-                as_name: orgStr,
-                as_domain: domainStr,
-                country: countryStr,
-                country_code: countryCodeStr,
-                city: cityStr
-            };
         }
     } catch (e: any) {
         console.error(`[VPN-SYNC] IP enrichment error for ${ip}:`, e.message);

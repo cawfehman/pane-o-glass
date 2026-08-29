@@ -209,6 +209,12 @@ export async function enrichIpsBatch(ips: string[], isAdHoc: boolean = false): P
                             `Executed batch lookup for ${totalQueriesPerformed} IPs. Daily usage since 00:00 UTC: ${dailyCountBefore + totalQueriesPerformed} queries.`
                         );
                     } else {
+                        if (response.status === 429) {
+                            await logAudit(
+                                "IPLOCATE_RATE_LIMIT",
+                                `IPLocate.io API Rate Limit Exceeded (HTTP 429) during batch lookup for ${chunk.length} IPs.`
+                            ).catch(() => {});
+                        }
                         console.warn(`[iplocate] Batch API failed for chunk (Status: ${response.status}). Falling back to sequential single lookups...`);
                         
                         for (const ip of chunk) {
