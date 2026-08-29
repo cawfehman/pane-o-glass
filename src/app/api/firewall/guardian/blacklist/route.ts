@@ -50,22 +50,23 @@ export async function POST(req: NextRequest) {
         const clientIp = forwardedFor ? forwardedFor.split(',')[0] : 'internal';
 
         if (type === "ASN" || cleanTarget.toUpperCase().startsWith("AS") || /^\d+$/.test(cleanTarget)) {
-            // Clean ASN string: e.g. "16509" or "AS16509" -> store as "16509"
+            // Clean ASN string: e.g. "16509" or "AS16509" -> store as "AS16509"
             const rawAsnNumber = cleanTarget.toUpperCase().replace(/^AS/, "");
             const asnKey = `AS${rawAsnNumber}`;
+            const authorName = (session.user as any).username || session.user.name || session.user.email || session.user.id || "Admin";
 
             const entry = await prisma.guardianAsnBlacklist.upsert({
                 where: { asn: asnKey },
                 update: {
                     reason: cleanReason,
                     asnName: asnName || null,
-                    createdBy: session.user.id || (session.user as any).username || "Admin"
+                    createdBy: authorName
                 },
                 create: {
                     asn: asnKey,
                     asnName: asnName || null,
                     reason: cleanReason,
-                    createdBy: session.user.id || (session.user as any).username || "Admin"
+                    createdBy: authorName
                 }
             });
 
