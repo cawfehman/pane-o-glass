@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { logAudit } from "@/lib/audit";
 
 export const dynamic = 'force-dynamic';
@@ -20,6 +21,7 @@ export async function GET(req: Request) {
         const { searchParams } = new URL(req.url);
         const query = searchParams.get("query")?.trim() || "";
         const nodOnly = searchParams.get("nod") === "true"; // Newly Observed Domains filter
+        const rareOnly = searchParams.get("rare") === "true"; // Rare / Low Frequency filter
         const rangeParam = searchParams.get("range");
         const rangeSeconds = rangeParam !== null ? parseInt(rangeParam, 10) : 0;
         const limitParam = parseInt(searchParams.get("limit") || "500", 10);
@@ -29,13 +31,12 @@ export async function GET(req: Request) {
         let totalMatches = 0;
 
         const hasWildcard = query.includes('*') || query.includes('%') || query.startsWith('.');
-        const cleanQuery = query.replace(/^\*\.?/, '.'); // e.g. *.claims -> .claims
+        const cleanQuery = query.replace(/^\*\.?/, '.');
 
         if (hasWildcard) {
-            // Wildcard search using PostgreSQL ILIKE
             let pattern = cleanQuery.replace(/\*/g, '%');
             if (cleanQuery.startsWith('.')) {
-                pattern = `%${cleanQuery}`; // e.g. .claims -> %.claims
+                pattern = `%${cleanQuery}`;
             } else if (!pattern.includes('%')) {
                 pattern = `%${pattern}%`;
             }
@@ -65,7 +66,6 @@ export async function GET(req: Request) {
             urls = rawResults || [];
             totalMatches = countRaw[0]?.count || 0;
         } else {
-            // Standard Prisma contains search
             const whereConditions: any = {};
             if (rangeSeconds > 0) {
                 whereConditions.createdAt = { gte: new Date(Date.now() - rangeSeconds * 1000) };
@@ -101,44 +101,64 @@ export async function GET(req: Request) {
 
         const totalDatabaseUrls = await prisma.becRawUrl.count().catch(() => 0);
 
-        // 4. Enrich results with First-Seen Domain Intelligence & Newly Observed Domain (NOD) status
+        // 4. Enrich results with First-Seen Date AND Frequency Count (Total Times Ever Seen)
         const uniqueHosts = Array.from(new Set(urls.map(u => u.targetHost).filter(Boolean)));
 
-        let firstSeenMap: Record<string, Date> = {};
+        let hostStatsMap: Record<string, { firstSeen: Date; totalSeenCount: number }> = {};
         if (uniqueHosts.length > 0) {
-            const firstSeenRaw = await prisma.$queryRaw<any[]>`
-                SELECT "targetHost", MIN("createdAt") as "firstSeen"
+            const statsRaw = await prisma.$queryRaw<any[]>`
+                SELECT "targetHost", MIN("createdAt") as "firstSeen", COUNT(*)::int as "totalSeenCount"
                 FROM "BecRawUrl"
-                WHERE "targetHost" IN (${prisma.join(uniqueHosts)})
+                WHERE "targetHost" IN (${Prisma.join(uniqueHosts)})
                 GROUP BY "targetHost"
             `.catch(() => []);
 
-            for (const r of firstSeenRaw) {
-                firstSeenMap[r.targetHost] = r.firstSeen;
+            for (const r of statsRaw) {
+                hostStatsMap[r.targetHost] = {
+                    firstSeen: r.firstSeen,
+                    totalSeenCount: Number(r.totalSeenCount || 1)
+                };
             }
         }
 
         const now = Date.now();
         const enrichedUrls = urls.map(item => {
-            const firstSeen = firstSeenMap[item.targetHost] || item.createdAt;
+            const stats = hostStatsMap[item.targetHost] || { firstSeen: item.createdAt, totalSeenCount: 1 };
+            const firstSeen = stats.firstSeen;
+            const totalSeenCount = stats.totalSeenCount;
+
             const ageMs = now - new Date(firstSeen).getTime();
             const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24));
+
             const isNewlyObserved24h = ageMs <= 24 * 60 * 60 * 1000;
             const isNewlyObserved7d = ageMs <= 7 * 24 * 60 * 60 * 1000;
+            const isRareLowFrequency = totalSeenCount <= 3; // Seen 3 times or fewer across 500k dataset
+
+            let riskCategory = "ESTABLISHED";
+            if (isNewlyObserved24h) riskCategory = "NEWLY_OBSERVED_24H";
+            else if (isNewlyObserved7d) riskCategory = "NEWLY_OBSERVED_7D";
+            else if (isRareLowFrequency) riskCategory = "RARE_LOW_FREQUENCY";
 
             return {
                 ...item,
                 firstSeen,
+                totalSeenCount,
                 ageDays,
                 isNewlyObserved24h,
-                isNewlyObserved7d
+                isNewlyObserved7d,
+                isRareLowFrequency,
+                riskCategory
             };
         });
 
-        // Filter NOD if requested
-        const finalUrls = nodOnly 
-            ? enrichedUrls.filter(u => u.isNewlyObserved7d)
-            : enrichedUrls;
+        // Filter NOD / Rare if requested
+        let finalUrls = enrichedUrls;
+        if (nodOnly) {
+            finalUrls = finalUrls.filter(u => u.isNewlyObserved7d);
+        }
+        if (rareOnly) {
+            finalUrls = finalUrls.filter(u => u.isRareLowFrequency);
+        }
 
         const responseTimeMs = Date.now() - startTime;
 

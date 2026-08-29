@@ -592,21 +592,30 @@ export default function BecDashboardClient() {
                                                     </span>
                                                 </td>
 
-                                                {/* Domain Age / NOD Risk Status */}
+                                                {/* Domain Age / NOD & Frequency Risk Status */}
                                                 <td className="p-3 font-mono whitespace-nowrap">
-                                                    {item.isNewlyObserved24h ? (
-                                                        <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-500/10 text-red-400 border border-red-500/20" title="First unwrapped in your emails in the last 24 hours">
-                                                            🆕 FIRST SEEN &lt;24H
+                                                    <div className="flex flex-col gap-1 items-start">
+                                                        {item.isNewlyObserved24h ? (
+                                                            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-red-500/10 text-red-400 border border-red-500/20" title="First unwrapped in your emails in the last 24 hours">
+                                                                🆕 FIRST SEEN &lt;24H
+                                                            </span>
+                                                        ) : item.isNewlyObserved7d ? (
+                                                            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20" title="First unwrapped in your emails in the last 7 days">
+                                                                ⚠️ FIRST SEEN &lt;7D
+                                                            </span>
+                                                        ) : item.isRareLowFrequency ? (
+                                                            <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20" title="Established domain (>30d), BUT only seen 3 times or fewer across 500,000 unwrapped URLs! High potential anomaly/phish.">
+                                                                🚨 RARE (Seen {item.totalSeenCount}x)
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-[var(--bg-default)] text-[var(--text-secondary)] border border-[var(--border-color)]">
+                                                                Established ({item.ageDays || 0}d)
+                                                            </span>
+                                                        )}
+                                                        <span className="text-[10px] text-[var(--text-secondary)] font-mono">
+                                                            Seen {item.totalSeenCount ? item.totalSeenCount.toLocaleString() : 1}x total
                                                         </span>
-                                                    ) : item.isNewlyObserved7d ? (
-                                                        <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20" title="First unwrapped in your emails in the last 7 days">
-                                                            ⚠️ FIRST SEEN &lt;7D
-                                                        </span>
-                                                    ) : (
-                                                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-[var(--bg-default)] text-[var(--text-secondary)] border border-[var(--border-color)]">
-                                                            Established ({item.ageDays || 0}d)
-                                                        </span>
-                                                    )}
+                                                    </div>
                                                 </td>
 
                                                 {/* Unwrapped Destination URL */}
