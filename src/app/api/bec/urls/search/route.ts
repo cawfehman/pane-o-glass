@@ -4,6 +4,7 @@ import { hasPermission } from "@/app/actions/permissions";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { logAudit } from "@/lib/audit";
+import { lookupDomainUmbrella, UmbrellaCategorizationResponse } from "@/lib/umbrella";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -22,6 +23,7 @@ export async function GET(req: Request) {
         const query = searchParams.get("query")?.trim() || "";
         const nodOnly = searchParams.get("nod") === "true"; // Newly Observed Domains filter
         const rareOnly = searchParams.get("rare") === "true"; // Rare / Low Frequency filter
+        const maliciousOnly = searchParams.get("malicious") === "true"; // Cisco Umbrella Malicious filter
         const rangeParam = searchParams.get("range");
         const rangeSeconds = rangeParam !== null ? parseInt(rangeParam, 10) : 0;
         const limitParam = parseInt(searchParams.get("limit") || "500", 10);
@@ -101,7 +103,7 @@ export async function GET(req: Request) {
 
         const totalDatabaseUrls = await prisma.becRawUrl.count().catch(() => 0);
 
-        // 4. Enrich results with First-Seen Date AND Frequency Count (Total Times Ever Seen)
+        // 1. Enrich results with First-Seen Date AND Frequency Count
         const uniqueHosts = Array.from(new Set(urls.map(u => u.targetHost).filter(Boolean)));
 
         let hostStatsMap: Record<string, { firstSeen: Date; totalSeenCount: number }> = {};
@@ -121,6 +123,20 @@ export async function GET(req: Request) {
             }
         }
 
+        // 2. Batch Cisco Umbrella Domain Categorization & Threat Reputation Lookup
+        let umbrellaMap: Record<string, UmbrellaCategorizationResponse> = {};
+        await Promise.all(
+            uniqueHosts.map(async (host) => {
+                const res = await lookupDomainUmbrella(host).catch(() => ({
+                    status: 0,
+                    categories: [],
+                    securityCategories: [],
+                    source: "simulated" as const
+                }));
+                umbrellaMap[host] = res;
+            })
+        );
+
         const now = Date.now();
         const enrichedUrls = urls.map(item => {
             const stats = hostStatsMap[item.targetHost] || { firstSeen: item.createdAt, totalSeenCount: 1 };
@@ -134,8 +150,13 @@ export async function GET(req: Request) {
             const isNewlyObserved7d = ageMs <= 7 * 24 * 60 * 60 * 1000;
             const isRareLowFrequency = totalSeenCount <= 3; // Seen 3 times or fewer across 500k dataset
 
+            const umbrellaData = umbrellaMap[item.targetHost] || { status: 0, categories: [], securityCategories: [], source: "simulated" };
+            const umbrellaStatus = umbrellaData.status; // -1: Malicious, 0: Uncategorized, 1: Benign
+            const umbrellaStatusLabel = umbrellaStatus === -1 ? "Malicious" : umbrellaStatus === 1 ? "Benign" : "Uncategorized";
+
             let riskCategory = "ESTABLISHED";
-            if (isNewlyObserved24h) riskCategory = "NEWLY_OBSERVED_24H";
+            if (umbrellaStatus === -1) riskCategory = "UMBRELLA_MALICIOUS";
+            else if (isNewlyObserved24h) riskCategory = "NEWLY_OBSERVED_24H";
             else if (isNewlyObserved7d) riskCategory = "NEWLY_OBSERVED_7D";
             else if (isRareLowFrequency) riskCategory = "RARE_LOW_FREQUENCY";
 
@@ -147,17 +168,44 @@ export async function GET(req: Request) {
                 isNewlyObserved24h,
                 isNewlyObserved7d,
                 isRareLowFrequency,
+                umbrellaStatus,
+                umbrellaStatusLabel,
+                umbrellaCategories: umbrellaData.categories || [],
+                umbrellaSecurityCategories: umbrellaData.securityCategories || [],
+                umbrellaSource: umbrellaData.source || "simulated",
                 riskCategory
             };
         });
 
-        // Filter NOD / Rare if requested
+        // Filter NOD / Rare / Malicious if requested
         let finalUrls = enrichedUrls;
         if (nodOnly) {
             finalUrls = finalUrls.filter(u => u.isNewlyObserved7d);
         }
         if (rareOnly) {
             finalUrls = finalUrls.filter(u => u.isRareLowFrequency);
+        }
+        if (maliciousOnly) {
+            finalUrls = finalUrls.filter(u => u.umbrellaStatus === -1);
+        }
+
+        // 3. Compute Cisco Umbrella Threat Analytics Summary for Charts
+        const umbrellaSummary = {
+            maliciousCount: finalUrls.filter(u => u.umbrellaStatus === -1).length,
+            unccategorizedCount: finalUrls.filter(u => u.umbrellaStatus === 0).length,
+            benignCount: finalUrls.filter(u => u.umbrellaStatus === 1).length,
+            totalEvaluated: finalUrls.length,
+            securityCategoriesBreakdown: {} as Record<string, number>,
+            contentCategoriesBreakdown: {} as Record<string, number>
+        };
+
+        for (const u of finalUrls) {
+            for (const secCat of u.umbrellaSecurityCategories) {
+                umbrellaSummary.securityCategoriesBreakdown[secCat] = (umbrellaSummary.securityCategoriesBreakdown[secCat] || 0) + 1;
+            }
+            for (const cat of u.umbrellaCategories) {
+                umbrellaSummary.contentCategoriesBreakdown[cat] = (umbrellaSummary.contentCategoriesBreakdown[cat] || 0) + 1;
+            }
         }
 
         const responseTimeMs = Date.now() - startTime;
@@ -166,7 +214,7 @@ export async function GET(req: Request) {
             const clientIp = req.headers.get("x-forwarded-for")?.split(',')[0] || 'internal';
             await logAudit(
                 "BEC_URL_DOMAIN_SEARCH",
-                `Searched unwrapped URLs for query: "${query}" (Wildcard: ${hasWildcard}) - Returned ${finalUrls.length} matches`,
+                `Searched unwrapped URLs for query: "${query}" (Wildcard: ${hasWildcard}) - Returned ${finalUrls.length} matches with Cisco Umbrella enrichment`,
                 session.user.id,
                 clientIp
             ).catch(() => {});
@@ -177,6 +225,7 @@ export async function GET(req: Request) {
             query,
             hasWildcard,
             urls: finalUrls,
+            umbrellaSummary,
             totalMatches,
             totalDatabaseUrls,
             returnedCount: finalUrls.length,
