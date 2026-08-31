@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
-import { Shield } from "lucide-react";
+import { Shield, ExternalLink } from "lucide-react";
 import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PaginationControls } from "@/components/common/PaginationControls";
