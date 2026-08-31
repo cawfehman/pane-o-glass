@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
         const { searchParams } = new URL(req.url);
         const search = searchParams.get("search")?.trim() || "";
         const action = searchParams.get("action")?.trim() || "";
+        const limitParam = searchParams.get("limit")?.trim() || "500";
 
         const whereClause: any = {};
 
@@ -26,20 +27,25 @@ export async function GET(req: NextRequest) {
 
         if (search) {
             whereClause.OR = [
-                { ip: { contains: search } },
-                { companyName: { contains: search } },
-                { companyType: { contains: search } },
-                { cidr: { contains: search } },
-                { asn: { contains: search } },
-                { details: { contains: search } }
+                { ip: { contains: search, mode: 'insensitive' } },
+                { companyName: { contains: search, mode: 'insensitive' } },
+                { companyType: { contains: search, mode: 'insensitive' } },
+                { cidr: { contains: search, mode: 'insensitive' } },
+                { asn: { contains: search, mode: 'insensitive' } },
+                { details: { contains: search, mode: 'insensitive' } }
             ];
         }
 
-        const events = await prisma.guardianEvent.findMany({
-            where: whereClause,
-            orderBy: { createdAt: "desc" },
-            take: 100 // Return the last 100 entries
-        });
+        const take = limitParam === "all" ? 10000 : Math.min(10000, Math.max(1, parseInt(limitParam, 10) || 500));
+
+        const [events, totalInDb] = await Promise.all([
+            prisma.guardianEvent.findMany({
+                where: whereClause,
+                orderBy: { createdAt: "desc" },
+                take
+            }),
+            prisma.guardianEvent.count()
+        ]);
 
         const uniqueIps = Array.from(new Set(events.map(e => e.ip)));
 
@@ -58,7 +64,12 @@ export async function GET(req: NextRequest) {
             hasVpnHistory: vpnHistorySet.has(event.ip)
         }));
 
-        return NextResponse.json(enriched);
+        return NextResponse.json({
+            success: true,
+            events: enriched,
+            totalReturned: enriched.length,
+            totalInDb
+        });
     } catch (err: any) {
         return NextResponse.json({ error: err.message || "Failed to load Guardian events" }, { status: 500 });
     }

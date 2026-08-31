@@ -25,6 +25,8 @@ export default function CiscoFirewallPage() {
     const [guardianStatus, setGuardianStatus] = useState<{ isLive: boolean; lastRun: string | null; watchList: string[]; status?: string } | null>(null);
 
     const [guardianEvents, setGuardianEvents] = useState<any[]>([]);
+    const [guardianTotalDb, setGuardianTotalDb] = useState(0);
+    const [guardianQueryLimit, setGuardianQueryLimit] = useState("500");
     const [loadingGuardianEvents, setLoadingGuardianEvents] = useState(false);
     const [guardianSearch, setGuardianSearch] = useState("");
     const [guardianFilter, setGuardianFilter] = useState("");
@@ -93,17 +95,48 @@ export default function CiscoFirewallPage() {
             const query = new URLSearchParams();
             if (guardianSearch) query.append("search", guardianSearch);
             if (guardianFilter) query.append("action", guardianFilter);
+            if (guardianQueryLimit) query.append("limit", guardianQueryLimit);
             
             const res = await fetch(`/api/firewall/guardian?${query.toString()}`);
             if (res.ok) {
                 const data = await res.json();
-                setGuardianEvents(data);
+                if (data.events && Array.isArray(data.events)) {
+                    setGuardianEvents(data.events);
+                    setGuardianTotalDb(data.totalInDb || 0);
+                } else if (Array.isArray(data)) {
+                    setGuardianEvents(data);
+                }
             }
         } catch (e) {
             console.error("Failed to load Guardian events");
         } finally {
             setLoadingGuardianEvents(false);
         }
+    };
+
+    const exportGuardianToCsv = () => {
+        if (!guardianEvents || guardianEvents.length === 0) return;
+        const headers = ["Timestamp", "Action", "IP Address", "Organization / Company", "Type", "CIDR", "ASN", "Reason / Details"];
+        const rows = guardianEvents.map(e => [
+            new Date(e.createdAt).toISOString(),
+            e.action || "",
+            e.ip || "",
+            `"${(e.companyName || "").replace(/"/g, '""')}"`,
+            e.companyType || "",
+            e.cidr || "",
+            e.asn || "",
+            `"${(e.details || "").replace(/"/g, '""')}"`
+        ]);
+
+        const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `guardian_unshun_logs_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     const fetchBlacklist = async () => {
@@ -219,7 +252,7 @@ export default function CiscoFirewallPage() {
         } else if (activeTab === "blacklist") {
             fetchBlacklist();
         }
-    }, [activeTab, guardianSearch, guardianFilter]);
+    }, [activeTab, guardianSearch, guardianFilter, guardianQueryLimit]);
 
     // Fetch configured firewalls on load
     useEffect(() => {
@@ -637,14 +670,56 @@ export default function CiscoFirewallPage() {
                             <option value="FAILED" className="bg-bg-dark text-text-primary">Failed</option>
                         </select>
                     </div>
+
+                    {/* Database Query Fetch Limit */}
+                    <div style={{ width: '180px' }}>
+                        <select
+                            value={guardianQueryLimit}
+                            onChange={(e) => {
+                                setGuardianQueryLimit(e.target.value);
+                                setGuardianPage(1);
+                            }}
+                            title="Database Fetch Range (defaults to top 500, or load all 30 days)"
+                            style={{
+                                width: '100%',
+                                padding: '10px 14px',
+                                backgroundColor: 'var(--bg-dark)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '8px',
+                                color: 'var(--text-primary)',
+                                outline: 'none',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <option value="100" className="bg-bg-dark text-text-primary">Fetch Top 100</option>
+                            <option value="250" className="bg-bg-dark text-text-primary">Fetch Top 250</option>
+                            <option value="500" className="bg-bg-dark text-text-primary">Fetch Top 500</option>
+                            <option value="1000" className="bg-bg-dark text-text-primary">Fetch Top 1,000</option>
+                            <option value="all" className="bg-bg-dark text-text-primary">Fetch All 30 Days</option>
+                        </select>
+                    </div>
+
+                    {guardianEvents.length > 0 && (
+                        <button
+                            onClick={exportGuardianToCsv}
+                            className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs ml-auto"
+                        >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>Export CSV ({guardianEvents.length})</span>
+                        </button>
+                    )}
                 </div>
 
                 {/* --- GUARDIAN EVENTS TABLE --- */}
                 <div className="glass-card flex-1 flex flex-col min-h-0 border border-border-color rounded-xl overflow-hidden shadow-sm" style={{ minHeight: '400px', padding: 0 }}>
                     <div className="p-4 border-b border-border-color bg-bg-surface/60 shrink-0">
-                        <h3 className="m-0 text-base font-bold text-text-primary">Guardian Shun Intel Log ({guardianEvents.length})</h3>
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <h3 className="m-0 text-base font-bold text-text-primary">
+                                Guardian Shun Intel Log ({guardianEvents.length} loaded {guardianTotalDb > 0 && `of ${guardianTotalDb.toLocaleString()} total 30-day logs`})
+                            </h3>
+                        </div>
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '4px 0 0 0' }}>
-                            Search, report, and display real-time Graylog shun logs that were auto-unshunned or retained.
+                            Search, report, and display real-time Graylog shun logs that were auto-unshunned or retained in your 30-day PostgreSQL history database.
                         </p>
                         
                         {/* Top Pinned Pagination */}
