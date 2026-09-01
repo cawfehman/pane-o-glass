@@ -973,8 +973,8 @@ export default function VpnTroubleshootingPage() {
                                                                         </>
                                                                     ) : evt.status === "RECONNECT" ? (
                                                                         <>
-                                                                            <Activity size={12} className="text-cyan-400" />
-                                                                            RECONNECTED
+                                                                            <Activity size={12} />
+                                                                            RESUMED
                                                                         </>
                                                                     ) : evt.status === "SUCCESS" ? (
                                                                         <>
@@ -2017,23 +2017,21 @@ export default function VpnTroubleshootingPage() {
                                                         </span>
                                                         {evt.vpnStream && (
                                                             <span 
-                                                                title={evt.vpnStream === "Kel-3140" ? "Reconnect" : "Connect"}
+                                                                title={evt.vpnStream === "Kel-3140" ? "Keleman VPN Cluster (Reconnect)" : "Wilmington FTD Cluster (Connect)"}
                                                                 style={{
                                                                     display: 'inline-flex',
                                                                     alignItems: 'center',
-                                                                    justifyContent: 'center',
-                                                                    width: '18px',
-                                                                    height: '18px',
-                                                                    borderRadius: '50%',
-                                                                    fontSize: '0.7rem',
+                                                                    gap: '3px',
+                                                                    padding: '2px 8px',
+                                                                    borderRadius: '6px',
+                                                                    fontSize: '0.75rem',
                                                                     fontWeight: 800,
                                                                     background: evt.vpnStream === "Kel-3140" ? 'rgba(236, 72, 153, 0.15)' : 'rgba(34, 197, 94, 0.15)',
                                                                     color: evt.vpnStream === "Kel-3140" ? '#f472b6' : '#4ade80',
                                                                     border: evt.vpnStream === "Kel-3140" ? '1px solid rgba(236, 72, 153, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)',
-                                                                    cursor: 'help'
                                                                 }}
                                                             >
-                                                                {evt.vpnStream === "Kel-3140" ? "R" : "C"}
+                                                                {evt.vpnStream === "Kel-3140" ? "Reconnect" : "Connect"}
                                                             </span>
                                                         )}
                                                     </div>
