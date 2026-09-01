@@ -963,13 +963,18 @@ export default function VpnTroubleshootingPage() {
                                                                     borderRadius: '6px', 
                                                                     fontSize: '0.8rem', 
                                                                     fontWeight: 600,
-                                                                    background: evt.status === "FAILURE" ? 'rgba(239, 68, 68, 0.15)' : evt.status === "SUCCESS" ? 'rgba(34, 197, 94, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-                                                                    color: evt.status === "FAILURE" ? '#f87171' : evt.status === "SUCCESS" ? '#4ade80' : '#60a5fa'
+                                                                    background: evt.status === "FAILURE" ? 'rgba(239, 68, 68, 0.15)' : evt.status === "RECONNECT" ? 'rgba(6, 182, 212, 0.15)' : evt.status === "SUCCESS" ? 'rgba(34, 197, 94, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                                                                    color: evt.status === "FAILURE" ? '#f87171' : evt.status === "RECONNECT" ? '#22d3ee' : evt.status === "SUCCESS" ? '#4ade80' : '#60a5fa'
                                                                 }}>
                                                                     {evt.status === "FAILURE" ? (
                                                                         <>
                                                                             <ShieldAlert size={12} />
                                                                             FAIL: {evt.failureReason || "Authentication"}
+                                                                        </>
+                                                                    ) : evt.status === "RECONNECT" ? (
+                                                                        <>
+                                                                            <Activity size={12} className="text-cyan-400" />
+                                                                            RECONNECTED
                                                                         </>
                                                                     ) : evt.status === "SUCCESS" ? (
                                                                         <>

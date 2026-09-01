@@ -21,7 +21,7 @@ function classifyHealth(
 
     if (contentionDetected) {
         status = "CRITICAL";
-        reasons.push("Lock Contention (SQLITE_BUSY / wait > 1s)");
+        reasons.push("PostgreSQL Lock / Write Delay (wait > 1s)");
     }
     if (walWriteMs > 1000) {
         status = "CRITICAL";

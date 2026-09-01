@@ -23,7 +23,8 @@ function errorLog(msg, err) {
 }
 
 // IP Utility functions
-function ip2long(ip: any) {
+function ipToLong(ip: any) {
+    if (!ip || typeof ip !== 'string') return 0;
     return ip.split('.').reduce((long: any, octet: any) => (long << 8) + parseInt(octet, 10), 0) >>> 0;
 }
 
@@ -44,6 +45,7 @@ const NON_PUBLIC_RANGES = [
 ];
 
 function isPrivateIp(ip: any) {
+    if (!ip || typeof ip !== 'string') return true;
     try {
         const ipLong = ipToLong(ip);
         return NON_PUBLIC_RANGES.some(range => {
@@ -54,7 +56,7 @@ function isPrivateIp(ip: any) {
     }
 }
 
-// IP Enrichment Fetcher
+// IP Enrichment Fetcher (Primary: IPLocate, Fallback: IPInfo Lite)
 async function getIpInfo(ip: any): Promise<any> {
     if (!ip || isPrivateIp(ip)) {
         return null;
@@ -66,18 +68,17 @@ async function getIpInfo(ip: any): Promise<any> {
         if (cached) {
             const raw = JSON.parse(cached.rawJson);
             return {
-                asn: raw.asn?.asn || raw.asn || null,
-                as_name: raw.asn?.name || raw.company?.name || raw.org || null,
-                as_domain: raw.asn?.domain || raw.company?.domain || null,
+                asn: raw.asn?.asn || raw.asn || raw.as_number || null,
+                as_name: raw.asn?.name || raw.company?.name || raw.org || raw.as_name || null,
+                as_domain: raw.asn?.domain || raw.company?.domain || raw.as_domain || null,
                 country: raw.country || null,
                 country_code: raw.country_code || cached.countryCode || null,
                 city: cached.city || raw.city || null
             };
         }
 
-        // 2. Fetch live via iplocate.io API ONLY (No third-party fallback)
+        // 2. Fetch live via iplocate.io API
         const apiKey = process.env.IPLOCATE_API_KEY;
-
         try {
             const res = await axios.get(`https://www.iplocate.io/api/lookup/${ip}`, {
                 headers: apiKey ? { "X-API-KEY": apiKey } : {},
@@ -93,23 +94,6 @@ async function getIpInfo(ip: any): Promise<any> {
                 const countryCodeStr = d.country_code || null;
                 const cityStr = d.city || null;
 
-                // Log successful query tracking to AuditLog
-                try {
-                    const startOfUtcDay = new Date();
-                    startOfUtcDay.setUTCHours(0, 0, 0, 0);
-                    const dailyCount = await prisma.ipLookupCache.count({
-                        where: { updatedAt: { gte: startOfUtcDay } }
-                    });
-                    await prisma.auditLog.create({
-                        data: {
-                            action: "IPLOCATE_API_QUERY",
-                            details: `Executed lookup for IP: ${ip} via IPLocate.io. Daily queries: ${dailyCount + 1}.`,
-                            ipAddress: ip
-                        }
-                    });
-                } catch (auditErr: any) {}
-
-                // Persist into IpLookupCache
                 await prisma.ipLookupCache.upsert({
                     where: { ip },
                     update: {
@@ -141,18 +125,35 @@ async function getIpInfo(ip: any): Promise<any> {
                 };
             }
         } catch (e: any) {
-            const isRateLimit = e.response?.status === 429 || e.message?.includes("429");
-            if (isRateLimit) {
-                console.warn(`[VPN-SYNC] ⚠️ IPLocate API Rate Limit Exceeded (HTTP 429) for IP ${ip}. Skipping live enrichment.`);
-                await prisma.auditLog.create({
-                    data: {
-                        action: "IPLOCATE_RATE_LIMIT",
-                        details: `IPLocate.io API Rate Limit Exceeded (HTTP 429) during VPN ingestion for IP: ${ip}. IP skipped live enrichment.`,
-                        ipAddress: ip
+            // iplocate failed/rate limited, try ipinfo.io fallback if IPINFO_TOKEN is set
+            const ipinfoToken = process.env.IPINFO_TOKEN;
+            if (ipinfoToken) {
+                try {
+                    const ipinfoRes = await axios.get(`https://api.ipinfo.io/lite/${ip}?token=${ipinfoToken}`, { timeout: 5000 });
+                    if (ipinfoRes?.data) {
+                        const d = ipinfoRes.data;
+                        const asnStr = d.asn || null;
+                        const orgStr = d.as_name || d.company?.name || null;
+                        const domainStr = d.as_domain || null;
+                        const countryStr = d.country || null;
+                        const countryCodeStr = d.country_code || null;
+
+                        await prisma.ipLookupCache.upsert({
+                            where: { ip },
+                            update: { countryCode: countryCodeStr, rawJson: JSON.stringify(d) },
+                            create: { ip, countryCode: countryCodeStr, rawJson: JSON.stringify(d) }
+                        }).catch(() => {});
+
+                        return {
+                            asn: asnStr,
+                            as_name: orgStr,
+                            as_domain: domainStr,
+                            country: countryStr,
+                            country_code: countryCodeStr,
+                            city: null
+                        };
                     }
-                }).catch(() => {});
-            } else {
-                console.error(`[VPN-SYNC] IPLocate API error for ${ip}:`, e.message);
+                } catch (ipinfoErr) {}
             }
         }
     } catch (e: any) {
@@ -288,7 +289,15 @@ async function runSync() {
                 vpnStream = "WDC-FTD";
             }
 
-            if (rawLog.includes("113039") && connRegex.test(rawLog)) {
+            if ((rawLog.includes("722022") || rawLog.includes("722023") || rawLog.includes("722036") || rawLog.toLowerCase().includes("session resumed") || rawLog.toLowerCase().includes("reconnect")) && connRegex.test(rawLog)) {
+                const match = rawLog.match(connRegex);
+                if (match) {
+                    username = match[2] || match[5];
+                    sourceIp = match[3] || match[6];
+                    status = "RECONNECT";
+                    vpnType = "SSL";
+                }
+            } else if (rawLog.includes("113039") && connRegex.test(rawLog)) {
                 const match = rawLog.match(connRegex);
                 if (match) {
                     username = match[2] || match[5];
