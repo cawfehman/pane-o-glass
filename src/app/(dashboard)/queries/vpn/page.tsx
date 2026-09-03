@@ -1001,6 +1001,27 @@ export default function VpnTroubleshootingPage() {
                                                                 }}>
                                                                     {evt.vpnType || "SSL"}
                                                                 </span>
+                                                                {evt.vpnStream && (
+                                                                    <span 
+                                                                        title={evt.vpnStream === "Kel-3140" ? "Reconnect Gateway (Keleman Kel-3140)" : "Connect Gateway (Wilmington WDC-FTD)"}
+                                                                        style={{
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'center',
+                                                                            width: '18px',
+                                                                            height: '18px',
+                                                                            borderRadius: '50%',
+                                                                            fontSize: '0.7rem',
+                                                                            fontWeight: 800,
+                                                                            background: evt.vpnStream === "Kel-3140" ? 'rgba(236, 72, 153, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                                                                            color: evt.vpnStream === "Kel-3140" ? '#f472b6' : '#4ade80',
+                                                                            border: evt.vpnStream === "Kel-3140" ? '1px solid rgba(236, 72, 153, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)',
+                                                                            cursor: 'help'
+                                                                        }}
+                                                                    >
+                                                                        {evt.vpnStream === "Kel-3140" ? "R" : "C"}
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </td>
                                                         <td style={{ padding: '14px 16px', fontSize: '0.9rem' }}>
@@ -1174,6 +1195,27 @@ export default function VpnTroubleshootingPage() {
                                                             }}>
                                                                 {evt.vpnType || "SSL"}
                                                             </span>
+                                                            {evt.vpnStream && (
+                                                                <span 
+                                                                    title={evt.vpnStream === "Kel-3140" ? "Reconnect Gateway (Keleman Kel-3140)" : "Connect Gateway (Wilmington WDC-FTD)"}
+                                                                    style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        width: '18px',
+                                                                        height: '18px',
+                                                                        borderRadius: '50%',
+                                                                        fontSize: '0.7rem',
+                                                                        fontWeight: 800,
+                                                                        background: evt.vpnStream === "Kel-3140" ? 'rgba(236, 72, 153, 0.15)' : 'rgba(34, 197, 94, 0.15)',
+                                                                        color: evt.vpnStream === "Kel-3140" ? '#f472b6' : '#4ade80',
+                                                                        border: evt.vpnStream === "Kel-3140" ? '1px solid rgba(236, 72, 153, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)',
+                                                                        cursor: 'help'
+                                                                    }}
+                                                                >
+                                                                    {evt.vpnStream === "Kel-3140" ? "R" : "C"}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </td>
                                                     <td style={{ padding: '14px 16px', fontSize: '0.9rem' }}>
@@ -2017,21 +2059,23 @@ export default function VpnTroubleshootingPage() {
                                                         </span>
                                                         {evt.vpnStream && (
                                                             <span 
-                                                                title={evt.vpnStream === "Kel-3140" ? "Keleman VPN Cluster (Reconnect)" : "Wilmington FTD Cluster (Connect)"}
+                                                                title={evt.vpnStream === "Kel-3140" ? "Reconnect Gateway (Keleman Kel-3140)" : "Connect Gateway (Wilmington WDC-FTD)"}
                                                                 style={{
                                                                     display: 'inline-flex',
                                                                     alignItems: 'center',
-                                                                    gap: '3px',
-                                                                    padding: '2px 8px',
-                                                                    borderRadius: '6px',
-                                                                    fontSize: '0.75rem',
+                                                                    justifyContent: 'center',
+                                                                    width: '18px',
+                                                                    height: '18px',
+                                                                    borderRadius: '50%',
+                                                                    fontSize: '0.7rem',
                                                                     fontWeight: 800,
                                                                     background: evt.vpnStream === "Kel-3140" ? 'rgba(236, 72, 153, 0.15)' : 'rgba(34, 197, 94, 0.15)',
                                                                     color: evt.vpnStream === "Kel-3140" ? '#f472b6' : '#4ade80',
                                                                     border: evt.vpnStream === "Kel-3140" ? '1px solid rgba(236, 72, 153, 0.3)' : '1px solid rgba(34, 197, 94, 0.3)',
+                                                                    cursor: 'help'
                                                                 }}
                                                             >
-                                                                {evt.vpnStream === "Kel-3140" ? "Reconnect" : "Connect"}
+                                                                {evt.vpnStream === "Kel-3140" ? "R" : "C"}
                                                             </span>
                                                         )}
                                                     </div>
