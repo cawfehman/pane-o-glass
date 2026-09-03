@@ -1,6 +1,6 @@
 # Pane-O-Glass — Master Roadmap & Release Tracking
 
-> **Last Updated:** August 31, 2026  
+> **Last Updated:** September 3, 2026  
 > **Status:** Production Release Tracking & Future Milestones
 
 ---
@@ -105,7 +105,15 @@
 | **Why** | Surface Vectra AI host/account threat scores and correlate network detections with Firewall/ISE/VPN logs. |
 | **Capabilities** | • Leverage `src/lib/vectra.ts` API wrappers (`getVectraHosts`, `getVectraAccounts`, `queryVectraMetadata`).<br>• Interactive `/queries/vectra` UI module with threat score sorting and host triaging. |
 
-### 1.2 Ingest-Time Cisco Umbrella Pre-Categorization & Background Worker
+### 1.2 Active Directory Moves, Adds, Changes (MAC) & 360° Audit Investigation Suite
+| | |
+|---|---|
+| **Status** | `Planned` / `Backburnered` |
+| **Effort** | M–L |
+| **Why** | Provide a centralized security audit and investigation workbench for Active Directory account lifecycles, group membership modifications, lockout forensics, and OU moves across all Domain Controllers. |
+| **Capabilities** | • **Hybrid Multi-DC Architecture:** Combines Graylog REST API (`OgGraylogClient`) as the unified multi-DC event aggregator with live LDAP (`src/lib/ldap.ts`) for real-time account state & group membership snapshots.<br>• **Comprehensive Event ID Matrix:**<br>&nbsp;&nbsp;– 🔒 *Lockouts & Credential Attempts:* `4740` (Lockout with `CallerComputerName`), `4767` (Unlock), `4771` (Kerberos Pre-Auth Bad Password), `4776` (NTLM Bad Password `0xC000006A`), `4723`/`4724` (Password Change/Reset).<br>&nbsp;&nbsp;– 🔑 *Auth & Privilege Delegation:* `4625` (Logon Failure with Reason Codes `0xC000006A`/`0xC0000234`/`0xC0000072`), `4624` (Logon Success), `4648` (Explicit Creds / RunAs), `4672` (Elevated Admin Token), `4769` (Kerberoasting footprint).<br>&nbsp;&nbsp;– 👤 *Account Lifecycle & Moves:* `4720` (Creation), `4726` (Deletion), `4722`/`4725` (Enable/Disable), `4738` (Attribute Edits), `5136`/`5139` (OU Relocations & DS Modifications).<br>&nbsp;&nbsp;– 👥 *Group Access Audit:* `4728`/`4729` (Global), `4732`/`4733` (Local), `4756`/`4757` (Universal) Security Group additions & removals.<br>• **Unified Lucene Boolean Search Engine:** Reuses standard Pane-o-Glass search interface with full native Lucene boolean support (`AND`, `OR`, `NOT`, quotes `"..."`, field prefixes e.g. `EventID:4740 AND TargetUserName:jdoe`).<br>• **1-Click Quick Preset Chips:** Shortcuts for 🚨 Lockouts, 🟢 Account Creations, 🔴 Deletions, 🔒 Status Toggles, 🔐 Password Resets, 👥 Group Changes, and 📝 OU Moves.<br>• **Flexible Timeframe Selector & 360° Timeline View:** Relative range picker (1h, 24h, 7d, 30d) + custom ISO date range picker with 1-click CSV export.
+
+### 1.3 Ingest-Time Cisco Umbrella Pre-Categorization & Background Worker
 | | |
 |---|---|
 | **Status** | `Planned` |
