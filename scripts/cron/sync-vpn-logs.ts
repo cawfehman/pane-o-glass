@@ -251,10 +251,10 @@ async function runSync() {
         log(`Fetched ${messages.length} total messages from Graylog matching VPN criteria across all streams.`);
 
         // Regexes for FTD/ASA parsing (making the FTD/ASA header prefix optional in case Graylog stripped it)
-        const connRegex = /(?:Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>|Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+))/i;
+        const connRegex = /(?:Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>|Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+)|User(?:name)?\s*[:=<]\s*<?([^>\s,]+)>?\s*,?\s*IP\s*[:=<]\s*<?([^>\s,]+)>?)/i;
         const failRegex = /(?:%(?:FTD|ASA)-\d-113015:\s+)?AAA\s+user\s+authentication\s+Rejected\s+:\s+reason\s+=\s+(.+?)\s+:\s+User\s+=\s+(.+?)\s+:\s+IP\s+=\s+([^\s]+)/i;
         const failRegex113005 = /AAA\s+user\s+authentication\s+Rejected\s+:\s+reason\s+=\s+(.+?)\s+:\s+server\s+=\s+[^\s]+\s+:\s+user\s+=\s+(.+?)\s+:\s+user\s+IP\s+=\s+([^\s]+)/i;
-        const discRegex = /(?:Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+)|Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>).*?Duration:\s*([^,]+),\s*(?:Rx\s*Rules:[^,]+,\s*Tx\s*Rules:[^,]+,\s*)?Bytes\s+(?:Tx|xmt):\s*(\d+),\s*Bytes\s+(?:Rx|rcv):\s*(\d+)/i;
+        const discRegex = /(?:Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+)|Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>|User(?:name)?\s*[:=<]\s*<?([^>\s,]+)>?\s*,?\s*IP\s*[:=<]\s*<?([^>\s,]+)>?).*?Duration:\s*([^,]+),\s*(?:Rx\s*Rules:[^,]+,\s*Tx\s*Rules:[^,]+,\s*)?Bytes\s+(?:Tx|xmt):\s*(\d+),\s*Bytes\s+(?:Rx|rcv):\s*(\d+)/i;
         const ipAssignRegex = /(?:Group\s+<([^>]+)>\s+User\s+<([^>]+)>\s+IP\s+<([^>]+)>\s+(?:IPv4\s+)?Address\s+<([^>]+)>(?:\s+IPv6\s+address\s+<[^>]*>)?\s+assigned\s+to\s+session|Group\s*=\s*([^\s,]+),\s*Username\s*=\s*([^\s,]+),\s*IP\s*=\s*([^\s,]+),\s*(?:IPv4\s*)?Address\s*=\s*([^\s,]+)(?:\s*,\s*IPv6\s*address\s*=\s*[^\s,]+)?\s*assigned\s*to\s*session)/i;
         
         // IKEv2 IPSec Regexes
@@ -289,19 +289,11 @@ async function runSync() {
                 vpnStream = "WDC-FTD";
             }
 
-            if ((rawLog.includes("722022") || rawLog.includes("722023") || rawLog.includes("722036") || rawLog.toLowerCase().includes("session resumed") || rawLog.toLowerCase().includes("reconnect")) && connRegex.test(rawLog)) {
+            if ((rawLog.includes("113039") || rawLog.includes("722022") || rawLog.includes("722023") || rawLog.includes("722036") || rawLog.toLowerCase().includes("session resumed") || rawLog.toLowerCase().includes("reconnect")) && connRegex.test(rawLog)) {
                 const match = rawLog.match(connRegex);
                 if (match) {
-                    username = match[2] || match[5];
-                    sourceIp = match[3] || match[6];
-                    status = "RECONNECT";
-                    vpnType = "SSL";
-                }
-            } else if (rawLog.includes("113039") && connRegex.test(rawLog)) {
-                const match = rawLog.match(connRegex);
-                if (match) {
-                    username = match[2] || match[5];
-                    sourceIp = match[3] || match[6];
+                    username = match[2] || match[5] || match[7];
+                    sourceIp = match[3] || match[6] || match[8];
                     status = "SUCCESS";
                     vpnType = "SSL";
                 }
