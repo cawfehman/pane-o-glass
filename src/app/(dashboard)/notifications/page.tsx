@@ -68,12 +68,45 @@ export default function NotificationCenterPage() {
     const [logPage, setLogPage] = useState(1);
     const [logLimit, setLogLimit] = useState(25);
 
-    // Fetch initial campaigns & templates
+    // Rate limit & SMTP configuration state
+    const [rateLimitInfo, setRateLimitInfo] = useState<{
+        delayMs: number;
+        emailsPerSecond: number;
+        emailsPerMinute: number;
+        isMock: boolean;
+        formattedRate: string;
+        relayHost: string;
+    } | null>(null);
+
+    // Cancel campaign modal state
+    const [cancelModalCampaign, setCancelModalCampaign] = useState<any | null>(null);
+    const [cancelReasonInput, setCancelReasonInput] = useState("");
+    const [cancelling, setCancelling] = useState(false);
+
+    // Delete campaign modal state
+    const [deleteModalCampaign, setDeleteModalCampaign] = useState<any | null>(null);
+    const [deleteReasonInput, setDeleteReasonInput] = useState("");
+    const [deleting, setDeleting] = useState(false);
+
+    // Fetch initial campaigns, templates, & rate limit config
     useEffect(() => {
         fetchCampaigns();
         fetchTemplates();
+        fetchRateLimitInfo();
         checkStagedHandoff();
     }, []);
+
+    const fetchRateLimitInfo = async () => {
+        try {
+            const res = await fetch("/api/notifications/rate-limit");
+            if (res.ok) {
+                const data = await res.json();
+                setRateLimitInfo(data);
+            }
+        } catch (e) {
+            console.error("Failed to fetch rate limit info", e);
+        }
+    };
 
     // Guard against navigating away with unsaved wizard data
     useEffect(() => {
@@ -247,16 +280,77 @@ export default function NotificationCenterPage() {
         }
     };
 
-    const handleDeleteCampaign = async (id: string) => {
-        if (!confirm("Are you sure you want to delete this notification campaign?")) return;
+    const handleOpenCancelModal = (campaign: any) => {
+        setCancelModalCampaign(campaign);
+        setCancelReasonInput("");
+    };
+
+    const handleConfirmCancelCampaign = async () => {
+        if (!cancelModalCampaign) return;
+        const reason = cancelReasonInput.trim();
+        if (!reason) {
+            setActionNotice({ type: "error", message: "Please provide a valid cancellation/closure reason." });
+            return;
+        }
+
+        setCancelling(true);
         try {
-            const res = await fetch(`/api/notifications/campaigns/${id}`, { method: "DELETE" });
-            if (res.ok) {
-                fetchCampaigns();
-                setActionNotice({ type: "success", message: "Campaign deleted." });
+            const res = await fetch(`/api/notifications/campaigns/${cancelModalCampaign.id}/cancel`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reason }),
+            });
+
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(text || "Failed to cancel campaign.");
             }
-        } catch (e) {
-            setActionNotice({ type: "error", message: "Failed to delete campaign." });
+
+            setActionNotice({ type: "success", message: `Campaign "${cancelModalCampaign.name}" cancelled/closed.` });
+            setCancelModalCampaign(null);
+            setCancelReasonInput("");
+            fetchCampaigns();
+        } catch (err: any) {
+            setActionNotice({ type: "error", message: err.message || "Failed to cancel campaign." });
+        } finally {
+            setCancelling(false);
+        }
+    };
+
+    const handleOpenDeleteModal = (campaign: any) => {
+        setDeleteModalCampaign(campaign);
+        setDeleteReasonInput("");
+    };
+
+    const handleConfirmDeleteCampaign = async () => {
+        if (!deleteModalCampaign) return;
+        const reason = deleteReasonInput.trim();
+        if (!reason) {
+            setActionNotice({ type: "error", message: "Please provide a valid deletion reason." });
+            return;
+        }
+
+        setDeleting(true);
+        try {
+            const res = await fetch(`/api/notifications/campaigns/${deleteModalCampaign.id}`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reason }),
+            });
+
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(text || "Failed to delete campaign.");
+            }
+
+            setActionNotice({ type: "success", message: `Campaign "${deleteModalCampaign.name}" deleted.` });
+            setDeleteModalCampaign(null);
+            setDeleteReasonInput("");
+            fetchCampaigns();
+        } catch (err: any) {
+            setActionNotice({ type: "error", message: err.message || "Failed to delete campaign." });
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -388,6 +482,7 @@ export default function NotificationCenterPage() {
         if (campaignFilter === "DRAFTS") return c.status === "DRAFT" || c.status === "TEST_SENT";
         if (campaignFilter === "ACTIVE") return c.status === "SENDING" || c.status === "APPROVED" || c.status === "STALLED";
         if (campaignFilter === "COMPLETED") return c.status.startsWith("COMPLETED");
+        if (campaignFilter === "CANCELLED") return c.status === "CANCELLED";
         return true;
     });
 
@@ -441,6 +536,28 @@ export default function NotificationCenterPage() {
                 </div>
             )}
 
+            {/* SMTP Send Rate & Relay Verification Banner */}
+            {rateLimitInfo && (
+                <div className="bg-bg-surface border border-border-color p-3.5 rounded-xl flex items-center justify-between gap-4 flex-wrap text-xs shadow-sm">
+                    <div className="flex items-center gap-2.5 text-text-secondary font-medium">
+                        <span className="p-1.5 rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/30 font-bold text-[0.7rem] uppercase tracking-wider flex items-center gap-1">
+                            ⚡ Send Rate
+                        </span>
+                        <span>
+                            Dispatch Rate: <strong className="text-text-primary">{rateLimitInfo.formattedRate}</strong> ({rateLimitInfo.emailsPerSecond} msg/sec)
+                        </span>
+                        <span className="text-text-muted">|</span>
+                        <span className="text-text-muted">
+                            Relay Target: <strong className="text-text-secondary">{rateLimitInfo.relayHost}</strong> {rateLimitInfo.isMock && "(SMTP Mock Active)"}
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/25 font-bold text-[0.7rem] tracking-wide">
+                        <CheckCircle2 size={13} />
+                        <span>Corporate Relay Rate Limit Protection Active</span>
+                    </div>
+                </div>
+            )}
+
             {/* Navigation Tabs */}
             <div className="flex items-center justify-between border-b border-border-color pb-1 gap-4 flex-wrap">
                 <div className="flex items-center gap-2">
@@ -487,7 +604,7 @@ export default function NotificationCenterPage() {
                 <div className="flex items-center gap-2">
                     <button
                         type="button"
-                        onClick={() => { fetchCampaigns(); fetchTemplates(); }}
+                        onClick={() => { fetchCampaigns(); fetchTemplates(); fetchRateLimitInfo(); }}
                         className="btn-secondary px-3 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
                         title="Refresh data"
                     >
@@ -503,7 +620,7 @@ export default function NotificationCenterPage() {
                     {/* Filters bar */}
                     <div className="flex items-center justify-between gap-3 flex-wrap bg-bg-surface p-3 rounded-xl border border-border-color">
                         <div className="flex items-center gap-1.5">
-                            {["ALL", "DRAFTS", "ACTIVE", "COMPLETED"].map((f) => (
+                            {["ALL", "DRAFTS", "ACTIVE", "COMPLETED", "CANCELLED"].map((f) => (
                                 <button
                                     key={f}
                                     type="button"
@@ -552,12 +669,15 @@ export default function NotificationCenterPage() {
                                 const isSending = c.status === "SENDING";
                                 const isCompleted = c.status.startsWith("COMPLETED");
                                 const isStalled = c.status === "STALLED";
+                                const isCancelled = c.status === "CANCELLED";
                                 const breachLabel = c.breachName || c.sourceQuery || "Data Breach Incident";
 
                                 return (
                                     <div 
                                         key={c.id}
-                                        className={`bg-bg-surface rounded-xl border p-5 flex flex-col justify-between gap-4 transition-all hover:border-border-color-hover shadow-sm ${isStalled ? "border-orange-500/50" : "border-border-color"}`}
+                                        className={`bg-bg-surface rounded-xl border p-5 flex flex-col justify-between gap-4 transition-all hover:border-border-color-hover shadow-sm ${
+                                            isStalled ? "border-orange-500/50" : isCancelled ? "border-rose-500/30 opacity-90" : "border-border-color"
+                                        }`}
                                     >
                                         <div>
                                             {/* Status and Date */}
@@ -567,9 +687,10 @@ export default function NotificationCenterPage() {
                                                     c.status === "TEST_SENT" ? "bg-purple-500/15 text-purple-400 border-purple-500/30" :
                                                     c.status === "SENDING" ? "bg-blue-500/15 text-blue-400 border-blue-500/30 animate-pulse" :
                                                     c.status === "STALLED" ? "bg-orange-500/15 text-orange-400 border-orange-500/40 animate-pulse" :
+                                                    c.status === "CANCELLED" ? "bg-rose-500/15 text-rose-400 border-rose-500/30" :
                                                     c.status === "COMPLETED_WITH_ERRORS" ? "bg-amber-500/15 text-amber-300 border-amber-500/30" :
                                                     "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
-                                                }`}>
+                                                }`} title={isCancelled ? `Cancelled by ${c.cancelledById || "Operator"}: ${c.cancelReason || "No reason given"}` : undefined}>
                                                     {c.status.replace(/_/g, " ")}
                                                 </span>
                                                 <span className="text-[0.75rem] text-text-muted">
@@ -614,6 +735,13 @@ export default function NotificationCenterPage() {
                                                     ✓ Sandbox Tested to: <strong>{c.testSentTo}</strong>
                                                 </div>
                                             )}
+
+                                            {isCancelled && c.cancelReason && (
+                                                <div className="text-[0.7rem] text-rose-300 bg-rose-500/10 p-2 rounded border border-rose-500/25 mb-2 flex flex-col gap-1">
+                                                    <span>🚫 <strong>Cancelled:</strong> {c.cancelReason}</span>
+                                                    {c.cancelledById && <span className="text-[0.65rem] text-rose-400/80">Closed by: {c.cancelledById}</span>}
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Actions */}
@@ -643,17 +771,16 @@ export default function NotificationCenterPage() {
                                                         title="Send Sandbox Test Email to Admin"
                                                     >
                                                         <Eye size={13} />
-                                                        <span>Test (Sandbox)</span>
+                                                        <span>Test</span>
                                                     </button>
 
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleOpenDeliveryLog(c)}
-                                                        className="btn-secondary px-2.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
-                                                        title="View Staged Recipient List & Test Status"
+                                                        onClick={() => handleOpenCancelModal(c)}
+                                                        className="px-2 py-1.5 rounded-lg text-xs font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 cursor-pointer inline-flex items-center gap-1"
+                                                        title="Cancel & Close Campaign without sending"
                                                     >
-                                                        <Users size={13} />
-                                                        <span>Log</span>
+                                                        <span>Cancel</span>
                                                     </button>
 
                                                     <button
@@ -664,7 +791,27 @@ export default function NotificationCenterPage() {
                                                         title="Approve & Send to All Recipients"
                                                     >
                                                         <Play size={13} />
-                                                        <span>Approve & Send</span>
+                                                        <span>Send</span>
+                                                    </button>
+                                                </>
+                                            ) : isSending ? (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOpenDeliveryLog(c)}
+                                                        className="btn-secondary px-2.5 py-1.5 text-xs inline-flex items-center gap-1 cursor-pointer"
+                                                    >
+                                                        <Users size={13} />
+                                                        <span>View Log</span>
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOpenCancelModal(c)}
+                                                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 cursor-pointer inline-flex items-center gap-1.5 ml-auto"
+                                                        title="Abort / Stop Dispatch immediately mid-run"
+                                                    >
+                                                        <span>🛑 Abort / Cancel</span>
                                                     </button>
                                                 </>
                                             ) : isStalled ? (
@@ -680,16 +827,43 @@ export default function NotificationCenterPage() {
                                                     <button
                                                         type="button"
                                                         onClick={() => handleResetStalledCampaign(c)}
-                                                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-orange-500/20 text-orange-300 border border-orange-500/40 hover:bg-orange-500/30 cursor-pointer inline-flex items-center gap-1.5 ml-auto"
+                                                        className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-orange-500/20 text-orange-300 border border-orange-500/40 hover:bg-orange-500/30 cursor-pointer inline-flex items-center gap-1"
                                                         title="Reset campaign to DRAFT so failed recipients can be retried"
                                                     >
-                                                        <span>↺ Reset & Retry</span>
+                                                        <span>↺ Retry</span>
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleDeleteCampaign(c.id)}
+                                                        onClick={() => handleOpenCancelModal(c)}
+                                                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 cursor-pointer inline-flex items-center gap-1 ml-auto"
+                                                        title="Close unsent campaign"
+                                                    >
+                                                        <span>Close</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOpenDeleteModal(c)}
                                                         className="p-1.5 text-text-muted hover:text-rose-400 cursor-pointer"
                                                         title="Delete campaign"
+                                                    >
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                </>
+                                            ) : isCancelled ? (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOpenDeliveryLog(c)}
+                                                        className="btn-secondary px-3 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
+                                                    >
+                                                        <Users size={13} />
+                                                        <span>View Log</span>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleOpenDeleteModal(c)}
+                                                        className="p-1.5 text-text-muted hover:text-rose-400 cursor-pointer ml-auto"
+                                                        title="Delete campaign permanently"
                                                     >
                                                         <Trash2 size={15} />
                                                     </button>
@@ -702,7 +876,7 @@ export default function NotificationCenterPage() {
                                                         className="btn-secondary px-3 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
                                                     >
                                                         <Users size={13} />
-                                                        <span>View Delivery Log</span>
+                                                        <span>Delivery Log</span>
                                                     </button>
 
                                                     {c.status === "COMPLETED_WITH_ERRORS" && c.failedCount > 0 && (
@@ -714,13 +888,13 @@ export default function NotificationCenterPage() {
                                                             title={`Retry ${c.failedCount} failed recipient${c.failedCount > 1 ? "s" : ""}`}
                                                         >
                                                             <RefreshCw size={12} />
-                                                            <span>Retry Failed ({c.failedCount})</span>
+                                                            <span>Retry ({c.failedCount})</span>
                                                         </button>
                                                     )}
 
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleDeleteCampaign(c.id)}
+                                                        onClick={() => handleOpenDeleteModal(c)}
                                                         className="p-1.5 text-text-muted hover:text-rose-400 cursor-pointer ml-auto"
                                                         title="Delete campaign"
                                                     >
@@ -1409,6 +1583,134 @@ export default function NotificationCenterPage() {
                                 </div>
                             );
                         })()}
+                    </div>
+                </div>
+            )}
+
+            {/* CANCEL CAMPAIGN REASON MODAL */}
+            {cancelModalCampaign && (
+                <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-[fadeIn_0.15s_ease-out]">
+                    <div className="bg-bg-surface border border-rose-500/30 rounded-2xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4">
+                        <div className="flex items-center justify-between border-b border-border-color pb-3">
+                            <div className="flex items-center gap-2 text-rose-400">
+                                <AlertTriangle size={20} />
+                                <h3 className="text-base font-bold text-text-primary m-0">Cancel / Close Campaign</h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setCancelModalCampaign(null)}
+                                className="text-text-muted hover:text-text-primary p-1 cursor-pointer"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="text-xs text-text-secondary flex flex-col gap-2">
+                            <p className="m-0">
+                                You are about to cancel and close campaign <strong>"{cancelModalCampaign.name}"</strong> (Status: {cancelModalCampaign.status}).
+                            </p>
+                            {cancelModalCampaign.status === "SENDING" && (
+                                <p className="m-0 text-amber-400 font-semibold bg-amber-500/10 p-2.5 rounded-lg border border-amber-500/20">
+                                    ⚠️ Active dispatch loop is currently in progress. Cancelling will immediately halt sending to any remaining unsent recipients.
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-bold text-text-secondary flex items-center justify-between">
+                                <span>Reason for Cancellation / Closure:</span>
+                                <span className="text-[0.65rem] text-rose-400 font-semibold">* Required for Audit Log</span>
+                            </label>
+                            <textarea
+                                value={cancelReasonInput}
+                                onChange={(e) => setCancelReasonInput(e.target.value)}
+                                placeholder="e.g. Incident scope revised, false positive alert, or stakeholder requested hold..."
+                                rows={3}
+                                className="w-full p-3 rounded-lg bg-bg-dark border border-border-color text-xs text-text-primary focus:outline-none focus:border-rose-400"
+                            />
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-color">
+                            <button
+                                type="button"
+                                onClick={() => setCancelModalCampaign(null)}
+                                className="btn-secondary px-4 py-2 text-xs font-semibold cursor-pointer"
+                            >
+                                Nevermind
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmCancelCampaign}
+                                disabled={cancelling || !cancelReasonInput.trim()}
+                                className="px-4 py-2 rounded-lg text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5"
+                            >
+                                {cancelling ? <RefreshCw size={14} className="animate-spin" /> : null}
+                                <span>Confirm Cancellation</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* DELETE CAMPAIGN REASON MODAL */}
+            {deleteModalCampaign && (
+                <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-[fadeIn_0.15s_ease-out]">
+                    <div className="bg-bg-surface border border-rose-500/40 rounded-2xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4">
+                        <div className="flex items-center justify-between border-b border-border-color pb-3">
+                            <div className="flex items-center gap-2 text-rose-500">
+                                <Trash2 size={20} />
+                                <h3 className="text-base font-bold text-text-primary m-0">Delete Notification Campaign</h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setDeleteModalCampaign(null)}
+                                className="text-text-muted hover:text-text-primary p-1 cursor-pointer"
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="text-xs text-text-secondary flex flex-col gap-2">
+                            <p className="m-0">
+                                You are about to permanently delete campaign <strong>"{deleteModalCampaign.name}"</strong> ({deleteModalCampaign.totalCount} recipients).
+                            </p>
+                            <p className="m-0 text-rose-400 font-semibold bg-rose-500/10 p-2.5 rounded-lg border border-rose-500/25">
+                                🚨 This action cannot be undone. All staged recipient records and delivery tracking for this campaign will be permanently removed.
+                            </p>
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-bold text-text-secondary flex items-center justify-between">
+                                <span>Reason for Permanent Deletion:</span>
+                                <span className="text-[0.65rem] text-rose-400 font-semibold">* Required for Audit Log</span>
+                            </label>
+                            <textarea
+                                value={deleteReasonInput}
+                                onChange={(e) => setDeleteReasonInput(e.target.value)}
+                                placeholder="e.g. Duplicate staging, invalid CSV upload, or obsolete campaign record..."
+                                rows={3}
+                                className="w-full p-3 rounded-lg bg-bg-dark border border-border-color text-xs text-text-primary focus:outline-none focus:border-rose-500"
+                            />
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-color">
+                            <button
+                                type="button"
+                                onClick={() => setDeleteModalCampaign(null)}
+                                className="btn-secondary px-4 py-2 text-xs font-semibold cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmDeleteCampaign}
+                                disabled={deleting || !deleteReasonInput.trim()}
+                                className="px-4 py-2 rounded-lg text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 cursor-pointer inline-flex items-center gap-1.5 shadow-sm"
+                            >
+                                {deleting ? <RefreshCw size={14} className="animate-spin" /> : null}
+                                <span>Confirm Permanent Delete</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

@@ -48,6 +48,19 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
         const { id } = await params;
 
+        let reason = "";
+        try {
+            const body = await req.json();
+            reason = (body.reason || "").trim();
+        } catch (e) {
+            const urlObj = new URL(req.url);
+            reason = (urlObj.searchParams.get("reason") || "").trim();
+        }
+
+        if (!reason) {
+            return new NextResponse("A valid deletion reason is required to delete a campaign.", { status: 400 });
+        }
+
         const campaign = await prisma.notificationCampaign.findUnique({
             where: { id },
             select: { name: true, breachName: true, sourceQuery: true, totalCount: true, status: true }
@@ -61,15 +74,16 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
             where: { id }
         });
 
-        const userId = (session.user as any)?.id || session.user.name || "User";
+        const operatorName = session.user.name || (session.user as any)?.username || "User";
+        const userId = (session.user as any)?.id || operatorName;
         const breachLabel = campaign.breachName || campaign.sourceQuery || "Incident";
         await logAudit(
             "CAMPAIGN_DELETED",
-            `Deleted notification campaign "${campaign.name}" (Breach: ${breachLabel}, ${campaign.totalCount} recipients, Status: ${campaign.status})`,
+            `Permanently deleted notification campaign "${campaign.name}" (Breach: ${breachLabel}, ${campaign.totalCount} recipients, Status prior: ${campaign.status}) by ${operatorName}. Deletion Reason: ${reason}`,
             userId
         );
 
-        return NextResponse.json({ success: true });
+        return NextResponse.json({ success: true, message: `Campaign "${campaign.name}" deleted.` });
     } catch (err: any) {
         console.error("Failed to delete campaign:", err);
         return new NextResponse(err.message || "Failed to delete campaign", { status: 500 });

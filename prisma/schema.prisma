@@ -270,6 +270,9 @@ model NotificationCampaign {
   approvedAt      DateTime?
   testSentTo      String?
   testSentAt      DateTime?
+  cancelReason    String?  // Mandatory reason provided when campaign is cancelled or closed unsent
+  cancelledById   String?  // Username of operator who cancelled/closed the campaign
+  cancelledAt     DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   recipients      CampaignRecipient[]

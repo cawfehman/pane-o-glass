@@ -95,3 +95,18 @@ export async function testSmtpConnection(): Promise<{ ok: boolean; message: stri
         return { ok: false, message: err.message || "Failed to verify SMTP connection." };
     }
 }
+
+export function getSmtpSendRateConfig() {
+    const delayMs = Math.max(parseInt(process.env.SMTP_SEND_DELAY_MS || "500", 10), 10);
+    const emailsPerSecond = parseFloat((1000 / delayMs).toFixed(1));
+    const emailsPerMinute = Math.round(emailsPerSecond * 60);
+    
+    return {
+        delayMs,
+        emailsPerSecond,
+        emailsPerMinute,
+        isMock: process.env.SMTP_MOCK === "true",
+        formattedRate: `${emailsPerMinute} emails/min (${delayMs}ms delay)`,
+        relayHost: process.env.SMTP_HOST || "Local Mock/Not Configured"
+    };
+}

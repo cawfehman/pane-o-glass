@@ -51,14 +51,36 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         });
 
         // Background batch dispatcher execution
-        // NOTE: Next.js serverless functions typically time out after 30–60s.
-        // For large campaigns (>500 recipients at 40ms/each = ~20s), this should
-        // complete in time. For very large campaigns, consider a dedicated queue.
         (async () => {
             let sent = 0;
             let failed = 0;
 
+            const sendDelayMs = Math.max(parseInt(process.env.SMTP_SEND_DELAY_MS || "500", 10), 10);
+
             for (const recipient of campaign.recipients) {
+                // Check if campaign has been CANCELLED mid-run by operator
+                const checkStatus = await prisma.notificationCampaign.findUnique({
+                    where: { id },
+                    select: { status: true }
+                });
+
+                if (!checkStatus || checkStatus.status === "CANCELLED") {
+                    console.warn(`[Campaign Dispatcher] Campaign "${campaign.name}" (${id}) was CANCELLED mid-run. Halting dispatch loop immediately after ${sent} sent, ${failed} failed.`);
+                    await prisma.notificationCampaign.update({
+                        where: { id },
+                        data: {
+                            sentCount: { increment: sent },
+                            failedCount: { increment: failed },
+                        }
+                    }).catch(() => {});
+                    await logAudit(
+                        "CAMPAIGN_DISPATCH_HALTED",
+                        `Campaign "${campaign.name}" dispatch loop halted mid-run due to operator cancellation (${sent} sent, ${failed} failed).`,
+                        (session.user as any)?.id
+                    ).catch(() => {});
+                    return;
+                }
+
                 let parsedVars: TemplateVariables = {};
                 try {
                     if (recipient.variablesJson) {
@@ -109,8 +131,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
                     });
                 }
 
-                // Throttle 40ms to prevent connection flooding on corporate mail relays
-                await new Promise((r) => setTimeout(r, 40));
+                // Configurable throttle (default 500ms = 120 emails/min) to prevent connection flooding on corporate mail relays
+                await new Promise((r) => setTimeout(r, sendDelayMs));
             }
 
             const finalStatus = failed === 0 ? "COMPLETED" : "COMPLETED_WITH_ERRORS";
