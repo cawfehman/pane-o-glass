@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
+import { sendClientAuditLog } from "@/lib/audit-client";
+import { obfuscateAuditAccount } from "@/lib/obfuscation";
 
 // Helper function to hash passwords for k-Anonymity using Web Crypto API
 async function sha1(str: string) {
@@ -86,6 +88,12 @@ export default function AccountSecurityPage() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+
+        const auditAccount = obfuscateAuditAccount(account);
+        sendClientAuditLog(
+            "HIBP_ACCOUNT_EXPORT",
+            `Exported breach results CSV for account: ${auditAccount} (${rows.length} breaches)`
+        );
     };
 
     return (

@@ -8,6 +8,7 @@ import {
     Filter, Database, Layers, CheckCircle2, X, Plus, Sparkles, CreditCard, IdCard, Activity, BellRing
 } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
+import { sendClientAuditLog } from "@/lib/audit-client";
 
 // Unified High-Risk Category Badge Component used identically everywhere in UI
 const RiskBadge = ({ 
@@ -427,6 +428,11 @@ export default function DomainSecurityPage() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+
+        sendClientAuditLog(
+            "HIBP_DOMAIN_EXPORT",
+            `Exported Diagnostic CSV for domain: ${domainStr} (${rows.length} records${filterBreach ? `, breach: ${filterBreach}` : ''})`
+        );
     };
 
     const formatFirstLast = (adName?: string, fallbackAlias?: string) => {
@@ -536,6 +542,11 @@ export default function DomainSecurityPage() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+
+        sendClientAuditLog(
+            "HIBP_DOMAIN_EXPORT",
+            `Exported Mail Merge CSV (${activeOnly ? 'Active Accounts' : 'All Accounts'}) for domain: ${domainStr} (${rows.length} records${breachName ? `, breach: ${breachName}` : ''}${selectedCategories.length > 0 ? `, categories: ${selectedCategories.join(', ')}` : ''})`
+        );
     };
 
     const stageNotificationCampaign = (breachName?: string) => {
@@ -595,6 +606,11 @@ export default function DomainSecurityPage() {
             sourceQuery: breachTitle,
             recipients,
         }));
+
+        sendClientAuditLog(
+            "HIBP_CAMPAIGN_STAGED",
+            `Staged breach notification campaign for domain: ${domainStr} (${recipients.length} active account recipients${breachName ? `, breach: ${breachName}` : ''}${selectedCategories.length > 0 ? `, categories: ${selectedCategories.join(', ')}` : ''})`
+        );
 
         router.push("/notifications");
     };
