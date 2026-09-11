@@ -5,6 +5,7 @@ import { ShieldAlert } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import { sendClientAuditLog } from "@/lib/audit-client";
 import { obfuscateAuditAccount } from "@/lib/obfuscation";
+import { sanitizePreviewHtml } from "@/lib/sanitizeHtml";
 
 // Helper function to hash passwords for k-Anonymity using Web Crypto API
 async function sha1(str: string) {
@@ -177,7 +178,7 @@ export default function AccountSecurityPage() {
                                                     <strong style={{ fontSize: '1.1rem', color: 'var(--accent-primary)' }}>{breach.Title}</strong>
                                                     <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{breach.BreachDate}</span>
                                                 </div>
-                                                <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }} dangerouslySetInnerHTML={{ __html: breach.Description }}></p>
+                                                <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }} dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(breach.Description) }}></p>
                                                 <div style={{ fontSize: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                                                     {breach.DataClasses.map((dc: string) => (
                                                         <span key={dc} style={{ background: 'var(--bg-surface-hover)', padding: '2px 8px', borderRadius: '12px', color: 'var(--text-muted)' }}>{dc}</span>

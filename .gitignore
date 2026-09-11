@@ -29,8 +29,9 @@
 error.log
 *.log
 
-# env files (can opt-in for committing if needed)
+# env files
 .env*
+!.env.template
 
 # vercel
 .vercel

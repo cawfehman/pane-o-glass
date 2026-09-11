@@ -499,14 +499,11 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
     try {
         const session = await auth();
-        console.log("[VPN-API-GET] session:", session);
         if (!session) {
-            console.log("[VPN-API-GET] Unauthorized - session is null");
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
         const role = (session?.user as any)?.role || "USER";
-        console.log("[VPN-API-GET] user role:", role);
         const isDesktop = String(role).toLowerCase() === "desktop";
         const nameNameRegex = /^[a-zA-Z0-9]+-[a-zA-Z0-9]+(?:-[a-zA-Z0-9]+)?$/;
 

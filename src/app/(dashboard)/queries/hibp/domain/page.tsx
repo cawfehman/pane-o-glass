@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import { sendClientAuditLog } from "@/lib/audit-client";
+import { sanitizePreviewHtml } from "@/lib/sanitizeHtml";
 
 // Unified High-Risk Category Badge Component used identically everywhere in UI
 const RiskBadge = ({ 
@@ -1565,7 +1566,7 @@ export default function DomainSecurityPage() {
                                                     </div>
                                                 </div>
 
-                                                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: breach.Description }}></p>
+                                                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(breach.Description) }}></p>
 
                                                 <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', marginBottom: '8px', fontWeight: 600 }}>Compromised Data Classes:</div>
                                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
@@ -1841,7 +1842,7 @@ export default function DomainSecurityPage() {
                                             </h5>
                                             <div 
                                                 className="text-sm text-text-secondary leading-relaxed p-4 bg-bg-dark rounded-xl border border-border-color/60"
-                                                dangerouslySetInnerHTML={{ __html: breach.Description }}
+                                                dangerouslySetInnerHTML={{ __html: sanitizePreviewHtml(breach.Description) }}
                                             />
                                         </div>
 
