@@ -295,6 +295,20 @@ async function runBecMonitorCron() {
 
 
 
+        // Automated Self-Pruning: Delete BecRawUrls older than retention window (default 14 days)
+        try {
+            const retentionDays = parseInt(process.env.BEC_RAW_URL_RETENTION_DAYS || "14", 10);
+            const purgeCutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+            const purged = await prisma.becRawUrl.deleteMany({
+                where: { createdAt: { lt: purgeCutoff } }
+            });
+            if (purged.count > 0) {
+                console.log(`[${new Date().toISOString()}] [BEC Prune] Purged ${purged.count} raw URLs older than ${retentionDays} days.`);
+            }
+        } catch (pruneErr: any) {
+            console.error(`[${new Date().toISOString()}] [BEC Prune Error]:`, pruneErr.message);
+        }
+
         const durationMs = Date.now() - startTime;
         console.log(`[${new Date().toISOString()}] BEC Monitor Cron Completed in ${durationMs}ms. Ingested URLs: ${urlsIngested}, Incidents evaluated: ${incidentsCount}, Alerts sent: ${alertsSent}`);
 
