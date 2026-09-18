@@ -1,6 +1,6 @@
 # Pane-O-Glass — Master Roadmap & Release Tracking
 
-> **Last Updated:** September 3, 2026  
+> **Last Updated:** September 18, 2026  
 > **Status:** Production Release Tracking & Future Milestones
 
 ---
@@ -121,11 +121,43 @@
 | **Why** | Automatically pre-categorize newly observed email domains upon ingestion so unsearched domains are pre-populated with Cisco Umbrella threat scores in PostgreSQL. |
 | **Capabilities** | • Trigger live Umbrella lookup for new domains detected by `monitor-bec-threats.ts`.<br>• Background cron worker to enrich un-categorized historical domains within daily API quota limits. |
 
-### 1.3 Cisco ETD Active 1-Click Inbox Purge Execution
+### 1.4 Cisco ETD Active 1-Click Inbox Purge Execution
 | | |
 |---|---|
 | **Status** | `Parked` (Held off per user preference; readout dashboard operational in read-only mode) |
 | **Effort** | M |
+
+### 1.5 Cisco ISE 3.5 API Gateway & HTTP/2.0 Transport Modernization
+| | |
+|---|---|
+| **Status** | `Planned` / `Next Up` |
+| **Effort** | S–M |
+| **Why** | Upgrade Cisco ISE integration from legacy multi-port 3.3 architecture to 3.5 Patch 4 API Gateway standards and eliminate heavy bulk XML parsing bottlenecks. |
+| **Capabilities** | • **Unified Port 443 API Gateway:** Consolidate all ERS and OpenAPI requests over standard HTTPS port 443, eliminating port `:9060` URL rewriting hacks and auxiliary firewall pinholes.<br>• **HTTP/2.0 Multiplexed Transport:** Enable HTTP/2 multiplexing across ISE API clients to allow concurrent telemetry lookups (MAC, ERS attributes, AD identity, Vectra AI score) over a single persistent TCP session without head-of-line blocking.<br>• **ActiveList XML Scraper Retirement:** Modernize active session discovery to leverage native REST/JSON endpoints, eliminating the 14,000-session regex XML parser and accelerating query speeds. |
+
+### 1.6 Cisco ISE 3.5 Cloud MFC Profiler & Rich Hardware/OS Telemetry
+| | |
+|---|---|
+| **Status** | `Planned` / `Next Up` |
+| **Effort** | M |
+| **Why** | Surface exact endpoint hardware models, OS revisions, and Cisco TrustSec Security Group Tags (SGT) in live forensic drill-downs. |
+| **Capabilities** | • **Cloud Multi-Factor Classification (MFC) Ingestion:** Ingest granular hardware classification data (Manufacturer, Exact Model, OS Version) from ISE 3.5 Cloud MFC Profiler.<br>• **Visual Endpoint Hardware Badges:** Display distinct device model badges (e.g., Zebra handhelds, GE Healthcare monitors, Apple iOS devices, Windows workstations) on Connection Path and Live Session cards.<br>• **Cisco TrustSec & SGT Resolution:** Map numerical Security Group Tags (`cisco_cts_sgt`) into human-readable policy names (e.g. `Clinical_Workstations`, `Medical_IoT`, `Contractors`) to visualize microsegmentation status. |
+
+### 1.7 Cisco ISE 3.5 Native TACACS+ Command Accounting & API Synchronization
+| | |
+|---|---|
+| **Status** | `Planned` |
+| **Effort** | S–M |
+| **Why** | Query TACACS+ session state and command accounting directly via ISE 3.5 REST/OpenAPI endpoints rather than relying strictly on local syslog file buffers. |
+| **Capabilities** | • **API Gateway TACACS Stream:** Interrogate native ISE 3.5 TACACS endpoints for command sets, administrative authentications, and session histories across deployment nodes.<br>• **Hybrid Resilience:** Fallback seamlessly to local syslog cache (`logs/tacacs-recent.json`) if API rate limits or network latency thresholds are reached. |
+
+### 1.8 Cisco ISE Adaptive Network Control (ANC) 1-Click Quarantine & Session CoA Suite
+| | |
+|---|---|
+| **Status** | `Parked` (Awaiting wired 802.1X deployment completion) |
+| **Effort** | M |
+| **Why** | Empower security analysts to isolate compromised endpoints and helpdesk engineers to clear stuck sessions directly from Pane-o-Glass once wired network enforcement is in place. |
+| **Capabilities** | • **1-Click Dynamic Endpoint Quarantine:** Apply or clear ANC policies (`Quarantine`, `Shutdown`, `Restricted`) via `/ers/config/ancendpoint/apply` and `/clear` directly from the Live Session card.<br>• **Change of Authorization (CoA) Actions:** On-demand **`[Force Re-Auth]`** and **`[Bounce Port / Terminate Session]`** buttons via ISE MnT CoA REST API to assist Tier 1/2 troubleshooting without switch CLI access.<br>• **PostgreSQL ANC Audit Trail:** Complete audit logging of quarantine actions, operator identity, and automated un-quarantine history aligned with the Guardian Unshun framework. |
 
 ---
 

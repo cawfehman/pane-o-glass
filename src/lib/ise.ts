@@ -35,8 +35,9 @@ export function parseCalledStationId(calledStationId: string, fallbackApName: st
     return { ssid, apName, siteCode };
 }
 
-export async function fetchIseSession(query: string) {
+export function getIseUrls() {
     const rawUrl = process.env.ISE_PAN_URL;
+    const rawSec = process.env.ISE_SECONDARY_PAN_URL;
     const rawUser = process.env.ISE_API_USER;
     const rawPass = process.env.ISE_API_PASSWORD;
 
@@ -44,11 +45,86 @@ export async function fetchIseSession(query: string) {
         throw new Error("ISE Credentials not configured in .env");
     }
 
-    // Quote-Resilience
-    const url = rawUrl.replace(/^"|"$/g, '').endsWith('/') ? rawUrl.replace(/^"|"$/g, '').slice(0, -1) : rawUrl.replace(/^"|"$/g, '');
+    const clean = (s: string) => s.replace(/^"|"$/g, '').trim().replace(/\/+$/, '');
+    const primary = clean(rawUrl);
+
+    // Auto-derive secondary if not explicitly specified
+    let secondary = rawSec ? clean(rawSec) : "";
+    if (!secondary) {
+        if (primary.includes('ise-adm02')) {
+            secondary = primary.replace('ise-adm02', 'ise-adm01');
+        } else if (primary.includes('ise-adm01')) {
+            secondary = primary.replace('ise-adm01', 'ise-adm02');
+        }
+    }
+
     const user = rawUser.replace(/^"|"$/g, '');
     const pass = rawPass.replace(/^"|"$/g, '');
     const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
+
+    return { primary, secondary, user, pass, basicAuth };
+}
+
+let sgtCache: { map: Record<number, string>; timestamp: number } | null = null;
+const SGT_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+export async function getTrustSecSgtMap(): Promise<Record<number, string>> {
+    if (sgtCache && Date.now() - sgtCache.timestamp < SGT_CACHE_TTL) {
+        return sgtCache.map;
+    }
+
+    const { primary, secondary, basicAuth } = getIseUrls();
+    const agent = new https.Agent({ rejectUnauthorized: false });
+    const targetUrls = [primary, secondary].filter(Boolean);
+
+    for (const baseUrl of targetUrls) {
+        try {
+            const res = await axios.get(`${baseUrl}/api/v1/trustsec/security-group`, {
+                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
+                httpsAgent: agent,
+                timeout: 5000
+            });
+
+            const groups = res.data?.response || [];
+            const map: Record<number, string> = {};
+            for (const g of groups) {
+                if (typeof g.tag === 'number') {
+                    map[g.tag] = g.name || `SGT-${g.tag}`;
+                }
+            }
+
+            sgtCache = { map, timestamp: Date.now() };
+            return map;
+        } catch (e: any) {
+            console.warn(`[ISE-TRUSTSEC] Failed to fetch SGT dictionary from ${baseUrl}:`, e.message);
+        }
+    }
+
+    return sgtCache?.map || {};
+}
+
+export async function executeWithPanFailover<T>(requestFn: (baseUrl: string) => Promise<T>): Promise<{ data: T; activeUrl: string }> {
+    const { primary, secondary } = getIseUrls();
+    try {
+        const data = await requestFn(primary);
+        return { data, activeUrl: primary };
+    } catch (primaryErr: any) {
+        if (!secondary || secondary === primary) {
+            throw primaryErr;
+        }
+        console.warn(`[ISE-FAILOVER] Primary PAN (${primary}) query failed: ${primaryErr.message}. Retrying on secondary PAN (${secondary})...`);
+        try {
+            const data = await requestFn(secondary);
+            return { data, activeUrl: secondary };
+        } catch (secondaryErr: any) {
+            console.error(`[ISE-FAILOVER] Both primary and secondary PANs failed.`);
+            throw primaryErr;
+        }
+    }
+}
+
+export async function fetchIseSession(query: string) {
+    const { basicAuth } = getIseUrls();
     const agent = new https.Agent({ rejectUnauthorized: false });
 
     // Determine query type
@@ -70,77 +146,81 @@ export async function fetchIseSession(query: string) {
     }
 
     try {
-        let sessionsArray: any[] = [];
+        const { data: sessionsArray, activeUrl } = await executeWithPanFailover(async (targetUrl) => {
+            let foundSessions: any[] = [];
 
-        if (searchType === "calling_station_id") {
-            const endpoint = `${url}/admin/API/mnt/Session/MACAddress/${formattedQuery}`;
-            console.log(`[ISE-LIB] Fetching Surgical Session: ${endpoint}`);
-            const res = await axios.get(endpoint, {
-                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
-                httpsAgent: agent,
-                timeout: 10000
-            });
-            const data = await parseStringPromise(res.data, { explicitArray: false });
-            const node = data.sessionParameters || data.activeSession;
-            if (node) sessionsArray = [node];
-        } else if (searchType === "session_id") {
-            const endpoint = `${url}/admin/API/mnt/Session/SessionID/${formattedQuery}`;
-            console.log(`[ISE-LIB] Fetching Surgical Audit: ${endpoint}`);
-            const res = await axios.get(endpoint, {
-                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
-                httpsAgent: agent,
-                timeout: 10000
-            });
-            const data = await parseStringPromise(res.data, { explicitArray: false });
-            const node = data.sessionParameters || data.activeSession;
-            if (node) sessionsArray = [node];
-        } else if (searchType === "framed_ip_address") {
-            const endpoint = `${url}/admin/API/mnt/Session/IPAddress/${formattedQuery}`;
-            const res = await axios.get(endpoint, {
-                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
-                httpsAgent: agent,
-                timeout: 10000
-            });
-            const data = await parseStringPromise(res.data, { explicitArray: false });
-            const node = data.sessionParameters || data.activeSession;
-            if (node) sessionsArray = [node];
-        } else {
-            // Username - we must use ActiveList as a fallback for 3.3
-            const endpoint = `${url}/admin/API/mnt/Session/ActiveList`;
-            const res = await axios.get(endpoint, {
-                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
-                httpsAgent: agent,
-                timeout: 30000
-            });
-            const xml = res.data;
-            const searchLower = formattedQuery.toLowerCase();
-            
-            // Regex match for the specific username in the bulk XML (Faster than full parse)
-            const sessionMatches = xml.match(/<activeSession>([\s\S]*?)<\/activeSession>/g) || [];
-            const userMatches = sessionMatches.filter((s: string) => s.toLowerCase().includes(`<user_name>${searchLower}</user_name>`));
-            
-            // For the first few matches, fetch their full details surgically
-            for (const sessionXml of userMatches.slice(0, 5)) {
-                const macMatch = sessionXml.match(/<calling_station_id>(.*?)<\/calling_station_id>/);
-                if (macMatch) {
-                    const mac = macMatch[1];
-                    try {
-                        const detailRes = await axios.get(`${url}/admin/API/mnt/Session/MACAddress/${mac}`, {
-                            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
-                            httpsAgent: agent,
-                            timeout: 5000
-                        });
-                        const detailData = await parseStringPromise(detailRes.data, { explicitArray: false });
-                        const node = detailData.sessionParameters || detailData.activeSession;
-                        if (node) sessionsArray.push(node);
-                    } catch (e) {}
+            if (searchType === "calling_station_id") {
+                const endpoint = `${targetUrl}/admin/API/mnt/Session/MACAddress/${formattedQuery}`;
+                console.log(`[ISE-LIB] Fetching Surgical Session: ${endpoint}`);
+                const res = await axios.get(endpoint, {
+                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                    httpsAgent: agent,
+                    timeout: 10000
+                });
+                const data = await parseStringPromise(res.data, { explicitArray: false });
+                const node = data.sessionParameters || data.activeSession;
+                if (node) foundSessions = [node];
+            } else if (searchType === "session_id") {
+                const endpoint = `${targetUrl}/admin/API/mnt/Session/SessionID/${formattedQuery}`;
+                console.log(`[ISE-LIB] Fetching Surgical Audit: ${endpoint}`);
+                const res = await axios.get(endpoint, {
+                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                    httpsAgent: agent,
+                    timeout: 10000
+                });
+                const data = await parseStringPromise(res.data, { explicitArray: false });
+                const node = data.sessionParameters || data.activeSession;
+                if (node) foundSessions = [node];
+            } else if (searchType === "framed_ip_address") {
+                const endpoint = `${targetUrl}/admin/API/mnt/Session/IPAddress/${formattedQuery}`;
+                const res = await axios.get(endpoint, {
+                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                    httpsAgent: agent,
+                    timeout: 10000
+                });
+                const data = await parseStringPromise(res.data, { explicitArray: false });
+                const node = data.sessionParameters || data.activeSession;
+                if (node) foundSessions = [node];
+            } else {
+                // Username - active sessions search
+                const endpoint = `${targetUrl}/admin/API/mnt/Session/ActiveList`;
+                const res = await axios.get(endpoint, {
+                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                    httpsAgent: agent,
+                    timeout: 30000
+                });
+                const xml = res.data;
+                const searchLower = formattedQuery.toLowerCase();
+                
+                const sessionMatches = xml.match(/<activeSession>([\s\S]*?)<\/activeSession>/g) || [];
+                const userMatches = sessionMatches.filter((s: string) => s.toLowerCase().includes(`<user_name>${searchLower}</user_name>`));
+                
+                for (const sessionXml of userMatches.slice(0, 5)) {
+                    const macMatch = sessionXml.match(/<calling_station_id>(.*?)<\/calling_station_id>/);
+                    if (macMatch) {
+                        const mac = macMatch[1];
+                        try {
+                            const detailRes = await axios.get(`${targetUrl}/admin/API/mnt/Session/MACAddress/${mac}`, {
+                                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                                httpsAgent: agent,
+                                timeout: 5000
+                            });
+                            const detailData = await parseStringPromise(detailRes.data, { explicitArray: false });
+                            const node = detailData.sessionParameters || detailData.activeSession;
+                            if (node) foundSessions.push(node);
+                        } catch (e) {}
+                    }
                 }
             }
-        }
+
+            return foundSessions;
+        });
 
         if (sessionsArray.length === 0) {
             return { found: false, message: "No active session found for query." };
         }
+
+        const sgtMap = await getTrustSecSgtMap();
 
         const mappedSessions = sessionsArray.map((sessionNode: any) => {
             let timestamp = "Unknown";
@@ -180,6 +260,18 @@ export async function fetchIseSession(query: string) {
             extractedSsid = parseSsid;
             extractedApIdentity = parseApName;
 
+            const rawSgt = sessionNode.cisco_cts_sgt?._ || sessionNode.cisco_cts_sgt || sessionNode.ciscoCtsSgt || otherAttrs['CTS-Security-Group-Tag'] || "Unknown";
+            let sgtName = "Unknown";
+            let formattedSgt = rawSgt;
+
+            if (rawSgt !== "Unknown") {
+                const numSgt = parseInt(String(rawSgt).trim(), 10);
+                if (!isNaN(numSgt) && sgtMap[numSgt]) {
+                    sgtName = sgtMap[numSgt];
+                    formattedSgt = `${sgtMap[numSgt]} (${numSgt})`;
+                }
+            }
+
             return {
                 user_name: sessionNode.user_name?._ || sessionNode.user_name || sessionNode.userName,
                 calling_station_id: sessionNode.calling_station_id?._ || sessionNode.calling_station_id || sessionNode.callingStationId,
@@ -196,7 +288,8 @@ export async function fetchIseSession(query: string) {
                 authentication_method: sessionNode.authentication_method?._ || sessionNode.authentication_method || sessionNode.authenticationMethod || "Unknown",
                 authentication_protocol: sessionNode.authentication_protocol?._ || sessionNode.authentication_protocol || sessionNode.authenticationProtocol || "Unknown",
                 vlan: sessionNode.vlan?._ || sessionNode.vlan || "Unknown",
-                security_group: sessionNode.cisco_cts_sgt?._ || sessionNode.cisco_cts_sgt || sessionNode.ciscoCtsSgt || "Unknown",
+                security_group: formattedSgt,
+                sgt_name: sgtName,
                 mdm_server_name: sessionNode.mdm_server_name?._ || sessionNode.mdm_server_name || sessionNode.mdmServerName || "N/A",
                 mdm_reachable: sessionNode.mdm_reachable?._ || sessionNode.mdm_reachable || sessionNode.mdmReachable || "Unknown",
                 mdm_compliant: sessionNode.mdm_compliant?._ || sessionNode.mdm_compliant || sessionNode.mdmCompliant || "Unknown",
@@ -207,27 +300,43 @@ export async function fetchIseSession(query: string) {
                 access_point_name: extractedApIdentity,
                 site_code: parseSiteCode,
                 rssi: otherAttrs['Airespace-RSSI'] || otherAttrs['RSSI'] || otherAttrs['Signal-Strength'] || "N/A",
-                user_agent: otherAttrs['User-Agent'] || otherAttrs['UserAgent'] || otherAttrs['device-sensor-user-agent'] || "N/A"
+                user_agent: otherAttrs['User-Agent'] || otherAttrs['UserAgent'] || otherAttrs['device-sensor-user-agent'] || "N/A",
+                hardware_manufacturer: "",
+                hardware_model: "",
+                os_version: "",
+                device_type: ""
             };
         });
 
+        // Parallel Surgical ERS Profiling over API Gateway Port 443
         const enrichedSessions = await Promise.all(mappedSessions.map(async (session: any) => {
             try {
-                const ersUrl = url.replace(':8443', ':9060');
-                const ersRes = await axios.get(`${ersUrl}/ers/config/endpoint/name/${session.calling_station_id}`, {
+                const ersEndpoint = `${activeUrl}/ers/config/endpoint/name/${session.calling_station_id}`;
+                const ersRes = await axios.get(ersEndpoint, {
                     headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
                     httpsAgent: agent,
                     timeout: 3000
                 });
 
-                const ep = ersRes.data.ERSEndPoint;
+                const ep = ersRes.data?.ERSEndPoint;
                 if (ep && ep.mfcAttributes) {
                     const mfc = ep.mfcAttributes;
-                    const manufacturer = Array.isArray(mfc.mfcHardwareManufacturer) ? mfc.mfcHardwareManufacturer.join('') : mfc.mfcHardwareManufacturer;
-                    const os = Array.isArray(mfc.mfcOperatingSystem) ? mfc.mfcOperatingSystem.join('') : mfc.mfcOperatingSystem;
-                    
-                    if (manufacturer || os) {
-                        session.endpoint_profile = `${manufacturer || ""} ${os || ""}`.trim() || session.endpoint_profile;
+                    const getStr = (val: any) => Array.isArray(val) ? val.join('') : (val || "");
+                    const manufacturer = getStr(mfc.mfcHardwareManufacturer);
+                    const model = getStr(mfc.mfcHardwareModel);
+                    const os = getStr(mfc.mfcOperatingSystem);
+                    const devType = getStr(mfc.mfcDeviceType);
+
+                    if (manufacturer) session.hardware_manufacturer = manufacturer;
+                    if (model) session.hardware_model = model;
+                    if (os) session.os_version = os;
+                    if (devType) session.device_type = devType;
+
+                    const parts = [manufacturer, model].filter(Boolean).join(' ');
+                    if (parts) {
+                        session.endpoint_profile = parts;
+                    } else if (manufacturer || os) {
+                        session.endpoint_profile = `${manufacturer || ""} ${os || ""}`.trim();
                     }
                 }
             } catch (e) {

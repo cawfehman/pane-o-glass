@@ -6,6 +6,11 @@ interface ConnectionPathProps {
     session: {
         calling_station_id: string;
         endpoint_profile?: string;
+        hardware_manufacturer?: string;
+        hardware_model?: string;
+        os_version?: string;
+        device_type?: string;
+        sgt_name?: string;
         nas_identifier?: string;
         nas_ip_address?: string;
         acs_server?: string;
@@ -29,29 +34,110 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
     const hasVectraAlert = vectraData && (vectraData.t_score > 50 || vectraData.c_score > 50);
     const isWireless = session.wlan_ssid && session.wlan_ssid !== "N/A";
 
-    const isMobile = session.endpoint_profile?.toLowerCase().includes('apple') || 
-                     session.endpoint_profile?.toLowerCase().includes('iphone') || 
-                     session.endpoint_profile?.toLowerCase().includes('android') ||
-                     session.endpoint_profile?.toLowerCase().includes('mobile');
+    // Deep classification using Cloud MFC and profile strings
+    const fullProfile = `${session.endpoint_profile || ""} ${session.hardware_manufacturer || ""} ${session.hardware_model || ""} ${session.device_type || ""}`.toLowerCase();
+    
+    const isMedical = fullProfile.includes('medical') || fullProfile.includes('infusion') || fullProfile.includes('alaris') || 
+                      fullProfile.includes('baxter') || fullProfile.includes('ge health') || fullProfile.includes('philips') || 
+                      fullProfile.includes('mindray') || fullProfile.includes('welch') || fullProfile.includes('telemetry') || fullProfile.includes('patient');
 
-    const nodes = [
-        {
-            id: 'endpoint',
-            label: session.endpoint_profile && session.endpoint_profile !== "Unknown" ? session.endpoint_profile : 'Endpoint',
-            sub: session.calling_station_id,
-            status: hasVectraAlert ? 'warning' : 'success',
-            icon: isMobile ? (
+    const isScanner = fullProfile.includes('zebra') || fullProfile.includes('honeywell') || fullProfile.includes('symbol') || 
+                      fullProfile.includes('datalogic') || fullProfile.includes('scanner') || fullProfile.includes('tc52') || fullProfile.includes('tc57');
+
+    const isPrinter = fullProfile.includes('printer') || fullProfile.includes('print') || fullProfile.includes('xerox') || 
+                      fullProfile.includes('brother') || fullProfile.includes('lexmark') || fullProfile.includes('laserjet');
+
+    const isTablet = fullProfile.includes('ipad') || fullProfile.includes('tablet') || fullProfile.includes('galaxy tab');
+
+    const isPhone = !isTablet && (fullProfile.includes('iphone') || fullProfile.includes('pixel') || fullProfile.includes('galaxy') || 
+                                  fullProfile.includes('smartphone') || fullProfile.includes('mobile') || fullProfile.includes('android'));
+
+    const isWorkstation = fullProfile.includes('windows') || fullProfile.includes('workstation') || fullProfile.includes('laptop') || 
+                          fullProfile.includes('desktop') || fullProfile.includes('dell') || fullProfile.includes('lenovo') || fullProfile.includes('macbook');
+
+    const renderEndpointIcon = () => {
+        if (isMedical) {
+            return (
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <title>Medical / Healthcare Device</title>
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                </svg>
+            );
+        }
+        if (isScanner) {
+            return (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <title>Handheld / Barcode Scanner</title>
+                    <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+                    <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+                    <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+                    <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+                    <line x1="7" y1="12" x2="17" y2="12"></line>
+                </svg>
+            );
+        }
+        if (isPrinter) {
+            return (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <title>Network Printer</title>
+                    <polyline points="6 9 6 2 18 2 18 9"></polyline>
+                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
+                    <rect x="6" y="14" width="12" height="8"></rect>
+                </svg>
+            );
+        }
+        if (isTablet) {
+            return (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <title>Tablet</title>
+                    <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
+                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                </svg>
+            );
+        }
+        if (isPhone) {
+            return (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <title>Smartphone</title>
                     <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
                     <line x1="12" y1="18" x2="12.01" y2="18"></line>
                 </svg>
-            ) : (
+            );
+        }
+        if (isWorkstation) {
+            return (
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <title>Workstation / PC</title>
                     <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
                     <line x1="8" y1="21" x2="16" y2="21"></line>
                     <line x1="12" y1="17" x2="12" y2="21"></line>
                 </svg>
-            )
+            );
+        }
+        return (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <title>Network Endpoint</title>
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+        );
+    };
+
+    const endpointLabel = session.hardware_model || 
+                          (session.endpoint_profile && session.endpoint_profile !== "Unknown" ? session.endpoint_profile : 'Endpoint');
+
+    const endpointSub = session.hardware_manufacturer ? 
+                        `${session.hardware_manufacturer} · ${session.calling_station_id}` : 
+                        session.calling_station_id;
+
+    const nodes = [
+        {
+            id: 'endpoint',
+            label: endpointLabel,
+            sub: endpointSub,
+            status: hasVectraAlert ? 'warning' : 'success',
+            icon: renderEndpointIcon()
         }
     ];
 

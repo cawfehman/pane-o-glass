@@ -83,22 +83,32 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
                         <p title="Authorization Rule" className="mb-1"><strong>Rule:</strong> {session.authorization_rule || "Unknown"}</p>
                         <p title="Auth Method" className="mb-1"><strong>Method:</strong> {session.authentication_method || "Unknown"}</p>
                         <p title="Identity Group" className="mb-1"><strong>ID Group:</strong> {session.identity_group || "Unknown"}</p>
+                        <p title="Cisco TrustSec Security Group Tag" className="mb-1">
+                            <strong>TrustSec SGT:</strong> <span className="text-sky-400 font-bold">{session.sgt_name && session.sgt_name !== "Unknown" ? session.sgt_name : (session.security_group || "Unknown")}</span>
+                        </p>
                     </div>
 
                     <div className="p-4 bg-white/5 rounded-lg border border-border-color">
-                        <h4 className="text-[0.7rem] text-text-muted uppercase mb-3">Telemetry</h4>
+                        <h4 className="text-[0.7rem] text-text-muted uppercase mb-3">Telemetry & Profiling</h4>
                         <p title="Profiling classification from ISE" className="mb-1">
                             <strong>Device:</strong> <span className="text-accent-primary font-bold">{session.endpoint_profile || "Unknown"}</span>
                         </p>
+                        {session.hardware_model && (
+                            <p title="Cloud MFC Hardware Model" className="mb-1">
+                                <strong>Model:</strong> <span className="text-emerald-400 font-semibold">{session.hardware_model}</span>
+                            </p>
+                        )}
+                        {session.os_version && (
+                            <p title="Detected Operating System" className="mb-1">
+                                <strong>OS:</strong> <span className="text-text-primary font-medium">{session.os_version}</span>
+                            </p>
+                        )}
                         <p title="Wireless Signal Strength" className="mb-1">
                             <strong>Signal:</strong> {session.rssi && session.rssi !== "N/A" ? (
                                 <span className="font-bold" style={{ color: parseInt(session.rssi) > -70 ? '#10b981' : '#f59e0b' }}>
                                     {session.rssi} dBm
                                 </span>
                             ) : "N/A"}
-                        </p>
-                        <p title="Browser/OS Profile" className="mb-1 overflow-hidden text-ellipsis whitespace-nowrap">
-                            <strong>Profile:</strong> <span className="text-text-secondary">{session.user_agent || "N/A"}</span>
                         </p>
                         <p title="VLAN" className="mb-1"><strong>VLAN:</strong> {session.vlan || "Unknown"}</p>
                     </div>

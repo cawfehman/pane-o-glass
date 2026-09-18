@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
 import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
-import { fetchIseSession, getFailureInsight, parseCalledStationId } from '@/lib/ise';
+import { fetchIseSession, getFailureInsight, parseCalledStationId, getTrustSecSgtMap, getIseUrls } from '@/lib/ise';
 import { getUserDetails } from '@/lib/ldap';
 import https from 'https';
 import axios from 'axios';
@@ -36,16 +36,7 @@ export async function GET(req: Request) {
     }
 
     try {
-        const url = process.env.ISE_PAN_URL;
-        const user = process.env.ISE_API_USER;
-        const pass = process.env.ISE_API_PASSWORD;
-
-        if (!url || !user || !pass) {
-            throw new Error("ISE Credentials not configured in .env");
-        }
-
-        const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
-        
+        const { primary: url, basicAuth } = getIseUrls();
         const agent = new https.Agent({ rejectUnauthorized: false });
         const fetchAuthStatus = async (mac: string) => {
             const tryFormat = async (formattedMac: string) => {
@@ -160,25 +151,36 @@ export async function GET(req: Request) {
                 };
             });
 
-            // Parallel Surgical ERS Enrichment for History
+            // Parallel Surgical ERS Enrichment for History over API Gateway Port 443
+            const sgtMap = await getTrustSecSgtMap();
             const enrichedResults = await Promise.all(mappedResults.map(async (f: any) => {
                 let profile = f.endpoint_profile;
+                let hardware_manufacturer = "";
+                let hardware_model = "";
+                let os_version = "";
+                let device_type = "";
+
                 try {
-                    const ersUrl = url.replace(':8443', ':9060');
-                    const ersRes = await axios.get(`${ersUrl}/ers/config/endpoint/name/${f.calling_station_id}`, {
+                    const ersRes = await axios.get(`${url}/ers/config/endpoint/name/${f.calling_station_id}`, {
                         headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
                         httpsAgent: agent,
-                        timeout: 1200 
+                        timeout: 2000 
                     });
 
-                    const ep = ersRes.data.ERSEndPoint;
+                    const ep = ersRes.data?.ERSEndPoint;
                     if (ep && ep.mfcAttributes) {
                         const mfc = ep.mfcAttributes;
-                        const manufacturer = Array.isArray(mfc.mfcHardwareManufacturer) ? mfc.mfcHardwareManufacturer.join('') : mfc.mfcHardwareManufacturer;
-                        const os = Array.isArray(mfc.mfcOperatingSystem) ? mfc.mfcOperatingSystem.join('') : mfc.mfcOperatingSystem;
-                        
-                        if (manufacturer || os) {
-                            profile = `${manufacturer || ""} ${os || ""}`.trim() || profile;
+                        const getStr = (val: any) => Array.isArray(val) ? val.join('') : (val || "");
+                        hardware_manufacturer = getStr(mfc.mfcHardwareManufacturer);
+                        hardware_model = getStr(mfc.mfcHardwareModel);
+                        os_version = getStr(mfc.mfcOperatingSystem);
+                        device_type = getStr(mfc.mfcDeviceType);
+
+                        const parts = [hardware_manufacturer, hardware_model].filter(Boolean).join(' ');
+                        if (parts) {
+                            profile = parts;
+                        } else if (hardware_manufacturer || os_version) {
+                            profile = `${hardware_manufacturer || ""} ${os_version || ""}`.trim();
                         }
                     }
                 } catch (e) {}
@@ -186,6 +188,10 @@ export async function GET(req: Request) {
                 return {
                     ...f,
                     endpoint_profile: profile,
+                    hardware_manufacturer,
+                    hardware_model,
+                    os_version,
+                    device_type,
                     ad: f.user_name && f.user_name !== "Unknown" ? await getUserDetails(f.user_name) : null
                 };
             }));
