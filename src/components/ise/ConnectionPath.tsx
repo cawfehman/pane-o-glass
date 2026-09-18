@@ -1,6 +1,20 @@
 "use client";
 
 import React from "react";
+import {
+    Activity,
+    ScanBarcode,
+    Printer,
+    Tablet,
+    Smartphone,
+    Laptop,
+    Cpu,
+    Wifi,
+    Server,
+    ShieldCheck,
+    Users,
+    AlertCircle
+} from "lucide-react";
 
 interface ConnectionPathProps {
     session: {
@@ -32,7 +46,7 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
     const vectraData = session.enrichment?.vectra;
     const isPass = session.status !== false;
     const hasVectraAlert = vectraData && (vectraData.t_score > 50 || vectraData.c_score > 50);
-    const isWireless = session.wlan_ssid && session.wlan_ssid !== "N/A";
+    const isWireless = Boolean(session.wlan_ssid && session.wlan_ssid !== "N/A");
 
     // Deep classification using Cloud MFC and profile strings
     const fullProfile = `${session.endpoint_profile || ""} ${session.hardware_manufacturer || ""} ${session.hardware_model || ""} ${session.device_type || ""}`.toLowerCase();
@@ -56,72 +70,13 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
                           fullProfile.includes('desktop') || fullProfile.includes('dell') || fullProfile.includes('lenovo') || fullProfile.includes('macbook');
 
     const renderEndpointIcon = () => {
-        if (isMedical) {
-            return (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <title>Medical / Healthcare Device</title>
-                    <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
-                </svg>
-            );
-        }
-        if (isScanner) {
-            return (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <title>Handheld / Barcode Scanner</title>
-                    <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
-                    <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
-                    <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
-                    <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
-                    <line x1="7" y1="12" x2="17" y2="12"></line>
-                </svg>
-            );
-        }
-        if (isPrinter) {
-            return (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <title>Network Printer</title>
-                    <polyline points="6 9 6 2 18 2 18 9"></polyline>
-                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
-                    <rect x="6" y="14" width="12" height="8"></rect>
-                </svg>
-            );
-        }
-        if (isTablet) {
-            return (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <title>Tablet</title>
-                    <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
-                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
-                </svg>
-            );
-        }
-        if (isPhone) {
-            return (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <title>Smartphone</title>
-                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
-                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
-                </svg>
-            );
-        }
-        if (isWorkstation) {
-            return (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <title>Workstation / PC</title>
-                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                    <line x1="8" y1="21" x2="16" y2="21"></line>
-                    <line x1="12" y1="17" x2="12" y2="21"></line>
-                </svg>
-            );
-        }
-        return (
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <title>Network Endpoint</title>
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                <line x1="8" y1="21" x2="16" y2="21"></line>
-                <line x1="12" y1="17" x2="12" y2="21"></line>
-            </svg>
-        );
+        if (isMedical) return <Activity className="w-6 h-6" />;
+        if (isScanner) return <ScanBarcode className="w-6 h-6" />;
+        if (isPrinter) return <Printer className="w-6 h-6" />;
+        if (isTablet) return <Tablet className="w-6 h-6" />;
+        if (isPhone) return <Smartphone className="w-6 h-6" />;
+        if (isWorkstation) return <Laptop className="w-6 h-6" />;
+        return <Cpu className="w-6 h-6" />;
     };
 
     const endpointLabel = session.hardware_model || 
@@ -147,14 +102,7 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
             label: 'Access Point',
             sub: session.access_point_name || "Wireless AP",
             status: 'success',
-            icon: (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12.55a11 11 0 0 1 14.08 0"></path>
-                    <path d="M1.42 9a16 16 0 0 1 21.16 0"></path>
-                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
-                    <line x1="12" y1="20" x2="12.01" y2="20"></line>
-                </svg>
-            )
+            icon: <Wifi className="w-6 h-6" />
         });
     }
 
@@ -164,40 +112,21 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
             label: 'Network Access',
             sub: session.nas_identifier || session.nas_ip_address || "Unknown",
             status: 'success',
-            icon: (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-                    <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-                    <line x1="6" y1="6" x2="6" y2="6.01"></line>
-                    <line x1="6" y1="18" x2="6" y2="18.01"></line>
-                </svg>
-            )
+            icon: <Server className="w-6 h-6" />
         },
         {
             id: 'ise',
             label: 'Cisco ISE',
             sub: session.acs_server || "Policy Engine",
             status: isPass ? 'success' : 'danger',
-            icon: (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                </svg>
-            )
+            icon: <ShieldCheck className="w-6 h-6" />
         },
         {
             id: 'idp',
             label: 'Identity (AD)',
             sub: adData ? adData.displayName : (session.status === false ? "Auth Failed" : "Verified"),
             status: adData ? 'success' : (session.status === false ? 'danger' : 'neutral'),
-            icon: (
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                    <circle cx="9" cy="7" r="4"></circle>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                </svg>
-            )
+            icon: <Users className="w-6 h-6" />
         }
     );
 
@@ -217,7 +146,7 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
                             </div>
                         )}
                         <div className="flex items-center gap-1.5 text-[0.7rem] text-accent-primary bg-blue-500/10 px-2.5 py-1 rounded-xl border border-blue-500/20">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line></svg>
+                            <Wifi className="w-3 h-3" />
                             <span>WIRELESS ({session.wlan_ssid})</span>
                         </div>
                     </div>
@@ -236,7 +165,7 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
                     ))}
                 </div>
 
-                {nodes.map((node, idx) => {
+                {nodes.map((node) => {
                     const statusColor = node.status === 'success' ? '#10b981' : (node.status === 'warning' ? '#f59e0b' : (node.status === 'danger' ? '#ef4444' : 'var(--text-muted)'));
                     const statusBg = node.status === 'success' ? 'rgba(16, 185, 129, 0.1)' : (node.status === 'warning' ? 'rgba(245, 158, 11, 0.1)' : (node.status === 'danger' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(255,255,255,0.05)'));
 
@@ -259,12 +188,13 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
             
             {!isPass && (
                 <div className="mt-6 p-3 bg-red-500/10 rounded-lg border border-red-500/20 flex items-center gap-3">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
                     <span className="text-[0.875rem] text-red-500">
-                        Break detected at <strong>{nodes[2].label}</strong>: {session.authorization_rule || "Unknown Policy Failure"}
+                        Break detected at <strong>{nodes[2]?.label || "ISE"}</strong>: {session.authorization_rule || "Unknown Policy Failure"}
                     </span>
                 </div>
             )}
         </div>
     );
 }
+
