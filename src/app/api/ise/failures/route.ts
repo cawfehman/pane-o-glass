@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
 import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
-import { fetchIseSession, getFailureInsight, parseCalledStationId, getTrustSecSgtMap, getIseUrls } from '@/lib/ise';
+import { fetchIseSession, getFailureInsight, parseCalledStationId, getTrustSecSgtMap, getIseUrls, executeWithPanFailover } from '@/lib/ise';
 import { getUserDetails } from '@/lib/ldap';
 import https from 'https';
 import axios from 'axios';
@@ -36,26 +36,27 @@ export async function GET(req: Request) {
     }
 
     try {
-        const { primary: url, basicAuth } = getIseUrls();
+        const { basicAuth } = getIseUrls();
         const agent = new https.Agent({ rejectUnauthorized: false });
+
         const fetchAuthStatus = async (mac: string) => {
-            const tryFormat = async (formattedMac: string) => {
-                // Expanded to 30 Days (2592000 seconds) for Service Account visibility
-                const endpoint = `${url}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/2592000/50/All`;
-                console.log(`[ISE-HISTORY] Fetching 30-Day Logs: ${endpoint}`);
-                
+            const queryIseAuth = async (formattedMac: string, seconds: number) => {
                 try {
-                    const response = await axios.get(endpoint, {
-                        headers: { 
-                            "Authorization": `Basic ${basicAuth}`, 
-                            "Accept": "application/xml",
-                            "X-ERS-Internal-User": "true"
-                        },
-                        httpsAgent: agent,
-                        timeout: 15000 // Increased timeout for deep history
+                    const { data: xmlText } = await executeWithPanFailover(async (baseUrl) => {
+                        const endpoint = `${baseUrl}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/${seconds}/50/All`;
+                        console.log(`[ISE-HISTORY] Querying ${seconds}s window: ${endpoint}`);
+                        const response = await axios.get(endpoint, {
+                            headers: { 
+                                "Authorization": `Basic ${basicAuth}`, 
+                                "Accept": "application/xml",
+                                "X-ERS-Internal-User": "true"
+                            },
+                            httpsAgent: agent,
+                            timeout: 8000
+                        });
+                        return response.data;
                     });
 
-                    const xmlText = response.data;
                     const data = await parseStringPromise(xmlText, { 
                         explicitArray: false,
                         tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
@@ -72,9 +73,19 @@ export async function GET(req: Request) {
 
                     return flattened;
                 } catch (err: any) {
-                    console.error(`[ISE-HISTORY] Surgical fetch failed:`, err.message);
+                    console.warn(`[ISE-HISTORY] Fetch with ${seconds}s for ${formattedMac} failed:`, err.message);
                     return [];
                 }
+            };
+
+            const tryFormat = async (targetMac: string) => {
+                // Try standard 7 Days (604800s - Cisco ISE maximum AuthStatus window)
+                let nodes = await queryIseAuth(targetMac, 604800);
+                // Graceful fallback to 1 Day (86400s) if 7-day query returned empty or was rejected
+                if (nodes.length === 0) {
+                    nodes = await queryIseAuth(targetMac, 86400);
+                }
+                return nodes;
             };
 
             let nodes = await tryFormat(mac);
@@ -87,7 +98,7 @@ export async function GET(req: Request) {
 
         await logAudit(
             'ISE_HISTORY_QUERY',
-            `Searched ISE History (30-Day) for ${searchType === "mac" ? "MAC" : "User"}: ${formattedQuery}`,
+            `Searched ISE History (7-Day) for ${searchType === "mac" ? "MAC" : "User"}: ${formattedQuery}`,
             session.user.id,
             (session.user as any).ipAddress
         );
@@ -151,7 +162,7 @@ export async function GET(req: Request) {
                 };
             });
 
-            // Parallel Surgical ERS Enrichment for History over API Gateway Port 443
+            // Parallel Surgical ERS Enrichment for History over API Gateway Port 443 with Failover
             const sgtMap = await getTrustSecSgtMap();
             const enrichedResults = await Promise.all(mappedResults.map(async (f: any) => {
                 let profile = f.endpoint_profile;
@@ -161,13 +172,16 @@ export async function GET(req: Request) {
                 let device_type = "";
 
                 try {
-                    const ersRes = await axios.get(`${url}/ers/config/endpoint/name/${f.calling_station_id}`, {
-                        headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
-                        httpsAgent: agent,
-                        timeout: 2000 
+                    const { data: epRes } = await executeWithPanFailover(async (baseUrl) => {
+                        const ersRes = await axios.get(`${baseUrl}/ers/config/endpoint/name/${f.calling_station_id}`, {
+                            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
+                            httpsAgent: agent,
+                            timeout: 2000 
+                        });
+                        return ersRes.data;
                     });
 
-                    const ep = ersRes.data?.ERSEndPoint;
+                    const ep = epRes?.ERSEndPoint;
                     if (ep && ep.mfcAttributes) {
                         const mfc = ep.mfcAttributes;
                         const getStr = (val: any) => Array.isArray(val) ? val.join('') : (val || "");
@@ -216,13 +230,15 @@ export async function GET(req: Request) {
             }
 
             try {
-                const endpoint = `${url}/admin/API/mnt/Session/UserName/${encodeURIComponent(formattedQuery)}`;
-                const response = await axios.get(endpoint, {
-                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
-                    httpsAgent: agent,
-                    timeout: 5000
+                const { data: xmlText } = await executeWithPanFailover(async (baseUrl) => {
+                    const endpoint = `${baseUrl}/admin/API/mnt/Session/UserName/${encodeURIComponent(formattedQuery)}`;
+                    const response = await axios.get(endpoint, {
+                        headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
+                        httpsAgent: agent,
+                        timeout: 5000
+                    });
+                    return response.data;
                 });
-                const xmlText = response.data;
                 const data = await parseStringPromise(xmlText, { 
                     explicitArray: false,
                     tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]

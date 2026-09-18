@@ -4,7 +4,7 @@ import { logAudit } from '@/lib/audit';
 import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
 import { getUserDetails } from '@/lib/ldap';
-import { getFailureInsight, parseCalledStationId } from '@/lib/ise';
+import { getFailureInsight, parseCalledStationId, getIseUrls, executeWithPanFailover } from '@/lib/ise';
 import { getCurrentSiteMap } from '@/lib/sites';
 import axios from 'axios';
 import https from 'https';
@@ -21,31 +21,15 @@ export async function GET(req: Request) {
             return NextResponse.json({ error: 'Identity Access Denied (ISE Role Required)' }, { status: 403 });
         }
 
-        const rawUrl = process.env.ISE_PAN_URL;
-        const rawUser = process.env.ISE_API_USER;
-        const rawPass = process.env.ISE_API_PASSWORD;
-
-        if (!rawUrl || !rawUser || !rawPass) {
-            console.error(`[ISE TRIAGE] Configuration missing. URL: ${!!rawUrl}, User: ${!!rawUser}, Pass: ${!!rawPass}`);
-            throw new Error("ISE MnT API Credentials not configured in .env");
-        }
-
-        // Quote-Resilience: Strip leading/trailing double quotes that might be in the .env file
-        const urlClean = rawUrl.replace(/^"|"$/g, '').endsWith('/') ? rawUrl.replace(/^"|"$/g, '').slice(0, -1) : rawUrl.replace(/^"|"$/g, '');
-        const user = rawUser.replace(/^"|"$/g, '');
-        const pass = rawPass.replace(/^"|"$/g, '');
-        const url = urlClean;
+        const { basicAuth } = getIseUrls();
 
         const { searchParams } = new URL(req.url);
         const targetSite = searchParams.get('site')?.toUpperCase();
 
-        console.log(`[ISE TRIAGE] Using Cleaned URL: ${url}`);
         console.log(`[ISE TRIAGE] Target Site Filter: ${targetSite || 'NONE (Global)'}`);
         
         // Fetch Site Map for enrichment
         const siteMap = await getCurrentSiteMap();
-        
-        const basicAuth = Buffer.from(`${user}:${pass}`).toString('base64');
         
         // 3. DUAL-STREAM SAMPLING: Fetch Active Sessions AND Recent Failures
         const psnCounts: Record<string, number> = {};
@@ -67,14 +51,25 @@ export async function GET(req: Request) {
         const timeStart = formatTime(fifteenAgo);
         const timeEnd = formatTime(now);
 
-        const activeEndpoint = `${url}/admin/API/mnt/Session/ActiveList`;
-        const failureEndpoint = `${url}/admin/API/mnt/Failure/All/${timeStart}/${timeEnd}/All/All/All`;
-
         console.log(`[ISE TRIAGE] Dual-Stream Sampling: ActiveList & Failures`);
 
         const [activeRes, failureRes] = await Promise.allSettled([
-            axios.get(activeEndpoint, { headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" }, httpsAgent: agent, timeout: 20000 }),
-            axios.get(failureEndpoint, { headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" }, httpsAgent: agent, timeout: 20000 })
+            executeWithPanFailover(async (baseUrl) => {
+                const res = await axios.get(`${baseUrl}/admin/API/mnt/Session/ActiveList`, {
+                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                    httpsAgent: agent,
+                    timeout: 20000
+                });
+                return res.data;
+            }),
+            executeWithPanFailover(async (baseUrl) => {
+                const res = await axios.get(`${baseUrl}/admin/API/mnt/Failure/All/${timeStart}/${timeEnd}/All/All/All`, {
+                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                    httpsAgent: agent,
+                    timeout: 15000
+                });
+                return res.data;
+            })
         ]);
 
         const activeXml = activeRes.status === 'fulfilled' ? activeRes.value.data : '';
@@ -92,13 +87,13 @@ export async function GET(req: Request) {
             activeMatches = activeMatchesRaw.filter((xml: string) => xml.includes(targetSite));
             failureMatches = failureMatchesRaw.filter((xml: string) => xml.includes(targetSite));
             
-            // If we found the site, we can afford a deeper sample of just that site
-            activeMatches = activeMatches.slice(0, 50);
-            failureMatches = failureMatches.slice(0, 30);
+            // If we found the site, sample up to 100 active and 50 failures
+            activeMatches = activeMatches.slice(0, 100);
+            failureMatches = failureMatches.slice(0, 50);
         } else {
-            // Global view: Sample the first few
-            activeMatches = activeMatches.slice(0, 80);
-            failureMatches = failureMatches.slice(0, 40);
+            // Global view: Sample up to 150 active and 60 failures
+            activeMatches = activeMatches.slice(0, 150);
+            failureMatches = failureMatches.slice(0, 60);
         }
 
         const allProbes = [
@@ -115,13 +110,15 @@ export async function GET(req: Request) {
             if (!/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(mac)) return;
 
             try {
-                const detailRes = await axios.get(`${url}/admin/API/mnt/Session/MACAddress/${mac}`, {
-                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
-                    httpsAgent: agent,
-                    timeout: 5000
+                const { data: detailXml } = await executeWithPanFailover(async (baseUrl) => {
+                    const detailRes = await axios.get(`${baseUrl}/admin/API/mnt/Session/MACAddress/${mac}`, {
+                        headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                        httpsAgent: agent,
+                        timeout: 5000
+                    });
+                    return detailRes.data;
                 });
 
-                const detailXml = detailRes.data;
                 const methodMatch = detailXml.match(/<authentication_method>(.*?)<\/authentication_method>/);
                 const locationMatch = detailXml.match(/<location>(.*?)<\/location>/);
                 const nasMatch = detailXml.match(/<network_device_name>(.*?)<\/network_device_name>/);
@@ -175,27 +172,31 @@ export async function GET(req: Request) {
                     
                     let profile = otherAttrs['EndPointProfilerProfile'] || otherAttrs['EndPointProfile'] || (detailXml.match(/<endpoint_profile>(.*?)<\/endpoint_profile>/)?.[1]) || "Unknown";
                     
-                    // Surgical ERS Enrichment for Triage
-                    try {
-                        const ersUrl = url.replace(':8443', ':9060');
-                        const ersRes = await axios.get(`${ersUrl}/ers/config/endpoint/name/${mac}`, {
-                            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
-                            httpsAgent: agent,
-                            timeout: 2000 
-                        });
+                    // Quick ERS Enrichment over Port 443 if MnT profile is Unknown
+                    if (profile === "Unknown") {
+                        try {
+                            const { data: ersData } = await executeWithPanFailover(async (baseUrl) => {
+                                const ersRes = await axios.get(`${baseUrl}/ers/config/endpoint/name/${mac}`, {
+                                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
+                                    httpsAgent: agent,
+                                    timeout: 1500 
+                                });
+                                return ersRes.data;
+                            });
 
-                        const ep = ersRes.data.ERSEndPoint;
-                        if (ep && ep.mfcAttributes) {
-                            const mfc = ep.mfcAttributes;
-                            const manufacturer = Array.isArray(mfc.mfcHardwareManufacturer) ? mfc.mfcHardwareManufacturer.join('') : mfc.mfcHardwareManufacturer;
-                            const os = Array.isArray(mfc.mfcOperatingSystem) ? mfc.mfcOperatingSystem.join('') : mfc.mfcOperatingSystem;
-                            
-                            if (manufacturer || os) {
-                                profile = `${manufacturer || ""} ${os || ""}`.trim() || profile;
+                            const ep = ersData?.ERSEndPoint;
+                            if (ep && ep.mfcAttributes) {
+                                const mfc = ep.mfcAttributes;
+                                const manufacturer = Array.isArray(mfc.mfcHardwareManufacturer) ? mfc.mfcHardwareManufacturer.join('') : mfc.mfcHardwareManufacturer;
+                                const os = Array.isArray(mfc.mfcOperatingSystem) ? mfc.mfcOperatingSystem.join('') : mfc.mfcOperatingSystem;
+                                
+                                if (manufacturer || os) {
+                                    profile = `${manufacturer || ""} ${os || ""}`.trim() || profile;
+                                }
                             }
+                        } catch (e) {
+                            // Fallback to whatever MnT had
                         }
-                    } catch (e) {
-                        // Fallback to whatever MnT had
                     }
                     
                     if (!nestedHeatmap[siteCode]) nestedHeatmap[siteCode] = { wireless: {}, wired: {}, nas: nas };
