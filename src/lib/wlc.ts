@@ -178,10 +178,11 @@ export async function fetchWlcClientTelemetry(mac: string): Promise<WlcClientTel
         return { found: false };
     }
 
-    const community = process.env.WLC_SNMP_COMMUNITY || 'InfoSecUtil-02a';
+    const clean = (s: string) => s.replace(/^"|"$/g, '').trim();
+    const community = clean(process.env.WLC_SNMP_COMMUNITY || 'InfoSecUtil-02a');
     const controllers = [
-        { name: 'KEL-2MC-WLC-CAMPUS', ip: process.env.WLC_CAMPUS_IP || '172.18.163.99' },
-        { name: 'KEL-2MC-WLC-AMB', ip: process.env.WLC_AMB_IP || '172.18.163.105' }
+        { name: 'KEL-2MC-WLC-CAMPUS', ip: clean(process.env.WLC_CAMPUS_IP || '172.18.163.99') },
+        { name: 'KEL-2MC-WLC-AMB', ip: clean(process.env.WLC_AMB_IP || '172.18.163.105') }
     ];
 
     // OIDs for bsnMobileStationTable (1.3.6.1.4.1.14179.2.1.4.1)
