@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { AlertCircle, RefreshCw, History, Server } from "lucide-react";
+import { AlertCircle, RefreshCw, History, Server, Activity, Shield, Users, Wifi, Cpu, Layers, ExternalLink, ChevronDown, ChevronRight, Search, CheckCircle2, MapPin, Tag, HelpCircle, HardDrive, Laptop, Radio } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import ConnectionPath from "@/components/ise/ConnectionPath";
 import EnrichedEndpointCard from "@/components/ise/EnrichedEndpointCard";
@@ -38,7 +38,6 @@ export default function CiscoIsePage() {
     const [sitesLoading, setSitesLoading] = useState(false);
     const [siteDirSortDir, setSiteDirSortDir] = useState<"asc" | "desc">("asc");
     const [siteDirFilter, setSiteDirFilter] = useState("");
-
     const processedSitesList = useMemo(() => {
         let list = sitesList;
         if (siteDirFilter.trim()) {
@@ -120,20 +119,28 @@ export default function CiscoIsePage() {
     const [triageData, setTriageData] = useState<any>(null);
     const [triageLoading, setTriageLoading] = useState(false);
     const [triageStatus, setTriageStatus] = useState("");
+    const [triageSubView, setTriageSubView] = useState<"infrastructure" | "identity" | "trustsec">("infrastructure");
+    const [infraSearch, setInfraSearch] = useState("");
+    const [groupSearch, setGroupSearch] = useState("");
+    const [failureSearch, setFailureSearch] = useState("");
+    const [expandedSites, setExpandedSites] = useState<Record<string, boolean>>({});
 
-    const loadTriage = async (siteCode?: string) => {
+    const toggleSiteExpand = (code: string) => {
+        setExpandedSites(prev => ({ ...prev, [code]: !prev[code] }));
+    };
+
+    const loadTriage = async (siteCode?: string, forceRefresh?: boolean) => {
         setTriageLoading(true);
-        setTriageStatus(siteCode ? `Focusing forensics on site: ${siteCode}...` : "Synchronizing with ISE MnT nodes...");
+        setTriageStatus(siteCode ? `Focusing forensics on site: ${siteCode}...` : "Synchronizing Cisco ISE 3.5 telemetry...");
         
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s client-side timeout
-
         try {
-            const url = siteCode ? `/api/ise/triage?site=${encodeURIComponent(siteCode)}` : '/api/ise/triage';
-            const res = await fetch(url, { 
-                cache: 'no-store',
-                signal: controller.signal 
-            });
+            let url = '/api/ise/triage';
+            const params = new URLSearchParams();
+            if (siteCode) params.set('site', siteCode);
+            if (forceRefresh) params.set('refresh', 'true');
+            if (params.toString()) url += `?${params.toString()}`;
+
+            const res = await fetch(url, { cache: 'no-store' });
             const data = await res.json();
             
             if (data.error) {
@@ -143,9 +150,8 @@ export default function CiscoIsePage() {
             }
         } catch (err: any) {
             console.error("Failed to load triage data", err);
-            setTriageData({ error: err.name === 'AbortError' ? "ISE API Timeout (20s)" : "ISE Connection Error" });
+            setTriageData({ error: "ISE Connection Error" });
         } finally {
-            clearTimeout(timeoutId);
             setTriageLoading(false);
             setTriageStatus("");
         }
@@ -248,12 +254,40 @@ export default function CiscoIsePage() {
         );
     };
 
-    const [siteSearch, setSiteSearch] = useState("");
+    // Filtered Telemetry Data for Sub-Views
+    const filteredSites = useMemo(() => {
+        const sites = triageData?.infrastructure?.sites || [];
+        if (!infraSearch.trim()) return sites;
+        const q = infraSearch.toLowerCase();
+        return sites.filter((s: any) => 
+            (s.siteCode && s.siteCode.toLowerCase().includes(q)) || 
+            (s.siteName && s.siteName.toLowerCase().includes(q)) || 
+            (s.siteAddress && s.siteAddress.toLowerCase().includes(q)) ||
+            s.devices?.some((d: any) => d.name.toLowerCase().includes(q))
+        );
+    }, [triageData, infraSearch]);
 
-    // Filtered Hotlist for Triage
-    const filteredHotlist = triageData?.hotlist?.filter((item: any) => 
-        item.displayName.toLowerCase().includes(siteSearch.toLowerCase())
-    ) || [];
+    const filteredGroups = useMemo(() => {
+        const groups = triageData?.deviceIdentity?.groups || [];
+        if (!groupSearch.trim()) return groups;
+        const q = groupSearch.toLowerCase();
+        return groups.filter((g: any) => 
+            (g.name && g.name.toLowerCase().includes(q)) || 
+            (g.description && g.description.toLowerCase().includes(q))
+        );
+    }, [triageData, groupSearch]);
+
+    const filteredFailures = useMemo(() => {
+        const catalog = triageData?.failureIntelligence?.catalog || [];
+        if (!failureSearch.trim()) return catalog;
+        const q = failureSearch.toLowerCase();
+        return catalog.filter((f: any) => 
+            (f.id && f.id.toLowerCase().includes(q)) || 
+            (f.code && f.code.toLowerCase().includes(q)) || 
+            (f.cause && f.cause.toLowerCase().includes(q)) ||
+            (f.resolution && f.resolution.toLowerCase().includes(q))
+        );
+    }, [triageData, failureSearch]);
 
     if (permsLoading) return <div className="p-8">Verifying Cisco ISE access...</div>;
     if (!hasIsePerm) return <div className="p-8 glass-card m-8 border-l-4 border-red-500 text-red-400">Access Denied: You do not have permission to view RADIUS endpoint forensics.</div>;
@@ -315,7 +349,7 @@ export default function CiscoIsePage() {
             {/* Navigation Tabs */}
             <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)' }}>
                 {([
-                    { id: 'dashboard', label: 'Triage Heatmap' },
+                    { id: 'dashboard', label: 'Operations Center' },
                     { id: 'live', label: 'Live Session' },
                     { id: 'history', label: 'Failure History' },
                     { id: 'sites', label: 'Site Directory' }
@@ -346,271 +380,560 @@ export default function CiscoIsePage() {
             {/* Body Content */}
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6">
                 
-                {/* Triage Dashboard Tab */}
+                {/* Operations Center Tab */}
                 {activeTab === "dashboard" && (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '24px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                            
-                            <div className="flex justify-between items-center">
-                                <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
-                                    <AlertCircle size={20} color={triageData?.stats?.failures > 0 ? "#ef4444" : "#38bdf8"} />
-                                    Global Forensic Triage
-                                </h3>
-                                <div style={{ position: 'relative', width: '280px' }}>
-                                    <input 
-                                        type="text"
-                                        placeholder="Filter or Search Site Code (Enter)..."
-                                        value={siteSearch}
-                                        onChange={(e) => setSiteSearch(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && siteSearch.trim()) {
-                                                loadTriage(siteSearch.trim());
-                                            }
-                                        }}
-                                        style={{ 
-                                            width: '100%', padding: '8px 12px 8px 34px', borderRadius: '8px', 
-                                            border: '1px solid var(--border-color)', background: 'rgba(255,255,255,0.02)', 
-                                            color: 'var(--text-primary)', fontSize: '0.85rem', outline: 'none'
-                                        }}
-                                    />
-                                    <svg style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-muted)' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                                </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                        
+                        {/* Loading State */}
+                        {triageLoading && !triageData && (
+                            <div className="glass-card" style={{ padding: '60px', textAlign: 'center' }}>
+                                <div className="spinner-small" style={{ margin: '0 auto 16px auto', width: '28px', height: '28px' }}></div>
+                                <p style={{ color: 'var(--text-secondary)', marginBottom: '8px', fontWeight: 600 }}>
+                                    {triageStatus || "Connecting to Cisco ISE 3.5 API Gateway..."}
+                                </p>
+                                <p className="text-xs text-text-muted">Aggregating live session telemetry, 198 network switches, and device groups over Port 443.</p>
                             </div>
-                            
-                            {triageLoading && !triageData && (
-                                <div className="glass-card" style={{ padding: '60px', textAlign: 'center' }}>
-                                    <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>{triageStatus || "Synchronizing global site telemetry..."}</p>
-                                    <div style={{ width: '100%', maxWidth: '300px', height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', margin: '0 auto', overflow: 'hidden', position: 'relative' }}>
-                                        <div className="shimmer" style={{ 
-                                            position: 'absolute', top: 0, left: 0, height: '100%', width: '100%', 
-                                            background: 'linear-gradient(90deg, transparent, var(--accent-primary), transparent)',
-                                            animation: 'shimmer-move 1.5s infinite linear'
-                                        }}></div>
+                        )}
+
+                        {/* Error State */}
+                        {!triageLoading && triageData?.error && (
+                            <div className="glass-card" style={{ padding: '40px', textAlign: 'center', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                                <AlertCircle size={32} color="#ef4444" style={{ margin: '0 auto 12px auto' }} />
+                                <p style={{ color: '#ef4444', marginBottom: '16px', fontWeight: 600 }}>
+                                    Cisco ISE Telemetry Sync Failed: {triageData.error}
+                                </p>
+                                <button onClick={() => loadTriage(undefined, true)} className="btn-secondary text-xs" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                                    <RefreshCw size={14} /> Retry Telemetry Sync
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Operations Center Content */}
+                        {!triageLoading && triageData && !triageData.error && (
+                            <>
+                                {/* 1. Live Pulse Executive Bar */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                                    {/* Active Sessions */}
+                                    <div className="glass-card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '16px', borderLeft: '4px solid #10b981' }}>
+                                        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#10b981' }}>
+                                            <Activity size={24} />
+                                        </div>
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px #10b981' }}></div>
+                                                <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', fontWeight: 700 }}>Active Sessions</span>
+                                            </div>
+                                            <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                                {(triageData.pulse?.activeSessions || 0).toLocaleString()}
+                                            </div>
+                                            <div style={{ fontSize: '0.7rem', color: '#10b981' }}>Live Authenticated RADIUS</div>
+                                        </div>
                                     </div>
-                                    <p className="text-xs text-text-muted mt-4">Polling ISE Session Directory (14,000+ Endpoints).</p>
+
+                                    {/* Profiled Endpoints */}
+                                    <div className="glass-card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '16px', borderLeft: '4px solid #38bdf8' }}>
+                                        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(56, 189, 248, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#38bdf8' }}>
+                                            <Cpu size={24} />
+                                        </div>
+                                        <div>
+                                            <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', fontWeight: 700 }}>Profiled Endpoints</span>
+                                            <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                                {(triageData.pulse?.profiledEndpoints || 0).toLocaleString()}
+                                            </div>
+                                            <div style={{ fontSize: '0.7rem', color: '#38bdf8' }}>Cloud MFC & Fingerprinted</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Managed Network Devices */}
+                                    <div className="glass-card" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '16px', borderLeft: '4px solid #a855f7' }}>
+                                        <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(168, 85, 247, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a855f7' }}>
+                                            <Server size={24} />
+                                        </div>
+                                        <div>
+                                            <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', fontWeight: 700 }}>Managed Devices</span>
+                                            <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                                {(triageData.pulse?.totalManagedDevices || 0).toLocaleString()}
+                                            </div>
+                                            <div style={{ fontSize: '0.7rem', color: '#a855f7' }}>Core Switches, WLCs & NAS</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Cluster Status & Refresh */}
+                                    <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderLeft: '4px solid #f59e0b' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <div>
+                                                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', fontWeight: 700 }}>ISE 3.5 Gateway</div>
+                                                <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                                    v{triageData.pulse?.version || '3.5.0'}
+                                                </div>
+                                            </div>
+                                            <button 
+                                                onClick={() => loadTriage(undefined, true)}
+                                                disabled={triageLoading}
+                                                className="btn-secondary" 
+                                                style={{ padding: '6px 12px', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                                                title="Re-query live ISE telemetry"
+                                            >
+                                                <RefreshCw size={12} className={triageLoading ? "animate-spin" : ""} />
+                                                Refresh
+                                            </button>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+                                            <span style={{ color: '#10b981', fontWeight: 600 }}>Port 443 API Gateway</span>
+                                            <span>•</span>
+                                            <span>Primary PAN Failover Ready</span>
+                                        </div>
+                                    </div>
                                 </div>
-                            )}
 
-                            {!triageLoading && triageData?.error && (
-                                <div className="glass-card" style={{ padding: '40px', textAlign: 'center', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                                    <p style={{ color: '#ef4444', marginBottom: '16px' }}><strong>Triage Sync Failed:</strong> {triageData.error}</p>
-                                    <button onClick={() => loadTriage()} className="btn-secondary text-xs">Retry Sync</button>
+                                {/* 2. Sub-View Navigation Switcher */}
+                                <div style={{ display: 'flex', gap: '12px', padding: '6px', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid var(--border-color)', width: 'fit-content' }}>
+                                    <button
+                                        onClick={() => setTriageSubView("infrastructure")}
+                                        style={{
+                                            padding: '8px 18px',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: triageSubView === "infrastructure" ? 'var(--accent-primary)' : 'transparent',
+                                            color: triageSubView === "infrastructure" ? '#fff' : 'var(--text-secondary)',
+                                            fontWeight: triageSubView === "infrastructure" ? 700 : 500,
+                                            fontSize: '0.85rem',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                    >
+                                        <HardDrive size={16} />
+                                        Infrastructure & Sites (Option A)
+                                    </button>
+
+                                    <button
+                                        onClick={() => setTriageSubView("identity")}
+                                        style={{
+                                            padding: '8px 18px',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: triageSubView === "identity" ? 'var(--accent-primary)' : 'transparent',
+                                            color: triageSubView === "identity" ? '#fff' : 'var(--text-secondary)',
+                                            fontWeight: triageSubView === "identity" ? 700 : 500,
+                                            fontSize: '0.85rem',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                    >
+                                        <Tag size={16} />
+                                        Device Identity & NAC (Option B)
+                                    </button>
+
+                                    <button
+                                        onClick={() => setTriageSubView("trustsec")}
+                                        style={{
+                                            padding: '8px 18px',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: triageSubView === "trustsec" ? 'var(--accent-primary)' : 'transparent',
+                                            color: triageSubView === "trustsec" ? '#fff' : 'var(--text-secondary)',
+                                            fontWeight: triageSubView === "trustsec" ? 700 : 500,
+                                            fontSize: '0.85rem',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                            transition: 'all 0.2s ease'
+                                        }}
+                                    >
+                                        <Shield size={16} />
+                                        TrustSec & Failure Intelligence (Option C)
+                                    </button>
                                 </div>
-                            )}
 
-                            {!triageLoading && triageData && !triageData.error && (
-                                <div className="flex flex-col gap-4">
-                                            {filteredHotlist.length > 0 ? (
-                                                filteredHotlist.map((item: any, idx: number) => {
-                                                    // Dynamic health color
-                                                    let healthColor = '#10b981'; // Emerald
-                                                    if (item.successRate < 90) healthColor = '#ef4444'; // Red
-                                                    else if (item.successRate < 100) healthColor = '#f59e0b'; // Amber
+                                {/* 3. SUB-VIEW 1: Infrastructure & Sites (Option A) */}
+                                {triageSubView === "infrastructure" && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                        {/* Filter Bar */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <div style={{ position: 'relative', width: '380px' }}>
+                                                <Search size={16} style={{ position: 'absolute', left: '12px', top: '10px', color: 'var(--text-muted)' }} />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Filter sites or switches (e.g. 3CP, CUH, SWI-1)..."
+                                                    value={infraSearch}
+                                                    onChange={(e) => setInfraSearch(e.target.value)}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '8px 12px 8px 36px',
+                                                        borderRadius: '8px',
+                                                        border: '1px solid var(--border-color)',
+                                                        background: 'rgba(255,255,255,0.03)',
+                                                        color: 'var(--text-primary)',
+                                                        fontSize: '0.85rem',
+                                                        outline: 'none'
+                                                    }}
+                                                />
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                                Showing <strong>{filteredSites.length}</strong> Facilities / <strong>{triageData.pulse?.totalManagedDevices}</strong> Switches & WLCs
+                                            </div>
+                                        </div>
 
-                                                    return (
-                                                        <div 
-                                                            key={idx} 
-                                                            className="glass-card" 
-                                                            style={{ padding: '24px', borderLeft: `4px solid ${healthColor}`, background: 'rgba(255,255,255,0.02)', transition: 'all 0.2s' }}
-                                                        >
-                                                            <div className="flex justify-between items-start">
-                                                                <div style={{ flex: 1 }}>
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                                                                        <div className="flex items-center gap-3">
-                                                                            <h3 style={{ fontSize: '1.75rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
-                                                                                {item.displayName}
-                                                                            </h3>
-                                                                            <span style={{ 
-                                                                                fontSize: '0.65rem', 
-                                                                                padding: '2px 8px', 
+                                        {/* Sites Grid */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '16px' }}>
+                                            {filteredSites.map((site: any) => {
+                                                const isExpanded = !!expandedSites[site.siteCode];
+                                                return (
+                                                    <div 
+                                                        key={site.siteCode} 
+                                                        className="glass-card" 
+                                                        style={{ 
+                                                            padding: '20px', 
+                                                            borderLeft: `4px solid ${site.isUnknownSite ? '#f59e0b' : 'var(--accent-primary)'}`,
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            justifyContent: 'space-between'
+                                                        }}
+                                                    >
+                                                        <div>
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                    <span style={{ 
+                                                                        fontSize: '0.85rem', 
+                                                                        fontWeight: 800, 
+                                                                        padding: '2px 8px', 
+                                                                        borderRadius: '4px', 
+                                                                        background: 'rgba(56, 189, 248, 0.15)', 
+                                                                        color: 'var(--accent-primary)' 
+                                                                    }}>
+                                                                        {site.siteCode}
+                                                                    </span>
+                                                                    <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                                                        {site.siteName}
+                                                                    </h4>
+                                                                </div>
+                                                                <span style={{ 
+                                                                    fontSize: '0.75rem', 
+                                                                    fontWeight: 700, 
+                                                                    padding: '2px 8px', 
+                                                                    borderRadius: '12px', 
+                                                                    background: 'rgba(168, 85, 247, 0.1)', 
+                                                                    color: '#a855f7',
+                                                                    border: '1px solid rgba(168, 85, 247, 0.2)'
+                                                                }}>
+                                                                    {site.deviceCount} {site.deviceCount === 1 ? 'Device' : 'Devices'}
+                                                                </span>
+                                                            </div>
+
+                                                            {/* Physical Address with Maps Link */}
+                                                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <MapPin size={12} style={{ flexShrink: 0 }} />
+                                                                {site.siteAddress && site.siteAddress !== "Address telemetry unavailable" ? (
+                                                                    <a 
+                                                                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(site.siteAddress)}`}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        style={{ color: 'var(--accent-primary)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                                                        onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                                                                        onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+                                                                    >
+                                                                        {site.siteAddress}
+                                                                        <ExternalLink size={10} />
+                                                                    </a>
+                                                                ) : (
+                                                                    <span>Physical address unmapped</span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Collapsible Switch List */}
+                                                        <div>
+                                                            <button
+                                                                onClick={() => toggleSiteExpand(site.siteCode)}
+                                                                style={{
+                                                                    width: '100%',
+                                                                    padding: '6px 10px',
+                                                                    borderRadius: '6px',
+                                                                    background: 'rgba(255,255,255,0.03)',
+                                                                    border: '1px solid var(--border-color)',
+                                                                    color: 'var(--text-secondary)',
+                                                                    fontSize: '0.75rem',
+                                                                    cursor: 'pointer',
+                                                                    display: 'flex',
+                                                                    justifyContent: 'space-between',
+                                                                    alignItems: 'center'
+                                                                }}
+                                                            >
+                                                                <span>{isExpanded ? 'Hide Managed Switches' : `View ${site.deviceCount} Managed Switches`}</span>
+                                                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                                            </button>
+
+                                                            {isExpanded && (
+                                                                <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }} className="custom-scrollbar">
+                                                                    {site.devices.map((d: any) => (
+                                                                        <div 
+                                                                            key={d.id} 
+                                                                            style={{ 
+                                                                                fontSize: '0.75rem', 
+                                                                                padding: '6px 10px', 
                                                                                 borderRadius: '4px', 
-                                                                                background: 'rgba(56, 189, 248, 0.1)', 
-                                                                                color: 'var(--accent-primary)',
-                                                                                fontWeight: 700,
-                                                                                textTransform: 'uppercase',
-                                                                                letterSpacing: '0.05em'
-                                                                            }}>
-                                                                                Triage Heatmap (Sampled)
-                                                                            </span>
+                                                                                background: 'rgba(0,0,0,0.2)', 
+                                                                                border: '1px solid rgba(255,255,255,0.04)',
+                                                                                display: 'flex',
+                                                                                justifyContent: 'space-between',
+                                                                                alignItems: 'center'
+                                                                            }}
+                                                                        >
+                                                                            <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text-primary)' }}>{d.name}</span>
+                                                                            <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{d.type}</span>
                                                                         </div>
-                                                                        
-                                                                        <div className="flex gap-3 items-center">
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: healthColor }}></div>
-                                                                                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: healthColor }}>
-                                                                                    {item.successRate}% Health
-                                                                                </span>
-                                                                            </div>
-                                                                            <button 
-                                                                                onClick={() => loadTriage()} 
-                                                                                className="btn-secondary" 
-                                                                                style={{ padding: '6px 12px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                                                                                title="Refresh Forensics"
-                                                                            >
-                                                                                <RefreshCw size={12} />
-                                                                                Sync
-                                                                            </button>
-                                                                        </div>
-                                                                    </div>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
 
-                                                                    {/* Site Metadata */}
-                                                                    <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                                        <div className="flex items-center gap-2">
-                                                                            <p style={{ margin: 0, fontSize: '0.95rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-                                                                                {item.siteName}
-                                                                            </p>
-                                                                            {item.isUnknownSite && (
-                                                                                <span style={{ 
-                                                                                    fontSize: '0.6rem', 
-                                                                                    padding: '2px 6px', 
-                                                                                    borderRadius: '4px', 
-                                                                                    background: 'rgba(245, 158, 11, 0.1)', 
-                                                                                    color: '#f59e0b',
-                                                                                    border: '1px solid rgba(245, 158, 11, 0.2)',
-                                                                                    fontWeight: 700,
-                                                                                    display: 'flex',
-                                                                                    alignItems: 'center',
-                                                                                    gap: '4px'
-                                                                                }}>
-                                                                                    <AlertCircle size={10} />
-                                                                                    UNMAPPED
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-                                                                        <div style={{ margin: 0, fontSize: '0.8rem', color: item.isUnknownSite ? '#f59e0b' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                                                                            {item.isUnknownSite ? (
-                                                                                <span>SITE CODE NOT IN DIRECTORY (Investigation Required)</span>
-                                                                            ) : item.siteAddress ? (
-                                                                                <a 
-                                                                                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.siteAddress)}`} 
-                                                                                    target="_blank" 
-                                                                                    rel="noopener noreferrer"
-                                                                                    style={{ color: 'var(--accent-primary)', textDecoration: 'none', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                                                                                    onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
-                                                                                    onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
-                                                                                    onClick={(e) => e.stopPropagation()}
-                                                                                >
-                                                                                    {item.siteAddress}
-                                                                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                                                                                </a>
-                                                                            ) : (
-                                                                                <span>No physical coordinates populated</span>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
+                                {/* 4. SUB-VIEW 2: Device Identity & NAC Groups (Option B) */}
+                                {triageSubView === "identity" && (
+                                    <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: '24px' }}>
+                                        {/* Left Column: 35 Endpoint Groups */}
+                                        <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div>
+                                                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>Identity Groups</h4>
+                                                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>35 Configured NAC Identity Classes</p>
+                                                </div>
+                                            </div>
 
-                                                                    <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
-                                                                        <span style={{ fontSize: '0.75rem', padding: '4px 12px', background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                                                                            <strong>Active Sessions:</strong> {item.count.toLocaleString()}
-                                                                        </span>
-                                                                        <span style={{ fontSize: '0.75rem', padding: '4px 12px', background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                                                                            <strong>Primary NAS:</strong> {item.nas}
-                                                                        </span>
-                                                                    </div>
-                                                                    <p className="text-xs text-text-muted mb-4">
-                                                                        <strong>Primary Node:</strong> {item.nas}
-                                                                    </p>
+                                            <div style={{ position: 'relative' }}>
+                                                <Search size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-muted)' }} />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Filter groups (e.g. Medical, Android)..."
+                                                    value={groupSearch}
+                                                    onChange={(e) => setGroupSearch(e.target.value)}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '6px 10px 6px 32px',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid var(--border-color)',
+                                                        background: 'rgba(255,255,255,0.03)',
+                                                        color: 'var(--text-primary)',
+                                                        fontSize: '0.8rem',
+                                                        outline: 'none'
+                                                    }}
+                                                />
+                                            </div>
 
-                                                                    {/* Wireless Section */}
-                                                                    {item.wireless && Object.keys(item.wireless).length > 0 && (
-                                                                        <div className="mb-4">
-                                                                            <p style={{ fontSize: '0.65rem', color: 'var(--accent-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 'bold' }}>Wireless (SSID Groups)</p>
-                                                                            <div className="flex flex-col gap-3">
-                                                                                {Object.entries(item.wireless).map(([ssid, macObjs]: [string, any]) => (
-                                                                                    <div key={ssid}>
-                                                                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>{ssid}</p>
-                                                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                                                                            {macObjs.map((obj: any) => (
-                                                                                                <button 
-                                                                                                    key={obj.mac}
-                                                                                                    onClick={(e) => { e.stopPropagation(); setQuery(obj.mac); handleSearch(undefined, obj.mac); }}
-                                                                                                    className="mac-button"
-                                                                                                    style={getMacStyle(obj)}
-                                                                                                    title={`Device: ${obj.profile || "Unknown"}`}
-                                                                                                >
-                                                                                                    {obj.mac}
-                                                                                                </button>
-                                                                                            ))}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                ))}
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '560px', overflowY: 'auto' }} className="custom-scrollbar">
+                                                {filteredGroups.map((g: any) => (
+                                                    <div 
+                                                        key={g.id} 
+                                                        style={{ 
+                                                            padding: '10px 12px', 
+                                                            borderRadius: '6px', 
+                                                            background: 'rgba(255,255,255,0.02)', 
+                                                            border: '1px solid var(--border-color)',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            gap: '4px'
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                            <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{g.name}</span>
+                                                            <Tag size={12} color="var(--accent-primary)" />
+                                                        </div>
+                                                        {g.description && (
+                                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{g.description}</div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
 
-                                                                    {/* Wired Section */}
-                                                                    {item.wired && Object.keys(item.wired).length > 0 && (
-                                                                        <div>
-                                                                            <p style={{ fontSize: '0.65rem', color: '#4ade80', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 'bold' }}>Wired (Protocol Groups)</p>
-                                                                            <div className="flex flex-col gap-3">
-                                                                                {Object.entries(item.wired).map(([method, macObjs]: [string, any]) => (
-                                                                                    <div key={method}>
-                                                                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>{method}</p>
-                                                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                                                                            {macObjs.map((obj: any) => (
-                                                                                                <button 
-                                                                                                    key={obj.mac}
-                                                                                                    onClick={(e) => { e.stopPropagation(); setQuery(obj.mac); handleSearch(undefined, obj.mac); }}
-                                                                                                    className="mac-button"
-                                                                                                    style={getMacStyle(obj)}
-                                                                                                    title={`Device: ${obj.profile || "Unknown"}`}
-                                                                                                >
-                                                                                                    {obj.mac}
-                                                                                                </button>
-                                                                                            ))}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                ))}
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
+                                        {/* Right Column: Live Endpoints Telemetry Stream */}
+                                        <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                            <div>
+                                                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>Live Endpoints Stream</h4>
+                                                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                    Recent devices queried from Cisco ISE 3.5 OpenAPI. Click any MAC to execute an instant deep dive.
+                                                </p>
+                                            </div>
+
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '560px', overflowY: 'auto' }} className="custom-scrollbar">
+                                                {triageData.deviceIdentity?.recentEndpoints?.map((ep: any) => (
+                                                    <div 
+                                                        key={ep.id}
+                                                        onClick={() => {
+                                                            setQuery(ep.mac);
+                                                            handleSearch(undefined, ep.mac);
+                                                        }}
+                                                        style={{
+                                                            padding: '12px 16px',
+                                                            borderRadius: '8px',
+                                                            background: 'rgba(255,255,255,0.02)',
+                                                            border: '1px solid var(--border-color)',
+                                                            display: 'flex',
+                                                            justifyContent: 'space-between',
+                                                            alignItems: 'center',
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.15s ease'
+                                                        }}
+                                                        className="hover-bright"
+                                                    >
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                                            <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-primary)' }}>
+                                                                <Laptop size={18} />
+                                                            </div>
+                                                            <div>
+                                                                <div style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
+                                                                    {ep.mac}
+                                                                </div>
+                                                                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                                    IP: {ep.ipAddress}
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    );
-                                                })
-                                            ) : (
-                                        <div style={{ padding: '60px', textAlign: 'center', background: 'rgba(16, 185, 129, 0.05)', borderRadius: '12px', border: '1px solid rgba(16, 185, 129, 0.1)' }}>
-                                            <svg style={{ marginBottom: '16px', color: '#10b981' }} width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                                            <p style={{ color: '#10b981', fontWeight: 'bold' }}>Authentication Health: Optimal</p>
-                                            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '8px' }}>No high-frequency RADIUS failures detected in the current window.</p>
+
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                            <span style={{ 
+                                                                fontSize: '0.75rem', 
+                                                                fontWeight: 600, 
+                                                                padding: '3px 10px', 
+                                                                borderRadius: '12px', 
+                                                                background: 'rgba(16, 185, 129, 0.15)', 
+                                                                color: '#10b981',
+                                                                border: '1px solid rgba(16, 185, 129, 0.2)'
+                                                            }}>
+                                                                {ep.identityGroup}
+                                                            </span>
+                                                            <ChevronRight size={14} color="var(--text-muted)" />
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                        
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                            <div className="glass-card" style={{ borderTop: '4px solid var(--accent-primary)' }}>
-                                <h4 style={{ marginBottom: '6px', color: 'var(--text-secondary)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Live Distribution</h4>
-                                <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '20px', fontStyle: 'italic' }}>
-                                    Snapshot of 100 Sampled RADIUS Sessions
-                                </p>
-                                
-                                <div className="mb-6">
-                                    <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Site Distribution (Sampled)</p>
-                                    {triageData?.siteDistribution && Object.entries(triageData.siteDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 6).map(([site, count]) => (
-                                        <DistributionBar key={site} label={site} count={count as number} total={triageData.stats.total} color="var(--accent-primary)" />
-                                    ))}
-                                </div>
+                                    </div>
+                                )}
 
-                                <div className="mb-6">
-                                    <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>SSID Distribution (Sampled)</p>
-                                    {triageData?.ssidDistribution && Object.entries(triageData.ssidDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).slice(0, 6).map(([ssid, count]) => (
-                                        <DistributionBar key={ssid} label={ssid} count={count as number} total={triageData.stats.total} color="var(--accent-secondary)" />
-                                    ))}
-                                </div>
+                                {/* 5. SUB-VIEW 3: TrustSec & Failure Intelligence (Option C) */}
+                                {triageSubView === "trustsec" && (
+                                    <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '24px' }}>
+                                        {/* Left Column: TrustSec SGT Dictionary */}
+                                        <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                            <div>
+                                                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>TrustSec Security Groups</h4>
+                                                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>18 Live Enterprise SGT Tags</p>
+                                            </div>
 
-                                <div>
-                                    <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '0.05em' }}>Auth Protocol (Sampled)</p>
-                                    {triageData?.authDistribution && Object.entries(triageData.authDistribution).sort((a, b) => (b[1] as number) - (a[1] as number)).map(([method, count]) => (
-                                        <DistributionBar key={method} label={method.toUpperCase()} count={count as number} total={triageData.stats.total} color="#4ade80" />
-                                    ))}
-                                </div>
-                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '560px', overflowY: 'auto' }} className="custom-scrollbar">
+                                                {triageData.trustSec?.tags?.map((s: any) => (
+                                                    <div 
+                                                        key={s.tag}
+                                                        style={{
+                                                            padding: '10px 12px',
+                                                            borderRadius: '6px',
+                                                            background: 'rgba(255,255,255,0.02)',
+                                                            border: '1px solid var(--border-color)',
+                                                            display: 'flex',
+                                                            justifyContent: 'space-between',
+                                                            alignItems: 'center'
+                                                        }}
+                                                    >
+                                                        <div>
+                                                            <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{s.name}</div>
+                                                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{s.description || 'Enterprise Policy'}</div>
+                                                        </div>
+                                                        <span style={{ 
+                                                            fontSize: '0.75rem', 
+                                                            fontWeight: 800, 
+                                                            fontFamily: 'monospace',
+                                                            padding: '2px 8px', 
+                                                            borderRadius: '4px', 
+                                                            background: 'rgba(56, 189, 248, 0.15)', 
+                                                            color: 'var(--accent-primary)' 
+                                                        }}>
+                                                            TAG {s.tag}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
 
-                        </div>
+                                        {/* Right Column: Failure Intelligence Knowledgebase */}
+                                        <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div>
+                                                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>ISE Failure Intelligence</h4>
+                                                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                        Search root causes and recommended resolutions directly from Cisco ISE MnT.
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div style={{ position: 'relative' }}>
+                                                <Search size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: 'var(--text-muted)' }} />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search error code (e.g. 100001, 5400) or reason..."
+                                                    value={failureSearch}
+                                                    onChange={(e) => setFailureSearch(e.target.value)}
+                                                    style={{
+                                                        width: '100%',
+                                                        padding: '6px 10px 6px 32px',
+                                                        borderRadius: '6px',
+                                                        border: '1px solid var(--border-color)',
+                                                        background: 'rgba(255,255,255,0.03)',
+                                                        color: 'var(--text-primary)',
+                                                        fontSize: '0.8rem',
+                                                        outline: 'none'
+                                                    }}
+                                                />
+                                            </div>
+
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '520px', overflowY: 'auto' }} className="custom-scrollbar">
+                                                {filteredFailures.map((f: any) => (
+                                                    <div 
+                                                        key={f.id}
+                                                        style={{
+                                                            padding: '12px 16px',
+                                                            borderRadius: '8px',
+                                                            background: 'rgba(239, 68, 68, 0.03)',
+                                                            border: '1px solid rgba(239, 68, 68, 0.15)',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            gap: '6px'
+                                                        }}
+                                                    >
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                            <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#ef4444' }}>{f.code}</span>
+                                                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>ID: {f.id}</span>
+                                                        </div>
+                                                        {f.cause && (
+                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                                                <strong>Cause:</strong> {f.cause}
+                                                            </div>
+                                                        )}
+                                                        {f.resolution && (
+                                                            <div style={{ fontSize: '0.75rem', color: '#10b981' }}>
+                                                                <strong>Resolution:</strong> {f.resolution}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
                     </div>
                 )}
 

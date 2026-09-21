@@ -1,267 +1,240 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { logAudit } from '@/lib/audit';
 import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
-import { getUserDetails } from '@/lib/ldap';
-import { getFailureInsight, parseCalledStationId, getIseUrls, executeWithPanFailover } from '@/lib/ise';
+import { getIseUrls, executeWithPanFailover } from '@/lib/ise';
 import { getCurrentSiteMap } from '@/lib/sites';
 import axios from 'axios';
 import https from 'https';
 
+interface CacheEntry {
+    data: any;
+    timestamp: number;
+}
+
+let triageCache: CacheEntry | null = null;
+const CACHE_TTL = 60 * 1000; // 60 seconds
+
 export async function GET(req: Request) {
     try {
         const session = await auth();
-        console.log(`[ISE TRIAGE] Initiating forensic sync for user: ${session?.user?.email || 'Anonymous'}`);
-        
         const role = (session?.user as any)?.role;
 
         if (!session?.user || !(await hasPermission(role, 'ise'))) {
-            console.warn(`[ISE TRIAGE] Permission denied for role: ${role}`);
             return NextResponse.json({ error: 'Identity Access Denied (ISE Role Required)' }, { status: 403 });
         }
 
-        const { basicAuth } = getIseUrls();
-
         const { searchParams } = new URL(req.url);
+        const forceRefresh = searchParams.get('refresh') === 'true';
         const targetSite = searchParams.get('site')?.toUpperCase();
 
-        console.log(`[ISE TRIAGE] Target Site Filter: ${targetSite || 'NONE (Global)'}`);
-        
-        // Fetch Site Map for enrichment
-        const siteMap = await getCurrentSiteMap();
-        
-        // 3. DUAL-STREAM SAMPLING: Fetch Active Sessions AND Recent Failures
-        const psnCounts: Record<string, number> = {};
-        const reasonCounts: Record<string, number> = {};
-        const ssidCounts: Record<string, number> = {};
-        const nestedHeatmap: Record<string, any> = {};
-        const siteCounts: Record<string, number> = {};
-        const siteFailures: Record<string, number> = {};
-
-        const agent = new https.Agent({ 
-            rejectUnauthorized: false
-        });
-        const startTime = Date.now();
-
-        // Failure Window: Last 15 minutes
-        const now = new Date();
-        const fifteenAgo = new Date(now.getTime() - 15 * 60 * 1000);
-        const formatTime = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, '');
-        const timeStart = formatTime(fifteenAgo);
-        const timeEnd = formatTime(now);
-
-        console.log(`[ISE TRIAGE] Dual-Stream Sampling: ActiveList & Failures`);
-
-        const [activeRes, failureRes] = await Promise.allSettled([
-            executeWithPanFailover(async (baseUrl) => {
-                const res = await axios.get(`${baseUrl}/admin/API/mnt/Session/ActiveList`, {
-                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
-                    httpsAgent: agent,
-                    timeout: 20000
-                });
-                return res.data;
-            }),
-            executeWithPanFailover(async (baseUrl) => {
-                const res = await axios.get(`${baseUrl}/admin/API/mnt/Failure/All/${timeStart}/${timeEnd}/All/All/All`, {
-                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
-                    httpsAgent: agent,
-                    timeout: 15000
-                });
-                return res.data;
-            })
-        ]);
-
-        const activeXml = activeRes.status === 'fulfilled' ? activeRes.value.data : '';
-        const failureXml = failureRes.status === 'fulfilled' ? failureRes.value.data : '';
-
-        const activeMatchesRaw = (activeXml.match(/<activeSession>([\s\S]*?)<\/activeSession>/g) || []);
-        const failureMatchesRaw = (failureXml.match(/<failureRecord>([\s\S]*?)<\/failureRecord>/g) || []);
-
-        let activeMatches = activeMatchesRaw;
-        let failureMatches = failureMatchesRaw;
-
-        // Targeted Filtering: If a site is specified, filter the bulk list BEFORE surgical probing
-        if (targetSite) {
-            console.log(`[ISE TRIAGE] Filtering bulk telemetry for site: ${targetSite}`);
-            activeMatches = activeMatchesRaw.filter((xml: string) => xml.includes(targetSite));
-            failureMatches = failureMatchesRaw.filter((xml: string) => xml.includes(targetSite));
-            
-            // If we found the site, sample up to 100 active and 50 failures
-            activeMatches = activeMatches.slice(0, 100);
-            failureMatches = failureMatches.slice(0, 50);
-        } else {
-            // Global view: Sample up to 150 active and 60 failures
-            activeMatches = activeMatches.slice(0, 150);
-            failureMatches = failureMatches.slice(0, 60);
+        // Return cached payload if valid and not explicitly refreshing
+        if (!forceRefresh && !targetSite && triageCache && Date.now() - triageCache.timestamp < CACHE_TTL) {
+            return NextResponse.json({ ...triageCache.data, cached: true, ageMs: Date.now() - triageCache.timestamp });
         }
 
-        const allProbes = [
-            ...activeMatches.map((xml: string) => ({ xml, status: 'success' })),
-            ...failureMatches.map((xml: string) => ({ xml, status: 'failure' }))
-        ];
+        const { basicAuth } = getIseUrls();
+        const agent = new https.Agent({ rejectUnauthorized: false });
+        const siteMap = await getCurrentSiteMap();
 
-        console.log(`[ISE TRIAGE] Probing ${allProbes.length} sessions (Successes: ${activeMatches.length}, Failures: ${failureMatches.length})`);
-
-        await Promise.allSettled(allProbes.map(async ({ xml, status }) => {
-            const macMatch = xml.match(/<calling_station_id>(.*?)<\/calling_station_id>/);
-            if (!macMatch) return;
-            const mac = macMatch[1];
-            if (!/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(mac)) return;
-
+        const getXml = async (endpoint: string) => {
             try {
-                const { data: detailXml } = await executeWithPanFailover(async (baseUrl) => {
-                    const detailRes = await axios.get(`${baseUrl}/admin/API/mnt/Session/MACAddress/${mac}`, {
-                        headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                const { data } = await executeWithPanFailover(async (baseUrl) => {
+                    const res = await axios.get(`${baseUrl}${endpoint}`, {
+                        headers: { 'Authorization': `Basic ${basicAuth}`, 'Accept': 'application/xml', 'X-ERS-Internal-User': 'true' },
                         httpsAgent: agent,
-                        timeout: 5000
+                        timeout: 8000
                     });
-                    return detailRes.data;
+                    return res.data;
                 });
+                return await parseStringPromise(data, { explicitArray: false });
+            } catch (err: any) {
+                console.warn(`[ISE TRIAGE] XML Error on ${endpoint}:`, err.message);
+                return null;
+            }
+        };
 
-                const methodMatch = detailXml.match(/<authentication_method>(.*?)<\/authentication_method>/);
-                const locationMatch = detailXml.match(/<location>(.*?)<\/location>/);
-                const nasMatch = detailXml.match(/<network_device_name>(.*?)<\/network_device_name>/);
-                const psnMatch = detailXml.match(/<server>(.*?)<\/server>/);
-                const ssidMatch = detailXml.match(/<wlan_ssid>(.*?)<\/wlan_ssid>/);
-                const otherAttrMatch = detailXml.match(/<other_attr_string>(.*?)<\/other_attr_string>/);
+        const getJson = async (endpoint: string) => {
+            try {
+                const { data } = await executeWithPanFailover(async (baseUrl) => {
+                    const res = await axios.get(`${baseUrl}${endpoint}`, {
+                        headers: { 'Authorization': `Basic ${basicAuth}`, 'Accept': 'application/json' },
+                        httpsAgent: agent,
+                        timeout: 8000
+                    });
+                    return res.data;
+                });
+                return data;
+            } catch (err: any) {
+                console.warn(`[ISE TRIAGE] JSON Error on ${endpoint}:`, err.message);
+                return null;
+            }
+        };
 
-                const method = (methodMatch ? methodMatch[1].toLowerCase() : 'unknown').toUpperCase();
-                const location = locationMatch ? locationMatch[1] : 'Unknown';
-                const nas = nasMatch ? nasMatch[1] : (detailXml.match(/<nas_identifier>(.*?)<\/nas_identifier>/)?.[1] || 'Unknown');
-                const psn = psnMatch ? psnMatch[1] : 'Unknown';
-                let ssid = (ssidMatch && ssidMatch[1] !== 'null') ? ssidMatch[1] : null;
+        // Parallel Query Execution
+        const [
+            activeCountXml,
+            profilerCountXml,
+            postureCountXml,
+            versionXml,
+            networkDevicesPage1,
+            networkDevicesPage2,
+            endpointGroupsRes,
+            endpointsRes,
+            sgtRes,
+            failureReasonsXml
+        ] = await Promise.all([
+            getXml('/admin/API/mnt/Session/ActiveCount'),
+            getXml('/admin/API/mnt/Session/ProfilerCount'),
+            getXml('/admin/API/mnt/Session/PostureCount'),
+            getXml('/admin/API/mnt/Version'),
+            getJson('/ers/config/networkdevice?size=100&page=1'),
+            getJson('/ers/config/networkdevice?size=100&page=2'),
+            getJson('/ers/config/endpointgroup?size=100'),
+            getJson('/api/v1/endpoint?size=50'),
+            getJson('/api/v1/trustsec/security-group'),
+            getXml('/admin/API/mnt/FailureReasons')
+        ]);
 
-                if (!ssid && otherAttrMatch) {
-                    const calledStationMatch = otherAttrMatch[1].match(/Called-Station-ID=.*?:(.*?)(?::|:!:|$)/);
-                    if (calledStationMatch) ssid = calledStationMatch[1];
-                }
+        // 1. Process Pulse Telemetry
+        const activeSessions = parseInt(activeCountXml?.sessionCount?.count || '0', 10);
+        const profiledEndpoints = parseInt(profilerCountXml?.sessionCount?.count || '0', 10);
+        const posturedEndpoints = parseInt(postureCountXml?.sessionCount?.count || '0', 10);
+        const version = versionXml?.product?.version || '3.5.0';
 
-                if (['DOT1X', 'MAB', 'WEBAUTH'].includes(method)) {
-                    psnCounts[psn] = (psnCounts[psn] || 0) + 1;
-                    
-                    const otherAttrs: Record<string, string> = {};
-                    if (otherAttrMatch) {
-                        otherAttrMatch[1].split(':!:').forEach((pair: string) => {
-                            const [k, ...v] = pair.split('=');
-                            if (k) otherAttrs[k.trim()] = v.join('=').trim();
-                        });
-                    }
+        // 2. Process Endpoint Groups
+        const rawGroups = endpointGroupsRes?.SearchResult?.resources || [];
+        const groupMap: Record<string, string> = {};
+        const endpointGroups = rawGroups.map((g: any) => {
+            groupMap[g.id] = g.name;
+            return {
+                id: g.id,
+                name: g.name,
+                description: g.description || ''
+            };
+        });
 
-                    const callingStationId = otherAttrs['Called-Station-ID'] || (detailXml.match(/<calling_station_id>(.*?)<\/calling_station_id>/)?.[1]) || "";
-                    const { ssid: extractedSsid, apName: extractedApName, siteCode: extractedSiteCode } = parseCalledStationId(callingStationId, nas);
-                    
-                    if (extractedSsid !== "N/A") ssid = extractedSsid;
-
-                    let siteCode = extractedSiteCode;
-                    if (siteCode === "N/A") {
-                        if (location !== 'Unknown' && location.includes('#')) {
-                            siteCode = location.split('#').pop()?.toUpperCase() || 'OTHER';
-                        } else if (nas !== 'Unknown' && !nas.match(/^\d/)) {
-                            siteCode = nas.substring(0, 3).toUpperCase();
-                        } else {
-                            siteCode = 'OTHER';
-                        }
-                    }
-
-                    if (status === 'success') {
-                        siteCounts[siteCode] = (siteCounts[siteCode] || 0) + 1;
-                    } else {
-                        siteFailures[siteCode] = (siteFailures[siteCode] || 0) + 1;
-                    }
-                    
-                    let profile = otherAttrs['EndPointProfilerProfile'] || otherAttrs['EndPointProfile'] || (detailXml.match(/<endpoint_profile>(.*?)<\/endpoint_profile>/)?.[1]) || "Unknown";
-                    
-                    // Quick ERS Enrichment over Port 443 if MnT profile is Unknown
-                    if (profile === "Unknown") {
-                        try {
-                            const { data: ersData } = await executeWithPanFailover(async (baseUrl) => {
-                                const ersRes = await axios.get(`${baseUrl}/ers/config/endpoint/name/${mac}`, {
-                                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
-                                    httpsAgent: agent,
-                                    timeout: 1500 
-                                });
-                                return ersRes.data;
-                            });
-
-                            const ep = ersData?.ERSEndPoint;
-                            if (ep && ep.mfcAttributes) {
-                                const mfc = ep.mfcAttributes;
-                                const manufacturer = Array.isArray(mfc.mfcHardwareManufacturer) ? mfc.mfcHardwareManufacturer.join('') : mfc.mfcHardwareManufacturer;
-                                const os = Array.isArray(mfc.mfcOperatingSystem) ? mfc.mfcOperatingSystem.join('') : mfc.mfcOperatingSystem;
-                                
-                                if (manufacturer || os) {
-                                    profile = `${manufacturer || ""} ${os || ""}`.trim() || profile;
-                                }
-                            }
-                        } catch (e) {
-                            // Fallback to whatever MnT had
-                        }
-                    }
-                    
-                    if (!nestedHeatmap[siteCode]) nestedHeatmap[siteCode] = { wireless: {}, wired: {}, nas: nas };
-                    
-                    const group = ssid ? nestedHeatmap[siteCode].wireless : nestedHeatmap[siteCode].wired;
-                    const key = ssid || method;
-                    
-                    if (!group[key]) group[key] = [];
-                    if (group[key].length < 12) {
-                        group[key].push({ mac, status, profile });
-                    }
-                    
-                    reasonCounts[method] = (reasonCounts[method] || 0) + 1;
-                    if (ssid) ssidCounts[ssid] = (ssidCounts[ssid] || 0) + 1;
-                }
-            } catch (err) {}
+        // 3. Process Live Endpoints
+        const rawEndpoints = Array.isArray(endpointsRes) ? endpointsRes : (endpointsRes?.response || []);
+        const recentEndpoints = rawEndpoints.map((ep: any) => ({
+            id: ep.id,
+            mac: ep.mac || ep.name || '',
+            ipAddress: ep.ipAddress || 'DHCP / Dynamic',
+            identityGroup: groupMap[ep.groupId] || 'Default',
+            profile: ep.profileId || 'Standard Profile'
         }));
 
-        const hotlist = Object.entries(nestedHeatmap)
-            .map(([site, data]: [string, any]) => {
-                const successes = siteCounts[site] || 0;
-                const failures = siteFailures[site] || 0;
-                const total = successes + failures;
-                const health = total > 0 ? Math.round((successes / total) * 100) : 100;
-                
-                const meta = siteMap.get(site);
+        // 4. Process Network Devices & Map to Sites (Option A)
+        const allDevicesRaw = [
+            ...(networkDevicesPage1?.SearchResult?.resources || []),
+            ...(networkDevicesPage2?.SearchResult?.resources || [])
+        ];
 
-                return {
-                    identity: site,
-                    displayName: site, // Clean site code
-                    siteName: meta?.name || `Site: ${site}`,
-                    siteAddress: meta?.address || "Address telemetry unavailable",
+        const siteBuckets: Record<string, any> = {};
+
+        allDevicesRaw.forEach((dev: any) => {
+            const name: string = dev.name || '';
+            const desc: string = dev.description || '';
+            
+            // Extract Site Code prefix (e.g. "3CP-1SC-SWI-1" -> "3CP", "CUH-..." -> "CUH")
+            let code = 'OTHER';
+            const prefixMatch = name.match(/^([A-Za-z0-9]+)[-_]/);
+            if (prefixMatch) {
+                code = prefixMatch[1].toUpperCase();
+            } else if (name.length >= 3 && !name.match(/^\d/)) {
+                code = name.substring(0, 3).toUpperCase();
+            }
+
+            if (!siteBuckets[code]) {
+                const meta = siteMap.get(code);
+                siteBuckets[code] = {
+                    siteCode: code,
+                    siteName: meta?.name || desc || `Site: ${code}`,
+                    siteAddress: meta?.address || 'Address telemetry unavailable',
                     isUnknownSite: !meta,
-                    count: total,
-                    successRate: health,
-                    latestTimestamp: new Date().toISOString(),
-                    reason: targetSite ? `Targeted Forensics: ${targetSite}` : "Unified Forensic Snapshot",
-                    nas: data.nas,
-                    wireless: data.wireless,
-                    wired: data.wired
+                    deviceCount: 0,
+                    devices: []
                 };
-            })
-            .sort((a, b) => b.count - a.count);
+            }
 
-        // Forensic Audit Logging
-        console.log(`[FORENSIC AUDIT] User: ${session?.user?.email} | Action: ISE_Triage_Dashboard`);
-
-        return NextResponse.json({ 
-            found: hotlist.length > 0, 
-            hotlist: hotlist.slice(0, 20),
-            stats: {
-                total: Object.values(siteCounts).reduce((a, b) => a + b, 0),
-                failures: Object.values(siteFailures).reduce((a, b) => a + b, 0),
-                topReason: Object.entries(reasonCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "RADIUS",
-                topSsid: Object.entries(ssidCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "N/A",
-                topLocation: hotlist[0]?.identity || "None",
-            },
-            psnDistribution: psnCounts,
-            ssidDistribution: ssidCounts,
-            siteDistribution: siteCounts,
-            authDistribution: reasonCounts,
-            processingTime: `${Date.now() - startTime}ms`
+            siteBuckets[code].deviceCount += 1;
+            siteBuckets[code].devices.push({
+                id: dev.id,
+                name: dev.name,
+                description: desc,
+                type: name.includes('SWI') ? 'Switch' : (name.includes('WLC') ? 'Wireless Controller' : 'Network Device')
+            });
         });
+
+        const sortedSites = Object.values(siteBuckets).sort((a: any, b: any) => b.deviceCount - a.deviceCount);
+
+        // Filter if target site requested
+        const displayedSites = targetSite 
+            ? sortedSites.filter((s: any) => s.siteCode === targetSite)
+            : sortedSites;
+
+        // 5. Process TrustSec SGT Tags (Option C)
+        const rawSgt = sgtRes?.response || [];
+        const sgtTags = rawSgt.map((s: any) => ({
+            tag: s.tag,
+            name: s.name,
+            description: s.description || ''
+        })).sort((a: any, b: any) => a.tag - b.tag);
+
+        // 6. Process Failure Intelligence (Option C)
+        const rawReasons = failureReasonsXml?.failureReasonList?.failureReason || [];
+        const reasonsArr = Array.isArray(rawReasons) ? rawReasons : [rawReasons];
+        const failureCatalog = reasonsArr.slice(0, 40).map((r: any) => ({
+            id: r.id || (typeof r === 'object' ? r['$']?.id : '') || '',
+            code: r.code || '',
+            cause: r.cause || '',
+            resolution: r.resolution || ''
+        }));
+
+        const payload = {
+            found: true,
+            pulse: {
+                activeSessions,
+                profiledEndpoints,
+                posturedEndpoints,
+                version,
+                totalManagedDevices: allDevicesRaw.length,
+                totalIdentityGroups: rawGroups.length,
+                totalSgtTags: sgtTags.length,
+                timestamp: new Date().toISOString()
+            },
+            infrastructure: {
+                totalSites: sortedSites.length,
+                totalDevices: allDevicesRaw.length,
+                sites: displayedSites
+            },
+            deviceIdentity: {
+                totalGroups: rawGroups.length,
+                groups: endpointGroups,
+                recentEndpoints
+            },
+            trustSec: {
+                totalTags: sgtTags.length,
+                tags: sgtTags
+            },
+            failureIntelligence: {
+                totalCatalogued: reasonsArr.length,
+                catalog: failureCatalog
+            }
+        };
+
+        // Cache global query
+        if (!targetSite) {
+            triageCache = {
+                data: payload,
+                timestamp: Date.now()
+            };
+        }
+
+        return NextResponse.json(payload);
+
     } catch (e: any) {
-        console.error(`[ISE TRIAGE ERROR]:`, e);
-        return NextResponse.json({ error: "ISE Forensic Synchronization Failure" }, { status: 500 });
+        console.error('[ISE TRIAGE] Critical Route Error:', e);
+        return NextResponse.json({ error: e.message || 'Failed to aggregate Cisco ISE 3.5 telemetry' }, { status: 500 });
     }
 }
