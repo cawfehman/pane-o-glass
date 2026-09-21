@@ -5,6 +5,7 @@ import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/app/actions/permissions";
 import { getUserDetails } from "@/lib/ldap";
 import { getVectraHosts } from "@/lib/vectra";
+import { fetchWlcClientTelemetry } from "@/lib/wlc";
 
 export async function GET(request: Request) {
     try {
@@ -67,8 +68,17 @@ export async function GET(request: Request) {
                 console.error("Vectra Enrichment Error:", e);
             }
 
+            // WLC Real-Time Telemetry (AireOS 8540 SNMP)
+            let wlcTelemetry = null;
+            if (iseSession.calling_station_id) {
+                try {
+                    wlcTelemetry = await fetchWlcClientTelemetry(iseSession.calling_station_id);
+                } catch (e) {}
+            }
+
             return {
                 ...iseSession,
+                wlcTelemetry: wlcTelemetry?.found ? wlcTelemetry : null,
                 enrichment
             };
         }));

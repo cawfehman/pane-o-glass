@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { AlertCircle, RefreshCw, History, Server, Activity, Shield, Users, Wifi, Cpu, Layers, ExternalLink, ChevronDown, ChevronRight, Search, CheckCircle2, MapPin, Tag, HelpCircle, HardDrive, Laptop, Radio } from "lucide-react";
+import { AlertCircle, RefreshCw, History, Server, Activity, Shield, Users, Wifi, Cpu, Layers, ExternalLink, ChevronDown, ChevronRight, Search, CheckCircle2, MapPin, Tag, HelpCircle, HardDrive, Laptop, Radio, Lock, Stethoscope, AlertTriangle, Key } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import ConnectionPath from "@/components/ise/ConnectionPath";
 import EnrichedEndpointCard from "@/components/ise/EnrichedEndpointCard";
@@ -9,6 +9,7 @@ import EnrichedEndpointCard from "@/components/ise/EnrichedEndpointCard";
 export default function CiscoIsePage() {
     const [query, setQuery] = useState("");
     const [loading, setLoading] = useState(false);
+    const [triageMode, setTriageMode] = useState<"general" | "lockout" | "eap">("general");
     const [endpointResult, setEndpointResult] = useState<any>(null);
     const [historyResult, setHistoryResult] = useState<any>(null);
     const [discoveryResult, setDiscoveryResult] = useState<any>(null);
@@ -179,33 +180,49 @@ export default function CiscoIsePage() {
         }
 
         try {
+            const isMac = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(searchTerm) || /^[0-9A-Fa-f]{12}$/.test(searchTerm);
+
             // Fetch Live Session
             const sessionRes = await fetch(`/api/ise/session?query=${encodeURIComponent(searchTerm)}`);
             const sessionData = await sessionRes.json();
 
-            // If we found multiple MACs for a username/IP, show discovery first
-            if (sessionData.found && sessionData.sessions && sessionData.sessions.length > 1 && !macToDrilldown) {
+            // Fetch 7-Day History & Failure Intelligence
+            const searchVal = macToDrilldown || sessionData.sessions?.[0]?.calling_station_id || searchTerm;
+            const historyRes = await fetch(`/api/ise/failures?query=${encodeURIComponent(searchVal)}`);
+            const historyData = await historyRes.json();
+            setHistoryResult(historyData);
+
+            // If username search and we have multi-device history, prioritize Lockout Hunter correlation
+            if (!isMac && historyData.searchType === "user_name" && historyData.sessions && historyData.sessions.length > 0 && !macToDrilldown) {
+                setDiscoveryResult({
+                    found: true,
+                    isUserLockoutSummary: true,
+                    potentialCulprits: historyData.potentialCulprits,
+                    totalMacs: historyData.totalMacs,
+                    sessions: historyData.sessions
+                });
+                setActiveTab("live");
+                setEndpointResult(null);
+            } else if (sessionData.found && sessionData.sessions && sessionData.sessions.length > 1 && !macToDrilldown) {
+                // Multi-session fallback
                 setDiscoveryResult(sessionData);
                 setActiveTab("live");
                 setEndpointResult(null);
             } else {
                 const primarySession = sessionData.sessions?.[0] || null;
-                setEndpointResult(primarySession);
-                
-                // If we have a session or a MAC, fetch history
-                const searchVal = macToDrilldown || primarySession?.calling_station_id || searchTerm;
-                const historyRes = await fetch(`/api/ise/failures?query=${encodeURIComponent(searchVal)}`);
-                const historyData = await historyRes.json();
-                setHistoryResult(historyData);
-                
-                // Prioritize the Live Session tab for all searches and drilldowns
+                // Merge WLC telemetry from history if session didn't have it
+                const enrichedSession = primarySession ? {
+                    ...primarySession,
+                    wlcTelemetry: primarySession.wlcTelemetry || historyData.wlcTelemetry
+                } : null;
+
+                setEndpointResult(enrichedSession);
                 setActiveTab("live");
-                if (macToDrilldown) {
-                    setDiscoveryResult(null); // Clear discovery once drilldown is chosen
-                }
-                
+                if (macToDrilldown) setDiscoveryResult(null);
                 if (!macToDrilldown) setQuery(searchTerm);
             }
+        } catch (err: any) {
+            setError(err.message || "Forensic lookup failed");
 
         } finally {
             setLoading(false);
@@ -312,6 +329,72 @@ export default function CiscoIsePage() {
                     }
                 />
 
+                {/* Quick Triage Mode Selector */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                    <button
+                        type="button"
+                        onClick={() => setTriageMode("general")}
+                        style={{
+                            padding: '6px 14px',
+                            borderRadius: '8px',
+                            border: triageMode === "general" ? '1px solid var(--accent-primary)' : '1px solid var(--border-color)',
+                            background: triageMode === "general" ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255,255,255,0.02)',
+                            color: triageMode === "general" ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                            fontWeight: triageMode === "general" ? 700 : 500,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                        }}
+                    >
+                        <Search size={14} />
+                        Forensic Lookup
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setTriageMode("lockout")}
+                        style={{
+                            padding: '6px 14px',
+                            borderRadius: '8px',
+                            border: triageMode === "lockout" ? '1px solid #ef4444' : '1px solid var(--border-color)',
+                            background: triageMode === "lockout" ? 'rgba(239, 68, 68, 0.15)' : 'rgba(255,255,255,0.02)',
+                            color: triageMode === "lockout" ? '#ef4444' : 'var(--text-secondary)',
+                            fontWeight: triageMode === "lockout" ? 700 : 500,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                        }}
+                    >
+                        <Lock size={14} />
+                        Lockout Hunter (Ghost Device)
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setTriageMode("eap")}
+                        style={{
+                            padding: '6px 14px',
+                            borderRadius: '8px',
+                            border: triageMode === "eap" ? '1px solid #10b981' : '1px solid var(--border-color)',
+                            background: triageMode === "eap" ? 'rgba(16, 185, 129, 0.15)' : 'rgba(255,255,255,0.02)',
+                            color: triageMode === "eap" ? '#10b981' : 'var(--text-secondary)',
+                            fontWeight: triageMode === "eap" ? 700 : 500,
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                        }}
+                    >
+                        <Stethoscope size={14} />
+                        Wireless EAP Doctor
+                    </button>
+                </div>
+
                 {/* Primary Search Bar */}
                 <form onSubmit={(e) => handleSearch(e)} className="glass-card flex gap-4 p-4">
                     <div style={{ position: 'relative', flex: 1 }}>
@@ -319,7 +402,13 @@ export default function CiscoIsePage() {
                             type="text"
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
-                            placeholder="Enter MAC, IP, or Username for deep dive..."
+                            placeholder={
+                                triageMode === "lockout" 
+                                    ? "Enter AD username or service account to correlate ghost devices hammering auth..."
+                                    : triageMode === "eap"
+                                    ? "Enter wireless MAC address or username to diagnose 802.1X/EAP handshake..."
+                                    : "Enter MAC, IP, or Username for deep dive..."
+                            }
                             style={{ 
                                 width: '100%', padding: '14px 16px 14px 44px', borderRadius: '12px', 
                                 border: '1px solid var(--border-color)', background: 'var(--bg-card)', 
@@ -330,7 +419,7 @@ export default function CiscoIsePage() {
                         <svg style={{ position: 'absolute', left: '16px', top: '15px', color: 'var(--text-muted)' }} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                     </div>
                     <button type="submit" className="btn-primary" disabled={loading} style={{ padding: '0 32px', borderRadius: '12px', fontWeight: 'bold', minWidth: '140px' }}>
-                        Forensic Search
+                        {triageMode === "lockout" ? 'Hunt Lockout' : triageMode === "eap" ? 'Diagnose EAP' : 'Forensic Search'}
                     </button>
                     {query && (
                         <button type="button" onClick={() => { setQuery(""); setDiscoveryResult(null); setEndpointResult(null); setHistoryResult(null); setActiveTab("dashboard"); }} className="btn-secondary" style={{ padding: '0 20px', borderRadius: '12px' }}>
@@ -980,19 +1069,106 @@ export default function CiscoIsePage() {
                     <div>
                         {discoveryResult ? (
                             <div>
-                                <h3 className="mb-4">Identity Conflict Detected: Multiple Devices for '{query}'</h3>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
-                                    {discoveryResult.sessions.map((item: any, idx: number) => (
-                                        <div key={idx} className="glass-card hover-glow" style={{ cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => handleSearch(undefined, item.calling_station_id)}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                                                <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--accent-primary)' }}>{item.calling_station_id}</span>
-                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{item.framed_ip_address}</span>
+                                {discoveryResult.isUserLockoutSummary ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                        <div className="glass-card" style={{ padding: '20px', borderLeft: '4px solid #ef4444', background: 'rgba(239, 68, 68, 0.05)' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                    <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'rgba(239, 68, 68, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
+                                                        <Lock size={20} />
+                                                    </div>
+                                                    <div>
+                                                        <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-primary)' }}>
+                                                            Account Lockout Hunter: Correlated Devices for '{query}'
+                                                        </h3>
+                                                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                                            Scanned 7-day authentication history across {discoveryResult.totalMacs} device(s). Devices sending bad passwords are prioritized below.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                {discoveryResult.potentialCulprits > 0 && (
+                                                    <span style={{ padding: '4px 12px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.4)', fontWeight: 700, fontSize: '0.75rem' }}>
+                                                        {discoveryResult.potentialCulprits} Likely Lockout Culprit{discoveryResult.potentialCulprits > 1 ? 's' : ''}
+                                                    </span>
+                                                )}
                                             </div>
-                                            <p style={{ fontSize: '0.9rem', marginBottom: '16px' }}><strong>Profile:</strong> {item.endpoint_profile || "Unknown"}</p>
-                                            <button className="btn-secondary w-full text-xs">Enrich & Expand &rarr;</button>
                                         </div>
-                                    ))}
-                                </div>
+
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '16px' }}>
+                                            {discoveryResult.sessions.map((item: any, idx: number) => (
+                                                <div 
+                                                    key={idx} 
+                                                    className="glass-card hover-glow" 
+                                                    style={{ 
+                                                        cursor: 'pointer', 
+                                                        transition: 'all 0.2s',
+                                                        borderLeft: item.is_lockout_culprit ? '4px solid #ef4444' : '1px solid var(--border-color)',
+                                                        background: item.is_lockout_culprit ? 'rgba(239, 68, 68, 0.04)' : undefined,
+                                                        padding: '20px'
+                                                    }} 
+                                                    onClick={() => handleSearch(undefined, item.calling_station_id)}
+                                                >
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                                                        <div>
+                                                            <div style={{ fontFamily: 'monospace', fontWeight: 800, fontSize: '1rem', color: item.is_lockout_culprit ? '#ef4444' : 'var(--accent-primary)' }}>
+                                                                {item.calling_station_id}
+                                                            </div>
+                                                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                                                {item.framed_ip_address !== 'N/A' ? item.framed_ip_address : 'No Active IP'}
+                                                            </div>
+                                                        </div>
+
+                                                        {item.is_lockout_culprit && (
+                                                            <span style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', padding: '2px 8px', borderRadius: '4px', background: '#ef4444', color: '#fff' }}>
+                                                                CULPRIT
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.8rem', marginBottom: '14px' }}>
+                                                        <div><strong>Device:</strong> <span style={{ color: 'var(--text-primary)' }}>{item.endpoint_profile || "Unknown"}</span></div>
+                                                        <div><strong>SSID / AP:</strong> <span style={{ color: 'var(--accent-secondary)' }}>{item.wlan_ssid || "N/A"} ({item.access_point_name || "N/A"})</span></div>
+                                                        <div><strong>Switch / NAD:</strong> <span style={{ color: 'var(--text-muted)' }}>{item.nas_identifier || "N/A"}</span></div>
+                                                        
+                                                        {item.bad_password_count > 0 && (
+                                                            <div style={{ color: '#ef4444', fontWeight: 600, background: 'rgba(239, 68, 68, 0.1)', padding: '4px 8px', borderRadius: '4px' }}>
+                                                                ⚠️ {item.bad_password_count} Bad Password Attempt{item.bad_password_count > 1 ? 's' : ''} (Last: {item.last_failure_reason || "Auth Failed"})
+                                                            </div>
+                                                        )}
+
+                                                        {item.wlcTelemetry?.found && (
+                                                            <div style={{ fontSize: '0.75rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                <Radio size={12} />
+                                                                <span>Live on {item.wlcTelemetry.wlcName} ({item.wlcTelemetry.status})</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <button className="btn-secondary w-full text-xs flex items-center justify-center gap-1">
+                                                        <span>Deep Dive MAC & EAP Trace</span>
+                                                        <ChevronRight size={14} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <h3 className="mb-4">Identity Conflict Detected: Multiple Devices for '{query}'</h3>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
+                                            {discoveryResult.sessions.map((item: any, idx: number) => (
+                                                <div key={idx} className="glass-card hover-glow" style={{ cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => handleSearch(undefined, item.calling_station_id)}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                                                        <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--accent-primary)' }}>{item.calling_station_id}</span>
+                                                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{item.framed_ip_address}</span>
+                                                    </div>
+                                                    <p style={{ fontSize: '0.9rem', marginBottom: '16px' }}><strong>Profile:</strong> {item.endpoint_profile || "Unknown"}</p>
+                                                    <button className="btn-secondary w-full text-xs">Enrich & Expand &rarr;</button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ) : endpointResult ? (
                             <EnrichedEndpointCard session={endpointResult} />

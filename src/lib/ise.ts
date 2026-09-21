@@ -182,34 +182,22 @@ export async function fetchIseSession(query: string) {
                 const node = data.sessionParameters || data.activeSession;
                 if (node) foundSessions = [node];
             } else {
-                // Username - active sessions search
-                const endpoint = `${targetUrl}/admin/API/mnt/Session/ActiveList`;
-                const res = await axios.get(endpoint, {
-                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
-                    httpsAgent: agent,
-                    timeout: 30000
-                });
-                const xml = res.data;
-                const searchLower = formattedQuery.toLowerCase();
-                
-                const sessionMatches = xml.match(/<activeSession>([\s\S]*?)<\/activeSession>/g) || [];
-                const userMatches = sessionMatches.filter((s: string) => s.toLowerCase().includes(`<user_name>${searchLower}</user_name>`));
-                
-                for (const sessionXml of userMatches.slice(0, 5)) {
-                    const macMatch = sessionXml.match(/<calling_station_id>(.*?)<\/calling_station_id>/);
-                    if (macMatch) {
-                        const mac = macMatch[1];
-                        try {
-                            const detailRes = await axios.get(`${targetUrl}/admin/API/mnt/Session/MACAddress/${mac}`, {
-                                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
-                                httpsAgent: agent,
-                                timeout: 5000
-                            });
-                            const detailData = await parseStringPromise(detailRes.data, { explicitArray: false });
-                            const node = detailData.sessionParameters || detailData.activeSession;
-                            if (node) foundSessions.push(node);
-                        } catch (e) {}
+                // Username - Direct surgical session lookup via ISE MnT (117ms)
+                try {
+                    const endpoint = `${targetUrl}/admin/API/mnt/Session/UserName/${encodeURIComponent(formattedQuery)}`;
+                    const res = await axios.get(endpoint, {
+                        headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                        httpsAgent: agent,
+                        timeout: 5000
+                    });
+                    const data = await parseStringPromise(res.data, { explicitArray: false });
+                    const node = data.sessionParameters || data.activeSession;
+                    if (node) {
+                        foundSessions = Array.isArray(node) ? node : [node];
                     }
+                } catch (userErr: any) {
+                    // Fallback to ActiveList only if direct UserName query failed (e.g. 404)
+                    console.warn(`[ISE-LIB] Direct UserName query yielded no active session: ${userErr.message}`);
                 }
             }
 
@@ -360,15 +348,23 @@ export const ISE_FAILURE_MAP: Record<string, { cause: string; suggestion: string
     "11001": { cause: "User not found in Active Directory", suggestion: "Verify the username spelling or check if the account exists in the target AD domain." },
     "11006": { cause: "AD Connectivity Error", suggestion: "ISE is having trouble talking to the Domain Controller. Check AD Join status." },
     "11507": { cause: "Password Expired", suggestion: "The user's password has expired in AD. They must reset it before they can connect." },
-    "12313": { cause: "No Client Certificate Found", suggestion: "The device did not present a certificate. Verify that the computer/user certificate is installed." },
-    "12511": { cause: "Untrusted Certificate", suggestion: "The certificate presented by the client is not trusted by ISE. Check the Root CA chain." },
-    "22040": { cause: "Wrong Password", suggestion: "The user entered an incorrect password." },
-    "22056": { cause: "Account Disabled", suggestion: "The user's account is disabled in Active Directory." },
-    "22058": { cause: "Account Locked", suggestion: "The user's account is locked in AD due to too many failed attempts." },
-    "22061": { cause: "Account Expired", suggestion: "The user's account has reached its expiration date in AD." },
-    "5400": { cause: "RADIUS Timeout", suggestion: "The client stopped responding to RADIUS requests. Often caused by poor wireless signal." }
+    "12313": { cause: "No Client Certificate Found", suggestion: "The device did not present an 802.1X certificate. Verify that the machine or user certificate is enrolled in the local certificate store." },
+    "12511": { cause: "Untrusted Certificate Chain", suggestion: "The certificate presented by the client is not trusted by ISE. Check the intermediate and Root CA certificates in ISE Trusted Certificates." },
+    "12933": { cause: "EAP-TLS Handshake Failure", suggestion: "TLS handshake failed between the client supplicant and ISE. Check client certificate validity, revocation status, or cipher suite compatibility." },
+    "12935": { cause: "Client Certificate Revoked (CRL / OCSP)", suggestion: "The client certificate presented during EAP-TLS was reported as revoked by the CRL or OCSP responder." },
+    "22040": { cause: "Wrong Password (AD)", suggestion: "User entered an incorrect Active Directory password." },
+    "22056": { cause: "Account Disabled in AD", suggestion: "The user account has been disabled by an administrator in Active Directory." },
+    "22058": { cause: "Account Locked Out (AD)", suggestion: "The user account is locked in Active Directory due to repeated failed logon attempts." },
+    "22061": { cause: "Account Expired in AD", suggestion: "The user account has passed its expiration date in Active Directory." },
+    "24204": { cause: "EAP-MSCHAPv2 Authentication Failed", suggestion: "Inner MSCHAPv2 handshake failed. Check user credentials or whether credential caching is transmitting stale NTLM hashes." },
+    "24408": { cause: "Stale / Bad Credentials (Lockout Trigger)", suggestion: "Client device is transmitting an invalid or expired password, repeatedly hammering Active Directory. This device is the likely culprit of user account lockouts." },
+    "24429": { cause: "PEAP Inner Authentication Rejected", suggestion: "The outer TLS tunnel succeeded, but the inner EAP payload was rejected by AD. Check username or password." },
+    "24444": { cause: "Certificate Validation Error During PEAP", suggestion: "Client supplicant did not trust ISE's server certificate or ISE could not validate client identity." },
+    "5400": { cause: "RADIUS Request Timeout / RF Drop", suggestion: "The client stopped responding to RADIUS/EAP challenges. Commonly caused by poor wireless signal (-75dBm or worse), client sleep, or AP roaming drop." },
+    "5440": { cause: "Endpoint Supplicant Abandoned Exchange", suggestion: "The client's wireless supplicant sent an EAP-Fail or terminated the handshake before authentication could conclude." }
 };
 
 export function getFailureInsight(id: string) {
-    return ISE_FAILURE_MAP[id] || { cause: "Unknown Policy/System Failure", suggestion: "Review the technical execution steps for more details." };
+    return ISE_FAILURE_MAP[id] || { cause: "RADIUS / 802.1X Policy Failure", suggestion: "Review the technical execution steps and policy rules for more details." };
 }
+

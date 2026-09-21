@@ -13,7 +13,8 @@ import {
     Server,
     ShieldCheck,
     Users,
-    AlertCircle
+    AlertCircle,
+    Radio
 } from "lucide-react";
 
 interface ConnectionPathProps {
@@ -38,6 +39,16 @@ interface ConnectionPathProps {
             vectra?: any;
         };
         ad?: any;
+        wlcTelemetry?: {
+            found: boolean;
+            wlcName?: string;
+            wlcIp?: string;
+            status?: string;
+            rssi?: number;
+            snr?: number;
+            excluded?: boolean;
+            exclusionReason?: string;
+        };
     };
 }
 
@@ -46,7 +57,7 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
     const vectraData = session.enrichment?.vectra;
     const isPass = session.status !== false;
     const hasVectraAlert = vectraData && (vectraData.t_score > 50 || vectraData.c_score > 50);
-    const isWireless = Boolean(session.wlan_ssid && session.wlan_ssid !== "N/A");
+    const isWireless = Boolean((session.wlan_ssid && session.wlan_ssid !== "N/A") || session.wlcTelemetry?.found);
 
     // Deep classification using Cloud MFC and profile strings
     const fullProfile = `${session.endpoint_profile || ""} ${session.hardware_manufacturer || ""} ${session.hardware_model || ""} ${session.device_type || ""}`.toLowerCase();
@@ -104,16 +115,39 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
             status: 'success',
             icon: <Wifi className="w-6 h-6" />
         });
+
+        // WLC Controller Node (AireOS 8540)
+        const wlcInfo = session.wlcTelemetry;
+        const wlcName = wlcInfo?.wlcName || session.nas_identifier || "Cisco WLC";
+        let wlcStatus = 'success';
+        let wlcSub = wlcInfo?.status ? `State: ${wlcInfo.status}` : "Associated";
+
+        if (wlcInfo?.excluded) {
+            wlcStatus = 'danger';
+            wlcSub = 'EXCLUDED / BLACKLISTED';
+        } else if (wlcInfo && wlcInfo.statusRaw !== 3 && wlcInfo.statusRaw !== 2) {
+            wlcStatus = 'warning';
+        }
+
+        nodes.push({
+            id: 'wlc',
+            label: 'Cisco WLC',
+            sub: `${wlcName} (${wlcSub})`,
+            status: wlcStatus,
+            icon: <Radio className="w-6 h-6" />
+        });
+    } else {
+        // Wired Switch Node
+        nodes.push({
+            id: 'nas',
+            label: 'Access Switch',
+            sub: session.nas_identifier || session.nas_ip_address || "Network Switch",
+            status: 'success',
+            icon: <Server className="w-6 h-6" />
+        });
     }
 
     nodes.push(
-        {
-            id: 'nas',
-            label: 'Network Access',
-            sub: session.nas_identifier || session.nas_ip_address || "Unknown",
-            status: 'success',
-            icon: <Server className="w-6 h-6" />
-        },
         {
             id: 'ise',
             label: 'Cisco ISE',

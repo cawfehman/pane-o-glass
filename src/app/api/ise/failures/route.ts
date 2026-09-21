@@ -5,6 +5,7 @@ import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
 import { fetchIseSession, getFailureInsight, parseCalledStationId, getTrustSecSgtMap, getIseUrls, executeWithPanFailover } from '@/lib/ise';
 import { getUserDetails } from '@/lib/ldap';
+import { fetchWlcClientTelemetry } from '@/lib/wlc';
 import https from 'https';
 import axios from 'axios';
 
@@ -210,12 +211,23 @@ export async function GET(req: Request) {
                 };
             }));
             
+            // Query WLC for real-time state of this MAC
+            let wlcTelemetry = null;
+            try {
+                wlcTelemetry = await fetchWlcClientTelemetry(formattedQuery);
+            } catch (e) {}
+
             const events = enrichedResults.sort((a, b) => {
                 const timeA = new Date(a.timestamp).getTime();
                 const timeB = new Date(b.timestamp).getTime();
                 return isNaN(timeB) ? -1 : (isNaN(timeA) ? 1 : timeB - timeA);
             });
-            return NextResponse.json({ found: events.length > 0, failures: events, searchType: "mac" });
+            return NextResponse.json({ 
+                found: events.length > 0, 
+                failures: events, 
+                searchType: "mac",
+                wlcTelemetry: wlcTelemetry?.found ? wlcTelemetry : null
+            });
         } 
         else {
             const macsToScan = new Set<string>();
@@ -270,25 +282,109 @@ export async function GET(req: Request) {
                     });
                 }
 
-                if (latestLog) {
-                    summaryArray.push({
-                        calling_station_id: mac,
-                        timestamp: latestLog.acs_timestamp?._ || latestLog.acs_timestamp || latestLog.last_accounting_update?._ || latestLog.last_accounting_update || "Unknown",
-                        nas_identifier: latestLog.nas_identifier?._ || latestLog.nas_identifier || "Unknown",
-                        endpoint_profile: latestLog.endpoint_profile?._ || latestLog.endpoint_profile || "Unknown",
-                        framed_ip_address: latestLog.framed_ip_address?._ || latestLog.framed_ip_address || "N/A"
+                // Analyze failure frequency and lockout risk across the 7-day window
+                let failCount = 0;
+                let badPasswordCount = 0;
+                let lastFailReason = "";
+                let lastFailTime = "";
+
+                logs.forEach((l: any) => {
+                    const passed = l.passed?._ || l.passed;
+                    const reason = l.failure_reason?._ || l.failure_reason;
+                    const fId = l.failure_id?._ || l.failure_id || l.failureId;
+                    const ts = l.acs_timestamp?._ || l.acs_timestamp || l.timestamp;
+
+                    if (passed === "false" || reason) {
+                        failCount++;
+                        if (!lastFailReason) {
+                            lastFailReason = reason || "Failed";
+                            lastFailTime = ts || "";
+                        }
+                        if (fId === "24408" || fId === "22040" || fId === "24204" || (reason && reason.toLowerCase().includes("password"))) {
+                            badPasswordCount++;
+                        }
+                    }
+                });
+
+                // Pull Cloud MFC attributes for this MAC
+                let hardware_manufacturer = "";
+                let hardware_model = "";
+                let endpoint_profile = latestLog?.endpoint_profile?._ || latestLog?.endpoint_profile || "Unknown";
+                try {
+                    const { data: epRes } = await executeWithPanFailover(async (baseUrl) => {
+                        const ersRes = await axios.get(`${baseUrl}/ers/config/endpoint/name/${mac}`, {
+                            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
+                            httpsAgent: agent,
+                            timeout: 2000
+                        });
+                        return ersRes.data;
                     });
-                } else {
-                    summaryArray.push({ calling_station_id: mac, timestamp: "Unknown", nas_identifier: "Unknown", endpoint_profile: "Unknown" });
+                    const ep = epRes?.ERSEndPoint;
+                    if (ep?.mfcAttributes) {
+                        const mfc = ep.mfcAttributes;
+                        const getStr = (val: any) => Array.isArray(val) ? val.join('') : (val || "");
+                        hardware_manufacturer = getStr(mfc.mfcHardwareManufacturer);
+                        hardware_model = getStr(mfc.mfcHardwareModel);
+                        const parts = [hardware_manufacturer, hardware_model].filter(Boolean).join(' ');
+                        if (parts) endpoint_profile = parts;
+                    }
+                } catch (e) {}
+
+                // Pull WLC status
+                let wlcTelemetry = null;
+                try {
+                    wlcTelemetry = await fetchWlcClientTelemetry(mac);
+                } catch (e) {}
+
+                const val = (v: any) => v?._ || v || "";
+                const rawOther = val(latestLog?.other_attr_string);
+                const otherAttrs: Record<string, string> = {};
+                if (rawOther) {
+                    rawOther.split(':!:').forEach((pair: string) => {
+                        const [key, ...valParts] = pair.split('=');
+                        if (key && valParts.length > 0) otherAttrs[key.trim()] = valParts.join('=').trim();
+                    });
                 }
+                const calledStationId = otherAttrs['Called-Station-ID'] || val(latestLog?.calling_station_id) || "";
+                const { ssid, apName, siteCode } = parseCalledStationId(calledStationId, val(latestLog?.network_device_name) || "N/A");
+
+                summaryArray.push({
+                    calling_station_id: mac,
+                    timestamp: val(latestLog?.acs_timestamp) || val(latestLog?.last_accounting_update) || "Unknown",
+                    nas_identifier: val(latestLog?.nas_identifier) || "Unknown",
+                    endpoint_profile,
+                    hardware_manufacturer,
+                    hardware_model,
+                    framed_ip_address: val(latestLog?.framed_ip_address) || "N/A",
+                    wlan_ssid: val(latestLog?.wlan_ssid) || ssid,
+                    access_point_name: apName,
+                    site_code: siteCode,
+                    fail_count: failCount,
+                    bad_password_count: badPasswordCount,
+                    last_failure_reason: lastFailReason,
+                    last_failure_time: lastFailTime,
+                    is_lockout_culprit: badPasswordCount >= 2 || failCount >= 5,
+                    wlcTelemetry: wlcTelemetry?.found ? wlcTelemetry : null
+                });
             }));
             
+            // Sort by lockout risk first (culprits first), then failure count, then timestamp
             summaryArray.sort((a, b) => {
+                if (a.is_lockout_culprit && !b.is_lockout_culprit) return -1;
+                if (!a.is_lockout_culprit && b.is_lockout_culprit) return 1;
+                if (b.bad_password_count !== a.bad_password_count) return b.bad_password_count - a.bad_password_count;
                 const timeA = new Date(a.timestamp).getTime();
                 const timeB = new Date(b.timestamp).getTime();
                 return isNaN(timeB) ? -1 : (isNaN(timeA) ? 1 : timeB - timeA);
             });
-            return NextResponse.json({ found: summaryArray.length > 0, sessions: summaryArray, searchType: "user_name" });
+
+            return NextResponse.json({ 
+                found: summaryArray.length > 0, 
+                sessions: summaryArray, 
+                searchType: "user_name",
+                totalMacs: summaryArray.length,
+                potentialCulprits: summaryArray.filter(s => s.is_lockout_culprit).length
+            });
         }
 
     } catch (e: any) {
