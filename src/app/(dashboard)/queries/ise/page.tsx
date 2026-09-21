@@ -349,7 +349,7 @@ export default function CiscoIsePage() {
                             <span>•</span>
                             <span><strong>Boolean Operators:</strong> <span className="font-mono text-text-secondary">AND</span>, <span className="font-mono text-text-secondary">OR</span>, <span className="font-mono text-text-secondary">NOT</span>, <span className="font-mono text-text-secondary">()</span></span>
                             <span>•</span>
-                            <span><strong>Example:</strong> <span className="font-mono text-emerald-400">rivera-robert</span> or <span className="font-mono text-emerald-400">3CP AND failure</span></span>
+                            <span><strong>Example:</strong> <span className="font-mono text-emerald-400">jsmith</span> or <span className="font-mono text-emerald-400">3CP AND failure</span></span>
                         </div>
                     </form>
 
