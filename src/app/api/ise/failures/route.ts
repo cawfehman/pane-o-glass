@@ -275,12 +275,19 @@ export async function GET(req: Request) {
         else {
             const macsToScan = new Set<string>();
             const userHistoryPayloads: any[] = [];
+            const passiveSessions: any[] = [];
             
             const activeSessionData = await fetchIseSession(formattedQuery);
             if (activeSessionData.found && activeSessionData.sessions) {
                 activeSessionData.sessions.forEach((s: any) => {
-                    const mac = s.calling_station_id?._ || s.calling_station_id || s.callingStationId;
-                    if (mac) macsToScan.add(mac);
+                    if (s.is_passive_identity) {
+                        passiveSessions.push(s);
+                    } else {
+                        const mac = s.calling_station_id?._ || s.calling_station_id || s.callingStationId;
+                        if (mac && !/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(mac)) {
+                            macsToScan.add(mac);
+                        }
+                    }
                 });
             }
 
@@ -334,7 +341,7 @@ export async function GET(req: Request) {
                 } catch (e) {}
             }
 
-            if (macsToScan.size === 0) {
+            if (macsToScan.size === 0 && passiveSessions.length === 0) {
                 return NextResponse.json({ found: false, failures: [], sessions: [] });
             }
 
@@ -435,6 +442,35 @@ export async function GET(req: Request) {
                     wlcTelemetry: wlcTelemetry?.found ? wlcTelemetry : null
                 });
             }));
+
+            // Add any Passive Identity sessions for this user
+            passiveSessions.forEach((ps: any) => {
+                summaryArray.push({
+                    calling_station_id: ps.workstation_ip || ps.calling_station_id,
+                    timestamp: ps.timestamp || "Unknown",
+                    timestamp_label: "LOGON TIME (AD EVENT)",
+                    nas_identifier: ps.nas_identifier || "Active Directory DC",
+                    endpoint_profile: ps.endpoint_profile || "Domain Workstation",
+                    hardware_manufacturer: ps.hardware_manufacturer || "Microsoft Active Directory",
+                    hardware_model: ps.machine_name || ps.hardware_model || "Domain Computer",
+                    framed_ip_address: ps.workstation_ip || ps.framed_ip_address,
+                    workstation_ip: ps.workstation_ip,
+                    hostname: ps.hostname,
+                    machine_name: ps.machine_name,
+                    is_passive_identity: true,
+                    session_type: "PASSIVE_ID",
+                    wlan_ssid: "N/A (PassiveID)",
+                    access_point_name: "N/A (Domain Controller)",
+                    site_code: ps.site_code || "REM",
+                    fail_count: 0,
+                    bad_password_count: 0,
+                    last_failure_reason: "Active PassiveID Session (AD DC Event 4624)",
+                    last_failure_time: ps.timestamp || "",
+                    is_lockout_culprit: false,
+                    wlcTelemetry: null,
+                    ad: ps.enrichment?.ad || null
+                });
+            });
             
             // Sort by lockout risk first (culprits first), then failure count, then timestamp
             summaryArray.sort((a, b) => {

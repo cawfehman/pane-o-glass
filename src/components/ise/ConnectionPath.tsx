@@ -20,6 +20,7 @@ import {
 interface ConnectionPathProps {
     session: {
         calling_station_id: string;
+        user_name?: string;
         endpoint_profile?: string;
         hardware_manufacturer?: string;
         hardware_model?: string;
@@ -34,6 +35,11 @@ interface ConnectionPathProps {
         wlan_ssid?: string;
         rssi?: string;
         status?: boolean;
+        is_passive_identity?: boolean;
+        session_type?: string;
+        workstation_ip?: string;
+        hostname?: string;
+        machine_name?: string;
         enrichment?: {
             ad?: any;
             vectra?: any;
@@ -44,6 +50,7 @@ interface ConnectionPathProps {
             wlcName?: string;
             wlcIp?: string;
             status?: string;
+            statusRaw?: number;
             rssi?: number;
             snr?: number;
             excluded?: boolean;
@@ -56,8 +63,9 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
     const adData = session.enrichment?.ad || session.ad;
     const vectraData = session.enrichment?.vectra;
     const isPass = session.status !== false;
+    const isPassive = Boolean(session.is_passive_identity || session.session_type === 'PASSIVE_ID');
     const hasVectraAlert = vectraData && (vectraData.t_score > 50 || vectraData.c_score > 50);
-    const isWireless = Boolean((session.wlan_ssid && session.wlan_ssid !== "N/A") || session.wlcTelemetry?.found);
+    const isWireless = !isPassive && Boolean((session.wlan_ssid && session.wlan_ssid !== "N/A") || session.wlcTelemetry?.found);
 
     // Deep classification using Cloud MFC and profile strings
     const fullProfile = `${session.endpoint_profile || ""} ${session.hardware_manufacturer || ""} ${session.hardware_model || ""} ${session.device_type || ""}`.toLowerCase();
@@ -77,7 +85,7 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
     const isPhone = !isTablet && (fullProfile.includes('iphone') || fullProfile.includes('pixel') || fullProfile.includes('galaxy') || 
                                   fullProfile.includes('smartphone') || fullProfile.includes('mobile') || fullProfile.includes('android'));
 
-    const isWorkstation = fullProfile.includes('windows') || fullProfile.includes('workstation') || fullProfile.includes('laptop') || 
+    const isWorkstation = isPassive || fullProfile.includes('windows') || fullProfile.includes('workstation') || fullProfile.includes('laptop') || 
                           fullProfile.includes('desktop') || fullProfile.includes('dell') || fullProfile.includes('lenovo') || fullProfile.includes('macbook');
 
     const renderEndpointIcon = () => {
@@ -90,79 +98,115 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
         return <Cpu className="w-6 h-6" />;
     };
 
-    const endpointLabel = session.hardware_model || 
-                          (session.endpoint_profile && session.endpoint_profile !== "Unknown" ? session.endpoint_profile : 'Endpoint');
+    let nodes: any[] = [];
 
-    const endpointSub = session.hardware_manufacturer ? 
-                        `${session.hardware_manufacturer} · ${session.calling_station_id}` : 
-                        session.calling_station_id;
-
-    const nodes = [
-        {
-            id: 'endpoint',
-            label: endpointLabel,
-            sub: endpointSub,
-            status: hasVectraAlert ? 'warning' : 'success',
-            icon: renderEndpointIcon()
-        }
-    ];
-
-    if (isWireless) {
-        nodes.push({
-            id: 'ap',
-            label: 'Access Point',
-            sub: session.access_point_name || "Wireless AP",
-            status: 'success',
-            icon: <Wifi className="w-6 h-6" />
-        });
-
-        // WLC Controller Node (AireOS 8540)
-        const wlcInfo = session.wlcTelemetry;
-        const wlcName = wlcInfo?.wlcName || session.nas_identifier || "Cisco WLC";
-        let wlcStatus = 'success';
-        let wlcSub = wlcInfo?.status ? `State: ${wlcInfo.status}` : "Associated";
-
-        if (wlcInfo?.excluded) {
-            wlcStatus = 'danger';
-            wlcSub = 'EXCLUDED / BLACKLISTED';
-        } else if (wlcInfo && wlcInfo.statusRaw !== 3 && wlcInfo.statusRaw !== 2) {
-            wlcStatus = 'warning';
-        }
-
-        nodes.push({
-            id: 'wlc',
-            label: 'Cisco WLC',
-            sub: `${wlcName} (${wlcSub})`,
-            status: wlcStatus,
-            icon: <Radio className="w-6 h-6" />
-        });
+    if (isPassive) {
+        // Passive Identity Path: Endpoint -> Domain Controller (Event 4624) -> Cisco ISE (PIC) -> Identity (AD)
+        nodes = [
+            {
+                id: 'endpoint',
+                label: session.machine_name || session.hardware_model || "Workstation",
+                sub: session.workstation_ip || session.calling_station_id,
+                status: hasVectraAlert ? 'warning' : 'success',
+                icon: <Laptop className="w-6 h-6" />
+            },
+            {
+                id: 'dc',
+                label: 'Domain Controller',
+                sub: 'Event 4624 / Kerberos',
+                status: 'success',
+                icon: <Server className="w-6 h-6" />
+            },
+            {
+                id: 'ise',
+                label: 'Cisco ISE',
+                sub: `${session.acs_server || "ise-psn01"} (PIC Engine)`,
+                status: 'success',
+                icon: <ShieldCheck className="w-6 h-6" />
+            },
+            {
+                id: 'idp',
+                label: 'Identity (AD)',
+                sub: adData ? adData.displayName : (session.user_name || "Verified"),
+                status: 'success',
+                icon: <Users className="w-6 h-6" />
+            }
+        ];
     } else {
-        // Wired Switch Node
-        nodes.push({
-            id: 'nas',
-            label: 'Access Switch',
-            sub: session.nas_identifier || session.nas_ip_address || "Network Switch",
-            status: 'success',
-            icon: <Server className="w-6 h-6" />
-        });
-    }
+        const endpointLabel = session.hardware_model || 
+                              (session.endpoint_profile && session.endpoint_profile !== "Unknown" ? session.endpoint_profile : 'Endpoint');
 
-    nodes.push(
-        {
-            id: 'ise',
-            label: 'Cisco ISE',
-            sub: session.acs_server || "Policy Engine",
-            status: isPass ? 'success' : 'danger',
-            icon: <ShieldCheck className="w-6 h-6" />
-        },
-        {
-            id: 'idp',
-            label: 'Identity (AD)',
-            sub: adData ? adData.displayName : (session.status === false ? "Auth Failed" : "Verified"),
-            status: adData ? 'success' : (session.status === false ? 'danger' : 'neutral'),
-            icon: <Users className="w-6 h-6" />
+        const endpointSub = session.hardware_manufacturer ? 
+                            `${session.hardware_manufacturer} · ${session.calling_station_id}` : 
+                            session.calling_station_id;
+
+        nodes = [
+            {
+                id: 'endpoint',
+                label: endpointLabel,
+                sub: endpointSub,
+                status: hasVectraAlert ? 'warning' : 'success',
+                icon: renderEndpointIcon()
+            }
+        ];
+
+        if (isWireless) {
+            nodes.push({
+                id: 'ap',
+                label: 'Access Point',
+                sub: session.access_point_name || "Wireless AP",
+                status: 'success',
+                icon: <Wifi className="w-6 h-6" />
+            });
+
+            // WLC Controller Node (AireOS 8540)
+            const wlcInfo = session.wlcTelemetry;
+            const wlcName = wlcInfo?.wlcName || session.nas_identifier || "Cisco WLC";
+            let wlcStatus = 'success';
+            let wlcSub = wlcInfo?.status ? `State: ${wlcInfo.status}` : "Associated";
+
+            if (wlcInfo?.excluded) {
+                wlcStatus = 'danger';
+                wlcSub = 'EXCLUDED / BLACKLISTED';
+            } else if (wlcInfo && wlcInfo.statusRaw !== 3 && wlcInfo.statusRaw !== 2) {
+                wlcStatus = 'warning';
+            }
+
+            nodes.push({
+                id: 'wlc',
+                label: 'Cisco WLC',
+                sub: `${wlcName} (${wlcSub})`,
+                status: wlcStatus,
+                icon: <Radio className="w-6 h-6" />
+            });
+        } else {
+            // Wired Switch Node
+            nodes.push({
+                id: 'nas',
+                label: 'Access Switch',
+                sub: session.nas_identifier || session.nas_ip_address || "Network Switch",
+                status: 'success',
+                icon: <Server className="w-6 h-6" />
+            });
         }
-    );
+
+        nodes.push(
+            {
+                id: 'ise',
+                label: 'Cisco ISE',
+                sub: session.acs_server || "Policy Engine",
+                status: isPass ? 'success' : 'danger',
+                icon: <ShieldCheck className="w-6 h-6" />
+            },
+            {
+                id: 'idp',
+                label: 'Identity (AD)',
+                sub: adData ? adData.displayName : (session.status === false ? "Auth Failed" : "Verified"),
+                status: adData ? 'success' : (session.status === false ? 'danger' : 'neutral'),
+                icon: <Users className="w-6 h-6" />
+            }
+        );
+    }
 
     const nodeWidth = 100 / nodes.length;
 
@@ -172,7 +216,12 @@ export default function ConnectionPath({ session }: ConnectionPathProps) {
                 <h4 className="text-[0.8rem] text-text-muted uppercase tracking-widest">
                     Authentication Path Visualizer
                 </h4>
-                {isWireless && (
+                {isPassive ? (
+                    <div className="flex items-center gap-1.5 text-[0.7rem] text-sky-400 bg-sky-500/10 px-2.5 py-1 rounded-xl border border-sky-500/20">
+                        <ShieldCheck className="w-3 h-3 text-sky-400" />
+                        <span>PASSIVE IDENTITY (AD LOGON)</span>
+                    </div>
+                ) : isWireless && (
                     <div className="flex gap-2">
                         {session.rssi && session.rssi !== "N/A" && (
                             <div className="flex items-center gap-1.5 text-[0.7rem] text-emerald-500 bg-emerald-500/10 px-2.5 py-1 rounded-xl border border-emerald-500/20">

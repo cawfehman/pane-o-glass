@@ -1,6 +1,31 @@
 import https from 'https';
 import axios from 'axios';
 import { parseStringPromise } from 'xml2js';
+import dns from 'dns';
+import { promisify } from 'util';
+import { getComputerDetails } from './ldap';
+
+const reverseDnsAsync = promisify(dns.reverse);
+const dnsCache = new Map<string, { hostname: string | null; timestamp: number }>();
+const DNS_CACHE_TTL = 30 * 60 * 1000; // 30 mins
+
+export async function resolveIpHostname(ip: string): Promise<string | null> {
+    if (!ip || !/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip)) return null;
+    const cached = dnsCache.get(ip);
+    if (cached && Date.now() - cached.timestamp < DNS_CACHE_TTL) {
+        return cached.hostname;
+    }
+    try {
+        const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500));
+        const hostnames = await Promise.race([reverseDnsAsync(ip), timeoutPromise]);
+        const hostname = hostnames && hostnames.length > 0 ? hostnames[0] : null;
+        dnsCache.set(ip, { hostname, timestamp: Date.now() });
+        return hostname;
+    } catch {
+        dnsCache.set(ip, { hostname: null, timestamp: Date.now() });
+        return null;
+    }
+}
 
 export function parseCalledStationId(calledStationId: string, fallbackApName: string = "N/A") {
     let ssid = "N/A";
@@ -217,15 +242,62 @@ export async function fetchIseSession(query: string) {
                 const node = data.sessionParameters || data.activeSession;
                 if (node) foundSessions = [node];
             } else if (searchType === "framed_ip_address") {
-                const endpoint = `${targetUrl}/admin/API/mnt/Session/IPAddress/${formattedQuery}`;
-                const res = await axios.get(endpoint, {
-                    headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
-                    httpsAgent: agent,
-                    timeout: 10000
-                });
-                const data = await parseStringPromise(res.data, { explicitArray: false });
-                const node = data.sessionParameters || data.activeSession;
-                if (node) foundSessions = [node];
+                try {
+                    const endpoint = `${targetUrl}/admin/API/mnt/Session/IPAddress/${formattedQuery}`;
+                    const res = await axios.get(endpoint, {
+                        headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                        httpsAgent: agent,
+                        timeout: 10000
+                    });
+                    const data = await parseStringPromise(res.data, { explicitArray: false });
+                    const node = data.sessionParameters || data.activeSession;
+                    if (node) foundSessions = [node];
+                } catch (ipErr: any) {
+                    console.warn(`[ISE-LIB] MnT IPAddress query failed: ${ipErr.message}. Fallback to scanning ActiveList.`);
+                }
+
+                // If MnT Session/IPAddress failed (standard behavior for PassiveID sessions), scan ActiveList!
+                if (foundSessions.length === 0) {
+                    try {
+                        const res = await axios.get(`${targetUrl}/admin/API/mnt/Session/ActiveList`, {
+                            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
+                            httpsAgent: agent,
+                            timeout: 12000
+                        });
+                        const re = new RegExp('<activeSession>(?:(?!<\\/activeSession>)[\\s\\S])*?>' + formattedQuery + '<\\/(?:calling_station_id|framed_ip_address)[\\s\\S]*?<\\/activeSession>', 'i');
+                        const match = res.data.match(re);
+                        if (match) {
+                            const parsed = await parseStringPromise(match[0], { explicitArray: false });
+                            const activeNode = parsed.activeSession;
+                            if (activeNode) {
+                                if (activeNode.user_name) {
+                                    try {
+                                        const userRes = await axios.get(`${targetUrl}/admin/API/mnt/Session/UserName/${encodeURIComponent(activeNode.user_name)}`, {
+                                            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
+                                            httpsAgent: agent,
+                                            timeout: 5000
+                                        });
+                                        const userData = await parseStringPromise(userRes.data, { explicitArray: false });
+                                        const uNode = userData.sessionParameters || userData.activeSession;
+                                        if (uNode) {
+                                            const arr = Array.isArray(uNode) ? uNode : [uNode];
+                                            const matchedSess = arr.find((s: any) => 
+                                                (s.calling_station_id === formattedQuery || s.framed_ip_address === formattedQuery)
+                                            );
+                                            if (matchedSess) foundSessions = [matchedSess];
+                                            else foundSessions = [arr[0]];
+                                        }
+                                    } catch (e) {}
+                                }
+                                if (foundSessions.length === 0) {
+                                    foundSessions = [activeNode];
+                                }
+                            }
+                        }
+                    } catch (alErr: any) {
+                        console.warn(`[ISE-LIB] ActiveList fallback for IP search failed: ${alErr.message}`);
+                    }
+                }
             } else {
                 // Username - Direct surgical session lookup via ISE MnT (117ms)
                 try {
@@ -255,7 +327,7 @@ export async function fetchIseSession(query: string) {
 
         const sgtMap = await getTrustSecSgtMap();
 
-        const mappedSessions = sessionsArray.map((sessionNode: any) => {
+        const mappedSessions = await Promise.all(sessionsArray.map(async (sessionNode: any) => {
             let timestamp = "Unknown";
             let timestampLabel = "EVENT TIME";
 
@@ -285,11 +357,14 @@ export async function fetchIseSession(query: string) {
                 });
             }
 
-            const callingStationId = otherAttrs['Called-Station-ID'] || sessionNode.calling_station_id?._ || sessionNode.calling_station_id || "";
+            const rawCallingStationId = otherAttrs['Called-Station-ID'] || sessionNode.calling_station_id?._ || sessionNode.calling_station_id || "";
+            const isPassiveId = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(rawCallingStationId) || 
+                                (!sessionNode.nas_ip_address && !sessionNode.audit_session_id && rawCallingStationId.includes('.'));
+
             let extractedSsid = "N/A";
             let extractedApIdentity = sessionNode.network_device_name?._ || sessionNode.network_device_name || otherAttrs['NAS-Identifier'] || "N/A";
 
-            const { ssid: parseSsid, apName: parseApName, siteCode: parseSiteCode } = parseCalledStationId(callingStationId, extractedApIdentity);
+            const { ssid: parseSsid, apName: parseApName, siteCode: parseSiteCode } = parseCalledStationId(rawCallingStationId, extractedApIdentity);
             extractedSsid = parseSsid;
             extractedApIdentity = parseApName;
 
@@ -305,44 +380,81 @@ export async function fetchIseSession(query: string) {
                 }
             }
 
+            // Passive Identity Hostname & Active Directory Computer Object Resolution
+            let resolvedHostname = "";
+            let shortMachineName = "";
+            let passiveEndpointProfile = otherAttrs['EndPointProfilerProfile'] || otherAttrs['EndPointProfile'] || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || sessionNode.endpointProfile || "Unknown";
+            let passiveOsVersion = "";
+            let passiveSiteCode = parseSiteCode;
+
+            if (isPassiveId) {
+                const ip = rawCallingStationId;
+                const dnsName = await resolveIpHostname(ip);
+                if (dnsName) {
+                    resolvedHostname = dnsName;
+                    shortMachineName = dnsName.split('.')[0].toUpperCase();
+                    const compDetails = await getComputerDetails(shortMachineName);
+                    if (compDetails && compDetails.exists) {
+                        passiveEndpointProfile = compDetails.operatingSystem ? `${compDetails.operatingSystem} (Domain Computer)` : "Domain Workstation";
+                        passiveOsVersion = compDetails.operatingSystemVersion || compDetails.operatingSystem || "Windows";
+                        if (compDetails.ou) passiveSiteCode = compDetails.ou;
+                    } else {
+                        passiveEndpointProfile = "Windows Workstation (Domain-Joined)";
+                    }
+                } else {
+                    passiveEndpointProfile = "Domain Computer (PassiveID)";
+                }
+            }
+
             return {
                 user_name: sessionNode.user_name?._ || sessionNode.user_name || sessionNode.userName,
-                calling_station_id: sessionNode.calling_station_id?._ || sessionNode.calling_station_id || sessionNode.callingStationId,
-                framed_ip_address: sessionNode.framed_ip_address?._ || sessionNode.framed_ip_address || sessionNode.framedIPAddress,
+                calling_station_id: rawCallingStationId,
+                framed_ip_address: sessionNode.framed_ip_address?._ || sessionNode.framed_ip_address || sessionNode.framedIPAddress || (isPassiveId ? rawCallingStationId : ""),
+                workstation_ip: isPassiveId ? rawCallingStationId : "",
+                hostname: resolvedHostname,
+                machine_name: shortMachineName,
+                is_passive_identity: isPassiveId,
+                session_type: isPassiveId ? "PASSIVE_ID" : "ACTIVE_8021X",
                 nas_ip_address: sessionNode.nas_ip_address?._ || sessionNode.nas_ip_address || sessionNode.nasIpAddress,
                 nas_port_id: sessionNode.nas_port_id?._ || sessionNode.nas_port_id || sessionNode.nasPortId,
-                nas_identifier: sessionNode.nas_identifier?._ || sessionNode.nas_identifier || sessionNode.nasIdentifier || sessionNode.network_device_name?._ || sessionNode.network_device_name || otherAttrs['NAS-Identifier'] || "Unknown",
-                endpoint_profile: otherAttrs['EndPointProfilerProfile'] || otherAttrs['EndPointProfile'] || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || sessionNode.endpointProfile || "Unknown",
-                identity_group: sessionNode.identity_group?._ || sessionNode.identity_group || sessionNode.identityGroup || "Unknown",
+                nas_identifier: isPassiveId 
+                    ? `AD Domain Controller (via ${sessionNode.acs_server?._ || sessionNode.acs_server || "ISE PSN"})` 
+                    : (sessionNode.nas_identifier?._ || sessionNode.nas_identifier || sessionNode.nasIdentifier || sessionNode.network_device_name?._ || sessionNode.network_device_name || otherAttrs['NAS-Identifier'] || "Unknown"),
+                endpoint_profile: isPassiveId ? passiveEndpointProfile : (otherAttrs['EndPointProfilerProfile'] || otherAttrs['EndPointProfile'] || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || sessionNode.endpointProfile || "Unknown"),
+                identity_group: sessionNode.identity_group?._ || sessionNode.identity_group || sessionNode.identityGroup || (isPassiveId ? "Domain Users" : "Unknown"),
                 posture_status: sessionNode.posture_status?._ || sessionNode.posture_status || sessionNode.postureStatus || "Unknown",
                 timestamp: timestamp,
-                timestamp_label: timestampLabel,
-                authorization_rule: sessionNode.authorization_rule?._ || sessionNode.authorization_rule || sessionNode.authorizationRule || "Unknown",
-                authentication_method: sessionNode.authentication_method?._ || sessionNode.authentication_method || sessionNode.authenticationMethod || "Unknown",
-                authentication_protocol: sessionNode.authentication_protocol?._ || sessionNode.authentication_protocol || sessionNode.authenticationProtocol || "Unknown",
+                timestamp_label: isPassiveId ? "LOGON TIME" : timestampLabel,
+                authorization_rule: sessionNode.authorization_rule?._ || sessionNode.authorization_rule || sessionNode.authorizationRule || (isPassiveId ? "PassiveID_Domain_Logon" : "Unknown"),
+                authentication_method: isPassiveId ? "Passive Identity (AD DC Event 4624)" : (sessionNode.authentication_method?._ || sessionNode.authentication_method || sessionNode.authenticationMethod || "Unknown"),
+                authentication_protocol: isPassiveId ? "Kerberos / Active Directory Logon" : (sessionNode.authentication_protocol?._ || sessionNode.authentication_protocol || sessionNode.authenticationProtocol || "Unknown"),
                 vlan: sessionNode.vlan?._ || sessionNode.vlan || "Unknown",
                 security_group: formattedSgt,
                 sgt_name: sgtName,
                 mdm_server_name: sessionNode.mdm_server_name?._ || sessionNode.mdm_server_name || sessionNode.mdmServerName || "N/A",
                 mdm_reachable: sessionNode.mdm_reachable?._ || sessionNode.mdm_reachable || sessionNode.mdmReachable || "Unknown",
                 mdm_compliant: sessionNode.mdm_compliant?._ || sessionNode.mdm_compliant || sessionNode.mdmCompliant || "Unknown",
-                audit_session_id: sessionNode.audit_session_id?._ || sessionNode.audit_session_id || sessionNode.auditSessionId || "Unknown",
+                audit_session_id: isPassiveId ? "PassiveID Mapping (No RADIUS Audit ID)" : (sessionNode.audit_session_id?._ || sessionNode.audit_session_id || sessionNode.auditSessionId || "Unknown"),
                 acs_server: sessionNode.acs_server?._ || sessionNode.acs_server || sessionNode.acsServer || "Unknown",
                 endpoint_policy: sessionNode.endpoint_policy?._ || sessionNode.endpoint_policy || sessionNode.endpointPolicy || sessionNode.endpoint_profile?._ || sessionNode.endpoint_profile || "Unknown",
-                wlan_ssid: sessionNode.wlan_ssid?._ || sessionNode.wlan_ssid || sessionNode.wlanSsid || extractedSsid,
-                access_point_name: extractedApIdentity,
-                site_code: parseSiteCode,
+                wlan_ssid: isPassiveId ? "N/A (Passive Identity)" : (sessionNode.wlan_ssid?._ || sessionNode.wlan_ssid || sessionNode.wlanSsid || extractedSsid),
+                access_point_name: isPassiveId ? "N/A (Domain Workstation)" : extractedApIdentity,
+                site_code: isPassiveId ? passiveSiteCode : parseSiteCode,
                 rssi: otherAttrs['Airespace-RSSI'] || otherAttrs['RSSI'] || otherAttrs['Signal-Strength'] || "N/A",
                 user_agent: otherAttrs['User-Agent'] || otherAttrs['UserAgent'] || otherAttrs['device-sensor-user-agent'] || "N/A",
-                hardware_manufacturer: "",
-                hardware_model: "",
-                os_version: "",
-                device_type: ""
+                hardware_manufacturer: isPassiveId ? "Microsoft Active Directory" : "",
+                hardware_model: isPassiveId ? (shortMachineName || "Domain Computer") : "",
+                os_version: isPassiveId ? passiveOsVersion : "",
+                device_type: isPassiveId ? "Domain Workstation" : ""
             };
-        });
+        }));
 
-        // Parallel Surgical ERS Profiling over API Gateway Port 443
+        // Parallel Surgical ERS Profiling over API Gateway Port 443 (Skip for PassiveID sessions)
         const enrichedSessions = await Promise.all(mappedSessions.map(async (session: any) => {
+            if (session.is_passive_identity) {
+                return session;
+            }
+
             try {
                 const ersEndpoint = `${activeUrl}/ers/config/endpoint/name/${session.calling_station_id}`;
                 const ersRes = await axios.get(ersEndpoint, {

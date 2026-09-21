@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import ConnectionPath from "./ConnectionPath";
-import { CheckCircle2, XCircle, AlertTriangle, Radio, Copy, Check, ChevronDown, ChevronRight, Stethoscope } from "lucide-react";
+import { CheckCircle2, XCircle, AlertTriangle, Radio, Copy, Check, ChevronDown, ChevronRight, Stethoscope, ShieldCheck } from "lucide-react";
 
 interface EnrichedEndpointCardProps {
     session: any;
@@ -16,13 +16,28 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
     const adData = session.enrichment?.ad || session.ad;
     const vectraData = session.enrichment?.vectra;
     const isPass = session.status !== false;
+    const isPassive = Boolean(session.is_passive_identity || session.session_type === 'PASSIVE_ID');
     const wlc = session.wlcTelemetry;
     
     const statusColor = isPass ? '#10b981' : '#ef4444';
     const statusBg = isPass ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
 
     const copyTicketSummary = () => {
-        const lines = [
+        const lines = isPassive ? [
+            `--- CISCO ISE / PASSIVE IDENTITY TRIAGE SUMMARY ---`,
+            `User/Identity:  ${adData?.displayName || session.user_name || "Unknown"} (${session.user_name || "N/A"})`,
+            `Session Type:   Passive Identity (Active Directory Event Log / Kerberos)`,
+            `Workstation IP: ${session.workstation_ip || session.framed_ip_address || session.calling_station_id}`,
+            `Hostname:       ${session.hostname || "N/A"}`,
+            `Machine Name:   ${session.machine_name || "N/A"}`,
+            `Device Profile: ${session.endpoint_profile || "Domain Computer"} ${session.os_version || ""}`.trim(),
+            `Logon Time:     ${session.timestamp || "Unknown"}`,
+            `Auth Source:    ${session.nas_identifier || "Active Directory DC"}`,
+            `Auth Method:    ${session.authentication_method || "PassiveID (AD DC Event 4624)"}`,
+            `Protocol:       ${session.authentication_protocol || "Kerberos / Active Directory Logon"}`,
+            `ISE PSN Node:   ${session.acs_server || "Unknown"}`,
+            `Auth Result:    PASSED / LOGGED ON (AD Event 4624)`
+        ] : [
             `--- CISCO ISE / WIRELESS TRIAGE SUMMARY ---`,
             `User/Identity: ${adData?.displayName || session.user_name || "Unknown"} (${session.user_name || "N/A"})`,
             `MAC Address:   ${session.calling_station_id}`,
@@ -44,7 +59,7 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
     };
 
     return (
-        <div className="glass-card mb-8 p-0 overflow-hidden" style={{ borderLeft: `6px solid ${statusColor}` }}>
+        <div className="glass-card mb-8 p-0 overflow-hidden" style={{ borderLeft: `6px solid ${isPassive ? '#38bdf8' : statusColor}` }}>
             <div className="p-6">
                 {/* Header with Title, Status and Quick Copy Ticket Note */}
                 <div className="flex justify-between items-start mb-6">
@@ -53,15 +68,33 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
                             <h3 className="text-xl text-text-primary m-0">
                                 {adData?.displayName || session.user_name || "Unknown Identity"}
                             </h3>
+                            {isPassive ? (
+                                <span className="px-2.5 py-0.5 rounded text-[0.7rem] font-bold uppercase bg-sky-500/20 text-sky-400 border border-sky-500/40 flex items-center gap-1.5">
+                                    <ShieldCheck size={12} className="text-sky-400" />
+                                    Passive Identity (AD Logon)
+                                </span>
+                            ) : (
+                                <span className="px-2.5 py-0.5 rounded text-[0.7rem] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                    Active 802.1X / RADIUS
+                                </span>
+                            )}
                             {session.is_lockout_culprit && (
                                 <span className="px-2.5 py-0.5 rounded text-[0.7rem] font-bold uppercase bg-red-500/20 text-red-400 border border-red-500/40">
                                     Lockout Culprit
                                 </span>
                             )}
                         </div>
-                        <p className="text-text-secondary text-sm m-0">
-                            {session.calling_station_id} · {session.framed_ip_address || "No IP assigned"}
-                        </p>
+                        {isPassive ? (
+                            <p className="text-text-secondary text-sm m-0">
+                                {session.hostname ? <strong className="text-text-primary">{session.hostname}</strong> : null}
+                                {session.hostname ? ' · ' : ''}
+                                <span className="font-mono text-xs">{session.workstation_ip || session.calling_station_id}</span>
+                            </p>
+                        ) : (
+                            <p className="text-text-secondary text-sm m-0">
+                                {session.calling_station_id} · {session.framed_ip_address || "No IP assigned"}
+                            </p>
+                        )}
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -161,8 +194,28 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
                 {/* Connection Path Visualizer */}
                 <ConnectionPath session={{ ...session, wlcTelemetry: wlc }} />
 
+                {/* Passive Identity Information Banner */}
+                {isPassive && (
+                    <div className="my-6 p-4 rounded-xl border border-sky-500/30 bg-sky-500/5">
+                        <div className="flex items-center gap-2 mb-2">
+                            <ShieldCheck size={18} className="text-sky-400" />
+                            <h4 className="text-sm font-bold text-sky-400 m-0 uppercase tracking-wider">
+                                Passive Identity Session: Active Directory Domain Logon
+                            </h4>
+                        </div>
+                        <div className="text-xs text-text-secondary leading-relaxed">
+                            <p className="m-0 mb-1">
+                                This session is mapped via Cisco ISE Passive Identity from Active Directory Domain Controller event logs (Kerberos / Event 4624) at workstation <strong className="text-text-primary font-mono">{session.hostname || session.workstation_ip || "Domain Workstation"}</strong>.
+                            </p>
+                            <p className="m-0 text-text-muted">
+                                802.1X/RADIUS supplicant handshake is not engaged for this session. No wireless access point or RADIUS timeout errors recorded.
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 {/* Wireless EAP Diagnostics & Root Cause Box (If Failure Occurred) */}
-                {!isPass && (
+                {!isPassive && !isPass && (
                     <div className="my-6 p-4 rounded-xl border border-red-500/30 bg-red-500/5">
                         <div className="flex items-center gap-2 mb-2">
                             <Stethoscope size={18} className="text-red-400" />

@@ -324,3 +324,69 @@ export async function getBulkUserAdStatus(rawUsernames: string[]): Promise<Recor
     return results;
 }
 
+export interface AdComputerDetails {
+    exists: boolean;
+    name: string;
+    dnsHostName?: string;
+    operatingSystem?: string;
+    operatingSystemVersion?: string;
+    distinguishedName?: string;
+    ou?: string;
+}
+
+/**
+ * Searches Active Directory for a computer account by hostname or sAMAccountName.
+ */
+export async function getComputerDetails(rawName: string): Promise<AdComputerDetails | null> {
+    const url = process.env.AD_URL;
+    const bindDN = process.env.AD_BIND_DN;
+    const bindPassword = process.env.AD_BIND_PASSWORD;
+    const baseDN = process.env.AD_BASE_DN;
+
+    if (!url || !bindDN || !bindPassword || !baseDN || !rawName) {
+        return null;
+    }
+
+    const clean = rawName.split('.')[0].replace(/\$$/, '').trim();
+    if (!clean) return null;
+
+    const client = new Client({
+        url,
+        tlsOptions: url.startsWith("ldaps") ? { rejectUnauthorized: process.env.AD_LDAPS_REJECT_UNAUTHORIZED !== "false" } : undefined,
+    });
+
+    try {
+        await client.bind(bindDN, bindPassword);
+        const escaped = escapeLDAPSearchFilter(clean);
+        const { searchEntries } = await client.search(baseDN, {
+            filter: `(&(objectClass=computer)(|(sAMAccountName=${escaped}$)(cn=${escaped})))`,
+            scope: "sub",
+            attributes: ["cn", "dNSHostName", "operatingSystem", "operatingSystemVersion", "distinguishedName"],
+        });
+
+        if (searchEntries.length === 0) {
+            return { exists: false, name: clean };
+        }
+
+        const e = searchEntries[0];
+        const dn = String(e.distinguishedName || "");
+        const ouMatch = dn.match(/OU=([^,]+)/);
+        const ou = ouMatch ? ouMatch[1].replace(/^_/, '') : "Domain Computers";
+
+        return {
+            exists: true,
+            name: String(e.cn || clean),
+            dnsHostName: String(e.dNSHostName || ""),
+            operatingSystem: String(e.operatingSystem || "Windows"),
+            operatingSystemVersion: String(e.operatingSystemVersion || ""),
+            distinguishedName: dn,
+            ou,
+        };
+    } catch (err: any) {
+        logger.error(`LDAP: Failed to lookup computer details for ${clean}:`, err.message);
+        return { exists: false, name: clean };
+    } finally {
+        try { await client.unbind(); } catch (e: any) { }
+    }
+}
+

@@ -68,9 +68,9 @@ export async function GET(request: Request) {
                 console.error("Vectra Enrichment Error:", e);
             }
 
-            // WLC Real-Time Telemetry (AireOS 8540 SNMP)
+            // WLC Real-Time Telemetry (AireOS 8540 SNMP - skip for PassiveID sessions)
             let wlcTelemetry = null;
-            if (iseSession.calling_station_id) {
+            if (iseSession.calling_station_id && !iseSession.is_passive_identity) {
                 try {
                     wlcTelemetry = await fetchWlcClientTelemetry(iseSession.calling_station_id);
                 } catch (e) {}
