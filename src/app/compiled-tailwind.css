@@ -331,6 +331,9 @@
   .inset-y-0 {
     inset-block: 0px;
   }
+  .-top-1 {
+    top: calc(var(--spacing) * -1);
+  }
   .top-0 {
     top: 0px;
   }
@@ -349,11 +352,14 @@
   .top-6 {
     top: calc(var(--spacing) * 6);
   }
-  .top-\[35\%\] {
-    top: 35%;
+  .top-\[32\%\] {
+    top: 32%;
   }
   .top-full {
     top: 100%;
+  }
+  .-right-1 {
+    right: calc(var(--spacing) * -1);
   }
   .right-0 {
     right: 0px;
@@ -1415,6 +1421,9 @@
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-amber-500) 40%, transparent);
     }
+  }
+  .border-black {
+    border-color: var(--color-black);
   }
   .border-blue-500\/20 {
     border-color: color-mix(in srgb, oklch(62.3% 0.214 259.815) 20%, transparent);
@@ -2750,9 +2759,6 @@
   }
   .text-\[0\.95rem\] {
     font-size: 0.95rem;
-  }
-  .text-\[0\.875rem\] {
-    font-size: 0.875rem;
   }
   .text-\[1\.1rem\] {
     font-size: 1.1rem;
