@@ -281,34 +281,64 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
                     </div>
                 )}
 
-                {/* Grid of technical details */}
+                {/* Context-Adaptive Technical Details Grid */}
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-5 mt-6 text-[0.85rem]">
+                    {/* Column 1: Connection & Infrastructure */}
                     <div className="p-4 bg-white/5 rounded-lg border border-border-color">
-                        <h4 className="text-[0.7rem] text-text-muted uppercase mb-3">Infrastructure</h4>
-                        <p title="The WLC or Switch" className="mb-1"><strong>NAD:</strong> {session.nas_identifier || "Unknown"}</p>
-                        <p title="The SSID" className="mb-1"><strong>SSID:</strong> {session.wlan_ssid || "N/A"}</p>
-                        <p title="The Access Point" className="mb-1"><strong>AP:</strong> {session.access_point_name || "N/A"}</p>
-                        <p title="Site Code" className="mb-1"><strong>Site:</strong> <span className="text-accent-secondary">{session.site_code || "N/A"}</span></p>
+                        <h4 className="text-[0.7rem] text-text-muted uppercase mb-3">
+                            {isPassive ? "Active Directory Placement" : "Infrastructure & Location"}
+                        </h4>
+                        {isPassive ? (
+                            <>
+                                <p className="mb-1"><strong>Logon DC:</strong> <span className="text-sky-300 font-medium">{session.nas_identifier || "Domain Controller"}</span></p>
+                                <p className="mb-1"><strong>Auth Source:</strong> <span className="text-text-secondary">Active Directory (Event 4624)</span></p>
+                                {session.ad_distinguished_name && (
+                                    <p className="mb-1"><strong>Placement OU:</strong> <span className="text-text-primary truncate block" title={session.ad_distinguished_name}>{session.ad_distinguished_name.split(',')[1]?.replace('OU=', '') || "Workstations"}</span></p>
+                                )}
+                                <p className="mb-1"><strong>Workstation IP:</strong> <span className="font-mono text-text-primary">{session.workstation_ip || session.framed_ip_address || "Dynamic IP"}</span></p>
+                            </>
+                        ) : (
+                            <>
+                                <p title="The WLC or Switch" className="mb-1"><strong>NAD / Switch:</strong> <span className="text-text-primary font-medium">{session.nas_identifier && session.nas_identifier !== "Unknown" ? session.nas_identifier : (session.nas_ip_address || "Local Switch")}</span></p>
+                                {session.wlan_ssid && session.wlan_ssid !== "N/A" && (
+                                    <p title="The Wireless SSID" className="mb-1"><strong>SSID:</strong> <span className="text-accent-secondary font-semibold">{session.wlan_ssid}</span></p>
+                                )}
+                                {session.access_point_name && session.access_point_name !== "N/A" && (
+                                    <p title="The Access Point" className="mb-1"><strong>Access Point:</strong> <span className="text-text-primary">{session.access_point_name}</span></p>
+                                )}
+                                {session.site_code && session.site_code !== "N/A" && (
+                                    <p title="Facility Site Code" className="mb-1"><strong>Site Facility:</strong> <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 font-extrabold text-xs">{session.site_code}</span></p>
+                                )}
+                            </>
+                        )}
                     </div>
 
+                    {/* Column 2: Policy, Node & Security Tag */}
                     <div className="p-4 bg-white/5 rounded-lg border border-border-color">
-                        <h4 className="text-[0.7rem] text-text-muted uppercase mb-3">Policy & Node</h4>
-                        <p title="The specific ISE PSN" className="mb-1"><strong>Node:</strong> {session.acs_server || "Unknown"}</p>
-                        <p title="Authorization Rule" className="mb-1"><strong>Rule:</strong> {session.authorization_rule || "Unknown"}</p>
-                        <p title="Auth Method" className="mb-1"><strong>Method:</strong> {session.authentication_method || "Unknown"}</p>
-                        <p title="Identity Group" className="mb-1"><strong>ID Group:</strong> {session.identity_group || "Unknown"}</p>
-                        <p title="Cisco TrustSec Security Group Tag" className="mb-1">
-                            <strong>TrustSec SGT:</strong> <span className="text-sky-400 font-bold">{session.sgt_name && session.sgt_name !== "Unknown" ? session.sgt_name : (session.security_group || "Unknown")}</span>
-                        </p>
+                        <h4 className="text-[0.7rem] text-text-muted uppercase mb-3">Policy & Segmentation</h4>
+                        {session.acs_server && session.acs_server !== "Unknown" && (
+                            <p title="The specific ISE PSN" className="mb-1"><strong>ISE Node:</strong> <span className="font-mono text-xs">{session.acs_server}</span></p>
+                        )}
+                        <p title="Authorization Rule" className="mb-1"><strong>Policy Rule:</strong> <span className="text-text-primary">{session.authorization_rule && session.authorization_rule !== "Unknown" ? session.authorization_rule : (isPassive ? "PassiveID_Default" : "PermitAccess")}</span></p>
+                        <p title="Authentication Protocol" className="mb-1"><strong>Protocol:</strong> <span className="text-text-secondary">{session.authentication_protocol && session.authentication_protocol !== "Unknown" ? session.authentication_protocol : (isPassive ? "Kerberos Logon" : "802.1X / PEAP")}</span></p>
+                        {session.identity_group && session.identity_group !== "Unknown" && (
+                            <p title="Identity Group" className="mb-1"><strong>ID Group:</strong> <span className="text-text-primary">{session.identity_group}</span></p>
+                        )}
+                        {session.sgt_name && session.sgt_name !== "Unknown" && (
+                            <p title="Cisco TrustSec Security Group Tag" className="mb-1">
+                                <strong>TrustSec SGT:</strong> <span className="text-sky-400 font-bold">{session.sgt_name}</span>
+                            </p>
+                        )}
                     </div>
 
+                    {/* Column 3: Telemetry & Device Classification */}
                     <div className="p-4 bg-white/5 rounded-lg border border-border-color">
-                        <h4 className="text-[0.7rem] text-text-muted uppercase mb-3">Telemetry & Profiling</h4>
-                        <p title="Profiling classification from ISE" className="mb-1">
-                            <strong>Device:</strong> <span className="text-accent-primary font-bold">{session.endpoint_profile || "Unknown"}</span>
+                        <h4 className="text-[0.7rem] text-text-muted uppercase mb-3">Hardware & Telemetry</h4>
+                        <p title="Profiling classification" className="mb-1">
+                            <strong>Classification:</strong> <span className="text-accent-primary font-bold">{session.endpoint_profile && session.endpoint_profile !== "Unknown" ? session.endpoint_profile : (isPassive ? "Domain Workstation" : "Generic Device")}</span>
                         </p>
                         {session.hardware_model && (
-                            <p title="Cloud MFC Hardware Model" className="mb-1">
+                            <p title="Hardware Model" className="mb-1">
                                 <strong>Model:</strong> <span className="text-emerald-400 font-semibold">{session.hardware_model}</span>
                             </p>
                         )}
@@ -317,18 +347,24 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
                                 <strong>OS:</strong> <span className="text-text-primary font-medium">{session.os_version}</span>
                             </p>
                         )}
-                        <p title="Wireless Signal Strength" className="mb-1">
-                            <strong>Signal:</strong> {wlc?.rssi ? (
+                        {wlc?.rssi ? (
+                            <p title="Wireless Signal Strength" className="mb-1">
+                                <strong>Signal:</strong>{" "}
                                 <span className="font-bold" style={{ color: wlc.rssi > -70 ? '#10b981' : '#f59e0b' }}>
                                     {wlc.rssi} dBm (Live WLC)
                                 </span>
-                            ) : session.rssi && session.rssi !== "N/A" ? (
+                            </p>
+                        ) : session.rssi && session.rssi !== "N/A" ? (
+                            <p title="Wireless Signal Strength" className="mb-1">
+                                <strong>Signal:</strong>{" "}
                                 <span className="font-bold" style={{ color: parseInt(session.rssi) > -70 ? '#10b981' : '#f59e0b' }}>
                                     {session.rssi} dBm
                                 </span>
-                            ) : "N/A"}
-                        </p>
-                        <p title="VLAN" className="mb-1"><strong>VLAN:</strong> {session.vlan || "Unknown"}</p>
+                            </p>
+                        ) : null}
+                        {session.vlan && session.vlan !== "Unknown" && (
+                            <p title="Assigned VLAN" className="mb-1"><strong>VLAN:</strong> <span className="font-mono text-xs">{session.vlan}</span></p>
+                        )}
                     </div>
                 </div>
             </div>

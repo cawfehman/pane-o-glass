@@ -189,3 +189,103 @@ export function parseBooleanSearchQuery(query: string, fieldMatcher: FieldMatchG
         })
     };
 }
+
+/**
+ * In-memory AST Evaluator: Evaluates an arbitrary JavaScript object against a boolean AST query.
+ * @param item The target record or object to evaluate
+ * @param node The parsed ASTNode
+ * @param termMatcher Function that returns true if item matches a single string term
+ */
+export function evaluateBooleanAST<T>(
+    item: T,
+    node: ASTNode | null,
+    termMatcher: (item: T, term: string) => boolean
+): boolean {
+    if (!node) return true;
+
+    if (node.type === 'TERM') {
+        return termMatcher(item, node.value);
+    } else if (node.type === 'AND') {
+        return evaluateBooleanAST(item, node.left, termMatcher) && evaluateBooleanAST(item, node.right, termMatcher);
+    } else if (node.type === 'OR') {
+        return evaluateBooleanAST(item, node.left, termMatcher) || evaluateBooleanAST(item, node.right, termMatcher);
+    } else if (node.type === 'NOT') {
+        return !evaluateBooleanAST(item, node.expr, termMatcher);
+    }
+    return true;
+}
+
+/**
+ * Checks if a query contains boolean syntax (AND, OR, NOT, parentheses, minus prefix)
+ */
+export function isBooleanQuery(query: string): boolean {
+    if (!query || !query.trim()) return false;
+    const tokens = tokenizeQuery(query);
+    return tokens.some(t => {
+        const u = t.toUpperCase();
+        return u === 'AND' || u === 'OR' || u === 'NOT' || u === '(' || u === ')' || t.startsWith('-');
+    });
+}
+
+/**
+ * High-level helper: Evaluates an ISE session or endpoint item against a boolean query string.
+ * Inspects: user_name, calling_station_id, framed_ip_address, workstation_ip, hostname,
+ * site_code, wlan_ssid, access_point_name, nas_identifier, endpoint_profile, failure_reason.
+ */
+export function matchIseItemWithQuery(item: any, query: string): boolean {
+    if (!query || !query.trim()) return true;
+    if (!item) return false;
+
+    const termMatcher = (record: any, term: string): boolean => {
+        const q = term.toLowerCase().trim();
+        if (!q) return true;
+
+        const fieldsToCheck: (string | undefined | null)[] = [
+            record.user_name,
+            record.userName,
+            record.calling_station_id,
+            record.callingStationId,
+            record.framed_ip_address,
+            record.framedIpAddress,
+            record.workstation_ip,
+            record.workstationIp,
+            record.hostname,
+            record.machine_name,
+            record.site_code,
+            record.siteCode,
+            record.wlan_ssid,
+            record.wlanSsid,
+            record.access_point_name,
+            record.accessPointName,
+            record.nas_identifier,
+            record.nasIdentifier,
+            record.network_device_name,
+            record.endpoint_profile,
+            record.endpointProfile,
+            record.identity_group,
+            record.identityGroup,
+            record.failure_reason,
+            record.failureReason,
+            record.name,
+            record.description,
+            record.status === false ? 'failure' : record.status === true ? 'passed' : undefined
+        ];
+
+        return fieldsToCheck.some(val => {
+            if (!val || typeof val !== 'string') return false;
+            return val.toLowerCase().includes(q);
+        });
+    };
+
+    const tokens = tokenizeQuery(query);
+    if (tokens.length === 0) return true;
+
+    try {
+        const ast = parseTokensToAST(tokens);
+        return evaluateBooleanAST(item, ast, termMatcher);
+    } catch {
+        // Fallback to simple multi-term substring match (implicit AND)
+        const simpleTerms = query.split(/[,;\s]+/).map(t => t.trim()).filter(Boolean);
+        return simpleTerms.every(term => termMatcher(item, term));
+    }
+}
