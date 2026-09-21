@@ -271,6 +271,14 @@ export function matchIseItemWithQuery(item: any, query: string): boolean {
             record.status === false ? 'failure' : record.status === true ? 'passed' : undefined
         ];
 
+        // Normalize potential MAC match: compare alphanumeric hex only if term is hex
+        const cleanTermHex = q.replace(/[:.\-\s]/g, '');
+        const isMacTerm = cleanTermHex.length === 12 && /^[0-9a-f]{12}$/.test(cleanTermHex);
+        if (isMacTerm) {
+            const rawMac = (record.calling_station_id || record.callingStationId || "").replace(/[:.\-\s]/g, '').toLowerCase();
+            if (rawMac && rawMac === cleanTermHex) return true;
+        }
+
         return fieldsToCheck.some(val => {
             if (!val || typeof val !== 'string') return false;
             return val.toLowerCase().includes(q);

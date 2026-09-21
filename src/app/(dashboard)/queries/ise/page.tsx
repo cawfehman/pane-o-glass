@@ -186,8 +186,9 @@ export default function CiscoIsePage() {
         }
 
         try {
-            const isMac = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(searchTerm) || /^[0-9A-Fa-f]{12}$/.test(searchTerm);
-            const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(searchTerm);
+            const strippedHex = searchTerm.trim().replace(/[:.\-\s]/g, '');
+            const isMac = strippedHex.length === 12 && /^[0-9A-Fa-f]{12}$/.test(strippedHex);
+            const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(searchTerm.trim());
             const isBoolean = isBooleanQuery(searchTerm);
 
             // Fetch Live Session

@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
 import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
-import { fetchIseSession, getFailureInsight, getIseFailureCatalog, parseCalledStationId, getTrustSecSgtMap, getIseUrls, executeWithPanFailover } from '@/lib/ise';
+import { fetchIseSession, getFailureInsight, getIseFailureCatalog, parseCalledStationId, getTrustSecSgtMap, getIseUrls, executeWithPanFailover, normalizeMacAddress } from '@/lib/ise';
 import { getUserDetails } from '@/lib/ldap';
 import { fetchWlcClientTelemetry } from '@/lib/wlc';
 import https from 'https';
@@ -26,14 +26,10 @@ export async function GET(req: Request) {
 
     let searchType = "user_name";
     let formattedQuery = query;
-    if (/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(query) || /^[0-9A-Fa-f]{12}$/.test(query)) {
+    const normalizedMac = normalizeMacAddress(query);
+    if (normalizedMac) {
         searchType = "mac";
-        if (query.length === 12) {
-            formattedQuery = query.match(/.{1,2}/g)?.join(":") || query;
-        } else {
-            formattedQuery = query.replace(/-/g, ":");
-        }
-        formattedQuery = formattedQuery.toUpperCase();
+        formattedQuery = normalizedMac;
     }
 
     try {

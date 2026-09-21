@@ -60,6 +60,26 @@ export function parseCalledStationId(calledStationId: string, fallbackApName: st
     return { ssid, apName, siteCode };
 }
 
+/**
+ * Universal MAC Address Normalizer:
+ * Handles any 12-char hex MAC regardless of casing or formatting:
+ * - "abcdef123456" -> "AB:CD:EF:12:34:56"
+ * - "ab:cd:ef:12:34:56" -> "AB:CD:EF:12:34:56"
+ * - "ab-cd-ef-12-34-56" -> "AB:CD:EF:12:34:56"
+ * - "abcd.ef12.3456" (Cisco dot format) -> "AB:CD:EF:12:34:56"
+ * Returns null if the string is not a 12-char hex MAC.
+ */
+export function normalizeMacAddress(input: string): string | null {
+    if (!input) return null;
+    const clean = input.trim();
+    // Strip common delimiters: colons, hyphens, dots, spaces
+    const hexOnly = clean.replace(/[:.\-\s]/g, '');
+    if (/^[0-9A-Fa-f]{12}$/.test(hexOnly)) {
+        return hexOnly.match(/.{1,2}/g)!.join(':').toUpperCase();
+    }
+    return null;
+}
+
 export function getIseUrls() {
     const rawUrl = process.env.ISE_PAN_URL;
     const rawSec = process.env.ISE_SECONDARY_PAN_URL;
@@ -201,16 +221,13 @@ export async function fetchIseSession(query: string) {
     let searchType = "user_name";
     let formattedQuery = query;
 
+    const normalizedMac = normalizeMacAddress(query);
+
     if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(query)) {
         searchType = "framed_ip_address";
-    } else if (/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/.test(query) || /^[0-9A-Fa-f]{12}$/.test(query)) {
-        searchType = "calling_station_id"; // MAC Address
-        if (query.length === 12) {
-            formattedQuery = query.match(/.{1,2}/g)?.join(":") || query;
-        } else {
-            formattedQuery = query.replace(/-/g, ":");
-        }
-        formattedQuery = formattedQuery.toUpperCase();
+    } else if (normalizedMac) {
+        searchType = "calling_station_id"; // MAC Address (Colon, hyphen, Cisco dot, or raw 12-char hex)
+        formattedQuery = normalizedMac;
     } else if (/^[0-9a-fA-F]{20,}$/.test(query) || query.includes('/')) {
         searchType = "session_id";
     }
