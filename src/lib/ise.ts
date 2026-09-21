@@ -103,6 +103,51 @@ export async function getTrustSecSgtMap(): Promise<Record<number, string>> {
     return sgtCache?.map || {};
 }
 
+let failureReasonsCache: { map: Record<string, { code: string; cause: string; resolution: string }>; timestamp: number } | null = null;
+const FAILURE_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+export async function getIseFailureCatalog(): Promise<Record<string, { code: string; cause: string; resolution: string }>> {
+    if (failureReasonsCache && Date.now() - failureReasonsCache.timestamp < FAILURE_CACHE_TTL) {
+        return failureReasonsCache.map;
+    }
+
+    const { primary, secondary, basicAuth } = getIseUrls();
+    const agent = new https.Agent({ rejectUnauthorized: false });
+    const targetUrls = [primary, secondary].filter(Boolean);
+
+    for (const baseUrl of targetUrls) {
+        try {
+            const res = await axios.get(`${baseUrl}/admin/API/mnt/FailureReasons`, {
+                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
+                httpsAgent: agent,
+                timeout: 8000
+            });
+            const data = await parseStringPromise(res.data, { explicitArray: false });
+            const list = data.failureReasonList?.failureReason || [];
+            const listArr = Array.isArray(list) ? list : [list];
+            const map: Record<string, { code: string; cause: string; resolution: string }> = {};
+
+            listArr.forEach((r: any) => {
+                const id = r['$']?.id || r.id;
+                if (id) {
+                    map[id] = {
+                        code: r.code || `Error ${id}`,
+                        cause: r.cause || 'No specific cause documented by ISE',
+                        resolution: r.resolution || 'Review network device and authentication logs'
+                    };
+                }
+            });
+
+            failureReasonsCache = { map, timestamp: Date.now() };
+            return map;
+        } catch (e: any) {
+            console.warn(`[ISE-FAILURE-CATALOG] Failed to fetch FailureReasons from ${baseUrl}:`, e.message);
+        }
+    }
+
+    return failureReasonsCache?.map || {};
+}
+
 export async function executeWithPanFailover<T>(requestFn: (baseUrl: string) => Promise<T>): Promise<{ data: T; activeUrl: string }> {
     const { primary, secondary } = getIseUrls();
     try {

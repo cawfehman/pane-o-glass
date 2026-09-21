@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
 import { hasPermission } from "@/app/actions/permissions";
 import { parseStringPromise } from 'xml2js';
-import { fetchIseSession, getFailureInsight, parseCalledStationId, getTrustSecSgtMap, getIseUrls, executeWithPanFailover } from '@/lib/ise';
+import { fetchIseSession, getFailureInsight, getIseFailureCatalog, parseCalledStationId, getTrustSecSgtMap, getIseUrls, executeWithPanFailover } from '@/lib/ise';
 import { getUserDetails } from '@/lib/ldap';
 import { fetchWlcClientTelemetry } from '@/lib/wlc';
 import https from 'https';
@@ -104,6 +104,8 @@ export async function GET(req: Request) {
             (session.user as any).ipAddress
         );
 
+        const failureCatalog = await getIseFailureCatalog();
+
         if (searchType === "mac") {
             const nodes = await fetchAuthStatus(formattedQuery);
             const mappedResults = nodes.map((node: any) => {
@@ -124,30 +126,71 @@ export async function GET(req: Request) {
                 const callingStationId = otherAttrs['Called-Station-ID'] || val(node.calling_station_id) || "";
                 const { ssid, apName, siteCode } = parseCalledStationId(callingStationId, val(node.network_device_name) || otherAttrs['NAS-Identifier'] || "N/A");
 
-                const failureId = val(node.failure_id) || val(node.failureId) || "";
-                const insight = getFailureInsight(failureId);
+                // Determine true pass/fail status
+                const rawPassed = val(node.passed);
+                const rawFailed = val(node.failed);
+                const isFail = rawPassed === "false" || rawFailed === "true" || Boolean(val(node.failure_reason));
+                const isPassed = !isFail;
 
+                // Extract Failure ID from failure_reason (e.g. "12953 Received EAP packet...") or message_code (e.g. "5400")
+                const rawReason = val(node.failure_reason) || val(node.failureReason) || "";
+                const rawMsgCode = val(node.message_code) || "";
+                let failureId = val(node.failure_id) || val(node.failureId) || "";
+
+                if (!failureId && rawReason) {
+                    const idMatch = rawReason.match(/^(\d{4,6})\b/);
+                    if (idMatch) failureId = idMatch[1];
+                }
+                if (!failureId && rawMsgCode) {
+                    failureId = rawMsgCode;
+                }
+
+                // Parse execution steps
                 let steps: any[] = [];
-                const stepsList = node.execution_steps?.step || node.steps?.step;
-                if (stepsList) {
-                    const stepArr = Array.isArray(stepsList) ? stepsList : [stepsList];
-                    steps = stepArr.map((s: any) => ({
-                        id: val(s.id),
-                        description: val(s.description)
-                    }));
+                const rawSteps = val(node.execution_steps) || val(node.steps);
+                if (typeof rawSteps === 'string' && rawSteps.includes(',')) {
+                    steps = rawSteps.split(',').map(id => id.trim()).filter(Boolean).map(id => {
+                        const info = failureCatalog[id];
+                        return {
+                            id,
+                            description: info?.code || `Step Code ${id}`
+                        };
+                    });
+                    if (!failureId && isFail && steps.length > 0) {
+                        failureId = steps[steps.length - 1].id;
+                    }
+                } else {
+                    const stepsList = node.execution_steps?.step || node.steps?.step;
+                    if (stepsList) {
+                        const stepArr = Array.isArray(stepsList) ? stepsList : [stepsList];
+                        steps = stepArr.map((s: any) => ({
+                            id: val(s.id),
+                            description: val(s.description) || failureCatalog[val(s.id)]?.code || `Step ${val(s.id)}`
+                        }));
+                    }
+                }
+
+                // Look up in Failure Catalog or fallback to built-in dictionary
+                let insight = getFailureInsight(failureId);
+                if (failureCatalog[failureId]) {
+                    const catEntry = failureCatalog[failureId];
+                    insight = {
+                        cause: catEntry.cause || insight.cause,
+                        suggestion: catEntry.resolution || insight.suggestion
+                    };
                 }
 
                 return {
                     timestamp: val(node.acs_timestamp) || val(node.acsTimestamp) || val(node.timestamp) || "Unknown",
-                    timestamp_label: val(node.failure_reason) ? "FAILURE TIME" : "AUTH TIME",
+                    timestamp_label: isFail ? "FAILURE TIME" : "AUTH TIME",
                     user_name: val(node.user_name) || val(node.userName) || "Unknown",
                     calling_station_id: val(node.calling_station_id) || val(node.callingStationId) || val(node.mac_address) || val(node.macAddress) || "Unknown",
                     nas_ip_address: val(node.nas_ip_address) || val(node.nasIpAddress) || "Unknown",
                     nas_port_id: val(node.nas_port_id) || val(node.nasPortId) || "Unknown",
-                    failure_reason: val(node.failure_reason) || val(node.failureReason) || "Passed/Active",
+                    failure_reason: val(node.failure_reason) || val(node.failureReason) || (isPassed ? "Passed/Active" : "Authentication Failed"),
                     failure_id: failureId,
                     insight,
-                    status: val(node.passed) === "true" || node.passed === true || (!val(node.failure_reason) && val(node.passed) !== "false"),
+                    status: isPassed,
                     authentication_method: val(node.authentication_method) || val(node.authenticationMethod) || "Unknown",
                     authentication_protocol: val(node.authentication_protocol) || val(node.authenticationProtocol) || "Unknown",
                     acs_server: val(node.acs_server) || val(node.acsServer) || "Unknown",
@@ -259,12 +302,37 @@ export async function GET(req: Request) {
                 const nodesArr = Array.isArray(nodes) ? nodes : [nodes];
                 nodesArr.forEach((node: any) => {
                     const mac = node.calling_station_id?._ || node.calling_station_id || node.callingStationId;
-                    if (mac) {
+                    if (mac && !/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(mac)) {
                          macsToScan.add(mac);
                          userHistoryPayloads.push(node);
                     }
                 });
             } catch (e) { }
+
+            // If no MACs found or only IP was returned (e.g. TACACS/VPN session), scan ActiveList for client hardware MACs
+            if (macsToScan.size === 0) {
+                try {
+                    const { data: activeListXml } = await executeWithPanFailover(async (baseUrl) => {
+                        const response = await axios.get(`${baseUrl}/admin/API/mnt/Session/ActiveList`, {
+                            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
+                            httpsAgent: agent,
+                            timeout: 8000
+                        });
+                        return response.data;
+                    });
+                    const re = new RegExp('<activeSession>[\\s\\S]*?<user_name>' + formattedQuery + '<\\/user_name>[\\s\\S]*?<\\/activeSession>', 'gi');
+                    const matches = activeListXml.match(re) || [];
+                    for (const m of matches) {
+                        const macMatch = m.match(/<calling_station_id>(.*?)<\/calling_station_id>/i);
+                        if (macMatch && macMatch[1]) {
+                            const foundMac = macMatch[1].trim().toUpperCase();
+                            if (!/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(foundMac)) {
+                                macsToScan.add(foundMac);
+                            }
+                        }
+                    }
+                } catch (e) {}
+            }
 
             if (macsToScan.size === 0) {
                 return NextResponse.json({ found: false, failures: [], sessions: [] });

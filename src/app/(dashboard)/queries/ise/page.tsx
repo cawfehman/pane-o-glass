@@ -209,7 +209,13 @@ export default function CiscoIsePage() {
                 setActiveTab("live");
                 setEndpointResult(null);
             } else {
-                const primarySession = sessionData.sessions?.[0] || null;
+                let primarySession = sessionData.sessions?.[0] || null;
+
+                // If no active live session exists (device dropped/offline), use the latest forensic history event
+                if (!primarySession && historyData.found && historyData.failures && historyData.failures.length > 0) {
+                    primarySession = historyData.failures[0];
+                }
+
                 // Merge WLC telemetry from history if session didn't have it
                 const enrichedSession = primarySession ? {
                     ...primarySession,
