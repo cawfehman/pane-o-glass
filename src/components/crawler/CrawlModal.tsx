@@ -39,6 +39,7 @@ export interface CredentialItem {
     secret: string;
     showPassword?: boolean;
     showSecret?: boolean;
+    hasSecret?: boolean;
 }
 
 interface CrawlModalProps {
@@ -60,7 +61,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
     // Ephemeral credentials for live crawl (supports Primary + sequential Fallbacks)
     const [authMode, setAuthMode] = useState<"server" | "custom">("server");
     const [credentials, setCredentials] = useState<CredentialItem[]>([
-        { id: "primary", label: "Primary (TACACS+ / Domain)", username: "admin", password: "", secret: "" }
+        { id: "primary", label: "Primary (TACACS+ / Domain)", username: "admin", password: "", secret: "", showPassword: false, showSecret: false, hasSecret: false }
     ]);
 
     const [loading, setLoading] = useState(false);
@@ -69,6 +70,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
     const [logs, setLogs] = useState<string[]>([]);
     const [abortController, setAbortController] = useState<AbortController | null>(null);
     const terminalRef = useRef<HTMLDivElement>(null);
+    const modalBodyRef = useRef<HTMLDivElement>(null);
 
     // Instant, container-only scroll to bottom without vibrating/jitter
     useEffect(() => {
@@ -76,6 +78,13 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
             terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
         }
     }, [logs]);
+
+    // Position modal body to terminal once when crawl begins
+    useEffect(() => {
+        if (loading && modalBodyRef.current) {
+            modalBodyRef.current.scrollTop = modalBodyRef.current.scrollHeight;
+        }
+    }, [loading]);
 
     useEffect(() => {
         if (initialSeed) {
@@ -96,7 +105,10 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                 label: `Fallback #${prev.length} (Local Admin)`,
                 username: "localadmin",
                 password: "",
-                secret: ""
+                secret: "",
+                showPassword: false,
+                showSecret: false,
+                hasSecret: false
             }
         ]);
     };
@@ -286,7 +298,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col h-[88vh] max-h-[88vh]">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0">
                     <div className="flex items-center gap-3">
@@ -345,7 +357,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                 </div>
 
                 {/* Body */}
-                <div className="p-6 space-y-5 overflow-y-auto flex-1">
+                <div ref={modalBodyRef} className="p-6 space-y-5 overflow-y-auto flex-1 overscroll-contain">
                     {mode === "mock" ? (
                         /* Clean, Spacious Mock Mode */
                         <div className="max-w-2xl mx-auto space-y-5 py-2">
@@ -667,10 +679,10 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                                     </div>
 
                                                     {/* Optional Enable Secret */}
-                                                    {!cred.showSecret && !cred.secret ? (
+                                                    {!cred.hasSecret && !cred.secret ? (
                                                         <button
                                                             type="button"
-                                                            onClick={() => handleUpdateCredential(cred.id, "showSecret", true)}
+                                                            onClick={() => handleUpdateCredential(cred.id, "hasSecret", true)}
                                                             className="text-[10px] text-amber-400/90 hover:text-amber-300 flex items-center gap-1 transition cursor-pointer"
                                                         >
                                                             <Plus className="w-3 h-3" />
@@ -683,21 +695,32 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => {
-                                                                        handleUpdateCredential(cred.id, "showSecret", false);
+                                                                        handleUpdateCredential(cred.id, "hasSecret", false);
                                                                         handleUpdateCredential(cred.id, "secret", "");
+                                                                        handleUpdateCredential(cred.id, "showSecret", false);
                                                                     }}
                                                                     className="text-[10px] text-slate-500 hover:text-slate-300 cursor-pointer"
                                                                 >
                                                                     Remove
                                                                 </button>
                                                             </div>
-                                                            <input
-                                                                type={cred.showSecret ? "text" : "password"}
-                                                                value={cred.secret}
-                                                                onChange={(e) => handleUpdateCredential(cred.id, "secret", e.target.value)}
-                                                                placeholder="Optional enable password"
-                                                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
-                                                            />
+                                                            <div className="relative">
+                                                                <input
+                                                                    type={cred.showSecret ? "text" : "password"}
+                                                                    value={cred.secret}
+                                                                    onChange={(e) => handleUpdateCredential(cred.id, "secret", e.target.value)}
+                                                                    placeholder="Optional enable password"
+                                                                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-2.5 pr-7 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleUpdateCredential(cred.id, "showSecret", !cred.showSecret)}
+                                                                    className="absolute right-1.5 top-1.5 text-slate-500 hover:text-slate-300 cursor-pointer"
+                                                                    title={cred.showSecret ? "Hide enable secret" : "Show enable secret"}
+                                                                >
+                                                                    {cred.showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>
@@ -735,7 +758,10 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                     <span>Live Execution Console</span>
                                     {loading && (
                                         <span className="flex items-center gap-1.5 text-[10px] text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full font-mono">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping"></span>
+                                            <span className="relative flex h-2 w-2">
+                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                                            </span>
                                             STREAMING
                                         </span>
                                     )}
@@ -769,7 +795,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                             </div>
                             <div 
                                 ref={terminalRef} 
-                                className="bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] leading-relaxed h-64 overflow-y-auto shadow-inner space-y-1 select-text"
+                                className="bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] leading-relaxed h-64 shrink-0 overflow-y-auto overscroll-contain shadow-inner space-y-1 select-text"
                             >
                                 {logs.map((logLine, idx) => (
                                     <div key={idx} className={`font-mono break-all ${getLogLineStyle(logLine)}`}>
