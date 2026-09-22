@@ -61,6 +61,34 @@ export function formatLastVerified(ts?: string | null): string {
     return `${dateStr} ${timeStr}`;
 }
 
+export function detectSwitchStack(dev: any): { isStack: boolean; stackSize: number; portCount: number } {
+    const rawInterfaces = dev.interfaces || {};
+    const intfList: any[] = Array.isArray(rawInterfaces)
+        ? rawInterfaces
+        : Object.entries(rawInterfaces).map(([name, val]: [string, any]) => ({
+            name,
+            ...(typeof val === "object" ? val : {})
+        }));
+
+    const stackMembers = new Set<string>();
+    let ethPorts = 0;
+
+    for (const intf of intfList) {
+        const name = intf.name || "";
+        // Match Cisco stack interface patterns e.g. GigabitEthernet1/0/1, Gi2/0/24, Te3/0/1, Fo4/0/1
+        const m = name.match(/^[A-Za-z]+(\d+)\/\d+\/\d+/);
+        if (m) {
+            stackMembers.add(m[1]);
+            ethPorts++;
+        }
+    }
+
+    if (stackMembers.size > 1) {
+        return { isStack: true, stackSize: stackMembers.size, portCount: ethPorts };
+    }
+    return { isStack: false, stackSize: 1, portCount: ethPorts };
+}
+
 export function getDeviceLayer(dev: any): { layer: "L3" | "L2"; label: string } {
     const role = (dev.role || "").toLowerCase();
     if (role.includes("router") || role === "router") {
@@ -87,6 +115,9 @@ interface SiteContainerBox {
     width: number;
     height: number;
     deviceCount: number;
+    l3Count: number;
+    l2Count: number;
+    isCollapsed: boolean;
     idfs: IdfContainerBox[];
 }
 
@@ -114,9 +145,26 @@ export default function TopologyGraph({
     const [pan, setPan] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-    const [siteFilter, setSiteFilter] = useState<string>("ALL");
     const [layoutMode, setLayoutMode] = useState<"container" | "flow">("container");
     const [hoveredLink, setHoveredLink] = useState<any | null>(null);
+    const [collapsedSites, setCollapsedSites] = useState<Set<string>>(new Set());
+
+    const toggleCollapseSite = (siteCode: string) => {
+        setCollapsedSites(prev => {
+            const next = new Set(prev);
+            if (next.has(siteCode)) next.delete(siteCode);
+            else next.add(siteCode);
+            return next;
+        });
+    };
+
+    const collapseAllSites = () => {
+        setCollapsedSites(new Set(uniqueSites));
+    };
+
+    const expandAllSites = () => {
+        setCollapsedSites(new Set());
+    };
 
     // Filter devices based on Site selection
     const filteredDevices = useMemo(() => {
@@ -246,30 +294,86 @@ export default function TopologyGraph({
             idfMap.get(idf)!.push(dev);
         }
 
+        const MAX_ROW_WIDTH = 2200;
+        const SITE_GAP = 36;
+        const ROW_GAP = 48;
         let currentSiteX = 40;
-        let maxSiteHeight = 0;
-        const SITE_GAP = 40;
-        const startY = 40;
+        let currentSiteY = 40;
+        let maxRowHeight = 0;
+        let maxCanvasWidth = 0;
 
         for (const [siteCode, idfMap] of siteGroups.entries()) {
             const siteLookup = siteDirectory[siteCode];
             const siteName = siteLookup?.name || null;
-            let currentIdfX = currentSiteX + SITE_PAD_X;
-            let maxIdfHeightInSite = 0;
-            const siteIdfBoxes: IdfContainerBox[] = [];
-            let totalDevsInSite = 0;
+            const isCollapsed = collapsedSites.has(siteCode);
 
+            // Tally devices, L3 vs L2 counts
+            let totalDevsInSite = 0;
+            let l3Count = 0;
+            let l2Count = 0;
+            const allSiteDevs: any[] = [];
+            for (const devs of idfMap.values()) {
+                totalDevsInSite += devs.length;
+                allSiteDevs.push(...devs);
+                for (const d of devs) {
+                    if (getDeviceLayer(d).layer === "L3") l3Count++;
+                    else l2Count++;
+                }
+            }
+
+            if (isCollapsed) {
+                const siteWidth = 280;
+                const siteHeight = 86;
+
+                // Wrap to next row if needed
+                if (currentSiteX > 40 && (currentSiteX + siteWidth > MAX_ROW_WIDTH)) {
+                    currentSiteX = 40;
+                    currentSiteY += maxRowHeight + ROW_GAP;
+                    maxRowHeight = 0;
+                }
+
+                // Map all devices inside this collapsed site to its center
+                const centerX = currentSiteX + siteWidth / 2;
+                const centerY = currentSiteY + siteHeight / 2;
+                for (const d of allSiteDevs) {
+                    positions.set(d.hostname, { x: centerX, y: centerY });
+                }
+
+                siteContainers.push({
+                    siteCode,
+                    siteName,
+                    x: currentSiteX,
+                    y: currentSiteY,
+                    width: siteWidth,
+                    height: siteHeight,
+                    deviceCount: totalDevsInSite,
+                    l3Count,
+                    l2Count,
+                    isCollapsed: true,
+                    idfs: []
+                });
+
+                if (siteHeight > maxRowHeight) maxRowHeight = siteHeight;
+                currentSiteX += siteWidth + SITE_GAP;
+                if (currentSiteX > maxCanvasWidth) maxCanvasWidth = currentSiteX;
+                continue;
+            }
+
+            // Expanded site layout
             const sortedIdfs = Array.from(idfMap.keys()).sort((a, b) => {
                 if (a === "MDF") return -1;
                 if (b === "MDF") return 1;
                 return a.localeCompare(b);
             });
 
+            // Calculate preliminary width of expanded site
+            let preliminarySiteWidth = SITE_PAD_X;
+            let maxIdfHeightInSite = 0;
+            const computedIdfDims: Array<{ idfCode: string; devs: any[]; width: number; height: number; cols: number; rows: number }> = [];
+
             for (const idfCode of sortedIdfs) {
                 const devs = idfMap.get(idfCode)!;
-                totalDevsInSite += devs.length;
-
-                // Sort devices: L3 routers/switches first, then L2
+                // Sort devices: L3 routers/switches first at the top, then L2 access stacks below
                 devs.sort((a, b) => {
                     const lA = getDeviceLayer(a).layer;
                     const lB = getDeviceLayer(b).layer;
@@ -278,20 +382,40 @@ export default function TopologyGraph({
                     return a.hostname.localeCompare(b.hostname);
                 });
 
-                // Layout within IDF: Single column if <= 3 devices, 2 columns if > 3
                 const cols = devs.length > 3 ? 2 : 1;
                 const rows = Math.ceil(devs.length / cols);
-
                 const idfWidth = cols * CARD_WIDTH + (cols - 1) * CARD_GAP_X + IDF_PAD_X * 2;
                 const idfHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP_Y + IDF_PAD_TOP + IDF_PAD_BOTTOM;
 
+                computedIdfDims.push({ idfCode, devs, width: idfWidth, height: idfHeight, cols, rows });
+                preliminarySiteWidth += idfWidth + 20;
+                if (idfHeight > maxIdfHeightInSite) {
+                    maxIdfHeightInSite = idfHeight;
+                }
+            }
+
+            const siteWidth = Math.max(preliminarySiteWidth - 20 + SITE_PAD_X, 260);
+            const siteHeight = maxIdfHeightInSite + SITE_PAD_TOP + SITE_PAD_BOTTOM;
+
+            // Wrap to next row if needed
+            if (currentSiteX > 40 && (currentSiteX + siteWidth > MAX_ROW_WIDTH)) {
+                currentSiteX = 40;
+                currentSiteY += maxRowHeight + ROW_GAP;
+                maxRowHeight = 0;
+            }
+
+            // Position IDFs and devices at the resolved (currentSiteX, currentSiteY)
+            let currentIdfX = currentSiteX + SITE_PAD_X;
+            const siteIdfBoxes: IdfContainerBox[] = [];
+
+            for (const { idfCode, devs, width: idfWidth, cols } of computedIdfDims) {
                 const idfBox: IdfContainerBox = {
                     siteCode,
                     idfCode,
                     x: currentIdfX,
-                    y: startY + SITE_PAD_TOP,
+                    y: currentSiteY + SITE_PAD_TOP,
                     width: idfWidth,
-                    height: idfHeight,
+                    height: maxIdfHeightInSite,
                     deviceCount: devs.length
                 };
                 siteIdfBoxes.push(idfBox);
@@ -312,38 +436,29 @@ export default function TopologyGraph({
                 });
 
                 currentIdfX += idfWidth + 20;
-                if (idfHeight > maxIdfHeightInSite) {
-                    maxIdfHeightInSite = idfHeight;
-                }
-            }
-
-            const siteWidth = currentIdfX - currentSiteX - 20 + SITE_PAD_X;
-            const siteHeight = maxIdfHeightInSite + SITE_PAD_TOP + SITE_PAD_BOTTOM;
-
-            // Normalize IDF box heights within this site for visual symmetry
-            for (const idf of siteIdfBoxes) {
-                idf.height = maxIdfHeightInSite;
             }
 
             siteContainers.push({
                 siteCode,
                 siteName,
                 x: currentSiteX,
-                y: startY,
-                width: Math.max(siteWidth, 240),
+                y: currentSiteY,
+                width: siteWidth,
                 height: siteHeight,
                 deviceCount: totalDevsInSite,
+                l3Count,
+                l2Count,
+                isCollapsed: false,
                 idfs: siteIdfBoxes
             });
 
-            currentSiteX += Math.max(siteWidth, 240) + SITE_GAP;
-            if (siteHeight > maxSiteHeight) {
-                maxSiteHeight = siteHeight;
-            }
+            if (siteHeight > maxRowHeight) maxRowHeight = siteHeight;
+            currentSiteX += siteWidth + SITE_GAP;
+            if (currentSiteX > maxCanvasWidth) maxCanvasWidth = currentSiteX;
         }
 
-        const totalWidth = Math.max(currentSiteX + 40, 1200);
-        const totalHeight = Math.max(maxSiteHeight + 100, 700);
+        const totalWidth = Math.max(maxCanvasWidth + 60, 1400);
+        const totalHeight = Math.max(currentSiteY + maxRowHeight + 100, 750);
 
         return {
             nodePositions: positions,
@@ -351,7 +466,7 @@ export default function TopologyGraph({
             idfBoxes: idfContainers,
             canvasSize: { width: totalWidth, height: totalHeight }
         };
-    }, [filteredDevices, layoutMode, siteDirectory]);
+    }, [filteredDevices, layoutMode, siteDirectory, collapsedSites]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         setIsDragging(true);
@@ -428,6 +543,21 @@ export default function TopologyGraph({
                         Hierarchical
                     </button>
                 </div>
+
+                {layoutMode === "container" && (
+                    <>
+                        <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
+                        <button
+                            type="button"
+                            onClick={collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? expandAllSites : collapseAllSites}
+                            className="px-2.5 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white rounded-lg transition text-[11px] font-medium flex items-center gap-1.5 cursor-pointer shadow-sm"
+                            title={collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? "Expand all site containers" : "Collapse all sites to summary view"}
+                        >
+                            <Layers className="w-3 h-3 text-purple-400" />
+                            {collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? "Expand All Sites" : "Collapse All"}
+                        </button>
+                    </>
+                )}
 
                 <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
 
@@ -543,78 +673,134 @@ export default function TopologyGraph({
                     <rect width="100%" height="100%" fill="url(#grid-pattern)" />
 
                     <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-                        {/* 1. RENDER SITE CONTAINERS */}
-                        {layoutMode === "container" && siteBoxes.map((site) => (
-                            <g key={`site-${site.siteCode}`} className="transition-opacity duration-300">
-                                {/* Outer Site Enclosure */}
-                                <rect
-                                    x={site.x}
-                                    y={site.y}
-                                    width={site.width}
-                                    height={site.height}
-                                    rx={14}
-                                    fill="rgba(15, 23, 42, 0.55)"
-                                    stroke="rgba(71, 85, 105, 0.5)"
-                                    strokeWidth={1.5}
-                                    strokeDasharray="6,4"
-                                />
-
-                                {/* Site Header Bar */}
-                                <g transform={`translate(${site.x + 14}, ${site.y + 16})`}>
-                                    <rect x={0} y={-2} width={26} height={20} rx={6} fill="rgba(59, 130, 246, 0.2)" />
-                                    <text x={13} y={12} fill="#60a5fa" fontSize={11} fontWeight="bold" textAnchor="middle">
-                                        {site.siteCode}
-                                    </text>
-
-                                    <text x={34} y={12} fill="#ffffff" fontSize={12} fontWeight="bold">
-                                        SITE: {site.siteCode}
-                                        {site.siteName && (
-                                            <tspan fill="#94a3b8" fontWeight="normal"> — {site.siteName}</tspan>
-                                        )}
-                                    </text>
-
-                                    <text x={site.width - 32} y={12} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
-                                        {site.deviceCount} {site.deviceCount === 1 ? "device" : "devices"} • {site.idfs.length} {site.idfs.length === 1 ? "IDF" : "IDFs"}
-                                    </text>
-                                </g>
-
-                                {/* 2. RENDER NESTED IDF CONTAINERS */}
-                                {site.idfs.map((idf) => (
-                                    <g key={`idf-${site.siteCode}-${idf.idfCode}`}>
+                        {layoutMode === "container" && siteBoxes.map((site) => {
+                            if (site.isCollapsed) {
+                                return (
+                                    <g
+                                        key={`site-${site.siteCode}`}
+                                        onClick={() => toggleCollapseSite(site.siteCode)}
+                                        className="cursor-pointer group"
+                                    >
                                         <rect
-                                            x={idf.x}
-                                            y={idf.y}
-                                            width={idf.width}
-                                            height={idf.height}
+                                            x={site.x}
+                                            y={site.y}
+                                            width={site.width}
+                                            height={site.height}
                                             rx={10}
-                                            fill="rgba(30, 41, 59, 0.45)"
-                                            stroke="rgba(100, 116, 139, 0.4)"
-                                            strokeWidth={1}
+                                            fill="rgba(15, 23, 42, 0.95)"
+                                            stroke="#3b82f6"
+                                            strokeWidth={1.5}
+                                            filter="drop-shadow(0 4px 12px rgba(0,0,0,0.6))"
+                                            className="group-hover:stroke-blue-400 group-hover:scale-[1.02] transition"
                                         />
-
-                                        {/* IDF Header */}
-                                        <g transform={`translate(${idf.x + 12}, ${idf.y + 14})`}>
-                                            <rect x={0} y={-2} width={18} height={16} rx={4} fill="rgba(148, 163, 184, 0.15)" />
-                                            <text x={9} y={10} fill="#cbd5e1" fontSize={9} fontWeight="bold" textAnchor="middle">
-                                                ■
-                                            </text>
-                                            <text x={24} y={10} fill="#cbd5e1" fontSize={11} fontWeight="bold" fontFamily="monospace">
-                                                IDF: {idf.idfCode}
-                                            </text>
-                                            <text x={idf.width - 24} y={10} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
-                                                ({idf.deviceCount})
+                                        {/* Accent Strip */}
+                                        <path
+                                            d={`M ${site.x} ${site.y + 8} A 8 8 0 0 1 ${site.x + 8} ${site.y} L ${site.x + 4} ${site.y} L ${site.x + 4} ${site.y + site.height} L ${site.x + 8} ${site.y + site.height} A 8 8 0 0 1 ${site.x} ${site.y + site.height - 8} Z`}
+                                            fill="#3b82f6"
+                                        />
+                                        <text x={site.x + 14} y={site.y + 22} fill="#ffffff" fontSize={11.5} fontWeight="bold" fontFamily="monospace">
+                                            SITE: {site.siteCode} {site.siteName ? `• ${site.siteName}` : ""}
+                                        </text>
+                                        <text x={site.x + 14} y={site.y + 42} fill="#94a3b8" fontSize={9.5} fontFamily="monospace">
+                                            {site.deviceCount} Switches ({site.l3Count} L3 • {site.l2Count} L2)
+                                        </text>
+                                        <g transform={`translate(${site.x + 14}, ${site.y + 54})`}>
+                                            <rect x={0} y={0} width={138} height={18} rx={4} fill="rgba(59, 130, 246, 0.15)" stroke="#3b82f6" strokeWidth={0.5} />
+                                            <text x={69} y={12} fill="#60a5fa" fontSize={8.5} fontWeight="bold" textAnchor="middle">
+                                                CLICK TO EXPAND SITE ▾
                                             </text>
                                         </g>
                                     </g>
-                                ))}
-                            </g>
-                        ))}
+                                );
+                            }
+
+                            return (
+                                <g key={`site-${site.siteCode}`} className="transition-opacity duration-300">
+                                    {/* Outer Site Enclosure */}
+                                    <rect
+                                        x={site.x}
+                                        y={site.y}
+                                        width={site.width}
+                                        height={site.height}
+                                        rx={14}
+                                        fill="rgba(15, 23, 42, 0.55)"
+                                        stroke="rgba(71, 85, 105, 0.5)"
+                                        strokeWidth={1.5}
+                                        strokeDasharray="6,4"
+                                    />
+
+                                    {/* Site Header Bar */}
+                                    <g transform={`translate(${site.x + 14}, ${site.y + 16})`}>
+                                        <rect x={0} y={-2} width={26} height={20} rx={6} fill="rgba(59, 130, 246, 0.2)" />
+                                        <text x={13} y={12} fill="#60a5fa" fontSize={11} fontWeight="bold" textAnchor="middle">
+                                            {site.siteCode}
+                                        </text>
+
+                                        <text x={34} y={12} fill="#ffffff" fontSize={12} fontWeight="bold">
+                                            SITE: {site.siteCode}
+                                            {site.siteName && (
+                                                <tspan fill="#94a3b8" fontWeight="normal"> — {site.siteName}</tspan>
+                                            )}
+                                        </text>
+
+                                        <text x={site.width - 56} y={12} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
+                                            {site.deviceCount} {site.deviceCount === 1 ? "device" : "devices"} • {site.idfs.length} {site.idfs.length === 1 ? "IDF" : "IDFs"}
+                                        </text>
+
+                                        {/* Collapse Site Button */}
+                                        <g
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleCollapseSite(site.siteCode);
+                                            }}
+                                            className="cursor-pointer hover:opacity-80 transition"
+                                            transform={`translate(${site.width - 46}, -3)`}
+                                        >
+                                            <rect x={0} y={0} width={20} height={20} rx={5} fill="rgba(148, 163, 184, 0.12)" stroke="rgba(148, 163, 184, 0.3)" strokeWidth={0.8} />
+                                            <text x={10} y={13.5} fill="#94a3b8" fontSize={13} fontWeight="bold" textAnchor="middle">
+                                                −
+                                            </text>
+                                        </g>
+                                    </g>
+
+                                    {/* 2. RENDER NESTED IDF CONTAINERS */}
+                                    {site.idfs.map((idf) => (
+                                        <g key={`idf-${site.siteCode}-${idf.idfCode}`}>
+                                            <rect
+                                                x={idf.x}
+                                                y={idf.y}
+                                                width={idf.width}
+                                                height={idf.height}
+                                                rx={10}
+                                                fill="rgba(30, 41, 59, 0.45)"
+                                                stroke="rgba(100, 116, 139, 0.4)"
+                                                strokeWidth={1}
+                                            />
+
+                                            {/* IDF Header */}
+                                            <g transform={`translate(${idf.x + 12}, ${idf.y + 14})`}>
+                                                <rect x={0} y={-2} width={18} height={16} rx={4} fill="rgba(148, 163, 184, 0.15)" />
+                                                <text x={9} y={10} fill="#cbd5e1" fontSize={9} fontWeight="bold" textAnchor="middle">
+                                                    ■
+                                                </text>
+                                                <text x={24} y={10} fill="#cbd5e1" fontSize={11} fontWeight="bold" fontFamily="monospace">
+                                                    IDF: {idf.idfCode}
+                                                </text>
+                                                <text x={idf.width - 24} y={10} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
+                                                    ({idf.deviceCount})
+                                                </text>
+                                            </g>
+                                        </g>
+                                    ))}
+                                </g>
+                            );
+                        })}
 
                         {/* 3. RENDER LINKS & PORT-CHANNEL BUNDLES */}
                         {bundledLinks.map((bundle) => {
                             const p1 = nodePositions.get(bundle.sourceDevice);
                             const p2 = nodePositions.get(bundle.targetDevice);
-                            if (!p1 || !p2) return null;
+                            if (!p1 || !p2 || (p1.x === p2.x && p1.y === p2.y)) return null;
 
                             const isHighlighted = highlightedLinks.some(
                                 hl => (hl.from === bundle.sourceDevice && hl.to === bundle.targetDevice) ||
@@ -724,6 +910,12 @@ export default function TopologyGraph({
 
                         {/* 4. RENDER DEVICE NODES */}
                         {filteredDevices.map((dev) => {
+                            const { site, idf } = parseDeviceSiteAndIdf(dev.hostname, dev.site, dev.idf);
+                            // Do not render individual nodes if their site container is collapsed
+                            if (layoutMode === "container" && collapsedSites.has(site)) {
+                                return null;
+                            }
+
                             const pos = nodePositions.get(dev.hostname);
                             if (!pos) return null;
 
@@ -732,7 +924,7 @@ export default function TopologyGraph({
                             const isUnverified = dev.status === "UNVERIFIED";
                             const isUnreachable = dev.status !== "REACHABLE" && !isUnverified;
                             const { layer, label: layerLabel } = getDeviceLayer(dev);
-                            const { site, idf } = parseDeviceSiteAndIdf(dev.hostname, dev.site, dev.idf);
+                            const stackInfo = detectSwitchStack(dev);
 
                             // Node Color scheme based on L3 vs L2 vs Unverified
                             let borderColor = isSelected ? "#38bdf8" : isHop ? "#fbbf24" : "rgba(255,255,255,0.18)";
@@ -804,29 +996,56 @@ export default function TopologyGraph({
                                         fill={isUnverified ? "#f59e0b" : isUnreachable ? "#ef4444" : layer === "L3" ? "#0284c7" : "#10b981"}
                                     />
 
-                                    {/* L3 vs L2 Badge Chip (Top-Right) */}
-                                    <g transform={`translate(${CARD_W / 2 - 28}, ${-CARD_H / 2 + 7})`}>
-                                        <rect
-                                            x={0}
-                                            y={0}
-                                            width={22}
-                                            height={13}
-                                            rx={3}
-                                            fill={isUnverified ? "rgba(245, 158, 11, 0.2)" : layer === "L3" ? "rgba(56, 189, 248, 0.2)" : "rgba(16, 185, 129, 0.2)"}
-                                            stroke={isUnverified ? "#f59e0b" : layer === "L3" ? "#38bdf8" : "#10b981"}
-                                            strokeWidth={0.8}
-                                        />
-                                        <text
-                                            x={11}
-                                            y={9.5}
-                                            fill={isUnverified ? "#fbbf24" : layer === "L3" ? "#7dd3fc" : "#6ee7b7"}
-                                            fontSize={8}
-                                            fontWeight="bold"
-                                            fontFamily="monospace"
-                                            textAnchor="middle"
-                                        >
-                                            {isUnverified ? "BND" : layer}
-                                        </text>
+                                    {/* L3 vs L2 & Switch Stack Badge Chips (Top-Right) */}
+                                    <g transform={`translate(${CARD_W / 2 - (stackInfo.isStack ? 58 : 28)}, ${-CARD_H / 2 + 7})`}>
+                                        {stackInfo.isStack && (
+                                            <g transform="translate(0, 0)">
+                                                <rect
+                                                    x={0}
+                                                    y={0}
+                                                    width={28}
+                                                    height={13}
+                                                    rx={3}
+                                                    fill="rgba(168, 85, 247, 0.2)"
+                                                    stroke="#a855f7"
+                                                    strokeWidth={0.8}
+                                                />
+                                                <text
+                                                    x={14}
+                                                    y={9.5}
+                                                    fill="#d8b4fe"
+                                                    fontSize={7.5}
+                                                    fontWeight="bold"
+                                                    fontFamily="monospace"
+                                                    textAnchor="middle"
+                                                >
+                                                    {`${stackInfo.stackSize}x STK`}
+                                                </text>
+                                            </g>
+                                        )}
+                                        <g transform={`translate(${stackInfo.isStack ? 30 : 0}, 0)`}>
+                                            <rect
+                                                x={0}
+                                                y={0}
+                                                width={22}
+                                                height={13}
+                                                rx={3}
+                                                fill={isUnverified ? "rgba(245, 158, 11, 0.2)" : layer === "L3" ? "rgba(56, 189, 248, 0.2)" : "rgba(16, 185, 129, 0.2)"}
+                                                stroke={isUnverified ? "#f59e0b" : layer === "L3" ? "#38bdf8" : "#10b981"}
+                                                strokeWidth={0.8}
+                                            />
+                                            <text
+                                                x={11}
+                                                y={9.5}
+                                                fill={isUnverified ? "#fbbf24" : layer === "L3" ? "#7dd3fc" : "#6ee7b7"}
+                                                fontSize={8}
+                                                fontWeight="bold"
+                                                fontFamily="monospace"
+                                                textAnchor="middle"
+                                            >
+                                                {isUnverified ? "BND" : layer}
+                                            </text>
+                                        </g>
                                     </g>
 
                                     {/* Device Hostname */}
@@ -870,7 +1089,7 @@ export default function TopologyGraph({
                                             </g>
                                         ) : (
                                             <text x={0} y={9} fill="#64748b" fontSize={8.5} fontFamily="monospace">
-                                                {site} • {idf} {dev.hopDistance !== undefined ? `• H${dev.hopDistance}` : ""}
+                                                {site} • {idf} {stackInfo.isStack ? `• ${stackInfo.portCount}p` : dev.hopDistance !== undefined ? `• H${dev.hopDistance}` : ""}
                                             </text>
                                         )}
                                     </g>

@@ -21,6 +21,7 @@ import {
     Play,
     Clock
 } from "lucide-react";
+import { detectSwitchStack } from "./TopologyGraph";
 
 export function formatFullVerifiedDate(ts?: string | null): string {
     if (!ts) return "Never Verified";
@@ -52,8 +53,11 @@ export default function DeviceInspectorDrawer({
     onReseed
 }: DeviceInspectorDrawerProps) {
     const [activeTab, setActiveTab] = useState<"overview" | "interfaces" | "routes" | "vlans" | "cdp">("overview");
+    const [stackMemberFilter, setStackMemberFilter] = useState<string>("ALL");
 
     if (!device) return null;
+
+    const stackInfo = detectSwitchStack(device);
 
     const rawInterfaces = device.interfaces || {};
     const interfaces: any[] = Array.isArray(rawInterfaces)
@@ -62,6 +66,13 @@ export default function DeviceInspectorDrawer({
             name,
             ...(typeof val === "object" ? val : {})
         }));
+
+    const displayedInterfaces = (stackInfo.isStack && stackMemberFilter !== "ALL")
+        ? interfaces.filter((i: any) => {
+            const m = (i.name || "").match(/^[A-Za-z]+(\d+)\/\d+\/\d+/);
+            return m && m[1] === stackMemberFilter;
+        })
+        : interfaces;
 
     const rawRoutes = device.routes || [];
     const routes: any[] = Array.isArray(rawRoutes) ? rawRoutes : Object.values(rawRoutes);
@@ -121,6 +132,12 @@ export default function DeviceInspectorDrawer({
                             }`}>
                                 {isL3 ? 'L3' : 'L2'}
                             </span>
+                            {stackInfo.isStack && (
+                                <span className="px-2 py-0.5 text-[10px] font-bold rounded border bg-purple-500/10 text-purple-300 border-purple-500/40 flex items-center gap-1">
+                                    <Layers className="w-3 h-3 text-purple-400" />
+                                    StackWise ({stackInfo.stackSize}x • {stackInfo.portCount}p)
+                                </span>
+                            )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-1">
                             <span className="font-mono text-slate-300">{primaryIp || "No Mgmt IP"}</span>
@@ -297,6 +314,24 @@ export default function DeviceInspectorDrawer({
 
                 {activeTab === "overview" && (
                     <div className="space-y-6">
+                        {/* Switch Stack Architecture Card */}
+                        {stackInfo.isStack && (
+                            <div className="bg-purple-950/20 rounded-xl p-4 border border-purple-800/60 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                                        <Layers className="w-4 h-4 text-purple-400" />
+                                        Cisco Switch Stack Architecture (StackWise)
+                                    </span>
+                                    <span className="text-xs font-mono font-bold text-purple-300 bg-purple-900/60 px-2.5 py-0.5 rounded-full border border-purple-700">
+                                        {stackInfo.stackSize} Chassis • {stackInfo.portCount} Ports
+                                    </span>
+                                </div>
+                                <p className="text-xs text-purple-200/80 leading-relaxed">
+                                    This managed switch operates as a unified multi-chassis StackWise stack of {stackInfo.stackSize} physical switches under a single management plane. Interfaces span {Array.from({ length: stackInfo.stackSize }, (_, i) => `Switch ${i + 1}`).join(", ")}.
+                                </p>
+                            </div>
+                        )}
+
                         {/* Hardware & System */}
                         <div className="bg-slate-950/60 rounded-xl p-4 border border-slate-800/80 space-y-3">
                             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
@@ -390,14 +425,45 @@ export default function DeviceInspectorDrawer({
                 {activeTab === "interfaces" && (
                     <div className="space-y-3">
                         <div className="text-xs text-slate-400 flex items-center justify-between">
-                            <span>Discovered Physical & Virtual Interfaces</span>
+                            <span>Discovered Physical &amp; Virtual Interfaces</span>
                             <span className="font-mono">{interfaces.length} total</span>
                         </div>
-                        {interfaces.length === 0 ? (
-                            <p className="text-xs text-slate-500 py-6 text-center">No interfaces recorded in this snapshot.</p>
+
+                        {/* Stack Member Switch Filter */}
+                        {stackInfo.isStack && (
+                            <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-900/80 rounded-lg border border-slate-800 text-[11px]">
+                                <span className="px-2 text-slate-400 font-bold uppercase text-[9px]">Stack Member:</span>
+                                <button
+                                    onClick={() => setStackMemberFilter("ALL")}
+                                    className={`px-2.5 py-0.5 rounded font-medium transition cursor-pointer ${
+                                        stackMemberFilter === "ALL"
+                                            ? "bg-purple-600 text-white shadow-sm"
+                                            : "text-slate-400 hover:text-white"
+                                    }`}
+                                >
+                                    All ({interfaces.length})
+                                </button>
+                                {Array.from({ length: stackInfo.stackSize }, (_, i) => String(i + 1)).map((swNum) => (
+                                    <button
+                                        key={swNum}
+                                        onClick={() => setStackMemberFilter(swNum)}
+                                        className={`px-2.5 py-0.5 rounded font-medium transition cursor-pointer ${
+                                            stackMemberFilter === swNum
+                                                ? "bg-purple-600 text-white shadow-sm"
+                                                : "text-slate-400 hover:text-white"
+                                        }`}
+                                    >
+                                        Switch {swNum}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {displayedInterfaces.length === 0 ? (
+                            <p className="text-xs text-slate-500 py-6 text-center">No interfaces recorded in this filter.</p>
                         ) : (
                             <div className="space-y-2">
-                                {interfaces.map((intf: any, idx: number) => {
+                                {displayedInterfaces.map((intf: any, idx: number) => {
                                     const isUp = intf.status === "up" || intf.status === "connected";
                                     return (
                                         <div key={idx} className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 text-xs space-y-1.5 hover:border-slate-700 transition">
