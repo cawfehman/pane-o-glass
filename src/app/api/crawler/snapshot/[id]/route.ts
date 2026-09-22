@@ -49,6 +49,18 @@ export async function GET(
             }
         }
 
+        // Load site directory to enrich site containers with facility names
+        let siteDirectory: Record<string, { name: string; address?: string }> = {};
+        try {
+            const { getCurrentSiteMap } = await import("@/lib/sites");
+            const siteMap = await getCurrentSiteMap();
+            siteMap.forEach((meta, code) => {
+                siteDirectory[code.toUpperCase()] = { name: meta.name, address: meta.address };
+            });
+        } catch (e) {
+            console.warn("Failed to load site directory for crawler:", e);
+        }
+
         return NextResponse.json({
             metadata: {
                 id: snapshot.id,
@@ -75,6 +87,7 @@ export async function GET(
                 sites: Array.from(sites).sort(),
                 subnetCount: subnets.size
             },
+            siteDirectory,
             devices,
             links: snapshot.links
         });

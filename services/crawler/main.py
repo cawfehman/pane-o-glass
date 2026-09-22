@@ -151,10 +151,11 @@ def cmd_crawl(args, cfg: dict):
         crawl_profile=getattr(args, "profile", "intensive") or "intensive",
         max_hops=getattr(args, "max_hops", 1),
         reseed_points=crawler.reseed_points,
+        unverified_devices=crawler.unverified_devices,
     )
 
     # Topology and Map Generation
-    all_devs = reachable + unreachable
+    all_devs = reachable + unreachable + crawler.unverified_devices
     analyzer = TopologyAnalyzer(all_devs)
     vis = NetworkMapVisualizer(analyzer, maps_dir=maps_dir)
     html_map = vis.generate_html_map(snapshot_id=snap_id)

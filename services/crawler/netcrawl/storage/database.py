@@ -198,10 +198,12 @@ class DatabaseManager:
         crawl_profile: str = "INTENSIVE",
         max_hops: Optional[int] = 1,
         reseed_points: Optional[List[Dict[str, Any]]] = None,
+        unverified_devices: Optional[List[Device]] = None,
     ) -> int:
         """Save a complete crawl snapshot to SQLite and export JSON archive."""
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        total_discovered = len(reachable_devices) + len(unreachable_devices)
+        unverified_devices = unverified_devices or []
+        total_discovered = len(reachable_devices) + len(unreachable_devices) + len(unverified_devices)
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -224,8 +226,8 @@ class DatabaseManager:
             )
             snapshot_id = cursor.lastrowid
 
-            # Save all devices (both reachable and unreachable)
-            all_devices = reachable_devices + unreachable_devices
+            # Save all devices (reachable, unreachable, and unverified boundary)
+            all_devices = reachable_devices + unreachable_devices + unverified_devices
             for dev in all_devices:
                 site = dev.site_info.site if dev.site_info else None
                 idf = dev.site_info.idf if dev.site_info else None

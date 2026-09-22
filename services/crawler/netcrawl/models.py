@@ -19,6 +19,7 @@ class DeviceStatus(str, Enum):
     AUTH_FAILED = "AUTH_FAILED"
     TIMEOUT = "TIMEOUT"
     ERROR = "ERROR"
+    UNVERIFIED = "UNVERIFIED"
 
 
 class CrawlProfile(str, Enum):
@@ -28,10 +29,10 @@ class CrawlProfile(str, Enum):
 
 
 class SiteInfo(BaseModel):
-    site: str = Field(description="3-digit site code, e.g., 101")
-    idf: str = Field(description="3-char IDF location, e.g., mdf, id1")
-    role_code: str = Field(description="Device role string, e.g., swcs, swds, swas")
-    iterator: str = Field(description="Device iterator, e.g., 1, 2")
+    site: str = Field(description="Site code (first 3 chars, e.g. 101, HSP, CAM)")
+    idf: str = Field(description="IDF container (3 chars after first -, e.g. 2mc, mdf, id1)")
+    role_code: Optional[str] = Field(default=None, description="Device role string, e.g. swcs, swds, swas")
+    iterator: Optional[str] = Field(default=None, description="Device iterator, e.g. 1, 2")
     raw_hostname: str
 
 

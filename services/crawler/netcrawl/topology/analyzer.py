@@ -116,8 +116,10 @@ class TopologyAnalyzer:
                             "devices": [dev.hostname, remote_host],
                         })
 
-                # Check if remote device is unreachable / failed
-                if remote_dev and remote_dev.status != DeviceStatus.REACHABLE:
+                # Check if remote device is unverified or unreachable
+                if remote_dev and remote_dev.status == DeviceStatus.UNVERIFIED:
+                    status = "UNVERIFIED"
+                elif remote_dev and remote_dev.status != DeviceStatus.REACHABLE:
                     status = "DOWN"
 
                 link = TopologyLink(

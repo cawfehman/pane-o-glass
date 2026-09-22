@@ -57,6 +57,7 @@ export default function DeviceInspectorDrawer({
     const rawCdp = device.cdpNeighbors || device.cdp_neighbors || [];
     const cdpNeighbors: any[] = Array.isArray(rawCdp) ? rawCdp : Object.values(rawCdp);
 
+    const isUnverified = device.status === "UNVERIFIED";
     const isReachable = device.status ? device.status === "REACHABLE" : device.reachable !== false;
     const primaryIp = device.ipAddress || device.ip_address || (interfaces.find(i => i.ip_address)?.ip_address ?? "");
     const deviceError = device.failureReason || device.error;
@@ -64,13 +65,20 @@ export default function DeviceInspectorDrawer({
     const deviceSerial = device.serialNumber || device.serial || "FTX2209A01B";
     const deviceModel = device.platform || device.model || "Cisco Catalyst";
 
+    const shortHost = (device.hostname || "").split(".")[0].trim();
+    const siteCode = device.site || (shortHost.length >= 3 ? shortHost.slice(0, 3).toUpperCase() : "UNK");
+    const idfCode = device.idf || (shortHost.includes("-") && shortHost.split("-")[1] ? shortHost.split("-")[1].slice(0, 3).toUpperCase() : "MDF");
+    const isL3 = device.role === "Router" || device.role === "L3 Switch" || device.role === "L3";
+
     return (
         <div className="fixed inset-y-0 right-0 w-full sm:w-[540px] bg-slate-900 border-l border-slate-800 shadow-2xl z-50 flex flex-col transition-all duration-300">
             {/* Header */}
             <div className="px-6 py-5 border-b border-slate-800 flex items-start justify-between bg-slate-950/70">
                 <div className="flex items-center gap-3">
                     <div className={`p-2.5 rounded-xl border ${
-                        !isReachable 
+                        isUnverified
+                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                            : !isReachable 
                             ? 'bg-red-500/10 border-red-500/30 text-red-400' 
                             : device.role === 'Router'
                             ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
@@ -78,18 +86,25 @@ export default function DeviceInspectorDrawer({
                             ? 'bg-purple-500/10 border-purple-500/30 text-purple-400'
                             : 'bg-blue-500/10 border-blue-500/30 text-blue-400'
                     }`}>
-                        <Server className="w-6 h-6" />
+                        {isUnverified ? <Compass className="w-6 h-6" /> : <Server className="w-6 h-6" />}
                     </div>
                     <div>
                         <div className="flex items-center gap-2">
                             <h2 className="text-lg font-bold text-white tracking-tight">{device.hostname}</h2>
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${
-                                !isReachable 
+                                isUnverified
+                                    ? 'bg-amber-950/60 text-amber-400 border-amber-700/80'
+                                    : !isReachable 
                                     ? 'bg-red-950/60 text-red-400 border-red-800' 
                                     : 'bg-emerald-950/60 text-emerald-400 border-emerald-800'
                             }`}>
-                                {isReachable ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                                {isReachable ? 'Reachable' : 'Unreachable'}
+                                {isUnverified ? <Compass className="w-3 h-3" /> : isReachable ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                                {isUnverified ? 'Unverified Boundary' : isReachable ? 'Reachable' : 'Unreachable'}
+                            </span>
+                            <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${
+                                isL3 ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            }`}>
+                                {isL3 ? 'L3' : 'L2'}
                             </span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-1">
@@ -97,7 +112,9 @@ export default function DeviceInspectorDrawer({
                             <span>•</span>
                             <span className="text-slate-400 font-medium">{device.role || "Unknown Role"}</span>
                             <span>•</span>
-                            <span className="px-1.5 py-0.2 bg-slate-800 text-slate-300 rounded font-semibold">{device.site || "Core"}</span>
+                            <span className="px-1.5 py-0.2 bg-slate-800 text-slate-300 rounded font-semibold">Site: {siteCode}</span>
+                            <span>•</span>
+                            <span className="px-1.5 py-0.2 bg-slate-800 text-slate-300 rounded font-semibold">IDF: {idfCode}</span>
                             {(device.hopDistance !== undefined && device.hopDistance !== null) && (
                                 <>
                                     <span>•</span>
@@ -150,6 +167,34 @@ export default function DeviceInspectorDrawer({
                             </button>
                         )}
                     </div>
+                </div>
+            )}
+
+            {/* Unverified Boundary Device Alert */}
+            {isUnverified && (
+                <div className="px-6 py-3 bg-amber-500/10 border-b border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                            <Compass className="w-4 h-4" />
+                        </div>
+                        <div>
+                            <span className="text-xs font-bold text-amber-300 block">
+                                Unverified Frontier Switch (Hop {device.hopDistance ?? 1})
+                            </span>
+                            <span className="text-[11px] text-amber-200/80">
+                                Discovered via neighbor CDP/LLDP from {device.discoveredVia || "adjacent switch"}. Uncrawled because the hop limit was reached.
+                            </span>
+                        </div>
+                    </div>
+                    {onReseed && (
+                        <button
+                            onClick={() => onReseed(device)}
+                            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition shadow flex items-center gap-1.5 shrink-0 cursor-pointer"
+                        >
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            Reseed from this Switch
+                        </button>
+                    )}
                 </div>
             )}
 

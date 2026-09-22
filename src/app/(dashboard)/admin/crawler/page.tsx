@@ -463,10 +463,15 @@ export default function AdminCrawlerPage() {
                         <TopologyGraph
                             devices={devices}
                             links={links}
+                            siteDirectory={currentSnapshotData?.siteDirectory}
                             selectedDevice={selectedDevice}
                             onSelectDevice={(d) => setSelectedDevice(d)}
                             activeHopDevices={activeHopDevices}
                             highlightedLinks={highlightedLinks}
+                            onReseedDevice={(d) => {
+                                setReseedDevice(d);
+                                setIsCrawlModalOpen(true);
+                            }}
                         />
                     </div>
                 )}
@@ -511,10 +516,15 @@ export default function AdminCrawlerPage() {
                             <TopologyGraph
                                 devices={devices}
                                 links={links}
+                                siteDirectory={currentSnapshotData?.siteDirectory}
                                 selectedDevice={selectedDevice}
                                 onSelectDevice={(d) => setSelectedDevice(d)}
                                 activeHopDevices={activeHopDevices}
                                 highlightedLinks={highlightedLinks}
+                                onReseedDevice={(d) => {
+                                    setReseedDevice(d);
+                                    setIsCrawlModalOpen(true);
+                                }}
                             />
                         </div>
                     </div>

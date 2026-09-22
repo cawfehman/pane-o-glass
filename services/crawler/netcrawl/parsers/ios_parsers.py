@@ -46,27 +46,58 @@ def normalize_interface(name: str) -> str:
 
 
 def parse_site_info(hostname: str, pattern: Optional[str] = None) -> Optional[SiteInfo]:
-    """Parse site code, IDF, role, and iterator from aaa-bbb-cccc-d convention."""
+    """
+    Parse site code and IDF container from device hostname.
+    Rule:
+      - Site: First 3 characters of switch name (e.g. 101, HSP, CAM)
+      - IDF: Next 3 characters after the first hyphen '-' (e.g. 2mc, mdf, id1)
+    """
     if not hostname:
         return None
     
     # Strip domain suffix if present (e.g. 101-mdf-swcs-1.corp.local -> 101-mdf-swcs-1)
     short_host = hostname.split(".")[0].strip()
-    
-    default_regex = r"^(?P<site>[0-9]{3})-(?P<idf>[a-zA-Z0-9]{3})-(?P<role>[a-zA-Z0-9]+)-(?P<iter>[0-9]+)$"
-    regex = pattern if pattern else default_regex
-    
-    match = re.match(regex, short_host)
-    if match:
-        data = match.groupdict()
-        return SiteInfo(
-            site=data["site"],
-            idf=data["idf"].lower(),
-            role_code=data["role"].lower(),
-            iterator=data["iter"],
-            raw_hostname=short_host,
-        )
-    return None
+    if len(short_host) < 3:
+        return None
+
+    site = short_host[:3].upper()
+    idf = "mdf"
+    role_code = None
+    iterator = None
+
+    if "-" in short_host:
+        parts = short_host.split("-")
+        if len(parts) > 1 and parts[1]:
+            idf = parts[1][:3].lower()
+        if len(parts) > 2:
+            role_code = parts[2].lower()
+        if len(parts) > 3:
+            iterator = parts[3]
+
+    # Optional pattern override
+    if pattern:
+        try:
+            match = re.match(pattern, short_host)
+            if match:
+                data = match.groupdict()
+                if "site" in data and data["site"]:
+                    site = data["site"].upper()
+                if "idf" in data and data["idf"]:
+                    idf = data["idf"].lower()
+                if "role" in data:
+                    role_code = data["role"].lower()
+                if "iter" in data:
+                    iterator = data["iter"]
+        except Exception:
+            pass
+
+    return SiteInfo(
+        site=site,
+        idf=idf,
+        role_code=role_code,
+        iterator=iterator,
+        raw_hostname=short_host,
+    )
 
 
 def parse_version(output: str) -> Dict[str, Any]:

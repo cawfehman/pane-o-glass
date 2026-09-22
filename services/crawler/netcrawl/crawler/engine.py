@@ -86,6 +86,7 @@ class NetworkCrawler:
         self.discovered_via_map: Dict[str, str] = {} # ip -> discovered_via string
         self.known_hostname_map: Dict[str, str] = {} # ip -> hostname (if pre-known from CDP)
         self.reseed_points: List[Dict[str, Any]] = [] # devices at boundary with unvisited neighbors at max_hops + 1
+        self.unverified_devices: List[Device] = [] # frontier boundary devices beyond hop limit
 
     def _notify(self, level: str, message: str) -> None:
         if self.progress_callback:
@@ -461,6 +462,33 @@ class NetworkCrawler:
                                     "hop_distance": current_hop,
                                     "boundary_neighbors": unvisited_boundary,
                                 })
+
+                                # Register unverified boundary devices in topology so they are drawn in diagram
+                                for b_neighbor in unvisited_boundary:
+                                    b_host = b_neighbor["destination_host"]
+                                    b_ip = b_neighbor["management_ip"]
+                                    b_plat = b_neighbor.get("platform") or ""
+                                    if b_host.lower() not in self.visited_hosts and b_ip not in self.visited_ips:
+                                        self.visited_hosts.add(b_host.lower())
+                                        self.visited_ips.add(b_ip)
+                                        b_role = (
+                                            DeviceRole.ROUTER
+                                            if any(k in b_plat.lower() for k in ["isr", "asr", "router", "cr0"])
+                                            else DeviceRole.L2_SWITCH
+                                        )
+                                        unverified_dev = Device(
+                                            hostname=b_host,
+                                            ip_address=b_ip,
+                                            platform=b_plat,
+                                            role=b_role,
+                                            status=DeviceStatus.UNVERIFIED,
+                                            failure_reason=f"Unverified: Hop limit reached ({self.max_hops})",
+                                            discovered_via=f"{device.hostname} ({b_neighbor['local_interface']})",
+                                            hop_distance=current_hop + 1,
+                                            site_info=parse_site_info(b_host, self.hostname_regex),
+                                        )
+                                        self.unverified_devices.append(unverified_dev)
+
                                 audit.log(
                                     event_type="BOUNDARY_HOP_LIMIT_REACHED",
                                     severity="WARNING",
@@ -478,7 +506,7 @@ class NetworkCrawler:
                                     "warning",
                                     f"Boundary reached at Hop {current_hop} for {device.hostname}. "
                                     f"Detected {len(unvisited_boundary)} unvisited neighbor(s) at Hop {current_hop + 1}. "
-                                    f"Expansion halted safely; registered {device.hostname} ({device.ip_address}) as Reseed Frontier candidate."
+                                    f"Registered as Unverified frontier boundary switches in topology."
                                 )
                             else:
                                 self._notify(
