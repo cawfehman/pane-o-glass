@@ -54,3 +54,14 @@ test-results/
 
 # Debug artifacts
 dist.css
+
+# Python artifacts & caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Crawler & Execution Logs
+logs/
+*.log
+
