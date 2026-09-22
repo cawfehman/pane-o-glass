@@ -19,7 +19,11 @@ import {
     Map as MapIcon,
     Search,
     Clock,
-    Hash
+    Hash,
+    Lock,
+    KeyRound,
+    Eye,
+    EyeOff
 } from "lucide-react";
 
 interface CrawlModalProps {
@@ -37,6 +41,14 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
     const [seeds, setSeeds] = useState<string>(initialSeed || "10.10.1.1, 10.20.1.1");
     const [maxHops, setMaxHops] = useState<number>(initialMaxHops ?? 1);
     const [enableLldp, setEnableLldp] = useState<boolean>(false);
+
+    // Ephemeral credentials for live crawl
+    const [authMode, setAuthMode] = useState<"server" | "custom">("server");
+    const [authUsername, setAuthUsername] = useState<string>("admin");
+    const [authPassword, setAuthPassword] = useState<string>("");
+    const [authSecret, setAuthSecret] = useState<string>("");
+    const [showPassword, setShowPassword] = useState<boolean>(false);
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -72,6 +84,19 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                 enableLldp,
                 seeds: mode === "live" ? seeds.split(",").map(s => s.trim()).filter(Boolean) : undefined,
             };
+
+            if (mode === "live" && authMode === "custom") {
+                if (!authPassword) {
+                    setError("Please enter the switch SSH password or switch back to Server Default credentials.");
+                    setLoading(false);
+                    return;
+                }
+                payload.username = authUsername.trim();
+                payload.password = authPassword;
+                if (authSecret) {
+                    payload.secret = authSecret;
+                }
+            }
 
             const res = await fetch("/api/crawler/crawl", {
                 method: "POST",
@@ -326,20 +351,111 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                         />
                     </div>
 
-                    {/* Live mode specific seeds */}
+                    {/* Live mode specific seeds & credentials */}
                     {mode === "live" && (
-                        <div className="space-y-1.5 pt-1">
-                            <label className="text-xs font-semibold text-slate-300">Seed Switch IP Addresses</label>
-                            <input
-                                type="text"
-                                value={seeds}
-                                onChange={(e) => setSeeds(e.target.value)}
-                                placeholder="10.10.1.1, 10.20.1.1"
-                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition"
-                            />
-                            <span className="text-[11px] text-slate-500">
-                                Comma-separated IPs of core or distribution switches to start CDP spidering from.
-                            </span>
+                        <div className="space-y-4 pt-1">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-slate-300">Seed Switch IP Addresses</label>
+                                <input
+                                    type="text"
+                                    value={seeds}
+                                    onChange={(e) => setSeeds(e.target.value)}
+                                    placeholder="10.10.1.1, 10.20.1.1"
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition"
+                                />
+                                <span className="text-[11px] text-slate-500">
+                                    Comma-separated IPs of core or distribution switches to start CDP spidering from.
+                                </span>
+                            </div>
+
+                            {/* Authentication Mode Selector */}
+                            <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-3">
+                                <div className="flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-2">
+                                        <KeyRound className="w-4 h-4 text-amber-400" />
+                                        <span className="font-semibold text-slate-200">Switch SSH Authentication</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+                                        <button
+                                            type="button"
+                                            onClick={() => setAuthMode("server")}
+                                            className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
+                                                authMode === "server" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-200"
+                                            }`}
+                                        >
+                                            Server Config (.env)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAuthMode("custom")}
+                                            className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
+                                                authMode === "custom" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-slate-200"
+                                            }`}
+                                        >
+                                            Prompt Credentials
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {authMode === "server" ? (
+                                    <p className="text-[11px] text-slate-400">
+                                        Using primary &amp; fallback credentials defined in <code className="text-slate-300">.env</code> and <code className="text-slate-300">config.yaml</code> on the server.
+                                    </p>
+                                ) : (
+                                    <div className="space-y-3 pt-1">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[11px] font-medium text-slate-400">SSH Username</label>
+                                                <input
+                                                    type="text"
+                                                    value={authUsername}
+                                                    onChange={(e) => setAuthUsername(e.target.value)}
+                                                    placeholder="admin"
+                                                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-[11px] font-medium text-slate-400">SSH Password</label>
+                                                <div className="relative">
+                                                    <input
+                                                        type={showPassword ? "text" : "password"}
+                                                        value={authPassword}
+                                                        onChange={(e) => setAuthPassword(e.target.value)}
+                                                        placeholder="Enter switch password"
+                                                        className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-3 pr-8 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowPassword(!showPassword)}
+                                                        className="absolute right-2 top-2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                                                    >
+                                                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-[11px] font-medium text-slate-400">
+                                                Enable Secret <span className="text-slate-600">(Optional - if required for privileged exec)</span>
+                                            </label>
+                                            <input
+                                                type={showPassword ? "text" : "password"}
+                                                value={authSecret}
+                                                onChange={(e) => setAuthSecret(e.target.value)}
+                                                placeholder="Optional enable password"
+                                                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                                            />
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 text-[10px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-lg">
+                                            <Lock className="w-3 h-3 shrink-0" />
+                                            <span><strong>Ephemeral In-Memory Only:</strong> These credentials are passed directly to the isolated Netmiko SSH process and are never saved to disk, database, or logs.</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 

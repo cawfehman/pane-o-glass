@@ -103,7 +103,12 @@ export async function POST(request: NextRequest) {
             args.push("--enable-lldp");
         }
 
-        console.log(`[CRAWLER-TRIGGER] Running: python ${args.join(" ")} in ${crawlerDir}`);
+        const customEnv: Record<string, string> = {};
+        if (body.username) customEnv.NETCRAWL_USER = String(body.username).trim();
+        if (body.password) customEnv.NETCRAWL_PASS = String(body.password);
+        if (body.secret) customEnv.NETCRAWL_SECRET = String(body.secret);
+
+        console.log(`[CRAWLER-TRIGGER] Running: python ${args.join(" ")} in ${crawlerDir} (Custom auth: ${Boolean(body.password)})`);
 
         // Execute python crawler
         const { stdout, stderr } = await execFileAsync("python", args, {
@@ -112,7 +117,8 @@ export async function POST(request: NextRequest) {
             env: {
                 ...process.env,
                 PYTHONPATH: crawlerDir,
-                PYTHONIOENCODING: "utf-8"
+                PYTHONIOENCODING: "utf-8",
+                ...customEnv
             }
         });
 
