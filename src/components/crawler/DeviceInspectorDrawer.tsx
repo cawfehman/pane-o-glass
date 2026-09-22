@@ -18,8 +18,23 @@ import {
     KeyRound,
     Zap,
     Hash,
-    Play
+    Play,
+    Clock
 } from "lucide-react";
+
+export function formatFullVerifiedDate(ts?: string | null): string {
+    if (!ts) return "Never Verified";
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return "Never Verified";
+    return d.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true
+    });
+}
 
 interface DeviceInspectorDrawerProps {
     device: any | null;
@@ -124,15 +139,26 @@ export default function DeviceInspectorDrawer({
                                 </>
                             )}
                         </div>
-                        {device.credentialUsed && (
-                            <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1">
-                                <span className="text-slate-500 font-medium">Auth:</span>
-                                <span className="text-emerald-400 font-mono font-medium">{device.credentialUsed}</span>
-                                {device.authTimeMs !== undefined && device.authTimeMs !== null && (
-                                    <span className="text-slate-500 font-mono text-[10px]">({device.authTimeMs}ms)</span>
-                                )}
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 mt-1.5">
+                            <div className="flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                                <span className="text-slate-500 font-medium">Last Verified:</span>
+                                <span className={`font-mono font-medium ${
+                                    device.lastVerifiedAt ? "text-emerald-400" : "text-amber-400"
+                                }`}>
+                                    {formatFullVerifiedDate(device.lastVerifiedAt)}
+                                </span>
                             </div>
-                        )}
+                            {device.credentialUsed && (
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-slate-500 font-medium">Auth:</span>
+                                    <span className="text-emerald-400 font-mono font-medium">{device.credentialUsed}</span>
+                                    {device.authTimeMs !== undefined && device.authTimeMs !== null && (
+                                        <span className="text-slate-500 font-mono text-[10px]">({device.authTimeMs}ms)</span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -347,6 +373,14 @@ export default function DeviceInspectorDrawer({
                                 <div>
                                     <span className="text-slate-500 block">Discovered Via</span>
                                     <span className="text-slate-300 font-mono truncate block" title={device.discoveredVia || "Seed"}>{device.discoveredVia || "Seed Device"}</span>
+                                </div>
+                                <div className="col-span-2 pt-2 border-t border-slate-800">
+                                    <span className="text-slate-500 block">Last Verified Date &amp; Time</span>
+                                    <span className={`font-mono font-semibold ${
+                                        device.lastVerifiedAt ? "text-emerald-400" : "text-amber-400"
+                                    }`}>
+                                        {formatFullVerifiedDate(device.lastVerifiedAt)}
+                                    </span>
                                 </div>
                             </div>
                         </div>

@@ -61,6 +61,54 @@ export async function GET(
             console.warn("Failed to load site directory for crawler:", e);
         }
 
+        // Compute last verified timestamp for each device
+        // If REACHABLE in this snapshot, verified date is this snapshot's timestamp
+        // If UNVERIFIED/unreachable, look up the most recent snapshot where this device was REACHABLE
+        const hostnamesNeedingLookup = devices
+            .filter(d => d.status !== "REACHABLE")
+            .map(d => d.hostname);
+
+        const historicalSuccesses = hostnamesNeedingLookup.length > 0
+            ? await prisma.crawlDevice.findMany({
+                where: {
+                    hostname: { in: hostnamesNeedingLookup },
+                    status: "REACHABLE"
+                },
+                select: {
+                    hostname: true,
+                    createdAt: true,
+                    snapshot: {
+                        select: { timestamp: true }
+                    }
+                },
+                orderBy: {
+                    createdAt: "desc"
+                }
+            })
+            : [];
+
+        const latestVerifiedMap = new Map<string, string>();
+        for (const record of historicalSuccesses) {
+            if (!latestVerifiedMap.has(record.hostname)) {
+                const ts = record.snapshot?.timestamp || record.createdAt;
+                latestVerifiedMap.set(record.hostname, ts ? ts.toISOString() : record.createdAt.toISOString());
+            }
+        }
+
+        const enrichedDevices = devices.map(d => {
+            let lastVerifiedAt: string | null = null;
+            if (d.status === "REACHABLE") {
+                const ts = snapshot.timestamp || d.createdAt;
+                lastVerifiedAt = ts ? new Date(ts).toISOString() : new Date().toISOString();
+            } else if (latestVerifiedMap.has(d.hostname)) {
+                lastVerifiedAt = latestVerifiedMap.get(d.hostname)!;
+            }
+            return {
+                ...d,
+                lastVerifiedAt
+            };
+        });
+
         return NextResponse.json({
             metadata: {
                 id: snapshot.id,
@@ -88,7 +136,7 @@ export async function GET(
                 subnetCount: subnets.size
             },
             siteDirectory,
-            devices,
+            devices: enrichedDevices,
             links: snapshot.links
         });
     } catch (error: any) {

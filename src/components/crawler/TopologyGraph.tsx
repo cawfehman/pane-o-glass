@@ -52,6 +52,15 @@ export function parseDeviceSiteAndIdf(hostname: string, devSite?: string | null,
     return { site, idf, shortHost };
 }
 
+export function formatLastVerified(ts?: string | null): string {
+    if (!ts) return "Never";
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return "Never";
+    const dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const timeStr = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+    return `${dateStr} ${timeStr}`;
+}
+
 export function getDeviceLayer(dev: any): { layer: "L3" | "L2"; label: string } {
     const role = (dev.role || "").toLowerCase();
     if (role.includes("router") || role === "router") {
@@ -180,8 +189,8 @@ export default function TopologyGraph({
         const siteContainers: SiteContainerBox[] = [];
         const idfContainers: IdfContainerBox[] = [];
 
-        const CARD_WIDTH = 164;
-        const CARD_HEIGHT = 64;
+        const CARD_WIDTH = 172;
+        const CARD_HEIGHT = 74;
         const CARD_GAP_X = 20;
         const CARD_GAP_Y = 16;
         const IDF_PAD_X = 18;
@@ -745,8 +754,8 @@ export default function TopologyGraph({
                                 cardBg = "rgba(6, 44, 34, 0.95)";
                             }
 
-                            const CARD_W = 164;
-                            const CARD_H = 64;
+                            const CARD_W = 172;
+                            const CARD_H = 74;
 
                             return (
                                 <g
@@ -823,7 +832,7 @@ export default function TopologyGraph({
                                     {/* Device Hostname */}
                                     <text
                                         x={-CARD_W / 2 + 14}
-                                        y={-CARD_H / 2 + 20}
+                                        y={-CARD_H / 2 + 18}
                                         fill="#ffffff"
                                         fontSize={11.5}
                                         fontWeight="bold"
@@ -835,16 +844,16 @@ export default function TopologyGraph({
                                     {/* Device IP Address */}
                                     <text
                                         x={-CARD_W / 2 + 14}
-                                        y={-CARD_H / 2 + 37}
+                                        y={-CARD_H / 2 + 33}
                                         fill="#94a3b8"
-                                        fontSize={10}
+                                        fontSize={9.5}
                                         fontFamily="monospace"
                                     >
                                         {dev.ipAddress || dev.ip_address || "No IP"}
                                     </text>
 
                                     {/* Sub-label: Site/IDF & Status Pill */}
-                                    <g transform={`translate(${-CARD_W / 2 + 14}, ${-CARD_H / 2 + 45})`}>
+                                    <g transform={`translate(${-CARD_W / 2 + 14}, ${-CARD_H / 2 + 42})`}>
                                         {isUnverified ? (
                                             <g>
                                                 <rect x={0} y={0} width={105} height={12} rx={3} fill="rgba(245, 158, 11, 0.2)" stroke="#f59e0b" strokeWidth={0.5} />
@@ -860,10 +869,31 @@ export default function TopologyGraph({
                                                 </text>
                                             </g>
                                         ) : (
-                                            <text x={0} y={9} fill="#64748b" fontSize={9} fontFamily="monospace">
+                                            <text x={0} y={9} fill="#64748b" fontSize={8.5} fontFamily="monospace">
                                                 {site} • {idf} {dev.hopDistance !== undefined ? `• H${dev.hopDistance}` : ""}
                                             </text>
                                         )}
+                                    </g>
+
+                                    {/* Last Verified Date Sub-label */}
+                                    <g transform={`translate(${-CARD_W / 2 + 14}, ${-CARD_H / 2 + 63})`}>
+                                        <circle 
+                                            cx={3} 
+                                            cy={-2.5} 
+                                            r={2} 
+                                            fill={dev.lastVerifiedAt ? (isUnverified ? "#f59e0b" : isUnreachable ? "#f87171" : "#10b981") : "#64748b"} 
+                                        />
+                                        <text 
+                                            x={9} 
+                                            y={0} 
+                                            fill={dev.lastVerifiedAt ? "#94a3b8" : "#64748b"} 
+                                            fontSize={7.5} 
+                                            fontFamily="monospace"
+                                        >
+                                            {dev.lastVerifiedAt 
+                                                ? `Verified: ${formatLastVerified(dev.lastVerifiedAt)}` 
+                                                : "Never verified"}
+                                        </text>
                                     </g>
                                 </g>
                             );
