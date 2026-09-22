@@ -25,7 +25,9 @@ import {
     Eye,
     EyeOff,
     StopCircle,
-    Trash2
+    Trash2,
+    Plus,
+    Info
 } from "lucide-react";
 
 interface CrawlModalProps {
@@ -50,6 +52,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
     const [authPassword, setAuthPassword] = useState<string>("");
     const [authSecret, setAuthSecret] = useState<string>("");
     const [showPassword, setShowPassword] = useState<boolean>(false);
+    const [showEnableField, setShowEnableField] = useState<boolean>(false);
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -230,346 +233,414 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
                 {/* Header */}
-                <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80 shrink-0">
-                    <div className="flex items-center gap-2.5">
-                        <div className="p-2 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400">
+                <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400">
                             <Network className="w-5 h-5" />
                         </div>
                         <div>
-                            <h2 className="text-base font-bold text-white tracking-tight">Initiate Network Crawl</h2>
-                            <p className="text-xs text-slate-400">Configure crawl profiles, seed switches, and hop depth limits.</p>
+                            <h2 className="text-base font-bold text-white tracking-tight">Network Discovery &amp; Crawl</h2>
+                            <p className="text-xs text-slate-400">Configure discovery scope, seed switches, and traversal profiles.</p>
                         </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        disabled={loading}
-                        className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
+
+                    <div className="flex items-center gap-3">
+                        {/* Compact Header Mode Switch */}
+                        <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setMode("live");
+                                    setName(initialSeed ? `Reseed from ${initialSeed}` : "Production Campus Crawl");
+                                }}
+                                className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                                    mode === "live"
+                                        ? "bg-blue-600 text-white shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                <Terminal className="w-3.5 h-3.5" />
+                                Live SSH Crawl
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setMode("mock");
+                                    setName("Lab Multi-Site Topology");
+                                }}
+                                className={`px-3 py-1.5 rounded-lg font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                                    mode === "mock"
+                                        ? "bg-blue-600 text-white shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                <Sparkles className="w-3.5 h-3.5" />
+                                Lab Simulation
+                            </button>
+                        </div>
+
+                        <button
+                            onClick={onClose}
+                            disabled={loading}
+                            className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Body */}
                 <div className="p-6 space-y-5 overflow-y-auto flex-1">
-                    {/* Mode selector */}
-                    <div className="grid grid-cols-2 gap-3">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setMode("mock");
-                                setName("Lab Multi-Site Topology");
-                            }}
-                            className={`p-3.5 rounded-xl border text-left transition flex flex-col justify-between ${
-                                mode === "mock"
-                                    ? "bg-blue-600/10 border-blue-500/50 text-white ring-1 ring-blue-500/30"
-                                    : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
-                            }`}
-                        >
-                            <div className="flex items-center justify-between mb-1">
-                                <span className="font-semibold text-xs text-white">Lab Topology (Mock)</span>
-                                <Sparkles className={`w-4 h-4 ${mode === "mock" ? "text-blue-400" : "text-slate-600"}`} />
-                            </div>
-                            <p className="text-[11px] text-slate-400 leading-snug">
-                                Instant multi-tier simulation with virtual devices, VLANs, and trunks.
-                            </p>
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setMode("live");
-                                setName("Production Campus Crawl");
-                            }}
-                            className={`p-3.5 rounded-xl border text-left transition flex flex-col justify-between ${
-                                mode === "live"
-                                    ? "bg-blue-600/10 border-blue-500/50 text-white ring-1 ring-blue-500/30"
-                                    : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
-                            }`}
-                        >
-                            <div className="flex items-center justify-between mb-1">
-                                <span className="font-semibold text-xs text-white">Live Cisco SSH Crawl</span>
-                                <Terminal className={`w-4 h-4 ${mode === "live" ? "text-blue-400" : "text-slate-600"}`} />
-                            </div>
-                            <p className="text-[11px] text-slate-400 leading-snug">
-                                Connects to seed switches via Netmiko and recursively spiders neighbors.
-                            </p>
-                        </button>
-                    </div>
-
-                    {/* Profile Selection */}
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                            <label className="text-xs font-semibold text-slate-300">Crawl Profile & Depth</label>
-                            <span className="text-[11px] text-slate-500">Controls command execution scope</span>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-                            {/* Profile 1: Discovery */}
-                            <button
-                                type="button"
-                                onClick={() => setProfile("discovery")}
-                                className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
-                                    profile === "discovery"
-                                        ? "bg-amber-500/10 border-amber-500/50 text-white ring-1 ring-amber-500/30"
-                                        : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
-                                }`}
-                            >
+                    {mode === "mock" ? (
+                        /* Clean, Spacious Mock Mode */
+                        <div className="max-w-2xl mx-auto space-y-5 py-2">
+                            <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs flex items-center gap-3">
+                                <Sparkles className="w-5 h-5 text-blue-400 shrink-0" />
                                 <div>
-                                    <div className="flex items-center gap-1.5 mb-1">
-                                        <Zap className={`w-3.5 h-3.5 ${profile === "discovery" ? "text-amber-400" : "text-slate-500"}`} />
-                                        <span className="font-semibold text-xs text-white">Neighbor Discovery</span>
-                                    </div>
-                                    <p className="text-[11px] text-slate-400 leading-tight mb-2">
-                                        Ultra-fast credential validation & neighbor audit.
-                                    </p>
+                                    <span className="font-semibold block text-white mb-0.5">Isolated Lab Simulation Environment</span>
+                                    <span>Generates a virtual multi-tier campus topology with 9 switches across 3 sites, VLAN trunks, and ARP caches without contacting physical hardware.</span>
                                 </div>
-                                <div className="pt-2 border-t border-slate-800/80 text-[10px] font-mono text-slate-500">
-                                    ~1s / dev • show version + CDP
-                                </div>
-                            </button>
-
-                            {/* Profile 2: Mapping */}
-                            <button
-                                type="button"
-                                onClick={() => setProfile("mapping")}
-                                className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
-                                    profile === "mapping"
-                                        ? "bg-cyan-500/10 border-cyan-500/50 text-white ring-1 ring-cyan-500/30"
-                                        : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
-                                }`}
-                            >
-                                <div>
-                                    <div className="flex items-center gap-1.5 mb-1">
-                                        <MapIcon className={`w-3.5 h-3.5 ${profile === "mapping" ? "text-cyan-400" : "text-slate-500"}`} />
-                                        <span className="font-semibold text-xs text-white">Mapping Crawl</span>
-                                    </div>
-                                    <p className="text-[11px] text-slate-400 leading-tight mb-2">
-                                        Physical connectivity, VLANs & trunks for diagrams.
-                                    </p>
-                                </div>
-                                <div className="pt-2 border-t border-slate-800/80 text-[10px] font-mono text-slate-500">
-                                    ~3s / dev • Trunks, VLANs & IPs
-                                </div>
-                            </button>
-
-                            {/* Profile 3: Intensive */}
-                            <button
-                                type="button"
-                                onClick={() => setProfile("intensive")}
-                                className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
-                                    profile === "intensive"
-                                        ? "bg-blue-600/10 border-blue-500/50 text-white ring-1 ring-blue-500/30"
-                                        : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
-                                }`}
-                            >
-                                <div>
-                                    <div className="flex items-center gap-1.5 mb-1">
-                                        <Search className={`w-3.5 h-3.5 ${profile === "intensive" ? "text-blue-400" : "text-slate-500"}`} />
-                                        <span className="font-semibold text-xs text-white">Spider Intensive</span>
-                                    </div>
-                                    <p className="text-[11px] text-slate-400 leading-tight mb-2">
-                                        Full diagnostics, routing tables (LPM) & ARP tables.
-                                    </p>
-                                </div>
-                                <div className="pt-2 border-t border-slate-800/80 text-[10px] font-mono text-slate-500">
-                                    ~8s / dev • Full Routes, ARP & Intfs
-                                </div>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Hop Depth Controls */}
-                    <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-3">
-                        <div className="flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-2">
-                                <Hash className="w-4 h-4 text-blue-400" />
-                                <span className="font-semibold text-slate-200">Max Hop Distance from Seed</span>
                             </div>
-                            <span className="font-mono text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded text-xs">
-                                {maxHops} {maxHops === 1 ? "Hop" : "Hops"}
-                            </span>
-                        </div>
 
-                        <div className="space-y-2">
-                            <div className="flex justify-between text-xs">
-                                <span className="text-slate-400">
-                                    {maxHops === 1 ? "1 Hop (Seed + Direct Neighbors only) — Default" :
-                                     maxHops === 2 ? "2 Hops (Seed + Core/Dist + Access Switches)" :
-                                     maxHops === 10 ? "10 Hops (Maximum Depth Boundary — Loop Safety Cap)" :
-                                     `${maxHops} Hops (Extended Campus Depth)`}
-                                </span>
+                            {/* Profile Selection */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-semibold text-slate-300 flex items-center gap-2">
+                                    <Sliders className="w-4 h-4 text-blue-400" />
+                                    Simulation Profile
+                                </label>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setProfile("discovery")}
+                                        className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
+                                            profile === "discovery"
+                                                ? "bg-amber-500/10 border-amber-500/50 text-white ring-1 ring-amber-500/30"
+                                                : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1.5 mb-1 text-white font-semibold text-xs">
+                                            <Zap className="w-3.5 h-3.5 text-amber-400" />
+                                            Discovery
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 leading-snug">Credentials &amp; CDP neighbor audit.</p>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setProfile("mapping")}
+                                        className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
+                                            profile === "mapping"
+                                                ? "bg-cyan-500/10 border-cyan-500/50 text-white ring-1 ring-cyan-500/30"
+                                                : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1.5 mb-1 text-white font-semibold text-xs">
+                                            <MapIcon className="w-3.5 h-3.5 text-cyan-400" />
+                                            Mapping
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 leading-snug">Trunks, VLANs &amp; physical links.</p>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setProfile("intensive")}
+                                        className={`p-3 rounded-xl border text-left transition flex flex-col justify-between ${
+                                            profile === "intensive"
+                                                ? "bg-blue-600/10 border-blue-500/50 text-white ring-1 ring-blue-500/30"
+                                                : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-1.5 mb-1 text-white font-semibold text-xs">
+                                            <Search className="w-3.5 h-3.5 text-blue-400" />
+                                            Intensive
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 leading-snug">Full routing (LPM) &amp; ARP tables.</p>
+                                    </button>
+                                </div>
                             </div>
-                            <input
-                                type="range"
-                                min={1}
-                                max={10}
-                                value={maxHops}
-                                onChange={(e) => setMaxHops(parseInt(e.target.value, 10))}
-                                className="w-full accent-blue-500 cursor-pointer"
-                            />
-                            <div className="flex justify-between text-[10px] font-mono text-slate-500">
-                                <span className="text-blue-400 font-semibold">1 (Default)</span>
-                                <span>2 (Dist)</span>
-                                <span>4 (Campus)</span>
-                                <span>7 (Extended)</span>
-                                <span className="text-amber-400 font-semibold">10 (Max Boundary)</span>
-                            </div>
-                        </div>
 
-                        <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                            <div className="flex items-start gap-1.5 text-slate-300">
-                                <span className="text-blue-400 font-bold">•</span>
-                                <span><strong>Loop Safety:</strong> BFS depth is hard-capped at 10 hops. If switches exist at the 11th hop, crawl halts safely and registers the 10th-hop device for boundary reseeding.</span>
-                            </div>
-                            <div className="flex items-start gap-1.5 text-slate-400">
-                                <span className="text-emerald-400 font-bold">•</span>
-                                <span><strong>Direct SSH:</strong> Outbound sessions initiate directly from Pane-o-glass to each switch (no switch-to-switch daisy-chaining).</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* LLDP Fallback Optional Checkbox */}
-                    <div className="px-4 py-3 bg-slate-950/40 rounded-xl border border-slate-800/60 flex items-center justify-between">
-                        <div>
-                            <span className="text-xs font-semibold text-slate-300 block">LLDP Fallback Adjacency</span>
-                            <span className="text-[11px] text-slate-500">
-                                Only queries LLDP if CDP returns zero neighbors or is disabled.
-                            </span>
-                        </div>
-                        <input
-                            type="checkbox"
-                            checked={enableLldp}
-                            onChange={(e) => setEnableLldp(e.target.checked)}
-                            className="accent-blue-500 rounded cursor-pointer h-4 w-4"
-                        />
-                    </div>
-
-                    {/* Snapshot Name */}
-                    <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-300">Snapshot Label</label>
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="e.g. Core Network Q1 Audit"
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition"
-                        />
-                    </div>
-
-                    {/* Live mode specific seeds & credentials */}
-                    {mode === "live" && (
-                        <div className="space-y-4 pt-1">
+                            {/* Snapshot Label */}
                             <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-slate-300">Seed Switch IP Addresses</label>
+                                <label className="text-xs font-semibold text-slate-300">Snapshot Label</label>
                                 <input
                                     type="text"
-                                    value={seeds}
-                                    onChange={(e) => setSeeds(e.target.value)}
-                                    placeholder="10.10.1.1, 10.20.1.1"
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    placeholder="Lab Multi-Site Topology"
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition"
                                 />
-                                <span className="text-[11px] text-slate-500">
-                                    Comma-separated IPs of core or distribution switches to start CDP spidering from.
-                                </span>
+                            </div>
+                        </div>
+                    ) : (
+                        /* Live Cisco SSH Crawl Mode: Clean 2-Column Responsive Layout */
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                            {/* Column 1: Target & Traversal Scope */}
+                            <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-4">
+                                <div className="flex items-center gap-2 text-xs font-bold text-white uppercase tracking-wider pb-2 border-b border-slate-800/80">
+                                    <Server className="w-4 h-4 text-blue-400" />
+                                    <span>Target &amp; Traversal Scope</span>
+                                </div>
+
+                                {/* Seed Switch IP(s) */}
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-semibold text-slate-300">Seed Switch IP Address</label>
+                                        <span className="text-[10px] text-slate-500 font-mono">SSH Port 22</span>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={seeds}
+                                        onChange={(e) => setSeeds(e.target.value)}
+                                        placeholder="e.g. 172.21.0.22, 10.10.1.1"
+                                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition"
+                                    />
+                                    <p className="text-[11px] text-slate-500">
+                                        Seed IP to begin recursive CDP/LLDP discovery from.
+                                    </p>
+                                </div>
+
+                                {/* Hop Distance Slider */}
+                                <div className="space-y-2 pt-1">
+                                    <div className="flex items-center justify-between text-xs">
+                                        <label className="font-semibold text-slate-300 flex items-center gap-1.5">
+                                            <Hash className="w-3.5 h-3.5 text-blue-400" />
+                                            Max Hop Distance
+                                        </label>
+                                        <span className="font-mono text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded text-xs">
+                                            {maxHops} {maxHops === 1 ? "Hop (Default)" : "Hops"}
+                                        </span>
+                                    </div>
+
+                                    <input
+                                        type="range"
+                                        min={1}
+                                        max={10}
+                                        value={maxHops}
+                                        onChange={(e) => setMaxHops(parseInt(e.target.value, 10))}
+                                        className="w-full accent-blue-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                                    />
+
+                                    <div className="flex justify-between text-[10px] font-mono text-slate-500 px-0.5">
+                                        <span className="text-blue-400 font-semibold">1 (Default)</span>
+                                        <span>2 (Dist)</span>
+                                        <span>4 (Campus)</span>
+                                        <span>7 (Ext)</span>
+                                        <span className="text-amber-400 font-semibold">10 (Cap)</span>
+                                    </div>
+
+                                    <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 text-[11px] text-slate-400 flex items-start gap-2">
+                                        <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+                                        <span>Direct SSH from central server. Safely halts at 10 hops for boundary reseeding.</span>
+                                    </div>
+                                </div>
+
+                                {/* LLDP Fallback Checkbox */}
+                                <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition cursor-pointer">
+                                    <div>
+                                        <span className="text-xs font-semibold text-slate-200 block">LLDP Fallback Adjacency</span>
+                                        <span className="text-[10px] text-slate-500">Only queried if CDP returns 0 neighbors or is disabled</span>
+                                    </div>
+                                    <input
+                                        type="checkbox"
+                                        checked={enableLldp}
+                                        onChange={(e) => setEnableLldp(e.target.checked)}
+                                        className="accent-blue-500 rounded cursor-pointer h-4 w-4"
+                                    />
+                                </label>
+
+                                {/* Snapshot Label */}
+                                <div className="space-y-1.5 pt-1">
+                                    <label className="text-xs font-semibold text-slate-300">Snapshot Label (Optional)</label>
+                                    <input
+                                        type="text"
+                                        value={name}
+                                        onChange={(e) => setName(e.target.value)}
+                                        placeholder="e.g. Campus Core Crawl"
+                                        className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition"
+                                    />
+                                </div>
                             </div>
 
-                            {/* Authentication Mode Selector */}
-                            <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-800/80 space-y-3">
-                                <div className="flex items-center justify-between text-xs">
-                                    <div className="flex items-center gap-2">
-                                        <KeyRound className="w-4 h-4 text-amber-400" />
-                                        <span className="font-semibold text-slate-200">Switch SSH Authentication</span>
-                                    </div>
-                                    <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+                            {/* Column 2: Profile & SSH Authentication */}
+                            <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-4">
+                                <div className="flex items-center gap-2 text-xs font-bold text-white uppercase tracking-wider pb-2 border-b border-slate-800/80">
+                                    <Sliders className="w-4 h-4 text-blue-400" />
+                                    <span>Profile &amp; Credentials</span>
+                                </div>
+
+                                {/* Crawl Profile */}
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold text-slate-300">Execution Profile</label>
+                                    <div className="grid grid-cols-3 gap-2">
                                         <button
                                             type="button"
-                                            onClick={() => setAuthMode("server")}
-                                            className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
-                                                authMode === "server" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-200"
+                                            onClick={() => setProfile("discovery")}
+                                            className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                                                profile === "discovery"
+                                                    ? "bg-amber-500/10 border-amber-500/50 text-white ring-1 ring-amber-500/30"
+                                                    : "bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700"
                                             }`}
                                         >
-                                            Server Config (.env)
+                                            <div className="flex items-center gap-1 mb-1 text-white font-semibold text-xs">
+                                                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                                                Discovery
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 leading-tight mb-2">Auth &amp; CDP check.</p>
+                                            <span className="text-[9px] font-mono text-slate-500 pt-1 border-t border-slate-800/60">~1s / dev</span>
                                         </button>
+
                                         <button
                                             type="button"
-                                            onClick={() => setAuthMode("custom")}
-                                            className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
-                                                authMode === "custom" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-slate-200"
+                                            onClick={() => setProfile("mapping")}
+                                            className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                                                profile === "mapping"
+                                                    ? "bg-cyan-500/10 border-cyan-500/50 text-white ring-1 ring-cyan-500/30"
+                                                    : "bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700"
                                             }`}
                                         >
-                                            Prompt Credentials
+                                            <div className="flex items-center gap-1 mb-1 text-white font-semibold text-xs">
+                                                <MapIcon className="w-3.5 h-3.5 text-cyan-400" />
+                                                Mapping
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 leading-tight mb-2">Trunks &amp; VLANs.</p>
+                                            <span className="text-[9px] font-mono text-slate-500 pt-1 border-t border-slate-800/60">~3s / dev</span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => setProfile("intensive")}
+                                            className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
+                                                profile === "intensive"
+                                                    ? "bg-blue-600/10 border-blue-500/50 text-white ring-1 ring-blue-500/30"
+                                                    : "bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700"
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-1 mb-1 text-white font-semibold text-xs">
+                                                <Search className="w-3.5 h-3.5 text-blue-400" />
+                                                Intensive
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 leading-tight mb-2">Routes &amp; ARP tables.</p>
+                                            <span className="text-[9px] font-mono text-slate-500 pt-1 border-t border-slate-800/60">~8s / dev</span>
                                         </button>
                                     </div>
                                 </div>
 
-                                {authMode === "server" ? (
-                                    <p className="text-[11px] text-slate-400">
-                                        Using primary &amp; fallback credentials defined in <code className="text-slate-300">.env</code> and <code className="text-slate-300">config.yaml</code> on the server.
-                                    </p>
-                                ) : (
-                                    <div className="space-y-3 pt-1">
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            <div className="space-y-1">
-                                                <label className="text-[11px] font-medium text-slate-400">SSH Username</label>
-                                                <input
-                                                    type="text"
-                                                    value={authUsername}
-                                                    onChange={(e) => setAuthUsername(e.target.value)}
-                                                    placeholder="admin"
-                                                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
-                                                />
-                                            </div>
-
-                                            <div className="space-y-1">
-                                                <label className="text-[11px] font-medium text-slate-400">SSH Password</label>
-                                                <div className="relative">
-                                                    <input
-                                                        type={showPassword ? "text" : "password"}
-                                                        value={authPassword}
-                                                        onChange={(e) => setAuthPassword(e.target.value)}
-                                                        placeholder="Enter switch password"
-                                                        className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-3 pr-8 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setShowPassword(!showPassword)}
-                                                        className="absolute right-2 top-2 text-slate-500 hover:text-slate-300 cursor-pointer"
-                                                    >
-                                                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-1">
-                                            <label className="text-[11px] font-medium text-slate-400">
-                                                Enable Secret <span className="text-slate-600">(Optional - if required for privileged exec)</span>
-                                            </label>
-                                            <input
-                                                type={showPassword ? "text" : "password"}
-                                                value={authSecret}
-                                                onChange={(e) => setAuthSecret(e.target.value)}
-                                                placeholder="Optional enable password"
-                                                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
-                                            />
-                                        </div>
-
-                                        <div className="flex items-center gap-1.5 text-[10px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-lg">
-                                            <Lock className="w-3 h-3 shrink-0" />
-                                            <span><strong>Ephemeral In-Memory Only:</strong> These credentials are passed directly to the isolated Netmiko SSH process and are never saved to disk, database, or logs.</span>
+                                {/* SSH Credentials Box */}
+                                <div className="space-y-2.5 pt-1">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                                            <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                                            SSH Authentication
+                                        </label>
+                                        <div className="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[10px]">
+                                            <button
+                                                type="button"
+                                                onClick={() => setAuthMode("server")}
+                                                className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
+                                                    authMode === "server" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-slate-200"
+                                                }`}
+                                            >
+                                                Server (.env)
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setAuthMode("custom")}
+                                                className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
+                                                    authMode === "custom" ? "bg-amber-600 text-white" : "text-slate-400 hover:text-slate-200"
+                                                }`}
+                                            >
+                                                Prompt Credentials
+                                            </button>
                                         </div>
                                     </div>
-                                )}
+
+                                    {authMode === "server" ? (
+                                        <div className="p-3 bg-slate-900/60 border border-slate-800 rounded-xl text-[11px] text-slate-400 leading-relaxed">
+                                            Using primary and fallback credentials defined in <code className="text-slate-300 font-mono">.env</code> and <code className="text-slate-300 font-mono">config.yaml</code> on the server.
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3 p-3 bg-slate-900/60 border border-slate-800 rounded-xl">
+                                            <div className="grid grid-cols-2 gap-2.5">
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-medium text-slate-400">Username</label>
+                                                    <input
+                                                        type="text"
+                                                        value={authUsername}
+                                                        onChange={(e) => setAuthUsername(e.target.value)}
+                                                        placeholder="admin"
+                                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-medium text-slate-400">Password</label>
+                                                    <div className="relative">
+                                                        <input
+                                                            type={showPassword ? "text" : "password"}
+                                                            value={authPassword}
+                                                            onChange={(e) => setAuthPassword(e.target.value)}
+                                                            placeholder="Enter password"
+                                                            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-2.5 pr-7 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShowPassword(!showPassword)}
+                                                            className="absolute right-1.5 top-1.5 text-slate-500 hover:text-slate-300 cursor-pointer"
+                                                        >
+                                                            {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Optional Enable Secret Accordion */}
+                                            {!showEnableField ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowEnableField(true)}
+                                                    className="text-[10px] text-amber-400/90 hover:text-amber-300 flex items-center gap-1 transition cursor-pointer"
+                                                >
+                                                    <Plus className="w-3 h-3" />
+                                                    Add Enable Password (Optional)
+                                                </button>
+                                            ) : (
+                                                <div className="space-y-1 pt-2 border-t border-slate-800/60">
+                                                    <div className="flex items-center justify-between">
+                                                        <label className="text-[10px] font-medium text-slate-400">Enable Secret</label>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { setShowEnableField(false); setAuthSecret(""); }}
+                                                            className="text-[10px] text-slate-500 hover:text-slate-300 cursor-pointer"
+                                                        >
+                                                            Remove
+                                                        </button>
+                                                    </div>
+                                                    <input
+                                                        type={showPassword ? "text" : "password"}
+                                                        value={authSecret}
+                                                        onChange={(e) => setAuthSecret(e.target.value)}
+                                                        placeholder="Optional enable password"
+                                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                                                    />
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center gap-1.5 text-[10px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg">
+                                                <Lock className="w-3 h-3 shrink-0" />
+                                                <span><strong>Ephemeral:</strong> In-memory only; never written to disk or database.</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Live Execution Console Terminal */}
+                    {/* Live Execution Console Terminal (Full Width) */}
                     {(loading || logs.length > 0) && (
-                        <div className="space-y-2">
+                        <div className="space-y-2 pt-2">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
                                     <Terminal className="w-3.5 h-3.5 text-blue-400" />
@@ -580,19 +651,22 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                             STREAMING
                                         </span>
                                     )}
+                                    <span className="text-[10px] font-mono text-slate-500">
+                                        ({logs.length} lines)
+                                    </span>
                                 </div>
                                 {logs.length > 0 && (
                                     <button
                                         type="button"
                                         onClick={() => setLogs([])}
-                                        className="text-[11px] text-slate-500 hover:text-slate-300 flex items-center gap-1 transition"
+                                        className="text-[11px] text-slate-500 hover:text-slate-300 flex items-center gap-1 transition cursor-pointer"
                                     >
                                         <Trash2 className="w-3 h-3" />
                                         Clear
                                     </button>
                                 )}
                             </div>
-                            <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3 font-mono text-[11px] leading-relaxed max-h-56 overflow-y-auto shadow-inner space-y-1 select-text">
+                            <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] leading-relaxed max-h-52 overflow-y-auto shadow-inner space-y-1 select-text">
                                 {logs.map((logLine, idx) => (
                                     <div key={idx} className={`font-mono break-all ${getLogLineStyle(logLine)}`}>
                                         <span className="text-slate-600 select-none mr-2">{String(idx + 1).padStart(2, "0")}</span>
@@ -628,6 +702,8 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                         <span className="font-bold text-white uppercase">{profile}</span>
                         <span>•</span>
                         <span>{maxHops} {maxHops === 1 ? "Hop Limit" : "Hops Limit"}</span>
+                        <span>•</span>
+                        <span className="text-slate-500 font-mono">{mode === "live" ? (seeds.split(",")[0] || "No seed") : "Mock lab"}</span>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -644,7 +720,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                             <button
                                 type="button"
                                 onClick={onClose}
-                                className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 transition"
+                                className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 transition cursor-pointer"
                             >
                                 Close
                             </button>
