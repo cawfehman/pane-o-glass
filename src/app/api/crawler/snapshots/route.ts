@@ -20,6 +20,8 @@ export async function GET() {
                 totalReachable: true,
                 totalUnreachable: true,
                 durationSeconds: true,
+                crawlProfile: true,
+                maxHops: true,
                 _count: {
                     select: {
                         devices: true,

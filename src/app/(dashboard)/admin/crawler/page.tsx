@@ -183,9 +183,19 @@ export default function AdminCrawlerPage() {
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-amber-500/10 text-amber-400 border border-amber-500/30">
                                     Admin Only
                                 </span>
+                                {activeSnapshot && (
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase border ${
+                                        activeSnapshot.crawlProfile === "DISCOVERY" ? "bg-amber-500/10 text-amber-300 border-amber-500/40" :
+                                        activeSnapshot.crawlProfile === "MAPPING" ? "bg-cyan-500/10 text-cyan-300 border-cyan-500/40" :
+                                        "bg-blue-500/10 text-blue-300 border-blue-500/40"
+                                    }`}>
+                                        {activeSnapshot.crawlProfile || "INTENSIVE"}
+                                        {activeSnapshot.maxHops ? ` • ${activeSnapshot.maxHops}H` : " • FULL"}
+                                    </span>
+                                )}
                             </div>
                             <p className="text-xs text-slate-400">
-                                Automated CDP neighbor spidering, L2/L3 topology visualization, and IPv4 Longest Prefix Match (LPM) path simulation.
+                                Automated CDP/LLDP spidering, multi-profile audits, and IPv4 Longest Prefix Match (LPM) path simulation.
                             </p>
                         </div>
                     </div>
@@ -203,7 +213,7 @@ export default function AdminCrawlerPage() {
                         >
                             {snapshots.map((s) => (
                                 <option key={s.id} value={s.id}>
-                                    Snapshot #{s.snapshotNumber} ({s._count?.devices || s.totalDiscovered || 0} devs) • {new Date(s.timestamp).toLocaleDateString()}
+                                    Snapshot #{s.snapshotNumber} [{s.crawlProfile || 'INTENSIVE'}{s.maxHops ? ` • ${s.maxHops}h` : ''}] ({s._count?.devices || s.totalDiscovered || 0} devs) • {new Date(s.timestamp).toLocaleDateString()}
                                 </option>
                             ))}
                             {snapshots.length === 0 && <option value="">No snapshots found</option>}
@@ -365,6 +375,26 @@ export default function AdminCrawlerPage() {
 
                 {activeTab === "tracer" && (
                     <div className="space-y-6">
+                        {activeSnapshot?.crawlProfile === "DISCOVERY" && (
+                            <div className="p-4 bg-amber-950/40 border border-amber-800/80 rounded-2xl flex items-start justify-between gap-4 text-xs text-amber-200">
+                                <div className="flex items-start gap-3">
+                                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                                    <div className="space-y-1">
+                                        <span className="font-bold text-white block">Neighbor Discovery Profile Active</span>
+                                        <p className="text-slate-300 leading-relaxed">
+                                            This snapshot was captured in <strong>Discovery</strong> mode to test credentials and find adjacent switches quickly. Routing tables were bypassed for speed. To simulate packet routing with LPM, initiate a <strong>Spider Intensive</strong> crawl.
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setIsCrawlModalOpen(true)}
+                                    className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded-xl text-xs shrink-0 transition"
+                                >
+                                    Run Intensive Crawl
+                                </button>
+                            </div>
+                        )}
+
                         <PathTracerPanel
                             snapshotId={selectedSnapshotId}
                             sourceIp={tracerSourceIp}

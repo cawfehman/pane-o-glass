@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Topology Map - NetCrawl</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #0f172a;
+            color: #f8fafc;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            background: #1e293b;
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
+        }
+        .logo-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .logo {
+            width: 32px;
+            height: 32px;
+            background: #00b4d8;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #0f172a;
+        }
+        h1 { font-size: 18px; font-weight: 600; color: #f8fafc; }
+        .badge {
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .badge-info { background: #0369a1; color: #e0f2fe; }
+        .badge-danger { background: #991b1b; color: #fee2e2; }
+        .controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        button {
+            background: #334155;
+            border: 1px solid #475569;
+            color: #f8fafc;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        button:hover { background: #475569; }
+        #container {
+            flex: 1;
+            position: relative;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+        }
+        #network {
+            width: 100%;
+            height: 100%;
+        }
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(30, 41, 59, 0.92);
+            backdrop-filter: blur(8px);
+            padding: 14px 18px;
+            border-radius: 10px;
+            border: 1px solid #334155;
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5);
+            font-size: 12px;
+            z-index: 10;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+        .legend-item:last-child { margin-bottom: 0; }
+        .color-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+        }
+        #sidebar {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 340px;
+            background: rgba(30, 41, 59, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid #334155;
+            border-radius: 10px;
+            padding: 20px;
+            display: none;
+            z-index: 10;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+        .sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 10px;
+            margin-bottom: 14px;
+        }
+        .close-btn {
+            cursor: pointer;
+            color: #94a3b8;
+            font-size: 18px;
+        }
+        .close-btn:hover { color: #f8fafc; }
+        .meta-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid #1e293b;
+            font-size: 13px;
+        }
+        .meta-label { color: #94a3b8; }
+        .meta-value { font-weight: 500; text-align: right; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo-title">
+            <div class="logo">⚡</div>
+            <h1>NetCrawl Topology Snapshot</h1>
+            <span class="badge badge-info">3 Devices (6 Links)</span>
+            
+        </div>
+        <div class="controls">
+            <button onclick="network.fit({animation: true})">Fit Screen</button>
+            <button onclick="togglePhysics()">Toggle Physics</button>
+            <button onclick="window.print()">Print / Export</button>
+        </div>
+    </header>
+    <div id="container">
+        <div id="network"></div>
+        <div class="legend">
+            <div style="font-weight: 600; margin-bottom: 8px; color: #e2e8f0;">Legend</div>
+            <div class="legend-item"><div class="color-dot" style="background:#00b4d8;"></div>Router</div>
+            <div class="legend-item"><div class="color-dot" style="background:#0077b6;"></div>L3 Core/Dist Switch</div>
+            <div class="legend-item"><div class="color-dot" style="background:#2ec4b6;"></div>L2 Access Switch</div>
+            <div class="legend-item"><div class="color-dot" style="background:#e63946;"></div>🚨 Unreachable (Investigate)</div>
+            <div class="legend-item"><div class="color-dot" style="background:#ffb703;"></div>Active Path Hop</div>
+        </div>
+        <div id="sidebar">
+            <div class="sidebar-header">
+                <h2 id="side-title" style="font-size: 16px;">Device Details</h2>
+                <span class="close-btn" onclick="document.getElementById('sidebar').style.display='none'">✕</span>
+            </div>
+            <div id="side-content"></div>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        const rawNodes = [{"id": "101-mdf-cr01-1", "label": "101-mdf-cr01-1\n(10.100.1.1)", "color": {"background": "#00b4d8", "border": "#1d3557", "highlight": {"background": "#ffdd00", "border": "#ffffff"}}, "shape": "hexagon", "font": {"color": "#ffffff", "face": "Segoe UI, Arial", "size": 13, "bold": true}, "title": "\n            <b>101-mdf-cr01-1</b> (10.100.1.1)<br>\n            <b>Role:</b> Router | <b>Status:</b> \u2705 ONLINE<br>\n            <b>Platform:</b> ISR4451-X<br>\n            <b>Interfaces:</b> 0 | <b>Routes:</b> 0<br>\n            ", "borderWidth": 2, "shadow": true, "role": "Router", "status": "REACHABLE", "ip": "10.100.1.1", "platform": "ISR4451-X", "failure_reason": null, "discovered_via": null}, {"id": "101-mdf-swds-1", "label": "101-mdf-swds-1\n(10.100.1.2)", "color": {"background": "#0077b6", "border": "#1d3557", "highlight": {"background": "#ffdd00", "border": "#ffffff"}}, "shape": "box", "font": {"color": "#ffffff", "face": "Segoe UI, Arial", "size": 13, "bold": true}, "title": "\n            <b>101-mdf-swds-1</b> (10.100.1.2)<br>\n            <b>Role:</b> L3 Switch | <b>Status:</b> \u2705 ONLINE<br>\n            <b>Platform:</b> WS-C3850-24XS<br>\n            <b>Interfaces:</b> 0 | <b>Routes:</b> 0<br>\n            ", "borderWidth": 2, "shadow": true, "role": "L3 Switch", "status": "REACHABLE", "ip": "10.100.1.2", "platform": "WS-C3850-24XS", "failure_reason": null, "discovered_via": "101-mdf-cr01-1 (GigabitEthernet0/0/0 -> GigabitEthernet1/0/1)"}, {"id": "202-mdf-cr01-1", "label": "202-mdf-cr01-1\n(10.254.1.2)", "color": {"background": "#00b4d8", "border": "#1d3557", "highlight": {"background": "#ffdd00", "border": "#ffffff"}}, "shape": "hexagon", "font": {"color": "#ffffff", "face": "Segoe UI, Arial", "size": 13, "bold": true}, "title": "\n            <b>202-mdf-cr01-1</b> (10.254.1.2)<br>\n            <b>Role:</b> Router | <b>Status:</b> \u2705 ONLINE<br>\n            <b>Platform:</b> ISR4451-X<br>\n            <b>Interfaces:</b> 0 | <b>Routes:</b> 0<br>\n            ", "borderWidth": 2, "shadow": true, "role": "Router", "status": "REACHABLE", "ip": "10.254.1.2", "platform": "ISR4451-X", "failure_reason": null, "discovered_via": "101-mdf-cr01-1 (GigabitEthernet0/0/1 -> GigabitEthernet0/0/1)"}];
+        const rawEdges = [{"from": "101-mdf-cr01-1", "to": "101-mdf-swds-1", "label": "GigabitEthernet0/0/0 \u2194 GigabitEthernet1/0/1", "font": {"color": "#a8dadc", "size": 10, "align": "middle", "strokeWidth": 0}, "color": {"color": "#457b9d", "highlight": "#ffdd00"}, "width": 2, "dashes": false, "smooth": {"type": "continuous"}, "title": "Link: 101-mdf-cr01-1:GigabitEthernet0/0/0 \u2194 101-mdf-swds-1:GigabitEthernet1/0/1<br>Type: L3_ROUTED | Speed: N/A"}, {"from": "101-mdf-cr01-1", "to": "202-mdf-cr01-1", "label": "GigabitEthernet0/0/1 \u2194 GigabitEthernet0/0/1", "font": {"color": "#a8dadc", "size": 10, "align": "middle", "strokeWidth": 0}, "color": {"color": "#457b9d", "highlight": "#ffdd00"}, "width": 2, "dashes": false, "smooth": {"type": "continuous"}, "title": "Link: 101-mdf-cr01-1:GigabitEthernet0/0/1 \u2194 202-mdf-cr01-1:GigabitEthernet0/0/1<br>Type: L3_ROUTED | Speed: N/A"}, {"from": "101-mdf-swds-1", "to": "101-id1-swas-1", "label": "GigabitEthernet1/0/2 \u2194 GigabitEthernet0/1", "font": {"color": "#a8dadc", "size": 10, "align": "middle", "strokeWidth": 0}, "color": {"color": "#457b9d", "highlight": "#ffdd00"}, "width": 2, "dashes": true, "smooth": {"type": "continuous"}, "title": "Link: 101-mdf-swds-1:GigabitEthernet1/0/2 \u2194 101-id1-swas-1:GigabitEthernet0/1<br>Type: L2_TRUNK | Speed: N/A"}, {"from": "101-mdf-swds-1", "to": "101-id2-swas-1", "label": "GigabitEthernet1/0/3 \u2194 GigabitEthernet0/1", "font": {"color": "#a8dadc", "size": 10, "align": "middle", "strokeWidth": 0}, "color": {"color": "#457b9d", "highlight": "#ffdd00"}, "width": 2, "dashes": true, "smooth": {"type": "continuous"}, "title": "Link: 101-mdf-swds-1:GigabitEthernet1/0/3 \u2194 101-id2-swas-1:GigabitEthernet0/1<br>Type: L2_TRUNK | Speed: N/A"}, {"from": "101-mdf-swds-1", "to": "101-id3-swas-1", "label": "GigabitEthernet1/0/4 \u2194 GigabitEthernet0/1", "font": {"color": "#a8dadc", "size": 10, "align": "middle", "strokeWidth": 0}, "color": {"color": "#457b9d", "highlight": "#ffdd00"}, "width": 2, "dashes": true, "smooth": {"type": "continuous"}, "title": "Link: 101-mdf-swds-1:GigabitEthernet1/0/4 \u2194 101-id3-swas-1:GigabitEthernet0/1<br>Type: L2_TRUNK | Speed: N/A"}, {"from": "202-mdf-cr01-1", "to": "202-mdf-swds-1", "label": "GigabitEthernet0/0/2 \u2194 GigabitEthernet1/0/1", "font": {"color": "#a8dadc", "size": 10, "align": "middle", "strokeWidth": 0}, "color": {"color": "#457b9d", "highlight": "#ffdd00"}, "width": 2, "dashes": false, "smooth": {"type": "continuous"}, "title": "Link: 202-mdf-cr01-1:GigabitEthernet0/0/2 \u2194 202-mdf-swds-1:GigabitEthernet1/0/1<br>Type: L3_ROUTED | Speed: N/A"}];
+
+        const container = document.getElementById('network');
+        const data = {
+            nodes: new vis.DataSet(rawNodes),
+            edges: new vis.DataSet(rawEdges)
+        };
+        
+        let physicsEnabled = true;
+        const options = {
+            nodes: {
+                borderWidth: 2,
+                size: 26,
+                font: { color: '#f8fafc', size: 13 }
+            },
+            edges: {
+                arrows: { to: { enabled: false } },
+                smooth: { type: 'cubicBezier', forceDirection: 'none', roundness: 0.2 }
+            },
+            physics: {
+                stabilization: true,
+                barnesHut: {
+                    gravitationalConstant: -3500,
+                    springConstant: 0.04,
+                    springLength: 160
+                }
+            },
+            interaction: {
+                hover: true,
+                navigationButtons: true,
+                keyboard: true
+            }
+        };
+
+        const network = new vis.Network(container, data, options);
+
+        function togglePhysics() {
+            physicsEnabled = !physicsEnabled;
+            network.setOptions({ physics: { enabled: physicsEnabled } });
+        }
+
+        network.on("click", function (params) {
+            if (params.nodes.length > 0) {
+                const nodeId = params.nodes[0];
+                const nodeData = rawNodes.find(n => n.id === nodeId);
+                if (nodeData) {
+                    document.getElementById('side-title').innerText = nodeData.id;
+                    let html = `
+                        <div class="meta-row"><span class="meta-label">IP Address</span><span class="meta-value">${nodeData.ip}</span></div>
+                        <div class="meta-row"><span class="meta-label">Role</span><span class="meta-value">${nodeData.role}</span></div>
+                        <div class="meta-row"><span class="meta-label">Status</span><span class="meta-value" style="color: ${nodeData.status === 'REACHABLE' ? '#2ec4b6' : '#e63946'}">${nodeData.status}</span></div>
+                        <div class="meta-row"><span class="meta-label">Platform</span><span class="meta-value">${nodeData.platform}</span></div>
+                    `;
+                    if (nodeData.failure_reason) {
+                        html += `<div style="margin-top:12px; padding:10px; background:#450a0a; border-radius:6px; border:1px solid #ef4444; color:#fca5a5; font-size:12px;">
+                            <b>🚨 FAILURE DIAGNOSTIC:</b><br>${nodeData.failure_reason}
+                        </div>`;
+                    }
+                    if (nodeData.discovered_via) {
+                        html += `<div class="meta-row" style="margin-top:8px;"><span class="meta-label">Discovered Via</span><span class="meta-value">${nodeData.discovered_via}</span></div>`;
+                    }
+                    document.getElementById('side-content').innerHTML = html;
+                    document.getElementById('sidebar').style.display = 'block';
+                }
+            }
+        });
+    </script>
+</body>
+</html>

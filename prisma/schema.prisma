@@ -381,6 +381,8 @@ model CrawlSnapshot {
   id                String        @id @default(cuid())
   snapshotNumber    Int           @unique @default(autoincrement())
   timestamp         DateTime      @default(now())
+  crawlProfile      String        @default("INTENSIVE") // DISCOVERY, MAPPING, INTENSIVE
+  maxHops           Int?
   seedDevices       String[]
   totalDiscovered   Int           @default(0)
   totalReachable    Int           @default(0)
@@ -392,6 +394,7 @@ model CrawlSnapshot {
 
   @@index([timestamp])
   @@index([snapshotNumber])
+  @@index([crawlProfile])
 }
 
 model CrawlDevice {
@@ -407,6 +410,9 @@ model CrawlDevice {
   status         String        // REACHABLE, TIMEOUT, AUTH_FAILED, ERROR
   failureReason  String?
   discoveredVia  String?
+  credentialUsed String?
+  authTimeMs     Int?
+  hopDistance    Int?          @default(0)
   site           String?
   idf            String?
   roleCode       String?

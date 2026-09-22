@@ -14,7 +14,10 @@ import {
     CheckCircle2, 
     XCircle,
     ArrowRightLeft,
-    Compass
+    Compass,
+    KeyRound,
+    Zap,
+    Hash
 } from "lucide-react";
 
 interface DeviceInspectorDrawerProps {
@@ -86,13 +89,30 @@ export default function DeviceInspectorDrawer({
                                 {isReachable ? 'Reachable' : 'Unreachable'}
                             </span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
-                            <span className="font-mono text-slate-300">{device.ip_address || "No Mgmt IP"}</span>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-1">
+                            <span className="font-mono text-slate-300">{primaryIp || "No Mgmt IP"}</span>
                             <span>•</span>
                             <span className="text-slate-400 font-medium">{device.role || "Unknown Role"}</span>
                             <span>•</span>
                             <span className="px-1.5 py-0.2 bg-slate-800 text-slate-300 rounded font-semibold">{device.site || "Core"}</span>
+                            {(device.hopDistance !== undefined && device.hopDistance !== null) && (
+                                <>
+                                    <span>•</span>
+                                    <span className="px-1.5 py-0.2 bg-blue-950 text-blue-300 rounded font-mono text-[10px] border border-blue-800/60">
+                                        {device.hopDistance === 0 ? "Seed (Hop 0)" : `Hop ${device.hopDistance}`}
+                                    </span>
+                                </>
+                            )}
                         </div>
+                        {device.credentialUsed && (
+                            <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1">
+                                <span className="text-slate-500 font-medium">Auth:</span>
+                                <span className="text-emerald-400 font-mono font-medium">{device.credentialUsed}</span>
+                                {device.authTimeMs !== undefined && device.authTimeMs !== null && (
+                                    <span className="text-slate-500 font-mono text-[10px]">({device.authTimeMs}ms)</span>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -225,6 +245,32 @@ export default function DeviceInspectorDrawer({
                                 <div className="flex justify-between py-1">
                                     <span className="text-slate-400">Direct Neighbor Adjacencies</span>
                                     <span className="font-mono text-white">{cdpNeighbors.length} peers</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Crawl & Credential Audit */}
+                        <div className="bg-slate-950/60 rounded-xl p-4 border border-slate-800/80 space-y-3">
+                            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                                Credential & Crawl Audit
+                            </h3>
+                            <div className="grid grid-cols-2 gap-3 text-xs">
+                                <div>
+                                    <span className="text-slate-500 block">Credential Profile</span>
+                                    <span className="text-emerald-400 font-mono font-semibold">{device.credentialUsed || "Primary TACACS+"}</span>
+                                </div>
+                                <div>
+                                    <span className="text-slate-500 block">Auth Latency</span>
+                                    <span className="text-slate-200 font-mono font-semibold">{device.authTimeMs !== undefined && device.authTimeMs !== null ? `${device.authTimeMs} ms` : "—"}</span>
+                                </div>
+                                <div>
+                                    <span className="text-slate-500 block">Hop Distance from Seed</span>
+                                    <span className="text-blue-300 font-mono font-semibold">{device.hopDistance === 0 ? "0 (Seed Switch)" : `${device.hopDistance} hops`}</span>
+                                </div>
+                                <div>
+                                    <span className="text-slate-500 block">Discovered Via</span>
+                                    <span className="text-slate-300 font-mono truncate block" title={device.discoveredVia || "Seed"}>{device.discoveredVia || "Seed Device"}</span>
                                 </div>
                             </div>
                         </div>

@@ -1,0 +1,196 @@
+{
+  "metadata": {
+    "snapshot_id": 4,
+    "timestamp": "2026-09-22 13:23:12",
+    "seed_devices": [
+      "10.100.1.1"
+    ],
+    "total_discovered": 3,
+    "total_reachable": 3,
+    "total_unreachable": 0,
+    "duration_seconds": 0.19542360305786133,
+    "crawl_profile": "DISCOVERY",
+    "max_hops": 1
+  },
+  "devices": [
+    {
+      "hostname": "101-mdf-cr01-1",
+      "ip_address": "10.100.1.1",
+      "platform": "ISR4451-X",
+      "os_version": "17.06.03 cisco",
+      "serial_number": null,
+      "role": "Router",
+      "status": "REACHABLE",
+      "failure_reason": null,
+      "discovered_via": null,
+      "credential_used": "Primary (admin)",
+      "auth_time_ms": 14,
+      "hop_distance": 0,
+      "site_info": {
+        "site": "101",
+        "idf": "mdf",
+        "role_code": "cr01",
+        "iterator": "1",
+        "raw_hostname": "101-mdf-cr01-1"
+      },
+      "interfaces": {},
+      "routes": [],
+      "vlans": [],
+      "cdp_neighbors": [
+        {
+          "destination_host": "101-mdf-swds-1.corp.local",
+          "management_ip": "10.100.1.2",
+          "local_interface": "GigabitEthernet0/0/0",
+          "remote_interface": "GigabitEthernet1/0/1",
+          "platform": "cisco WS-C3850-24XS",
+          "capabilities": [
+            "Router",
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        },
+        {
+          "destination_host": "202-mdf-cr01-1.corp.local",
+          "management_ip": "10.254.1.2",
+          "local_interface": "GigabitEthernet0/0/1",
+          "remote_interface": "GigabitEthernet0/0/1",
+          "platform": "cisco ISR4451-X/K9",
+          "capabilities": [
+            "Router"
+          ],
+          "is_ap": false
+        }
+      ],
+      "lldp_neighbors": [],
+      "arp_table": []
+    },
+    {
+      "hostname": "101-mdf-swds-1",
+      "ip_address": "10.100.1.2",
+      "platform": "WS-C3850-24XS",
+      "os_version": "16.12.04 cisco",
+      "serial_number": null,
+      "role": "L3 Switch",
+      "status": "REACHABLE",
+      "failure_reason": null,
+      "discovered_via": "101-mdf-cr01-1 (GigabitEthernet0/0/0 -> GigabitEthernet1/0/1)",
+      "credential_used": "Primary (admin)",
+      "auth_time_ms": 11,
+      "hop_distance": 1,
+      "site_info": {
+        "site": "101",
+        "idf": "mdf",
+        "role_code": "swds",
+        "iterator": "1",
+        "raw_hostname": "101-mdf-swds-1"
+      },
+      "interfaces": {},
+      "routes": [],
+      "vlans": [],
+      "cdp_neighbors": [
+        {
+          "destination_host": "101-mdf-cr01-1.corp.local",
+          "management_ip": "10.100.1.1",
+          "local_interface": "GigabitEthernet1/0/1",
+          "remote_interface": "GigabitEthernet0/0/0",
+          "platform": "cisco ISR4451-X/K9",
+          "capabilities": [
+            "Router"
+          ],
+          "is_ap": false
+        },
+        {
+          "destination_host": "101-id1-swas-1.corp.local",
+          "management_ip": "10.10.10.11",
+          "local_interface": "GigabitEthernet1/0/2",
+          "remote_interface": "GigabitEthernet0/1",
+          "platform": "cisco WS-C2960X-48FPS-L",
+          "capabilities": [
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        },
+        {
+          "destination_host": "101-id2-swas-1.corp.local",
+          "management_ip": "10.10.10.12",
+          "local_interface": "GigabitEthernet1/0/3",
+          "remote_interface": "GigabitEthernet0/1",
+          "platform": "cisco WS-C2960X-48FPS-L",
+          "capabilities": [
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        },
+        {
+          "destination_host": "101-id3-swas-1.corp.local",
+          "management_ip": "10.10.10.99",
+          "local_interface": "GigabitEthernet1/0/4",
+          "remote_interface": "GigabitEthernet0/1",
+          "platform": "cisco WS-C2960X-24TD-L",
+          "capabilities": [
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        }
+      ],
+      "lldp_neighbors": [],
+      "arp_table": []
+    },
+    {
+      "hostname": "202-mdf-cr01-1",
+      "ip_address": "10.254.1.2",
+      "platform": "ISR4451-X",
+      "os_version": "17.06.03 cisco",
+      "serial_number": null,
+      "role": "Router",
+      "status": "REACHABLE",
+      "failure_reason": null,
+      "discovered_via": "101-mdf-cr01-1 (GigabitEthernet0/0/1 -> GigabitEthernet0/0/1)",
+      "credential_used": "Primary (admin)",
+      "auth_time_ms": 73,
+      "hop_distance": 1,
+      "site_info": {
+        "site": "202",
+        "idf": "mdf",
+        "role_code": "cr01",
+        "iterator": "1",
+        "raw_hostname": "202-mdf-cr01-1"
+      },
+      "interfaces": {},
+      "routes": [],
+      "vlans": [],
+      "cdp_neighbors": [
+        {
+          "destination_host": "101-mdf-cr01-1.corp.local",
+          "management_ip": "10.254.1.1",
+          "local_interface": "GigabitEthernet0/0/1",
+          "remote_interface": "GigabitEthernet0/0/1",
+          "platform": "cisco ISR4451-X/K9",
+          "capabilities": [
+            "Router"
+          ],
+          "is_ap": false
+        },
+        {
+          "destination_host": "202-mdf-swds-1.corp.local",
+          "management_ip": "10.200.1.2",
+          "local_interface": "GigabitEthernet0/0/2",
+          "remote_interface": "GigabitEthernet1/0/1",
+          "platform": "cisco WS-C3850-24XS",
+          "capabilities": [
+            "Router",
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        }
+      ],
+      "lldp_neighbors": [],
+      "arp_table": []
+    }
+  ]
+}

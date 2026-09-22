@@ -52,9 +52,20 @@ class DatabaseManager:
                 total_discovered INTEGER NOT NULL,
                 total_reachable INTEGER NOT NULL,
                 total_unreachable INTEGER NOT NULL,
-                duration_seconds REAL NOT NULL
+                duration_seconds REAL NOT NULL,
+                crawl_profile TEXT DEFAULT 'INTENSIVE',
+                max_hops INTEGER
             );
             """)
+
+            try:
+                cursor.execute("ALTER TABLE snapshots ADD COLUMN crawl_profile TEXT DEFAULT 'INTENSIVE'")
+            except Exception:
+                pass
+            try:
+                cursor.execute("ALTER TABLE snapshots ADD COLUMN max_hops INTEGER")
+            except Exception:
+                pass
 
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS devices (
@@ -69,6 +80,9 @@ class DatabaseManager:
                 status TEXT NOT NULL,
                 failure_reason TEXT,
                 discovered_via TEXT,
+                credential_used TEXT,
+                auth_time_ms INTEGER,
+                hop_distance INTEGER DEFAULT 0,
                 site TEXT,
                 idf TEXT,
                 role_code TEXT,
@@ -76,6 +90,16 @@ class DatabaseManager:
                 FOREIGN KEY (snapshot_id) REFERENCES snapshots (id) ON DELETE CASCADE
             );
             """)
+
+            for col, typ in [
+                ("credential_used", "TEXT"),
+                ("auth_time_ms", "INTEGER"),
+                ("hop_distance", "INTEGER DEFAULT 0"),
+            ]:
+                try:
+                    cursor.execute(f"ALTER TABLE devices ADD COLUMN {col} {typ}")
+                except Exception:
+                    pass
 
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS interfaces (
@@ -171,6 +195,8 @@ class DatabaseManager:
         unreachable_devices: List[Device],
         seed_devices: List[str],
         duration_seconds: float,
+        crawl_profile: str = "INTENSIVE",
+        max_hops: Optional[int] = None,
     ) -> int:
         """Save a complete crawl snapshot to SQLite and export JSON archive."""
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -180,8 +206,9 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                INSERT INTO snapshots (timestamp, seed_devices, total_discovered, total_reachable, total_unreachable, duration_seconds)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO snapshots (
+                    timestamp, seed_devices, total_discovered, total_reachable, total_unreachable, duration_seconds, crawl_profile, max_hops
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     ts,
@@ -190,6 +217,8 @@ class DatabaseManager:
                     len(reachable_devices),
                     len(unreachable_devices),
                     duration_seconds,
+                    crawl_profile.upper(),
+                    max_hops,
                 ),
             )
             snapshot_id = cursor.lastrowid
@@ -206,8 +235,9 @@ class DatabaseManager:
                     """
                     INSERT INTO devices (
                         snapshot_id, hostname, ip_address, platform, os_version, serial_number,
-                        role, status, failure_reason, discovered_via, site, idf, role_code, iterator
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        role, status, failure_reason, discovered_via, credential_used, auth_time_ms,
+                        hop_distance, site, idf, role_code, iterator
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         snapshot_id,
@@ -220,6 +250,9 @@ class DatabaseManager:
                         dev.status.value,
                         dev.failure_reason,
                         dev.discovered_via,
+                        dev.credential_used,
+                        dev.auth_time_ms,
+                        dev.hop_distance,
                         site,
                         idf,
                         role_code,
@@ -375,6 +408,8 @@ class DatabaseManager:
                     total_reachable=r["total_reachable"],
                     total_unreachable=r["total_unreachable"],
                     duration_seconds=r["duration_seconds"],
+                    crawl_profile=r["crawl_profile"] if "crawl_profile" in r.keys() and r["crawl_profile"] else "INTENSIVE",
+                    max_hops=r["max_hops"] if "max_hops" in r.keys() else None,
                 )
                 for r in rows
             ]
@@ -395,6 +430,8 @@ class DatabaseManager:
                 total_reachable=row["total_reachable"],
                 total_unreachable=row["total_unreachable"],
                 duration_seconds=row["duration_seconds"],
+                crawl_profile=row["crawl_profile"] if "crawl_profile" in row.keys() and row["crawl_profile"] else "INTENSIVE",
+                max_hops=row["max_hops"] if "max_hops" in row.keys() else None,
             )
 
     def get_latest_snapshot_id(self) -> Optional[int]:
@@ -530,6 +567,9 @@ class DatabaseManager:
                     status=DeviceStatus(dr["status"]),
                     failure_reason=dr["failure_reason"],
                     discovered_via=dr["discovered_via"],
+                    credential_used=dr["credential_used"] if "credential_used" in dr.keys() else None,
+                    auth_time_ms=dr["auth_time_ms"] if "auth_time_ms" in dr.keys() else None,
+                    hop_distance=dr["hop_distance"] if "hop_distance" in dr.keys() and dr["hop_distance"] is not None else 0,
                     site_info=site_info,
                     interfaces=interfaces,
                     routes=routes,

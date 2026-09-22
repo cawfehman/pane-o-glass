@@ -82,6 +82,9 @@ export async function POST(request: NextRequest) {
         const useMock = body.useMock !== false; // default true for safety unless explicitly disabled
         const seeds = Array.isArray(body.seeds) && body.seeds.length > 0 ? body.seeds : ["10.100.1.1"];
         const workers = body.workers || 10;
+        const profile = typeof body.profile === "string" ? body.profile.toLowerCase() : "intensive";
+        const maxHops = body.maxHops ? parseInt(body.maxHops, 10) : null;
+        const enableLldp = Boolean(body.enableLldp);
 
         const crawlerDir = path.join(process.cwd(), "services", "crawler");
         const mainPy = path.join(crawlerDir, "main.py");
@@ -91,6 +94,14 @@ export async function POST(request: NextRequest) {
             args.push("--mock");
         } else {
             args.push("--seeds", seeds.join(","), "--workers", String(workers));
+        }
+
+        args.push("--profile", profile);
+        if (maxHops && maxHops > 0) {
+            args.push("--max-hops", String(maxHops));
+        }
+        if (enableLldp) {
+            args.push("--enable-lldp");
         }
 
         console.log(`[CRAWLER-TRIGGER] Running: python ${args.join(" ")} in ${crawlerDir}`);
@@ -138,7 +149,9 @@ export async function POST(request: NextRequest) {
                 totalDiscovered: meta.total_discovered || snapshotData.devices.length,
                 totalReachable: meta.total_reachable || snapshotData.devices.filter((d: any) => d.status === "REACHABLE").length,
                 totalUnreachable: meta.total_unreachable || snapshotData.devices.filter((d: any) => d.status !== "REACHABLE").length,
-                durationSeconds: meta.duration_seconds || 1.5
+                durationSeconds: meta.duration_seconds || 1.5,
+                crawlProfile: (meta.crawl_profile || profile).toUpperCase(),
+                maxHops: meta.max_hops ?? (maxHops && maxHops > 0 ? maxHops : null),
             }
         });
 
@@ -156,6 +169,9 @@ export async function POST(request: NextRequest) {
                     status: dev.status,
                     failureReason: dev.failure_reason,
                     discoveredVia: dev.discovered_via,
+                    credentialUsed: dev.credential_used || null,
+                    authTimeMs: dev.auth_time_ms ?? null,
+                    hopDistance: dev.hop_distance ?? 0,
                     site: dev.site_info?.site || null,
                     idf: dev.site_info?.idf || null,
                     roleCode: dev.site_info?.role_code || null,

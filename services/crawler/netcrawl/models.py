@@ -21,6 +21,12 @@ class DeviceStatus(str, Enum):
     ERROR = "ERROR"
 
 
+class CrawlProfile(str, Enum):
+    DISCOVERY = "DISCOVERY"
+    MAPPING = "MAPPING"
+    INTENSIVE = "INTENSIVE"
+
+
 class SiteInfo(BaseModel):
     site: str = Field(description="3-digit site code, e.g., 101")
     idf: str = Field(description="3-char IDF location, e.g., mdf, id1")
@@ -91,11 +97,15 @@ class Device(BaseModel):
     status: DeviceStatus = DeviceStatus.REACHABLE
     failure_reason: Optional[str] = None
     discovered_via: Optional[str] = None # e.g. "101-mdf-swds-1 (Gi1/0/24)"
+    credential_used: Optional[str] = None
+    auth_time_ms: Optional[int] = None
+    hop_distance: int = 0
     site_info: Optional[SiteInfo] = None
     interfaces: Dict[str, Interface] = Field(default_factory=dict)
     routes: List[Route] = Field(default_factory=list)
     vlans: List[VLAN] = Field(default_factory=list)
     cdp_neighbors: List[CDPNeighbor] = Field(default_factory=list)
+    lldp_neighbors: List[CDPNeighbor] = Field(default_factory=list)
     arp_table: List[ARPEntry] = Field(default_factory=list)
 
 
@@ -120,6 +130,8 @@ class SnapshotMetadata(BaseModel):
     total_reachable: int
     total_unreachable: int
     duration_seconds: float
+    crawl_profile: str = "INTENSIVE"
+    max_hops: Optional[int] = None
 
 
 class PathHop(BaseModel):

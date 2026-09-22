@@ -510,3 +510,66 @@ def parse_arp_table(output: str) -> List[ARPEntry]:
                 age=age,
             ))
     return arp_entries
+
+
+def parse_lldp_neighbors_detail(
+    output: str,
+    excluded_platform_patterns: Optional[List[str]] = None,
+    excluded_role_patterns: Optional[List[str]] = None,
+) -> List[CDPNeighbor]:
+    """
+    Parse 'show lldp neighbors detail' as fallback if CDP yields 0 neighbors.
+    Returns normalized CDPNeighbor objects.
+    """
+    neighbors: List[CDPNeighbor] = []
+    if not output or "%" in output or "LLDP is not enabled" in output:
+        return neighbors
+
+    blocks = re.split(r"------------------------------------------------|-------------------------+", output)
+    for block in blocks:
+        block = block.strip()
+        if not block or ("System Name:" not in block and "Chassis id:" not in block):
+            continue
+
+        # System Name (Device ID)
+        name_match = re.search(r"System Name:\s*([^\n\r]+)", block, re.IGNORECASE)
+        chassis_match = re.search(r"Chassis id:\s*([^\n\r]+)", block, re.IGNORECASE)
+        dest_host = name_match.group(1).strip() if name_match else (chassis_match.group(1).strip() if chassis_match else "")
+        if not dest_host:
+            continue
+
+        # Local & Remote Interface
+        local_match = re.search(r"(?:Local Interface|Local Port id):\s*([^\n\r,]+)", block, re.IGNORECASE)
+        remote_match = re.search(r"Port id:\s*([^\n\r,]+)", block, re.IGNORECASE)
+        if not local_match or not remote_match:
+            continue
+        local_intf = normalize_interface(local_match.group(1).strip())
+        remote_intf = normalize_interface(remote_match.group(1).strip())
+
+        # Management IP
+        ip_match = re.search(r"(?:Management Address(?:es)?|IP(?:v4)? Address):\s*([0-9\.]+)", block, re.IGNORECASE)
+        mgmt_ip = ip_match.group(1).strip() if ip_match else None
+
+        # System Capabilities
+        cap_match = re.search(r"System Capabilities:\s*([^\n\r]+)", block, re.IGNORECASE)
+        cap_str = cap_match.group(1).strip() if cap_match else ""
+        capabilities = [c.strip() for c in cap_str.split(",") if c.strip()]
+
+        # System Description / Platform
+        desc_match = re.search(r"System Description:\s*([^\n\r]+)", block, re.IGNORECASE)
+        platform = desc_match.group(1).strip() if desc_match else ""
+
+        is_ap = any(k in platform.lower() for k in ["aironet", "access point", "ap-cos"])
+
+        neighbors.append(CDPNeighbor(
+            destination_host=dest_host,
+            management_ip=mgmt_ip,
+            local_interface=local_intf,
+            remote_interface=remote_intf,
+            platform=platform,
+            capabilities=capabilities,
+            is_ap=is_ap,
+        ))
+
+    return neighbors
+

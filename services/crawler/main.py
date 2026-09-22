@@ -90,6 +90,10 @@ def cmd_crawl(args, cfg: dict):
         fallback_credentials=fallback_creds,
         max_workers=workers,
         use_mock=use_mock,
+        crawl_profile=getattr(args, "profile", "intensive") or "intensive",
+        max_hops=getattr(args, "max_hops", None),
+        enable_lldp=getattr(args, "enable_lldp", False),
+        lldp_fallback_on_cdp_fail=not getattr(args, "no_lldp_fallback", False),
         hostname_regex=cfg.get("crawler", {}).get("hostname_regex"),
         excluded_platform_patterns=cfg.get("crawler", {}).get("filters", {}).get("excluded_platform_patterns"),
         excluded_role_patterns=cfg.get("crawler", {}).get("filters", {}).get("excluded_role_patterns"),
@@ -105,6 +109,8 @@ def cmd_crawl(args, cfg: dict):
         unreachable_devices=unreachable,
         seed_devices=seeds,
         duration_seconds=duration,
+        crawl_profile=getattr(args, "profile", "intensive") or "intensive",
+        max_hops=getattr(args, "max_hops", None),
     )
 
     # Topology and Map Generation
@@ -332,6 +338,10 @@ def main():
     p_crawl.add_argument("--key-file", help="Path to SSH private key file (e.g. ~/.ssh/id_rsa)")
     p_crawl.add_argument("--workers", type=int, help="Thread pool size")
     p_crawl.add_argument("--mock", action="store_true", help="Run against simulated mock lab network")
+    p_crawl.add_argument("--profile", choices=["discovery", "mapping", "intensive"], default="intensive", help="Crawl profile: discovery, mapping, or intensive")
+    p_crawl.add_argument("--max-hops", type=int, default=None, help="Max distance in hops from seed devices")
+    p_crawl.add_argument("--enable-lldp", action="store_true", help="Always query LLDP neighbors in addition to CDP")
+    p_crawl.add_argument("--no-lldp-fallback", action="store_true", help="Disable LLDP fallback when CDP yields no neighbors")
 
     # map
     p_map = subparsers.add_parser("map", help="Generate network topology map")

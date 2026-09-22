@@ -12,6 +12,7 @@ from netcrawl.crawler.mock_network import MockSSHClient
 from netcrawl.crawler.ssh_client import CiscoSSHClient
 from netcrawl.models import (
     Device,
+    CrawlProfile,
     DeviceRole,
     DeviceStatus,
 )
@@ -20,6 +21,7 @@ from netcrawl.parsers.ios_parsers import (
     parse_cdp_neighbors_detail,
     parse_interfaces_detail,
     parse_ip_interface_brief,
+    parse_lldp_neighbors_detail,
     parse_routes,
     parse_site_info,
     parse_switchport_or_trunk,
@@ -31,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 class NetworkCrawler:
-    """Manages concurrent SSH crawling of Cisco IOS devices via CDP neighbors."""
+    """Manages concurrent SSH crawling of Cisco IOS devices via CDP/LLDP neighbors."""
 
     def __init__(
         self,
@@ -45,6 +47,10 @@ class NetworkCrawler:
         max_workers: int = 15,
         ssh_timeout: int = 15,
         use_mock: bool = False,
+        crawl_profile: str = "intensive",
+        max_hops: Optional[int] = None,
+        enable_lldp: bool = False,
+        lldp_fallback_on_cdp_fail: bool = True,
         hostname_regex: Optional[str] = None,
         excluded_platform_patterns: Optional[List[str]] = None,
         excluded_role_patterns: Optional[List[str]] = None,
@@ -60,6 +66,10 @@ class NetworkCrawler:
         self.max_workers = max_workers
         self.ssh_timeout = ssh_timeout
         self.use_mock = use_mock
+        self.crawl_profile = crawl_profile.lower()
+        self.max_hops = max_hops
+        self.enable_lldp = enable_lldp
+        self.lldp_fallback_on_cdp_fail = lldp_fallback_on_cdp_fail
         self.hostname_regex = hostname_regex
         self.excluded_platform_patterns = excluded_platform_patterns
         self.excluded_role_patterns = excluded_role_patterns
@@ -110,8 +120,8 @@ class NetworkCrawler:
 
         return DeviceRole.L2_SWITCH if vlans else DeviceRole.L3_SWITCH
 
-    def _crawl_single_device(self, target_ip: str) -> Device:
-        """Connect to one device, run show commands, parse output, and return Device model."""
+    def _crawl_single_device(self, target_ip: str, current_hop: int = 0) -> Device:
+        """Connect to one device, run profile-specific show commands, parse output, and return Device model."""
         discovered_via = self.discovered_via_map.get(target_ip)
         pre_known_name = self.known_hostname_map.get(target_ip)
 
@@ -129,7 +139,11 @@ class NetworkCrawler:
                 timeout=self.ssh_timeout,
             )
 
+        t_auth_start = time.time()
         success, err = client.connect()
+        auth_time_ms = int((time.time() - t_auth_start) * 1000)
+        credential_used = f"Primary ({self.username})" if success else None
+
         if not success:
             err_lower = (err or "").lower()
             if "auth" in err_lower or "password" in err_lower:
@@ -146,17 +160,20 @@ class NetworkCrawler:
                             port=fallback.get("port", self.port),
                             timeout=self.ssh_timeout,
                         )
+                        fb_t_start = time.time()
                         fb_success, fb_err = fb_client.connect()
                         if fb_success:
                             client = fb_client
                             success = True
                             err = None
+                            credential_used = f"Fallback ({fallback.get('username')})"
+                            auth_time_ms = int((time.time() - fb_t_start) * 1000)
                             from netcrawl.audit.logger import get_audit_logger
                             get_audit_logger().log(
                                 event_type="CREDENTIAL_FALLBACK_SUCCESS",
                                 severity="INFO",
                                 device_ip=target_ip,
-                                details={"user": fallback.get("username")},
+                                details={"user": fallback.get("username"), "latency_ms": auth_time_ms},
                             )
                             break
             elif "timeout" in err_lower or "timed out" in err_lower:
@@ -173,8 +190,25 @@ class NetworkCrawler:
                     status=fail_status,
                     failure_reason=err,
                     discovered_via=discovered_via,
+                    credential_used=None,
+                    auth_time_ms=auth_time_ms,
+                    hop_distance=current_hop,
                     site_info=site_info,
                 )
+
+        is_discovery = self.crawl_profile == "discovery"
+        is_mapping = self.crawl_profile == "mapping"
+        # If intensive: run all diagnostics
+
+        out_version = ""
+        out_ip_int = ""
+        out_intfs = ""
+        out_trunk = ""
+        out_routes = ""
+        out_vlans = ""
+        out_cdp = ""
+        out_lldp = ""
+        out_arp = ""
 
         try:
             # Send terminal settings safely (whitelist verified)
@@ -184,23 +218,37 @@ class NetworkCrawler:
             except Exception:
                 pass
 
-            # Gather read-only data
+            # 1. Base command: show version (Always run for hostname, platform, OS)
             out_version = client.send_command("show version")
-            out_ip_int = client.send_command("show ip interface brief")
-            out_intfs = client.send_command("show interfaces")
-            
-            # Trunk or switchport
-            out_trunk = client.send_command("show interfaces trunk")
-            if not out_trunk or "% Invalid input" in out_trunk or "Port" not in out_trunk:
-                out_trunk = client.send_command("show interfaces switchport")
 
-            out_routes = client.send_command("show ip route")
-            out_vlans = client.send_command("show vlan brief")
-            if not out_vlans or "% Invalid input" in out_vlans:
-                out_vlans = client.send_command("show vlan")
-
+            # 2. CDP Neighbors (Always run for physical adjacency & spidering)
             out_cdp = client.send_command("show cdp neighbors detail")
-            out_arp = client.send_command("show ip arp")
+
+            # 3. Optional LLDP Fallback (Only if enabled or CDP yields 0 / disabled)
+            should_check_lldp = self.enable_lldp or (
+                self.lldp_fallback_on_cdp_fail and (
+                    not out_cdp or "%" in out_cdp or "CDP is not enabled" in out_cdp or "Device ID:" not in out_cdp
+                )
+            )
+            if should_check_lldp:
+                out_lldp = client.send_command("show lldp neighbors detail")
+
+            # 4. Profile: Mapping & Intensive commands (physical connectivity, VLANs, IP assignments)
+            if not is_discovery:
+                out_ip_int = client.send_command("show ip interface brief")
+                out_trunk = client.send_command("show interfaces trunk")
+                if not out_trunk or "% Invalid input" in out_trunk or "Port" not in out_trunk:
+                    out_trunk = client.send_command("show interfaces switchport")
+
+                out_vlans = client.send_command("show vlan brief")
+                if not out_vlans or "% Invalid input" in out_vlans:
+                    out_vlans = client.send_command("show vlan")
+
+            # 5. Profile: Intensive only commands (packet stats, routing table, ARP, descriptions)
+            if not is_discovery and not is_mapping:
+                out_intfs = client.send_command("show interfaces")
+                out_routes = client.send_command("show ip route")
+                out_arp = client.send_command("show ip arp")
 
         finally:
             client.disconnect()
@@ -215,12 +263,13 @@ class NetworkCrawler:
         audit = get_audit_logger()
         for cmd_name, raw_text in [
             ("show_version", out_version),
+            ("show_cdp_neighbors_detail", out_cdp),
+            ("show_lldp_neighbors_detail", out_lldp),
             ("show_ip_interface_brief", out_ip_int),
             ("show_interfaces", out_intfs),
             ("show_trunk_or_switchport", out_trunk),
             ("show_ip_route", out_routes),
             ("show_vlan", out_vlans),
-            ("show_cdp_neighbors_detail", out_cdp),
             ("show_ip_arp", out_arp),
         ]:
             if raw_text:
@@ -233,17 +282,27 @@ class NetworkCrawler:
                 )
 
         site_info = parse_site_info(hostname, self.hostname_regex)
-        interfaces = parse_ip_interface_brief(out_ip_int)
-        interfaces = parse_interfaces_detail(out_intfs, interfaces)
-        interfaces = parse_switchport_or_trunk(out_trunk, interfaces)
-        routes = parse_routes(out_routes)
-        vlans = parse_vlans(out_vlans)
+        interfaces = parse_ip_interface_brief(out_ip_int) if out_ip_int else {}
+        if out_intfs:
+            interfaces = parse_interfaces_detail(out_intfs, interfaces)
+        if out_trunk:
+            interfaces = parse_switchport_or_trunk(out_trunk, interfaces)
+            
+        routes = parse_routes(out_routes) if out_routes else []
+        vlans = parse_vlans(out_vlans) if out_vlans else []
         cdp_neighbors = parse_cdp_neighbors_detail(
             out_cdp,
             excluded_platform_patterns=self.excluded_platform_patterns,
             excluded_role_patterns=self.excluded_role_patterns,
-        )
-        arp_table = parse_arp_table(out_arp)
+        ) if out_cdp else []
+
+        lldp_neighbors = parse_lldp_neighbors_detail(
+            out_lldp,
+            excluded_platform_patterns=self.excluded_platform_patterns,
+            excluded_role_patterns=self.excluded_role_patterns,
+        ) if out_lldp else []
+
+        arp_table = parse_arp_table(out_arp) if out_arp else []
 
         role = self._determine_role(hostname, routes, interfaces, vlans, site_info)
 
@@ -255,11 +314,15 @@ class NetworkCrawler:
             details={
                 "role": role.value,
                 "platform": ver_data.get("platform"),
+                "profile": self.crawl_profile,
+                "hop_distance": current_hop,
+                "credential_used": credential_used,
+                "auth_time_ms": auth_time_ms,
                 "interfaces_count": len(interfaces),
                 "routes_count": len(routes),
                 "vlans_count": len(vlans),
-                "cdp_neighbors_count": len(cdp_neighbors),
-                "arp_count": len(arp_table),
+                "cdp_count": len(cdp_neighbors),
+                "lldp_count": len(lldp_neighbors),
             },
         )
 
@@ -272,11 +335,15 @@ class NetworkCrawler:
             role=role,
             status=DeviceStatus.REACHABLE,
             discovered_via=discovered_via,
+            credential_used=credential_used,
+            auth_time_ms=auth_time_ms,
+            hop_distance=current_hop,
             site_info=site_info,
             interfaces=interfaces,
             routes=routes,
             vlans=vlans,
             cdp_neighbors=cdp_neighbors,
+            lldp_neighbors=lldp_neighbors,
             arp_table=arp_table,
         )
 
@@ -303,25 +370,25 @@ class NetworkCrawler:
         reachable_devices: List[Device] = []
         unreachable_devices: List[Device] = []
 
-        # Queue for discovery
-        active_futures: Dict[concurrent.futures.Future, str] = {}
+        # Queue for discovery: entries are (target_ip, current_hop)
+        active_futures: Dict[concurrent.futures.Future, Tuple[str, int]] = {}
         pending_targets: deque = deque()
 
         for seed in self.seed_devices:
             self.queued_targets.add(seed)
-            pending_targets.append(seed)
+            pending_targets.append((seed, 0))
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             while pending_targets or active_futures:
                 # Submit up to max_workers
                 while pending_targets and len(active_futures) < self.max_workers:
-                    target_ip = pending_targets.popleft()
+                    target_ip, current_hop = pending_targets.popleft()
                     if target_ip in self.visited_ips:
                         continue
                     self.visited_ips.add(target_ip)
-                    self._notify("crawl", f"Crawling device at {target_ip}...")
-                    future = executor.submit(self._crawl_single_device, target_ip)
-                    active_futures[future] = target_ip
+                    self._notify("crawl", f"Crawling device at {target_ip} (Hop {current_hop})...")
+                    future = executor.submit(self._crawl_single_device, target_ip, current_hop)
+                    active_futures[future] = (target_ip, current_hop)
 
                 if not active_futures:
                     break
@@ -333,7 +400,7 @@ class NetworkCrawler:
                 )
 
                 for future in done:
-                    target_ip = active_futures.pop(future)
+                    target_ip, current_hop = active_futures.pop(future)
                     try:
                         device = future.result()
                     except Exception as exc:
@@ -344,6 +411,7 @@ class NetworkCrawler:
                             status=DeviceStatus.ERROR,
                             failure_reason=str(exc),
                             discovered_via=self.discovered_via_map.get(target_ip),
+                            hop_distance=current_hop,
                         )
 
                     if device.status == DeviceStatus.REACHABLE:
@@ -351,50 +419,59 @@ class NetworkCrawler:
                         reachable_devices.append(device)
                         self._notify(
                             "success",
-                            f"Discovered {device.hostname} ({device.ip_address}) [{device.role.value}] - "
-                            f"{len(device.interfaces)} interfaces, {len(device.routes)} routes, "
-                            f"{len(device.cdp_neighbors)} CDP neighbors"
+                            f"Discovered {device.hostname} ({device.ip_address}) [Hop {current_hop}, {device.role.value}] - "
+                            f"{len(device.interfaces)} intfs, {len(device.routes)} routes, "
+                            f"{len(device.cdp_neighbors)} CDP, {len(getattr(device, 'lldp_neighbors', []))} LLDP"
                         )
 
-                        # Process CDP neighbors for spidering
-                        for neighbor in device.cdp_neighbors:
-                            # CRITICAL SAFETY CHECK: Skip Access Points and phones!
-                            if neighbor.is_ap:
-                                self._notify("debug", f"Skipping Wireless AP or non-switch neighbor '{neighbor.destination_host}'")
-                                audit.log(
-                                    event_type="AP_FILTERED",
-                                    severity="INFO",
-                                    hostname=neighbor.destination_host,
-                                    device_ip=neighbor.management_ip,
-                                    details={
-                                        "platform": neighbor.platform,
-                                        "capabilities": neighbor.capabilities,
-                                        "discovered_on": f"{device.hostname}:{neighbor.local_interface}",
-                                    },
-                                )
-                                continue
+                        # Process neighbors (CDP + LLDP if fallback discovered any)
+                        all_neighbors = list(device.cdp_neighbors) + list(getattr(device, "lldp_neighbors", []))
 
-                            neighbor_ip = neighbor.management_ip
-                            neighbor_host = neighbor.destination_host.split(".")[0].strip()
+                        if self.max_hops is not None and current_hop >= self.max_hops:
+                            self._notify(
+                                "info",
+                                f"Reached max hop depth limit ({self.max_hops}) at {device.hostname}. "
+                                f"Discovered {len(all_neighbors)} neighbors but skipping spider expansion."
+                            )
+                        else:
+                            for neighbor in all_neighbors:
+                                # CRITICAL SAFETY CHECK: Skip Access Points and phones!
+                                if neighbor.is_ap:
+                                    self._notify("debug", f"Skipping Wireless AP or non-switch neighbor '{neighbor.destination_host}'")
+                                    audit.log(
+                                        event_type="AP_FILTERED",
+                                        severity="INFO",
+                                        hostname=neighbor.destination_host,
+                                        device_ip=neighbor.management_ip,
+                                        details={
+                                            "platform": neighbor.platform,
+                                            "capabilities": neighbor.capabilities,
+                                            "discovered_on": f"{device.hostname}:{neighbor.local_interface}",
+                                        },
+                                    )
+                                    continue
 
-                            if not neighbor_ip:
-                                continue
+                                neighbor_ip = neighbor.management_ip
+                                neighbor_host = neighbor.destination_host.split(".")[0].strip()
 
-                            if (
-                                neighbor_ip not in self.visited_ips
-                                and neighbor_ip not in self.queued_targets
-                                and neighbor_host.lower() not in self.visited_hosts
-                            ):
-                                self.queued_targets.add(neighbor_ip)
-                                self.discovered_via_map[neighbor_ip] = (
-                                    f"{device.hostname} ({neighbor.local_interface} -> {neighbor.remote_interface})"
-                                )
-                                self.known_hostname_map[neighbor_ip] = neighbor_host
-                                pending_targets.append(neighbor_ip)
-                                self._notify(
-                                    "spider",
-                                    f"Queued new neighbor {neighbor_host} ({neighbor_ip}) discovered via {device.hostname}"
-                                )
+                                if not neighbor_ip:
+                                    continue
+
+                                if (
+                                    neighbor_ip not in self.visited_ips
+                                    and neighbor_ip not in self.queued_targets
+                                    and neighbor_host.lower() not in self.visited_hosts
+                                ):
+                                    self.queued_targets.add(neighbor_ip)
+                                    self.discovered_via_map[neighbor_ip] = (
+                                        f"{device.hostname} ({neighbor.local_interface} -> {neighbor.remote_interface})"
+                                    )
+                                    self.known_hostname_map[neighbor_ip] = neighbor_host
+                                    pending_targets.append((neighbor_ip, current_hop + 1))
+                                    self._notify(
+                                        "spider",
+                                        f"Queued neighbor {neighbor_host} ({neighbor_ip}) at Hop {current_hop + 1} via {device.hostname}"
+                                    )
                     else:
                         unreachable_devices.append(device)
                         audit.log(

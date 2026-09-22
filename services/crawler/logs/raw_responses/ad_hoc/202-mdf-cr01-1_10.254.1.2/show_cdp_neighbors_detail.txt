@@ -1,6 +1,6 @@
 ================================================================================
 AUDIT ARCHIVE: COMMAND RESPONSE
-Timestamp: 2026-09-22T09:54:55.696145
+Timestamp: 2026-09-22T13:23:12.880055
 Device: 202-mdf-cr01-1 (10.254.1.2)
 Command: show_cdp_neighbors_detail
 Snapshot ID: N/A

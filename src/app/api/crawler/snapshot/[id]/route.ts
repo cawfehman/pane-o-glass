@@ -58,7 +58,9 @@ export async function GET(
                 totalDiscovered: snapshot.totalDiscovered,
                 totalReachable: snapshot.totalReachable,
                 totalUnreachable: snapshot.totalUnreachable,
-                durationSeconds: snapshot.durationSeconds
+                durationSeconds: snapshot.durationSeconds,
+                crawlProfile: snapshot.crawlProfile,
+                maxHops: snapshot.maxHops
             },
             summary: {
                 totalDevices: devices.length,
