@@ -145,26 +145,10 @@ export default function TopologyGraph({
     const [pan, setPan] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+    const [siteFilter, setSiteFilter] = useState<string>("ALL");
     const [layoutMode, setLayoutMode] = useState<"container" | "flow">("container");
     const [hoveredLink, setHoveredLink] = useState<any | null>(null);
     const [collapsedSites, setCollapsedSites] = useState<Set<string>>(new Set());
-
-    const toggleCollapseSite = (siteCode: string) => {
-        setCollapsedSites(prev => {
-            const next = new Set(prev);
-            if (next.has(siteCode)) next.delete(siteCode);
-            else next.add(siteCode);
-            return next;
-        });
-    };
-
-    const collapseAllSites = () => {
-        setCollapsedSites(new Set(uniqueSites));
-    };
-
-    const expandAllSites = () => {
-        setCollapsedSites(new Set());
-    };
 
     // Filter devices based on Site selection
     const filteredDevices = useMemo(() => {
@@ -183,6 +167,23 @@ export default function TopologyGraph({
         }
         return Array.from(sites).sort();
     }, [devices]);
+
+    const toggleCollapseSite = (siteCode: string) => {
+        setCollapsedSites(prev => {
+            const next = new Set(prev);
+            if (next.has(siteCode)) next.delete(siteCode);
+            else next.add(siteCode);
+            return next;
+        });
+    };
+
+    const collapseAllSites = () => {
+        setCollapsedSites(new Set(uniqueSites));
+    };
+
+    const expandAllSites = () => {
+        setCollapsedSites(new Set());
+    };
 
     // Group parallel links between the same pairs of devices into Link Bundles (Port Channels / LAG)
     const bundledLinks = useMemo(() => {
