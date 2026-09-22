@@ -18,6 +18,7 @@ export default function CiscoIsePage() {
     const [endpointResult, setEndpointResult] = useState<any>(null);
     const [historyResult, setHistoryResult] = useState<any>(null);
     const [discoveryResult, setDiscoveryResult] = useState<any>(null);
+    const [selectedHistoricalEvent, setSelectedHistoricalEvent] = useState<any>(null);
     const [activeTab, setActiveTab] = useState<"dashboard" | "triage" | "sites" | "references">("dashboard");
     const [error, setError] = useState("");
     
@@ -184,6 +185,7 @@ export default function CiscoIsePage() {
             setHistoryResult(null);
             setDiscoveryResult(null);
         }
+        setSelectedHistoricalEvent(null);
 
         try {
             const strippedHex = searchTerm.trim().replace(/[:.\-\s]/g, '');
@@ -758,15 +760,22 @@ export default function CiscoIsePage() {
                                     </div>
                                 )}
                             </div>
-                        ) : endpointResult ? (
+                        ) : (endpointResult || selectedHistoricalEvent) ? (
                             <div className="flex flex-col gap-6">
-                                {/* Tier 1: Current Live Session Card */}
-                                <EnrichedEndpointCard session={endpointResult} />
+                                {/* Tier 1: Current Live Session or Historical Forensic Card */}
+                                <EnrichedEndpointCard 
+                                    session={selectedHistoricalEvent || endpointResult} 
+                                    isHistorical={Boolean(selectedHistoricalEvent)}
+                                    hasLiveSession={Boolean(endpointResult)}
+                                    onReturnToLive={() => setSelectedHistoricalEvent(null)}
+                                />
 
                                 {/* Tier 2 & 3: 7-Day Authentication History Timeline */}
                                 <AuthHistoryTimeline 
                                     events={historyResult?.failures || []} 
                                     onSelectMac={(mac) => handleSearch(undefined, mac)}
+                                    onSelectEvent={(ev) => setSelectedHistoricalEvent(ev)}
+                                    selectedEventTimestamp={selectedHistoricalEvent?.timestamp}
                                 />
                             </div>
                         ) : (
@@ -776,10 +785,15 @@ export default function CiscoIsePage() {
                                     The endpoint may be offline or connected via an unmonitored segment.
                                 </p>
                                 {historyResult?.found && historyResult.failures?.length > 0 && (
-                                    <div className="mt-6">
+                                    <div className="mt-6 text-left">
+                                        <p className="text-xs text-accent-primary font-semibold mb-3 text-center">
+                                            Select any past authentication attempt below to reconstruct its forensic connection path:
+                                        </p>
                                         <AuthHistoryTimeline 
                                             events={historyResult.failures} 
                                             onSelectMac={(mac) => handleSearch(undefined, mac)}
+                                            onSelectEvent={(ev) => setSelectedHistoricalEvent(ev)}
+                                            selectedEventTimestamp={selectedHistoricalEvent?.timestamp}
                                         />
                                     </div>
                                 )}

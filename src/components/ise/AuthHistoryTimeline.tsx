@@ -18,6 +18,21 @@ interface AuthEvent {
     site_code?: string;
     endpoint_profile?: string;
     hardware_model?: string;
+    hardware_manufacturer?: string;
+    device_type?: string;
+    nas_ip_address?: string;
+    nas_port_id?: string;
+    acs_server?: string;
+    authorization_rule?: string;
+    authentication_method?: string;
+    authentication_protocol?: string;
+    identity_group?: string;
+    sgt_name?: string;
+    rssi?: string;
+    vlan?: string;
+    enrichment?: any;
+    ad?: any;
+    wlcTelemetry?: any;
     insight?: {
         cause: string;
         suggestion: string;
@@ -28,9 +43,16 @@ interface AuthEvent {
 interface AuthHistoryTimelineProps {
     events: AuthEvent[];
     onSelectMac?: (mac: string) => void;
+    onSelectEvent?: (event: AuthEvent) => void;
+    selectedEventTimestamp?: string;
 }
 
-export default function AuthHistoryTimeline({ events, onSelectMac }: AuthHistoryTimelineProps) {
+export default function AuthHistoryTimeline({ 
+    events, 
+    onSelectMac,
+    onSelectEvent,
+    selectedEventTimestamp
+}: AuthHistoryTimelineProps) {
     const [expandedRow, setExpandedRow] = useState<number | null>(null);
 
     if (!events || events.length === 0) {
@@ -47,7 +69,7 @@ export default function AuthHistoryTimeline({ events, onSelectMac }: AuthHistory
 
     return (
         <div className="glass-card p-0 overflow-hidden border border-border-color">
-            <div className="px-6 py-4 bg-white/[0.02] border-b border-border-color flex justify-between items-center">
+            <div className="px-6 py-4 bg-white/[0.02] border-b border-border-color flex justify-between items-center flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                     <Clock size={16} className="text-accent-primary" />
                     <h4 className="text-sm font-bold text-text-primary m-0 uppercase tracking-wider">
@@ -55,7 +77,7 @@ export default function AuthHistoryTimeline({ events, onSelectMac }: AuthHistory
                     </h4>
                 </div>
                 <span className="text-xs text-text-muted">
-                    Click any row to inspect 802.1X / EAP handshake trace
+                    Click any attempt to inspect handshake trace or select to reconstruct the Connection Path diagram above
                 </span>
             </div>
 
@@ -69,6 +91,7 @@ export default function AuthHistoryTimeline({ events, onSelectMac }: AuthHistory
                             <th className="py-3 px-4">Location & Infrastructure</th>
                             <th className="py-3 px-4">Device Profile</th>
                             <th className="py-3 px-4">Diagnostic Verdict</th>
+                            <th className="py-3 px-4 text-center">Path Diagram</th>
                             <th className="py-3 px-4 text-right">Trace</th>
                         </tr>
                     </thead>
@@ -76,14 +99,24 @@ export default function AuthHistoryTimeline({ events, onSelectMac }: AuthHistory
                         {events.map((ev, idx) => {
                             const isPass = ev.status !== false;
                             const isExpanded = expandedRow === idx;
+                            const isSelected = Boolean(selectedEventTimestamp && ev.timestamp === selectedEventTimestamp);
                             const hasSteps = ev.steps && ev.steps.length > 0;
 
                             return (
                                 <React.Fragment key={idx}>
                                     <tr
-                                        onClick={() => toggleRow(idx)}
-                                        className={`cursor-pointer transition-colors hover:bg-white/[0.03] ${
-                                            !isPass ? "bg-red-500/[0.03]" : ""
+                                        onClick={() => {
+                                            toggleRow(idx);
+                                            if (onSelectEvent) {
+                                                onSelectEvent(ev);
+                                            }
+                                        }}
+                                        className={`cursor-pointer transition-colors ${
+                                            isSelected
+                                                ? "bg-accent-primary/10 ring-1 ring-inset ring-accent-primary/40"
+                                                : !isPass
+                                                ? "bg-red-500/[0.03] hover:bg-red-500/[0.06]"
+                                                : "hover:bg-white/[0.03]"
                                         }`}
                                     >
                                         {/* Timestamp */}
@@ -179,6 +212,28 @@ export default function AuthHistoryTimeline({ events, onSelectMac }: AuthHistory
                                             )}
                                         </td>
 
+                                        {/* Path Diagram Action Button */}
+                                        <td className="py-3 px-4 text-center whitespace-nowrap">
+                                            {onSelectEvent && (
+                                                <button
+                                                    type="button"
+                                                    onClick={e => {
+                                                        e.stopPropagation();
+                                                        onSelectEvent(ev);
+                                                    }}
+                                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[0.68rem] font-medium transition-all ${
+                                                        isSelected
+                                                            ? "bg-accent-primary text-black font-bold shadow-md ring-2 ring-accent-primary/60"
+                                                            : "bg-white/5 hover:bg-accent-primary/20 text-text-secondary hover:text-accent-primary border border-border-color"
+                                                    }`}
+                                                    title={isSelected ? "Currently active in the Connection Path diagram above" : "Load this historical attempt into the Connection Path diagram"}
+                                                >
+                                                    <Radio size={11} className={isSelected ? "animate-pulse text-black" : "text-accent-primary"} />
+                                                    <span>{isSelected ? "Active in Path" : "View Path"}</span>
+                                                </button>
+                                            )}
+                                        </td>
+
                                         {/* Trace Expand Button */}
                                         <td className="py-3 px-4 text-right whitespace-nowrap">
                                             {hasSteps ? (
@@ -202,7 +257,7 @@ export default function AuthHistoryTimeline({ events, onSelectMac }: AuthHistory
                                     {/* Expanded EAP Handshake Trace & Root Cause */}
                                     {isExpanded && (
                                         <tr className="bg-black/30">
-                                            <td colSpan={7} className="p-4 border-t border-b border-border-color">
+                                            <td colSpan={8} className="p-4 border-t border-b border-border-color">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     {/* Handshake Execution Steps */}
                                                     <div>

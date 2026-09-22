@@ -37,6 +37,7 @@ interface ConnectionPathProps {
         sgt_name?: string;
         nas_identifier?: string;
         nas_ip_address?: string;
+        nas_port_id?: string;
         acs_server?: string;
         authorization_rule?: string;
         authentication_method?: string;
@@ -278,7 +279,9 @@ export default function ConnectionPath({ session, onNodeSelect }: ConnectionPath
             nodes.push({
                 id: 'nas',
                 label: 'Access Switch',
-                sub: session.nas_identifier || session.nas_ip_address || "Network Switch",
+                sub: session.nas_port_id
+                    ? `${session.nas_identifier || "Switch"} (${session.nas_port_id})`
+                    : (session.nas_identifier || session.nas_ip_address || "Network Switch"),
                 status: 'success',
                 icon: <Server className="w-5 h-5" />,
                 details: {
@@ -286,6 +289,7 @@ export default function ConnectionPath({ session, onNodeSelect }: ConnectionPath
                     items: [
                         { label: "Switch Hostname", value: session.nas_identifier || "Unknown Switch" },
                         { label: "Switch IP Address", value: session.nas_ip_address || "N/A" },
+                        ...(session.nas_port_id ? [{ label: "Switch Port Interface", value: session.nas_port_id }] : []),
                         { label: "Facility Site Code", value: session.site_code || "N/A" },
                         { label: "Assigned Port VLAN", value: session.vlan || "Default" }
                     ]

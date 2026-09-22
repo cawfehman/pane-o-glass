@@ -2,17 +2,41 @@
 
 import React, { useState } from "react";
 import ConnectionPath from "./ConnectionPath";
-import { CheckCircle2, XCircle, AlertTriangle, Radio, Copy, Check, ChevronDown, ChevronRight, Stethoscope, ShieldCheck } from "lucide-react";
+import { 
+    CheckCircle2, 
+    XCircle, 
+    AlertTriangle, 
+    Radio, 
+    Copy, 
+    Check, 
+    ChevronDown, 
+    ChevronRight, 
+    Stethoscope, 
+    ShieldCheck,
+    Clock,
+    RotateCcw,
+    History
+} from "lucide-react";
 
 interface EnrichedEndpointCardProps {
     session: any;
     isHistory?: boolean;
+    isHistorical?: boolean;
+    hasLiveSession?: boolean;
+    onReturnToLive?: () => void;
 }
 
-export default function EnrichedEndpointCard({ session, isHistory = false }: EnrichedEndpointCardProps) {
+export default function EnrichedEndpointCard({ 
+    session, 
+    isHistory = false,
+    isHistorical = false,
+    hasLiveSession = false,
+    onReturnToLive
+}: EnrichedEndpointCardProps) {
     const [copied, setCopied] = useState(false);
     const [showSteps, setShowSteps] = useState(false);
 
+    const isHistoricalMode = isHistory || isHistorical;
     const adData = session.enrichment?.ad || session.ad;
     const vectraData = session.enrichment?.vectra;
     const isPass = session.status !== false;
@@ -25,6 +49,7 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
     const copyTicketSummary = () => {
         const lines = isPassive ? [
             `--- CISCO ISE / PASSIVE IDENTITY TRIAGE SUMMARY ---`,
+            isHistoricalMode ? `[HISTORICAL FORENSIC SNAPSHOT: ${session.timestamp || "Past Event"}]` : `[ACTIVE LIVE SESSION]`,
             `User/Identity:  ${adData?.displayName || session.user_name || "Unknown"} (${session.user_name || "N/A"})`,
             `Session Type:   Passive Identity (Active Directory Event Log / Kerberos)`,
             `Workstation IP: ${session.workstation_ip || session.framed_ip_address || session.calling_station_id}`,
@@ -38,7 +63,8 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
             `ISE PSN Node:   ${session.acs_server || "Unknown"}`,
             `Auth Result:    PASSED / LOGGED ON (AD Event 4624)`
         ] : [
-            `--- CISCO ISE / WIRELESS TRIAGE SUMMARY ---`,
+            `--- CISCO ISE / WIRELESS & WIRED TRIAGE SUMMARY ---`,
+            isHistoricalMode ? `[HISTORICAL FORENSIC SNAPSHOT: ${session.timestamp || "Past Event"}]` : `[ACTIVE LIVE SESSION]`,
             `User/Identity: ${adData?.displayName || session.user_name || "Unknown"} (${session.user_name || "N/A"})`,
             `MAC Address:   ${session.calling_station_id}`,
             `IP Address:    ${session.framed_ip_address || "None"}`,
@@ -49,17 +75,53 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
             `Resolution:    ${session.insight?.suggestion || "Verify supplicant and credentials"}`,
             `SSID / AP:     ${session.wlan_ssid || "N/A"} / ${session.access_point_name || "N/A"}`,
             `NAD (Switch):  ${session.nas_identifier || "N/A"} (${session.nas_ip_address || "N/A"})`,
+            session.nas_port_id ? `Switch Port:   ${session.nas_port_id}` : null,
             `Device Model:  ${session.endpoint_profile || "Unknown"} ${session.hardware_model || ""}`.trim(),
             wlc?.found ? `WLC State:     ${wlc.wlcName} (State: ${wlc.status}${wlc.rssi ? `, RSSI: ${wlc.rssi} dBm` : ''}${wlc.excluded ? ' - BLACKLISTED' : ''})` : `WLC State:     No direct SNMP active session`,
             `Audit Session: ${session.audit_session_id || "N/A"}`
-        ];
+        ].filter(Boolean) as string[];
         navigator.clipboard.writeText(lines.join('\n'));
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
 
     return (
-        <div className="glass-card mb-8 p-0 overflow-hidden" style={{ borderLeft: `6px solid ${isPassive ? '#38bdf8' : statusColor}` }}>
+        <div className="glass-card mb-8 p-0 overflow-hidden" style={{ borderLeft: `6px solid ${isPassive ? '#38bdf8' : isHistoricalMode ? '#f59e0b' : statusColor}` }}>
+            {/* Historical Forensic Snapshot Alert Banner */}
+            {isHistoricalMode && (
+                <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-transparent border-b border-amber-500/30 px-6 py-3 flex items-center justify-between flex-wrap gap-3">
+                    <div className="flex items-center gap-3 text-amber-200 text-xs">
+                        <div className="w-7 h-7 rounded-full bg-amber-500/25 flex items-center justify-center text-amber-400 shrink-0">
+                            <Clock size={14} />
+                        </div>
+                        <div>
+                            <div className="font-bold flex items-center gap-2 flex-wrap">
+                                <span>Time-Travel Forensic Diagram (Historical Connection Event)</span>
+                                <span className="px-2 py-0.5 rounded text-[0.65rem] uppercase font-mono bg-amber-500/30 text-amber-300 font-extrabold">
+                                    {session.timestamp && session.timestamp !== "Unknown"
+                                        ? new Date(session.timestamp).toLocaleString()
+                                        : "Past Attempt"}
+                                </span>
+                            </div>
+                            <p className="m-0 text-[0.7rem] text-amber-200/80">
+                                Reconstructed topology and device attributes as recorded during this RADIUS authentication attempt.
+                            </p>
+                        </div>
+                    </div>
+                    {hasLiveSession && onReturnToLive && (
+                        <button
+                            type="button"
+                            onClick={onReturnToLive}
+                            className="btn-secondary text-xs py-1 px-3 flex items-center gap-1.5 hover:bg-white/10 text-amber-300 border-amber-500/40 cursor-pointer"
+                            title="Exit historical forensic view and return to current active session"
+                        >
+                            <RotateCcw size={12} />
+                            <span>Return to Live State</span>
+                        </button>
+                    )}
+                </div>
+            )}
+
             <div className="p-6">
                 {/* Header with Title, Status and Quick Copy Ticket Note */}
                 <div className="flex justify-between items-start mb-6">
@@ -72,6 +134,11 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
                                 <span className="px-2.5 py-0.5 rounded text-[0.7rem] font-bold uppercase bg-sky-500/20 text-sky-400 border border-sky-500/40 flex items-center gap-1.5">
                                     <ShieldCheck size={12} className="text-sky-400" />
                                     Passive Identity (AD Logon)
+                                </span>
+                            ) : isHistoricalMode ? (
+                                <span className="px-2.5 py-0.5 rounded text-[0.7rem] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5">
+                                    <History size={12} className="text-amber-400" />
+                                    Historical Forensic Snapshot
                                 </span>
                             ) : (
                                 <span className="px-2.5 py-0.5 rounded text-[0.7rem] font-bold uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
@@ -300,6 +367,9 @@ export default function EnrichedEndpointCard({ session, isHistory = false }: Enr
                         ) : (
                             <>
                                 <p title="The WLC or Switch" className="mb-1"><strong>NAD / Switch:</strong> <span className="text-text-primary font-medium">{session.nas_identifier && session.nas_identifier !== "Unknown" ? session.nas_identifier : (session.nas_ip_address || "Local Switch")}</span></p>
+                                {session.nas_port_id && session.nas_port_id !== "Unknown" && (
+                                    <p title="Physical switchport or interface" className="mb-1"><strong>Switch Port:</strong> <span className="font-mono text-accent-primary font-bold">{session.nas_port_id}</span></p>
+                                )}
                                 {session.wlan_ssid && session.wlan_ssid !== "N/A" && (
                                     <p title="The Wireless SSID" className="mb-1"><strong>SSID:</strong> <span className="text-accent-secondary font-semibold">{session.wlan_ssid}</span></p>
                                 )}
