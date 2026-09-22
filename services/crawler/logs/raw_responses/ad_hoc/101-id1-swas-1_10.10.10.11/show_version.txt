@@ -1,0 +1,13 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:56.105694
+Device: 101-id1-swas-1 (10.10.10.11)
+Command: show_version
+Snapshot ID: N/A
+================================================================================
+
+
+Cisco IOS Software, C2960X Software (C2960X-UNIVERSALK9-M), Version 15.2(7)E4
+cisco WS-C2960X-48FPS-L (APM86392) processor with 524288K bytes of memory.
+Processor board ID FOC2111Y8ZZ
+101-id1-swas-1 uptime is 15 weeks, 2 days, 4 hours, 3 minutes

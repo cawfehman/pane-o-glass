@@ -1,0 +1,20 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:55.870693
+Device: 202-mdf-swds-1 (10.200.1.2)
+Command: show_trunk_or_switchport
+Snapshot ID: N/A
+================================================================================
+
+
+GigabitEthernet1/0/1 is up, line protocol is up
+  Hardware is Gigabit Ethernet, address is 00a1.2b3c.0203 (bia 00a1.2b3c.0203)
+  Description: UPLINK_TO_202-MDF-CR01-1_Gi0/0/2
+  Internet address is 10.200.1.2/30
+  Full-duplex, 1000Mb/s, media type is 10/100/1000BaseTX
+GigabitEthernet1/0/2 is up, line protocol is up
+  Hardware is Gigabit Ethernet, address is 00a1.2b3c.0204 (bia 00a1.2b3c.0204)
+  Description: TRUNK_TO_202-ID1-SWAS-1
+  Full-duplex, 1000Mb/s, media type is 10/100/1000BaseTX
+Vlan50 is up, line protocol is up
+  Internet address is 10.20.50.1/24

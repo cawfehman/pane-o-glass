@@ -1,0 +1,12 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:56.180451
+Device: 202-id1-swas-1 (10.20.50.10)
+Command: show_ip_arp
+Snapshot ID: N/A
+================================================================================
+
+
+Protocol  Address          Age (min)  Hardware Addr   Type   Interface
+Internet  10.20.50.1              5   00a1.2b3c.0204  ARPA   Vlan50
+Internet  10.20.50.88             1   0050.56aa.7744  ARPA   Vlan50

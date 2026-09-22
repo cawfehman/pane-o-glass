@@ -1,0 +1,13 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:55.869679
+Device: 202-mdf-swds-1 (10.200.1.2)
+Command: show_version
+Snapshot ID: N/A
+================================================================================
+
+
+Cisco IOS Software, IOS-XE Software, Catalyst L3 Switch Software (CAT3K_CAA-UNIVERSALK9-M), Version 16.12.04
+cisco WS-C3850-24XS processor with 2097152K bytes of memory.
+Processor board ID FOC2233X1CD
+202-mdf-swds-1 uptime is 20 weeks, 5 days, 1 hour, 45 minutes

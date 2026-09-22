@@ -1,0 +1,12 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:55.694153
+Device: 202-mdf-cr01-1 (10.254.1.2)
+Command: show_ip_interface_brief
+Snapshot ID: N/A
+================================================================================
+
+
+Interface              IP-Address      OK? Method Status                Protocol
+GigabitEthernet0/0/1   10.254.1.2      YES manual up                    up      
+GigabitEthernet0/0/2   10.200.1.1      YES manual up                    up      

@@ -1,0 +1,19 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:55.573722
+Device: 101-mdf-cr01-1 (10.100.1.1)
+Command: show_trunk_or_switchport
+Snapshot ID: N/A
+================================================================================
+
+
+GigabitEthernet0/0/0 is up, line protocol is up
+  Hardware is ISR4451-X, address is 00a1.2b3c.0101 (bia 00a1.2b3c.0101)
+  Description: LINK_TO_101-MDF-SWDS-1_Gi1/0/1
+  Internet address is 10.100.1.1/30
+  Full-duplex, 1000Mb/s, media type is RJ45
+GigabitEthernet0/0/1 is up, line protocol is up
+  Hardware is ISR4451-X, address is 00a1.2b3c.0102 (bia 00a1.2b3c.0102)
+  Description: WAN_TO_202-MDF-CR01-1_Gi0/0/1
+  Internet address is 10.254.1.1/30
+  Full-duplex, 1000Mb/s, media type is RJ45

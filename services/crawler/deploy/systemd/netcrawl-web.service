@@ -1,0 +1,21 @@
+[Unit]
+Description=NetCrawl Web Interface Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=netcrawl
+Group=netcrawl
+WorkingDirectory=/opt/netcrawl
+EnvironmentFile=/opt/netcrawl/.env
+ExecStart=/opt/netcrawl/venv/bin/python main.py web --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=5s
+
+# Hardening measures
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

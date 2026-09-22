@@ -1,0 +1,19 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:56.178705
+Device: 202-id1-swas-1 (10.20.50.10)
+Command: show_interfaces
+Snapshot ID: N/A
+================================================================================
+
+
+GigabitEthernet0/1 is up, line protocol is up
+  Hardware is Gigabit Ethernet, address is 00a1.2b3c.2010 (bia 00a1.2b3c.2010)
+  Description: UPLINK_TO_202-MDF-SWDS-1_Gi1/0/2
+  Full-duplex, 1000Mb/s, media type is 10/100/1000BaseTX
+GigabitEthernet0/8 is up, line protocol is up
+  Hardware is Gigabit Ethernet, address is 00a1.2b3c.2088 (bia 00a1.2b3c.2088)
+  Description: REMOTE_SERVER_APP_88
+  Full-duplex, 1000Mb/s, media type is 10/100/1000BaseTX
+Vlan50 is up, line protocol is up
+  Internet address is 10.20.50.10/24

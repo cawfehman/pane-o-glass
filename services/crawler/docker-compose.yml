@@ -1,0 +1,41 @@
+services:
+  # NetCrawl Interactive Web Dashboard
+  web:
+    build: .
+    container_name: netcrawl-web
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - NETCRAWL_USER=${NETCRAWL_USER:-admin}
+      - NETCRAWL_PASS=${NETCRAWL_PASS:-}
+      - NETCRAWL_SECRET=${NETCRAWL_SECRET:-}
+    volumes:
+      - ./data:/app/data
+      - ./snapshots:/app/snapshots
+      - ./maps:/app/maps
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/snapshots"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Dedicated Scheduled Crawler Job (runs on a cron schedule or on-demand)
+  # Uncomment or trigger via: docker compose run --rm crawler
+  crawler:
+    build: .
+    container_name: netcrawl-crawler
+    restart: "no"
+    environment:
+      - NETCRAWL_USER=${NETCRAWL_USER:-admin}
+      - NETCRAWL_PASS=${NETCRAWL_PASS:-}
+      - NETCRAWL_SECRET=${NETCRAWL_SECRET:-}
+    volumes:
+      - ./data:/app/data
+      - ./snapshots:/app/snapshots
+      - ./maps:/app/maps
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml:ro
+    command: ["python", "main.py", "crawl"]

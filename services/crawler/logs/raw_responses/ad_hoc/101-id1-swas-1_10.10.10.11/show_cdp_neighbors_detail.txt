@@ -1,0 +1,21 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:56.107697
+Device: 101-id1-swas-1 (10.10.10.11)
+Command: show_cdp_neighbors_detail
+Snapshot ID: N/A
+================================================================================
+
+
+--------------------------------------------------
+Device ID: 101-mdf-swds-1.corp.local
+Entry address(es): 
+  IP address: 10.100.1.2
+Platform: cisco WS-C3850-24XS,  Capabilities: Router Switch IGMP
+Interface: GigabitEthernet0/1,  Port ID (outgoing port): GigabitEthernet1/0/2
+--------------------------------------------------
+Device ID: 101-id1-wlap-1.corp.local
+Entry address(es): 
+  IP address: 10.10.10.75
+Platform: cisco AIR-AP3802I-B-K9,  Capabilities: Trans-Bridge
+Interface: GigabitEthernet0/24,  Port ID (outgoing port): GigabitEthernet0

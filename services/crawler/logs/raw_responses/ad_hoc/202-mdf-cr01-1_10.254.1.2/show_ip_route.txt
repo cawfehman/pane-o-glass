@@ -1,0 +1,17 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:55.695748
+Device: 202-mdf-cr01-1 (10.254.1.2)
+Command: show_ip_route
+Snapshot ID: N/A
+================================================================================
+
+
+Gateway of last resort is 10.254.1.1 to network 0.0.0.0
+
+S*    0.0.0.0/0 [1/0] via 10.254.1.1, GigabitEthernet0/0/1
+C     10.254.1.0/30 is directly connected, GigabitEthernet0/0/1
+C     10.200.1.0/30 is directly connected, GigabitEthernet0/0/2
+O     10.20.50.0/24 [110/2] via 10.200.1.2, GigabitEthernet0/0/2
+O     10.10.10.0/24 [110/11] via 10.254.1.1, GigabitEthernet0/0/1
+O     10.10.30.0/24 [110/11] via 10.254.1.1, GigabitEthernet0/0/1

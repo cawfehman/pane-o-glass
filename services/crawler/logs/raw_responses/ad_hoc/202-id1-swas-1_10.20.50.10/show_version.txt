@@ -1,0 +1,13 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:56.177803
+Device: 202-id1-swas-1 (10.20.50.10)
+Command: show_version
+Snapshot ID: N/A
+================================================================================
+
+
+Cisco IOS Software, C2960X Software (C2960X-UNIVERSALK9-M), Version 15.2(7)E4
+cisco WS-C2960X-24TD-L processor with 524288K bytes of memory.
+Processor board ID FOC2111Y8AB
+202-id1-swas-1 uptime is 20 weeks, 4 days, 22 hours, 10 minutes

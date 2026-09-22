@@ -1,0 +1,23 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:56.106772
+Device: 101-id1-swas-1 (10.10.10.11)
+Command: show_trunk_or_switchport
+Snapshot ID: N/A
+================================================================================
+
+
+GigabitEthernet0/1 is up, line protocol is up
+  Hardware is Gigabit Ethernet, address is 00a1.2b3c.1011 (bia 00a1.2b3c.1011)
+  Description: UPLINK_TO_101-MDF-SWDS-1_Gi1/0/2
+  Full-duplex, 1000Mb/s, media type is 10/100/1000BaseTX
+GigabitEthernet0/5 is up, line protocol is up
+  Hardware is Gigabit Ethernet, address is 00a1.2b3c.1015 (bia 00a1.2b3c.1015)
+  Description: WORKSTATION_PC_50
+  Full-duplex, 1000Mb/s, media type is 10/100/1000BaseTX
+GigabitEthernet0/24 is up, line protocol is up
+  Hardware is Gigabit Ethernet, address is 00a1.2b3c.1024 (bia 00a1.2b3c.1024)
+  Description: ACCESS_POINT_101-ID1-WLAP-1
+  Full-duplex, 1000Mb/s, media type is 10/100/1000BaseTX
+Vlan10 is up, line protocol is up
+  Internet address is 10.10.10.11/24

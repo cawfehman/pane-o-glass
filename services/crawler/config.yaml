@@ -1,0 +1,66 @@
+# Network Crawler Configuration
+crawler:
+  # Initial seed devices (IP addresses or resolvable hostnames)
+  seed_devices:
+    - "10.100.1.1"
+
+  # Concurrency settings
+  max_workers: 15
+  ssh_timeout: 10
+  banner_timeout: 15
+
+  # Primary SSH credentials (can be overridden via CLI --username/--password/--key-file/--ask-pass
+  # or environment variables: NETCRAWL_USER, NETCRAWL_PASS, NETCRAWL_SECRET, NETCRAWL_KEY_FILE)
+  credentials:
+    username: "admin"
+    password: "ciscopassword"
+    secret: ""       # Enable secret if needed for privileged exec commands
+    port: 22
+    key_file: ""     # Optional path to private key: e.g. "~/.ssh/id_rsa"
+
+  # Fallback credentials: If primary authentication fails on any switch/router,
+  # the crawler will automatically attempt these profiles in sequential order.
+  # Useful when some switches are on TACACS+/RADIUS and others use local emergency credentials.
+  fallback_credentials:
+    - username: "localadmin"
+      password: "emergencybackup"
+      secret: "emergencypriv"
+    # - username: "svc-crawler"
+    #   key_file: "/etc/netcrawl/id_ed25519"
+
+  # Device naming pattern: aaa-bbb-cccc-d
+  # aaa: 3-digit site code
+  # bbb: 3-char IDF code
+  # cccc: 4+ char device role/type
+  # d: iterator
+  hostname_regex: '^(?P<site>[0-9]{3})-(?P<idf>[a-zA-Z0-9]{3})-(?P<role>[a-zA-Z0-9]+)-(?P<iter>[0-9]+)$'
+
+  # Strict safety and device filtering
+  filters:
+    # Only crawl devices with these CDP capabilities
+    allowed_cdp_capabilities:
+      - "Router"
+      - "Switch"
+
+    # Exclude devices matching any of these platform patterns (e.g. Wireless APs, IP Phones)
+    excluded_platform_patterns:
+      - "(?i)AIR-"
+      - "(?i)C91[0-9]{2}"
+      - "(?i)AP-cos"
+      - "(?i)Aironet"
+      - "(?i)IP Phone"
+      - "(?i)Cisco IP"
+
+    # Exclude devices if hostname matches AP patterns or roles
+    excluded_role_patterns:
+      - "(?i)wlan"
+      - "(?i)ap[0-9]*"
+
+storage:
+  database_path: "data/crawler.db"
+  snapshots_dir: "snapshots"
+  maps_dir: "maps"
+
+web:
+  host: "0.0.0.0"
+  port: 8080

@@ -1,0 +1,14 @@
+[Unit]
+Description=Run NetCrawl daily at 02:00 AM (or multiple times daily)
+
+[Timer]
+# Run daily at 2:00 AM
+OnCalendar=*-*-* 02:00:00
+# To run twice a day (e.g. 02:00 and 14:00), change to:
+# OnCalendar=02,14:00:00
+
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

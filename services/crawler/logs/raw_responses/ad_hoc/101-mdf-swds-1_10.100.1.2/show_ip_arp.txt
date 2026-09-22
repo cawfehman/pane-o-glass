@@ -1,0 +1,15 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:55.744247
+Device: 101-mdf-swds-1 (10.100.1.2)
+Command: show_ip_arp
+Snapshot ID: N/A
+================================================================================
+
+
+Protocol  Address          Age (min)  Hardware Addr   Type   Interface
+Internet  10.100.1.1             10   00a1.2b3c.0101  ARPA   GigabitEthernet1/0/1
+Internet  10.10.10.11             5   00a1.2b3c.1011  ARPA   Vlan10
+Internet  10.10.10.12             5   00a1.2b3c.1012  ARPA   Vlan10
+Internet  10.10.10.50             2   0050.56a1.b2c3  ARPA   Vlan10
+Internet  10.10.30.100            1   0050.56fe.9988  ARPA   Vlan30

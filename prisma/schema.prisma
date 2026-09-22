@@ -377,4 +377,71 @@ model BecRawUrl {
   @@index([provider])
 }
 
+model CrawlSnapshot {
+  id                String        @id @default(cuid())
+  snapshotNumber    Int           @unique @default(autoincrement())
+  timestamp         DateTime      @default(now())
+  seedDevices       String[]
+  totalDiscovered   Int           @default(0)
+  totalReachable    Int           @default(0)
+  totalUnreachable  Int           @default(0)
+  durationSeconds   Float         @default(0.0)
+  devices           CrawlDevice[]
+  links             CrawlLink[]
+  createdAt         DateTime      @default(now())
+
+  @@index([timestamp])
+  @@index([snapshotNumber])
+}
+
+model CrawlDevice {
+  id             String        @id @default(cuid())
+  snapshotId     String
+  snapshot       CrawlSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  hostname       String
+  ipAddress      String
+  platform       String?
+  osVersion      String?
+  serialNumber   String?
+  role           String        // Router, L3 Switch, L2 Switch, Unknown
+  status         String        // REACHABLE, TIMEOUT, AUTH_FAILED, ERROR
+  failureReason  String?
+  discoveredVia  String?
+  site           String?
+  idf            String?
+  roleCode       String?
+  iterator       String?
+  interfaces     Json          @default("{}")
+  routes         Json          @default("[]")
+  vlans          Json          @default("[]")
+  cdpNeighbors   Json          @default("[]")
+  arpTable       Json          @default("[]")
+  createdAt      DateTime      @default(now())
+
+  @@index([snapshotId])
+  @@index([hostname])
+  @@index([ipAddress])
+  @@index([site])
+  @@index([status])
+}
+
+model CrawlLink {
+  id              String        @id @default(cuid())
+  snapshotId      String
+  snapshot        CrawlSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  sourceDevice    String
+  sourceInterface String
+  sourceIp        String?
+  targetDevice    String
+  targetInterface String
+  targetIp        String?
+  linkType        String        @default("L2_TRUNK") // L2_TRUNK, L2_ACCESS, L3_ROUTED, UNKNOWN
+  status          String        @default("UP")       // UP, DOWN, MISMATCH
+  createdAt       DateTime      @default(now())
+
+  @@index([snapshotId])
+  @@index([sourceDevice])
+  @@index([targetDevice])
+}
+
 

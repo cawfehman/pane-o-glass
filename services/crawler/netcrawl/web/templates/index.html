@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetCrawl - Cisco Network Topology & Path Tracer</title>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0b0f19;
+            --bg-secondary: #151d2f;
+            --bg-tertiary: #1e293b;
+            --border-color: #334155;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-cyan: #00b4d8;
+            --accent-blue: #0077b6;
+            --accent-green: #2ec4b6;
+            --accent-danger: #e63946;
+            --accent-gold: #ffb703;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Top Bar */
+        header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 100;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .brand-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            color: #0b0f19;
+        }
+        .brand-text h1 { font-size: 16px; font-weight: 700; color: #fff; }
+        .brand-text p { font-size: 11px; color: var(--text-secondary); }
+
+        .top-stats {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .stat-badge {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .stat-danger {
+            background: rgba(230, 57, 70, 0.15);
+            border-color: var(--accent-danger);
+            color: #fca5a5;
+            cursor: pointer;
+        }
+        .stat-danger:hover { background: rgba(230, 57, 70, 0.25); }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        select, input, button {
+            font-family: inherit;
+            font-size: 13px;
+        }
+        select {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button {
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--accent-cyan); color: #0b0f19; }
+        .btn-primary:hover { background: #48cae4; }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }
+        .btn-secondary:hover { background: #475569; }
+
+        /* Navigation Tabs */
+        .tab-bar {
+            background: #111827;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            padding: 0 20px;
+            gap: 4px;
+        }
+        .tab-btn {
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            padding: 10px 18px;
+            font-size: 13px;
+            font-weight: 600;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+        }
+        .tab-btn:hover { color: var(--text-primary); }
+        .tab-btn.active {
+            color: var(--accent-cyan);
+            border-bottom-color: var(--accent-cyan);
+            background: rgba(0, 180, 216, 0.05);
+        }
+
+        /* Content Areas */
+        .tab-content {
+            flex: 1;
+            position: relative;
+            display: none;
+        }
+        .tab-content.active { display: flex; }
+
+        /* TAB 1: Topology */
+        #topo-view { width: 100%; height: 100%; display: flex; position: relative; }
+        #network-canvas { flex: 1; height: 100%; }
+
+        .topo-controls {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            background: rgba(21, 29, 47, 0.88);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-color);
+            padding: 10px 14px;
+            border-radius: 8px;
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .legend-box {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(21, 29, 47, 0.92);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-color);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            z-index: 10;
+        }
+        .legend-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+        .legend-row:last-child { margin-bottom: 0; }
+        .dot { width: 12px; height: 12px; border-radius: 3px; }
+
+        /* Device Inspector Drawer */
+        #inspector {
+            width: 420px;
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border-color);
+            height: 100%;
+            overflow-y: auto;
+            display: none;
+            flex-direction: column;
+            z-index: 20;
+        }
+        .inspector-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .inspector-body { padding: 16px; flex: 1; }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 12px;
+        }
+        .detail-label { color: var(--text-secondary); }
+        .detail-val { font-weight: 500; }
+        .section-title {
+            font-size: 13px;
+            font-weight: 700;
+            margin: 16px 0 8px 0;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .mini-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            margin-bottom: 12px;
+        }
+        .mini-table th, .mini-table td {
+            padding: 6px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .mini-table th { color: var(--text-secondary); font-weight: 600; }
+
+        /* TAB 2: Path Tracer */
+        #trace-view {
+            width: 100%;
+            height: 100%;
+            display: flex;
+        }
+        .trace-sidebar {
+            width: 380px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-y: auto;
+        }
+        .form-group { display: flex; flex-direction: column; gap: 6px; }
+        .form-group label { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+        .form-group input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 6px;
+        }
+        .quick-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .chip {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            color: var(--accent-cyan);
+        }
+        .chip:hover { background: #334155; }
+
+        .trace-results { flex: 1; padding: 24px; overflow-y: auto; }
+        .hop-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-left: 4px solid var(--accent-cyan);
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin-bottom: 14px;
+            position: relative;
+        }
+        .hop-card.l2 { border-left-color: var(--accent-green); }
+        .hop-card.terminal { border-left-color: var(--accent-gold); }
+        .hop-card.drop { border-left-color: var(--accent-danger); }
+        .hop-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .hop-title { font-weight: 700; font-size: 14px; }
+        .hop-badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: #1e293b;
+        }
+
+        /* TAB 3: Investigation Center */
+        #unreachable-view {
+            width: 100%;
+            height: 100%;
+            padding: 24px;
+            overflow-y: auto;
+        }
+        .alert-banner {
+            background: rgba(230, 57, 70, 0.1);
+            border: 1px solid var(--accent-danger);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .data-table th, .data-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 13px;
+        }
+        .data-table th { background: var(--bg-tertiary); font-weight: 600; color: var(--text-secondary); }
+
+        /* Notification Toast */
+        #toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--accent-cyan);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            display: none;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="brand">
+            <div class="brand-icon">⚡</div>
+            <div class="brand-text">
+                <h1>NetCrawl</h1>
+                <p>Cisco IOS Topology & Path Tracer</p>
+            </div>
+        </div>
+
+        <div class="top-stats">
+            <div class="stat-badge">📦 <span id="stat-devices">0</span> Devices</div>
+            <div class="stat-badge">🔗 <span id="stat-links">0</span> Links</div>
+            <div class="stat-badge stat-danger" id="stat-unreach-badge" onclick="switchTab('unreachable')">
+                🚨 <span id="stat-unreachable">0</span> Failed (Investigate)
+            </div>
+        </div>
+
+        <div class="header-actions">
+            <select id="snapshot-select" onchange="loadSnapshot(this.value)">
+                <option value="">Loading snapshots...</option>
+            </select>
+            <button class="btn-primary" onclick="runCrawl(true)">▶ Crawl (Mock Demo)</button>
+            <button class="btn-secondary" onclick="exportSvg()">Download SVG</button>
+        </div>
+    </header>
+
+    <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab('topology')">🗺 Topology Map</button>
+        <button class="tab-btn" onclick="switchTab('tracer')">🎯 Hop-by-Hop Path Tracer</button>
+        <button class="tab-btn" onclick="switchTab('unreachable')">🚨 Investigation Center</button>
+        <button class="tab-btn" onclick="switchTab('audit')">📜 Audit & Event Logs</button>
+    </div>
+
+    <!-- TAB 1: TOPOLOGY -->
+    <div class="tab-content active" id="tab-topology">
+        <div id="topo-view">
+            <div class="topo-controls">
+                <input type="text" id="node-search" placeholder="Search device/IP..." style="background:var(--bg-tertiary); border:1px solid var(--border-color); color:#fff; padding:4px 8px; border-radius:4px;" onkeyup="searchDevice(this.value)">
+                <button class="btn-secondary" onclick="fitNetwork()">Fit View</button>
+                <button class="btn-secondary" onclick="togglePhysics()">Toggle Physics</button>
+            </div>
+
+            <div id="network-canvas"></div>
+
+            <div class="legend-box">
+                <div style="font-weight:700; margin-bottom:6px; color:#e2e8f0;">Device Roles</div>
+                <div class="legend-row"><div class="dot" style="background:var(--accent-cyan);"></div>Router</div>
+                <div class="legend-row"><div class="dot" style="background:var(--accent-blue);"></div>L3 Distribution Switch</div>
+                <div class="legend-row"><div class="dot" style="background:var(--accent-green);"></div>L2 Access Switch</div>
+                <div class="legend-row"><div class="dot" style="background:var(--accent-danger);"></div>🚨 Unreachable (Investigate)</div>
+                <div class="legend-row"><div class="dot" style="background:var(--accent-gold);"></div>Active Path Traversed</div>
+            </div>
+
+            <!-- Side Inspector Drawer -->
+            <div id="inspector">
+                <div class="inspector-header">
+                    <h3 id="ins-hostname" style="font-size:16px;">Device Info</h3>
+                    <button class="btn-secondary" onclick="closeInspector()" style="padding:2px 8px;">✕</button>
+                </div>
+                <div class="inspector-body" id="ins-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: PATH TRACER -->
+    <div class="tab-content" id="tab-tracer">
+        <div id="trace-view">
+            <div class="trace-sidebar">
+                <h3 style="font-size:15px; font-weight:700;">Path Simulation</h3>
+                <p style="font-size:12px; color:var(--text-secondary);">Simulates packet forwarding as it would have travelled on the selected snapshot date.</p>
+
+                <div class="form-group">
+                    <label>Source IP Address</label>
+                    <input type="text" id="trace-src" placeholder="e.g. 10.10.10.50" value="10.10.10.50">
+                    <div class="quick-chips">
+                        <span class="chip" onclick="setTrace('10.10.10.50', '10.20.50.88')">Workstation -> Remote Server</span>
+                        <span class="chip" onclick="setTrace('10.10.30.100', '10.10.10.50')">Local Server -> Workstation</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Destination IP Address</label>
+                    <input type="text" id="trace-dst" placeholder="e.g. 10.20.50.88" value="10.20.50.88">
+                </div>
+
+                <button class="btn-primary" style="padding:10px;" onclick="executeTrace()">⚡ Simulate Path</button>
+            </div>
+
+            <div class="trace-results">
+                <div id="trace-status" style="margin-bottom:16px; font-size:14px; font-weight:600; color:var(--accent-cyan);">
+                    Select Source and Destination IP to trace forwarding path.
+                </div>
+                <div id="hop-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 3: INVESTIGATION CENTER -->
+    <div class="tab-content" id="tab-unreachable">
+        <div id="unreachable-view">
+            <div class="alert-banner">
+                <div style="font-size:24px;">🚨</div>
+                <div>
+                    <h3 style="font-size:15px; color:#fca5a5;">Unreachable Network Infrastructure</h3>
+                    <p style="font-size:12px; color:#f87171;">The following devices were discovered in neighbor CDP tables but failed SSH connection attempts. They are flagged for investigation.</p>
+                </div>
+            </div>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Device Name</th>
+                        <th>IP Address</th>
+                        <th>Site / IDF</th>
+                        <th>Status</th>
+                        <th>Failure Diagnostic</th>
+                        <th>Discovered Via (Neighbor Port)</th>
+                    </tr>
+                </thead>
+                <tbody id="unreachable-table-body">
+                    <tr><td colspan="6" style="text-align:center; color:var(--text-secondary);">No unreachable devices found.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- TAB 4: AUDIT & EVENT LOGS -->
+    <div class="tab-content" id="tab-audit">
+        <div style="width:100%; height:100%; padding:24px; overflow-y:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <div>
+                    <h3 style="font-size:16px; font-weight:700;">Security & Operational Audit Trail</h3>
+                    <p style="font-size:12px; color:var(--text-secondary);">Immutable chronological log of all SSH connections, command executions, safety validations, and discovery events.</p>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <select id="audit-severity-filter" onchange="fetchAuditLogs()">
+                        <option value="">All Severities</option>
+                        <option value="INFO">INFO</option>
+                        <option value="WARNING">WARNING</option>
+                        <option value="SECURITY_ALERT">SECURITY ALERT</option>
+                    </select>
+                    <button class="btn-primary" onclick="fetchAuditLogs()">⟳ Refresh Logs</button>
+                </div>
+            </div>
+
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width:160px;">Timestamp</th>
+                        <th>Event Type</th>
+                        <th style="width:110px;">Severity</th>
+                        <th>Target Device</th>
+                        <th>Details & Metadata</th>
+                    </tr>
+                </thead>
+                <tbody id="audit-table-body">
+                    <tr><td colspan="5" style="text-align:center; color:var(--text-secondary);">Loading audit logs...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        let currentSnapshotData = null;
+        let networkInstance = null;
+        let visNodes = null;
+        let visEdges = null;
+        let physicsEnabled = true;
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.innerText = msg;
+            t.style.display = 'block';
+            setTimeout(() => t.style.display = 'none', 3500);
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+            if (tabId === 'topology') {
+                document.querySelectorAll('.tab-btn')[0].classList.add('active');
+                document.getElementById('tab-topology').classList.add('active');
+                if (networkInstance) networkInstance.fit();
+            } else if (tabId === 'tracer') {
+                document.querySelectorAll('.tab-btn')[1].classList.add('active');
+                document.getElementById('tab-tracer').classList.add('active');
+            } else if (tabId === 'unreachable') {
+                document.querySelectorAll('.tab-btn')[2].classList.add('active');
+                document.getElementById('tab-unreachable').classList.add('active');
+            } else if (tabId === 'audit') {
+                document.querySelectorAll('.tab-btn')[3].classList.add('active');
+                document.getElementById('tab-audit').classList.add('active');
+                fetchAuditLogs();
+            }
+        }
+
+        async function fetchAuditLogs() {
+            const sev = document.getElementById('audit-severity-filter').value;
+            const url = sev ? `/api/audit?limit=100&severity=${sev}` : `/api/audit?limit=100`;
+            try {
+                const res = await fetch(url);
+                const logs = await res.json();
+                const tbody = document.getElementById('audit-table-body');
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--text-secondary);">No audit events recorded yet.</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = logs.map(l => {
+                    let sevColor = '#38bdf8';
+                    if (l.severity === 'WARNING') sevColor = '#fbbf24';
+                    else if (l.severity === 'SECURITY_ALERT' || l.severity === 'CRITICAL') sevColor = '#f87171';
+
+                    const detailsFormatted = JSON.stringify(l.details, null, 2);
+                    const devStr = l.hostname ? `${l.hostname} (${l.device_ip || ''})` : (l.device_ip || 'System');
+                    return `
+                        <tr>
+                            <td style="font-family:monospace; font-size:11px; color:#94a3b8;">${l.timestamp.replace('T', ' ').slice(0, 19)}</td>
+                            <td><b>${l.event_type}</b></td>
+                            <td><span style="color:${sevColor}; font-weight:700; font-size:11px; padding:2px 6px; background:rgba(255,255,255,0.05); border-radius:4px;">${l.severity}</span></td>
+                            <td>${devStr}</td>
+                            <td><pre style="margin:0; font-size:11px; color:#cbd5e1; max-width:650px; white-space:pre-wrap; word-break:break-all;">${detailsFormatted}</pre></td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function fetchSnapshots() {
+            try {
+                const res = await fetch('/api/snapshots');
+                const snapshots = await res.json();
+                const sel = document.getElementById('snapshot-select');
+                sel.innerHTML = '';
+                if (snapshots.length === 0) {
+                    sel.innerHTML = '<option value="">No snapshots found</option>';
+                    return;
+                }
+                snapshots.forEach((s, idx) => {
+                    const opt = document.createElement('option');
+                    opt.value = s.snapshot_id;
+                    opt.innerText = `Snap #${s.snapshot_id} - ${s.timestamp} (${s.total_reachable} up, ${s.total_unreachable} down)`;
+                    if (idx === 0) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+                if (snapshots.length > 0) {
+                    loadSnapshot(snapshots[0].snapshot_id);
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function loadSnapshot(snapshotId) {
+            if (!snapshotId) return;
+            try {
+                const res = await fetch(`/api/snapshot/${snapshotId}`);
+                currentSnapshotData = await res.json();
+                renderSummary(currentSnapshotData);
+                renderTopology(currentSnapshotData);
+                renderUnreachableTable(currentSnapshotData);
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function renderSummary(data) {
+            document.getElementById('stat-devices').innerText = data.summary.total_devices;
+            document.getElementById('stat-links').innerText = data.summary.total_links;
+            document.getElementById('stat-unreachable').innerText = data.summary.unreachable;
+        }
+
+        function renderTopology(data) {
+            const container = document.getElementById('network-canvas');
+            const nodesArr = [];
+            const edgesArr = [];
+
+            const roleColors = {
+                'Router': '#00b4d8',
+                'L3 Switch': '#0077b6',
+                'L2 Switch': '#2ec4b6',
+                'Unknown': '#90e0ef'
+            };
+
+            data.devices.forEach(dev => {
+                const isFail = dev.status !== 'REACHABLE';
+                const bg = isFail ? '#e63946' : (roleColors[dev.role] || '#00b4d8');
+                nodesArr.push({
+                    id: dev.hostname,
+                    label: `${dev.hostname}\n(${dev.ip_address})`,
+                    shape: dev.role === 'Router' ? 'hexagon' : 'box',
+                    color: {
+                        background: bg,
+                        border: isFail ? '#ff0033' : '#ffffff',
+                        highlight: { background: '#ffdd00', border: '#fff' }
+                    },
+                    font: { color: '#ffffff', size: 12, bold: true },
+                    borderWidth: isFail ? 3 : 2,
+                    shadow: true,
+                    deviceData: dev
+                });
+            });
+
+            data.links.forEach(link => {
+                const isDown = link.status !== 'UP';
+                edgesArr.push({
+                    from: link.source_device,
+                    to: link.target_device,
+                    label: `${link.source_interface} ↔ ${link.target_interface}`,
+                    font: { color: '#94a3b8', size: 10 },
+                    color: { color: isDown ? '#e63946' : '#457b9d', highlight: '#ffdd00' },
+                    width: isDown ? 3 : 2,
+                    dashes: link.link_type === 'L2_TRUNK' || isDown,
+                    title: `Type: ${link.link_type} | Speed: ${link.speed || 'N/A'}`
+                });
+            });
+
+            visNodes = new vis.DataSet(nodesArr);
+            visEdges = new vis.DataSet(edgesArr);
+
+            const options = {
+                nodes: { size: 28 },
+                edges: { smooth: { type: 'continuous' } },
+                physics: {
+                    barnesHut: { gravitationalConstant: -3500, springLength: 160 }
+                },
+                interaction: { hover: true, navigationButtons: true }
+            };
+
+            networkInstance = new vis.Network(container, { nodes: visNodes, edges: visEdges }, options);
+
+            networkInstance.on("click", function(params) {
+                if (params.nodes.length > 0) {
+                    const host = params.nodes[0];
+                    const dev = data.devices.find(d => d.hostname === host);
+                    if (dev) inspectDevice(dev);
+                }
+            });
+        }
+
+        function inspectDevice(dev) {
+            document.getElementById('ins-hostname').innerText = dev.hostname;
+            const isUnreach = dev.status !== 'REACHABLE';
+
+            let h = `
+                <div class="detail-row"><span class="detail-label">IP Address</span><span class="detail-val">${dev.ip_address}</span></div>
+                <div class="detail-row"><span class="detail-label">Role</span><span class="detail-val">${dev.role}</span></div>
+                <div class="detail-row"><span class="detail-label">Status</span><span class="detail-val" style="color:${isUnreach ? '#f87171' : '#4ade80'}">${dev.status}</span></div>
+                <div class="detail-row"><span class="detail-label">Platform</span><span class="detail-val">${dev.platform || 'N/A'}</span></div>
+                <div class="detail-row"><span class="detail-label">Site / IDF</span><span class="detail-val">${dev.site_info ? dev.site_info.site + ' / ' + dev.site_info.idf : 'N/A'}</span></div>
+            `;
+
+            if (isUnreach) {
+                h += `
+                    <div style="margin-top:12px; padding:12px; background:rgba(230,57,70,0.2); border:1px solid #e63946; border-radius:6px; font-size:12px; color:#fca5a5;">
+                        <b>🚨 FAILURE INVESTIGATION:</b><br>${dev.failure_reason || 'Unknown error'}<br>
+                        <b style="margin-top:6px; display:inline-block;">Discovered via:</b> ${dev.discovered_via || 'Direct seed'}
+                    </div>
+                `;
+            } else {
+                // Interfaces
+                const intfKeys = Object.keys(dev.interfaces || {});
+                h += `<div class="section-title">Interfaces & SVIs (${intfKeys.length})</div>`;
+                h += `<table class="mini-table"><thead><tr><th>Name</th><th>IP</th><th>Mode</th><th>Status</th></tr></thead><tbody>`;
+                intfKeys.forEach(k => {
+                    const intf = dev.interfaces[k];
+                    h += `<tr><td><b>${intf.name}</b></td><td>${intf.ip_address || '-'}</td><td>${intf.is_trunk ? 'Trunk' : (intf.is_svi ? 'SVI' : 'Access')}</td><td>${intf.oper_status}</td></tr>`;
+                });
+                h += `</tbody></table>`;
+
+                // Routes
+                if (dev.routes && dev.routes.length > 0) {
+                    h += `<div class="section-title">Routing Table (${dev.routes.length})</div>`;
+                    h += `<table class="mini-table"><thead><tr><th>Prefix</th><th>Proto</th><th>Next Hop</th></tr></thead><tbody>`;
+                    dev.routes.slice(0, 10).forEach(r => {
+                        h += `<tr><td>${r.prefix}${r.cidr}</td><td>${r.protocol}</td><td>${r.next_hop || r.outgoing_interface}</td></tr>`;
+                    });
+                    h += `</tbody></table>`;
+                }
+
+                // VLANs
+                if (dev.vlans && dev.vlans.length > 0) {
+                    h += `<div class="section-title">VLANs (${dev.vlans.length})</div>`;
+                    h += `<table class="mini-table"><thead><tr><th>ID</th><th>Name</th><th>Status</th></tr></thead><tbody>`;
+                    dev.vlans.forEach(v => {
+                        h += `<tr><td>${v.vlan_id}</td><td>${v.name}</td><td>${v.status}</td></tr>`;
+                    });
+                    h += `</tbody></table>`;
+                }
+            }
+
+            document.getElementById('ins-content').innerHTML = h;
+            document.getElementById('inspector').style.display = 'flex';
+        }
+
+        function closeInspector() {
+            document.getElementById('inspector').style.display = 'none';
+        }
+
+        function fitNetwork() {
+            if (networkInstance) networkInstance.fit({ animation: true });
+        }
+
+        function togglePhysics() {
+            physicsEnabled = !physicsEnabled;
+            if (networkInstance) networkInstance.setOptions({ physics: { enabled: physicsEnabled } });
+        }
+
+        function searchDevice(query) {
+            if (!query || !networkInstance) return;
+            const q = query.toLowerCase();
+            const found = currentSnapshotData.devices.find(d => d.hostname.toLowerCase().includes(q) || d.ip_address.includes(q));
+            if (found) {
+                networkInstance.focus(found.hostname, { scale: 1.2, animation: true });
+            }
+        }
+
+        function renderUnreachableTable(data) {
+            const unreach = data.devices.filter(d => d.status !== 'REACHABLE');
+            const tbody = document.getElementById('unreachable-table-body');
+            if (unreach.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#4ade80;">✅ All devices in this snapshot are online and reachable!</td></tr>';
+                return;
+            }
+            tbody.innerHTML = unreach.map(d => `
+                <tr>
+                    <td><b>${d.hostname}</b></td>
+                    <td>${d.ip_address}</td>
+                    <td>${d.site_info ? d.site_info.site + ' / ' + d.site_info.idf : 'N/A'}</td>
+                    <td><span style="color:#f87171; font-weight:700;">${d.status}</span></td>
+                    <td style="color:#fca5a5;">${d.failure_reason || 'Timeout'}</td>
+                    <td>${d.discovered_via || 'Direct seed'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function setTrace(src, dst) {
+            document.getElementById('trace-src').value = src;
+            document.getElementById('trace-dst').value = dst;
+            executeTrace();
+        }
+
+        async function executeTrace() {
+            const src = document.getElementById('trace-src').value.trim();
+            const dst = document.getElementById('trace-dst').value.trim();
+            const snapId = document.getElementById('snapshot-select').value;
+            if (!src || !dst) return;
+
+            document.getElementById('trace-status').innerText = `Simulating packet flow from ${src} to ${dst}...`;
+            try {
+                const res = await fetch('/api/trace', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source_ip: src, dest_ip: dst, snapshot_id: parseInt(snapId) })
+                });
+                const data = await res.json();
+                document.getElementById('trace-status').innerText = data.message;
+                document.getElementById('trace-status').style.color = data.delivered ? 'var(--accent-green)' : 'var(--accent-danger)';
+
+                const hlHosts = new Set(data.hops.map(h => h.device_name.toLowerCase()));
+                // Highlight nodes on map
+                if (visNodes) {
+                    visNodes.forEach(node => {
+                        const isHop = hlHosts.has(node.id.toLowerCase());
+                        visNodes.update({
+                            id: node.id,
+                            color: isHop ? { background: '#ffb703', border: '#ffffff' } : undefined,
+                            borderWidth: isHop ? 4 : 2
+                        });
+                    });
+                }
+
+                // Render Hop cards
+                const list = document.getElementById('hop-list');
+                list.innerHTML = data.hops.map(hop => {
+                    let cardClass = '';
+                    if (hop.forwarding_type === 'L2_SWITCHED') cardClass = 'l2';
+                    else if (hop.forwarding_type === 'TERMINAL') cardClass = 'terminal';
+                    else if (hop.forwarding_type === 'BLACKHOLE' || hop.forwarding_type === 'LOOP') cardClass = 'drop';
+
+                    return `
+                        <div class="hop-card ${cardClass}">
+                            <div class="hop-header">
+                                <div class="hop-title">Hop ${hop.hop_number}: ${hop.device_name} (${hop.device_ip})</div>
+                                <span class="hop-badge">${hop.forwarding_type}</span>
+                            </div>
+                            <div style="font-size:12px; color:var(--text-secondary); margin-bottom:6px;">
+                                Ingress: <b>${hop.ingress_interface || '-'}</b> ➔ Egress: <b>${hop.egress_interface || '-'}</b>
+                                ${hop.next_hop_ip ? ' | Next Hop IP: <b>' + hop.next_hop_ip + '</b>' : ''}
+                                ${hop.matched_route ? ' | Matched Route: <b>' + hop.matched_route + '</b>' : ''}
+                            </div>
+                            <div style="font-size:12px; color:#e2e8f0;">${hop.notes}</div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error(err);
+                document.getElementById('trace-status').innerText = 'Trace error: ' + err.message;
+            }
+        }
+
+        async function runCrawl(useMock) {
+            showToast('Starting network crawl in background...');
+            try {
+                const res = await fetch('/api/crawl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ use_mock: useMock, seeds: ['10.100.1.1'] })
+                });
+                const data = await res.json();
+                showToast(data.message);
+                fetchSnapshots();
+            } catch (err) {
+                showToast('Crawl failed: ' + err.message);
+            }
+        }
+
+        function exportSvg() {
+            const snapId = document.getElementById('snapshot-select').value;
+            window.open(`/api/snapshot/${snapId}/svg`, '_blank');
+        }
+
+        // Initialize on load
+        fetchSnapshots();
+    </script>
+</body>
+</html>

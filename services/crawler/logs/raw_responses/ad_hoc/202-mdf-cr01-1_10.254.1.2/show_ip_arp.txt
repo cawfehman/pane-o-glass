@@ -1,0 +1,12 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:55.696641
+Device: 202-mdf-cr01-1 (10.254.1.2)
+Command: show_ip_arp
+Snapshot ID: N/A
+================================================================================
+
+
+Protocol  Address          Age (min)  Hardware Addr   Type   Interface
+Internet  10.254.1.1              5   00a1.2b3c.0102  ARPA   GigabitEthernet0/0/1
+Internet  10.200.1.2              5   00a1.2b3c.0203  ARPA   GigabitEthernet0/0/2

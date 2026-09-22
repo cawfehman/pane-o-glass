@@ -1,0 +1,12 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:56.055925
+Device: 101-id2-swas-1 (10.10.10.12)
+Command: show_ip_arp
+Snapshot ID: N/A
+================================================================================
+
+
+Protocol  Address          Age (min)  Hardware Addr   Type   Interface
+Internet  10.10.10.1             10   00a1.2b3c.0102  ARPA   Vlan10
+Internet  10.10.30.100            2   0050.56fe.9988  ARPA   Vlan10

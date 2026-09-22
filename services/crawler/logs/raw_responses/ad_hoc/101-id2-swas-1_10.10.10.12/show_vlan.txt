@@ -1,0 +1,12 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:56.055224
+Device: 101-id2-swas-1 (10.10.10.12)
+Command: show_vlan
+Snapshot ID: N/A
+================================================================================
+
+
+1    default                          active    
+10   USERS_DATA                       active    
+30   SERVERS                          active    Gi0/10

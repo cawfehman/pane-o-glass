@@ -1,0 +1,13 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:55.741405
+Device: 101-mdf-swds-1 (10.100.1.2)
+Command: show_version
+Snapshot ID: N/A
+================================================================================
+
+
+Cisco IOS Software, IOS-XE Software, Catalyst L3 Switch Software (CAT3K_CAA-UNIVERSALK9-M), Version 16.12.04
+cisco WS-C3850-24XS (MIPS) processor with 2097152K bytes of physical memory.
+Processor board ID FOC2233X0AB
+101-mdf-swds-1 uptime is 30 weeks, 1 day, 8 hours, 10 minutes

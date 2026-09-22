@@ -252,6 +252,15 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                         <span className="nav-text">System Health</span>
                                     </Link>
                                     <Link 
+                                        href="/admin/crawler" 
+                                        onClick={closeMobile}
+                                        title={isCollapsed ? "Network Crawler" : undefined}
+                                        className={`nav-link ${pathname === "/admin/crawler" ? "active" : ""}`}
+                                    >
+                                        <Network size={20} className="shrink-0 text-cyan-400" />
+                                        <span className="nav-text">Network Crawler</span>
+                                    </Link>
+                                    <Link 
                                         href="/admin/feedback" 
                                         onClick={closeMobile}
                                         title={isCollapsed ? "User Feedback" : undefined}

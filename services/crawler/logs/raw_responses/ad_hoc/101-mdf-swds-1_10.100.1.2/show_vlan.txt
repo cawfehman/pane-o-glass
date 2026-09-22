@@ -1,0 +1,13 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:55.743103
+Device: 101-mdf-swds-1 (10.100.1.2)
+Command: show_vlan
+Snapshot ID: N/A
+================================================================================
+
+
+1    default                          active    
+10   USERS_DATA                       active    
+20   VOIP_VOICE                       active    
+30   SERVERS                          active    

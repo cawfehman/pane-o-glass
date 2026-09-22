@@ -1,0 +1,21 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:55.696145
+Device: 202-mdf-cr01-1 (10.254.1.2)
+Command: show_cdp_neighbors_detail
+Snapshot ID: N/A
+================================================================================
+
+
+--------------------------------------------------
+Device ID: 101-mdf-cr01-1.corp.local
+Entry address(es): 
+  IP address: 10.254.1.1
+Platform: cisco ISR4451-X/K9,  Capabilities: Router
+Interface: GigabitEthernet0/0/1,  Port ID (outgoing port): GigabitEthernet0/0/1
+--------------------------------------------------
+Device ID: 202-mdf-swds-1.corp.local
+Entry address(es): 
+  IP address: 10.200.1.2
+Platform: cisco WS-C3850-24XS,  Capabilities: Router Switch IGMP
+Interface: GigabitEthernet0/0/2,  Port ID (outgoing port): GigabitEthernet1/0/1

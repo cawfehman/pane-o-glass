@@ -1,0 +1,1252 @@
+{
+  "metadata": {
+    "snapshot_id": 2,
+    "timestamp": "2026-09-22 01:11:07",
+    "seed_devices": [
+      "10.100.1.1"
+    ],
+    "total_discovered": 8,
+    "total_reachable": 7,
+    "total_unreachable": 1,
+    "duration_seconds": 0.014905691146850586
+  },
+  "devices": [
+    {
+      "hostname": "101-id1-swas-1",
+      "ip_address": "10.10.10.11",
+      "platform": "WS-C2960X-48FPS-L",
+      "os_version": "15.2(7)E4 cisco",
+      "serial_number": null,
+      "role": "L2 Switch",
+      "status": "REACHABLE",
+      "failure_reason": null,
+      "discovered_via": "101-mdf-swds-1 (GigabitEthernet1/0/2 -> GigabitEthernet0/1)",
+      "site_info": {
+        "site": "101",
+        "idf": "id1",
+        "role_code": "swas",
+        "iterator": "1",
+        "raw_hostname": "101-id1-swas-1"
+      },
+      "interfaces": {
+        "GigabitEthernet0/1": {
+          "name": "GigabitEthernet0/1",
+          "ip_address": null,
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.1011",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "UPLINK_TO_101-MDF-SWDS-1_Gi1/0/2"
+        },
+        "GigabitEthernet0/5": {
+          "name": "GigabitEthernet0/5",
+          "ip_address": null,
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.1015",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "WORKSTATION_PC_50"
+        },
+        "GigabitEthernet0/24": {
+          "name": "GigabitEthernet0/24",
+          "ip_address": null,
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.1024",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "ACCESS_POINT_101-ID1-WLAP-1"
+        },
+        "Vlan10": {
+          "name": "Vlan10",
+          "ip_address": "10.10.10.11",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "10.10.10.11",
+          "speed": null,
+          "duplex": null,
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": true,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": null
+        }
+      },
+      "routes": [],
+      "vlans": [
+        {
+          "vlan_id": 1,
+          "name": "default",
+          "status": "active",
+          "ports": []
+        },
+        {
+          "vlan_id": 10,
+          "name": "USERS_DATA",
+          "status": "active",
+          "ports": [
+            "GigabitEthernet0/5",
+            "GigabitEthernet0/24"
+          ]
+        },
+        {
+          "vlan_id": 20,
+          "name": "VOIP_VOICE",
+          "status": "active",
+          "ports": []
+        }
+      ],
+      "cdp_neighbors": [
+        {
+          "destination_host": "101-mdf-swds-1.corp.local",
+          "management_ip": "10.100.1.2",
+          "local_interface": "GigabitEthernet0/1",
+          "remote_interface": "GigabitEthernet1/0/2",
+          "platform": "cisco WS-C3850-24XS",
+          "capabilities": [
+            "Router",
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        },
+        {
+          "destination_host": "101-id1-wlap-1.corp.local",
+          "management_ip": "10.10.10.75",
+          "local_interface": "GigabitEthernet0/24",
+          "remote_interface": "GigabitEthernet0",
+          "platform": "cisco AIR-AP3802I-B-K9",
+          "capabilities": [
+            "Trans-Bridge"
+          ],
+          "is_ap": true
+        }
+      ],
+      "arp_table": [
+        {
+          "ip_address": "10.10.10.1",
+          "mac_address": "00a1.2b3c.0102",
+          "interface": "Vlan10",
+          "age": "10"
+        },
+        {
+          "ip_address": "10.10.10.50",
+          "mac_address": "0050.56a1.b2c3",
+          "interface": "Vlan10",
+          "age": "1"
+        }
+      ]
+    },
+    {
+      "hostname": "101-id2-swas-1",
+      "ip_address": "10.10.10.12",
+      "platform": "WS-C2960X-48FPS-L",
+      "os_version": "15.2(7)E4 cisco",
+      "serial_number": null,
+      "role": "L2 Switch",
+      "status": "REACHABLE",
+      "failure_reason": null,
+      "discovered_via": "101-mdf-swds-1 (GigabitEthernet1/0/3 -> GigabitEthernet0/1)",
+      "site_info": {
+        "site": "101",
+        "idf": "id2",
+        "role_code": "swas",
+        "iterator": "1",
+        "raw_hostname": "101-id2-swas-1"
+      },
+      "interfaces": {
+        "GigabitEthernet0/1": {
+          "name": "GigabitEthernet0/1",
+          "ip_address": null,
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.1012",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "UPLINK_TO_101-MDF-SWDS-1_Gi1/0/3"
+        },
+        "GigabitEthernet0/10": {
+          "name": "GigabitEthernet0/10",
+          "ip_address": null,
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.1030",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "LOCAL_SERVER_APP_01"
+        },
+        "Vlan10": {
+          "name": "Vlan10",
+          "ip_address": "10.10.10.12",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "10.10.10.12",
+          "speed": null,
+          "duplex": null,
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": true,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": null
+        }
+      },
+      "routes": [],
+      "vlans": [
+        {
+          "vlan_id": 1,
+          "name": "default",
+          "status": "active",
+          "ports": []
+        },
+        {
+          "vlan_id": 10,
+          "name": "USERS_DATA",
+          "status": "active",
+          "ports": []
+        },
+        {
+          "vlan_id": 30,
+          "name": "SERVERS",
+          "status": "active",
+          "ports": [
+            "GigabitEthernet0/10"
+          ]
+        }
+      ],
+      "cdp_neighbors": [
+        {
+          "destination_host": "101-mdf-swds-1.corp.local",
+          "management_ip": "10.100.1.2",
+          "local_interface": "GigabitEthernet0/1",
+          "remote_interface": "GigabitEthernet1/0/3",
+          "platform": "cisco WS-C3850-24XS",
+          "capabilities": [
+            "Router",
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        }
+      ],
+      "arp_table": [
+        {
+          "ip_address": "10.10.10.1",
+          "mac_address": "00a1.2b3c.0102",
+          "interface": "Vlan10",
+          "age": "10"
+        },
+        {
+          "ip_address": "10.10.30.100",
+          "mac_address": "0050.56fe.9988",
+          "interface": "Vlan10",
+          "age": "2"
+        }
+      ]
+    },
+    {
+      "hostname": "101-id3-swas-1",
+      "ip_address": "10.10.10.99",
+      "platform": null,
+      "os_version": null,
+      "serial_number": null,
+      "role": "Unknown",
+      "status": "TIMEOUT",
+      "failure_reason": "SSH connection timed out after 10 seconds (Host down or firewall blocking port 22)",
+      "discovered_via": "101-mdf-swds-1 (GigabitEthernet1/0/4 -> GigabitEthernet0/1)",
+      "site_info": {
+        "site": "101",
+        "idf": "id3",
+        "role_code": "swas",
+        "iterator": "1",
+        "raw_hostname": "101-id3-swas-1"
+      },
+      "interfaces": {},
+      "routes": [],
+      "vlans": [],
+      "cdp_neighbors": [],
+      "arp_table": []
+    },
+    {
+      "hostname": "101-mdf-cr01-1",
+      "ip_address": "10.100.1.1",
+      "platform": "ISR4451-X",
+      "os_version": "17.06.03 cisco",
+      "serial_number": null,
+      "role": "Router",
+      "status": "REACHABLE",
+      "failure_reason": null,
+      "discovered_via": null,
+      "site_info": {
+        "site": "101",
+        "idf": "mdf",
+        "role_code": "cr01",
+        "iterator": "1",
+        "raw_hostname": "101-mdf-cr01-1"
+      },
+      "interfaces": {
+        "GigabitEthernet0/0/0": {
+          "name": "GigabitEthernet0/0/0",
+          "ip_address": "10.100.1.1",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.0101",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "LINK_TO_101-MDF-SWDS-1_Gi1/0/1"
+        },
+        "GigabitEthernet0/0/1": {
+          "name": "GigabitEthernet0/0/1",
+          "ip_address": "10.254.1.1",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.0102",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "WAN_TO_202-MDF-CR01-1_Gi0/0/1"
+        },
+        "GigabitEthernet0/0/2": {
+          "name": "GigabitEthernet0/0/2",
+          "ip_address": "198.51.100.2",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": null,
+          "speed": null,
+          "duplex": null,
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": null
+        },
+        "Loopback0": {
+          "name": "Loopback0",
+          "ip_address": "10.100.0.1",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": null,
+          "speed": null,
+          "duplex": null,
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": null
+        }
+      },
+      "routes": [
+        {
+          "prefix": "0.0.0.0",
+          "netmask": "0.0.0.0",
+          "cidr": "/0",
+          "protocol": "S*",
+          "next_hop": "198.51.100.1",
+          "outgoing_interface": "GigabitEthernet0/0/2",
+          "metric": 0,
+          "admin_distance": 1
+        },
+        {
+          "prefix": "10.100.1.0",
+          "netmask": "255.255.255.252",
+          "cidr": "/30",
+          "protocol": "C",
+          "next_hop": "DIRECTLY_CONNECTED",
+          "outgoing_interface": "GigabitEthernet0/0/0",
+          "metric": 0,
+          "admin_distance": 0
+        },
+        {
+          "prefix": "10.254.1.0",
+          "netmask": "255.255.255.252",
+          "cidr": "/30",
+          "protocol": "C",
+          "next_hop": "DIRECTLY_CONNECTED",
+          "outgoing_interface": "GigabitEthernet0/0/1",
+          "metric": 0,
+          "admin_distance": 0
+        },
+        {
+          "prefix": "10.10.10.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "O",
+          "next_hop": "10.100.1.2",
+          "outgoing_interface": "GigabitEthernet0/0/0",
+          "metric": 2,
+          "admin_distance": 110
+        },
+        {
+          "prefix": "10.10.20.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "O",
+          "next_hop": "10.100.1.2",
+          "outgoing_interface": "GigabitEthernet0/0/0",
+          "metric": 2,
+          "admin_distance": 110
+        },
+        {
+          "prefix": "10.10.30.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "O",
+          "next_hop": "10.100.1.2",
+          "outgoing_interface": "GigabitEthernet0/0/0",
+          "metric": 2,
+          "admin_distance": 110
+        },
+        {
+          "prefix": "10.20.50.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "O",
+          "next_hop": "10.254.1.2",
+          "outgoing_interface": "GigabitEthernet0/0/1",
+          "metric": 10,
+          "admin_distance": 110
+        }
+      ],
+      "vlans": [],
+      "cdp_neighbors": [
+        {
+          "destination_host": "101-mdf-swds-1.corp.local",
+          "management_ip": "10.100.1.2",
+          "local_interface": "GigabitEthernet0/0/0",
+          "remote_interface": "GigabitEthernet1/0/1",
+          "platform": "cisco WS-C3850-24XS",
+          "capabilities": [
+            "Router",
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        },
+        {
+          "destination_host": "202-mdf-cr01-1.corp.local",
+          "management_ip": "10.254.1.2",
+          "local_interface": "GigabitEthernet0/0/1",
+          "remote_interface": "GigabitEthernet0/0/1",
+          "platform": "cisco ISR4451-X/K9",
+          "capabilities": [
+            "Router"
+          ],
+          "is_ap": false
+        }
+      ],
+      "arp_table": [
+        {
+          "ip_address": "10.100.1.2",
+          "mac_address": "00a1.2b3c.0102",
+          "interface": "GigabitEthernet0/0/0",
+          "age": "12"
+        },
+        {
+          "ip_address": "10.254.1.2",
+          "mac_address": "00a1.2b3c.0201",
+          "interface": "GigabitEthernet0/0/1",
+          "age": "5"
+        }
+      ]
+    },
+    {
+      "hostname": "101-mdf-swds-1",
+      "ip_address": "10.100.1.2",
+      "platform": "WS-C3850-24XS",
+      "os_version": "16.12.04 cisco",
+      "serial_number": null,
+      "role": "L3 Switch",
+      "status": "REACHABLE",
+      "failure_reason": null,
+      "discovered_via": "101-mdf-cr01-1 (GigabitEthernet0/0/0 -> GigabitEthernet1/0/1)",
+      "site_info": {
+        "site": "101",
+        "idf": "mdf",
+        "role_code": "swds",
+        "iterator": "1",
+        "raw_hostname": "101-mdf-swds-1"
+      },
+      "interfaces": {
+        "GigabitEthernet1/0/1": {
+          "name": "GigabitEthernet1/0/1",
+          "ip_address": "10.100.1.2",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.0102",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "UPLINK_TO_101-MDF-CR01-1_Gi0/0/0"
+        },
+        "GigabitEthernet1/0/2": {
+          "name": "GigabitEthernet1/0/2",
+          "ip_address": null,
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.0103",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "TRUNK_TO_101-ID1-SWAS-1"
+        },
+        "GigabitEthernet1/0/3": {
+          "name": "GigabitEthernet1/0/3",
+          "ip_address": null,
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.0104",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "TRUNK_TO_101-ID2-SWAS-1"
+        },
+        "GigabitEthernet1/0/4": {
+          "name": "GigabitEthernet1/0/4",
+          "ip_address": null,
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.0105",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "TRUNK_TO_101-ID3-SWAS-1_INVESTIGATE"
+        },
+        "Vlan10": {
+          "name": "Vlan10",
+          "ip_address": "10.10.10.1",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "10.10.10.1",
+          "speed": null,
+          "duplex": null,
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": true,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": null
+        },
+        "Vlan20": {
+          "name": "Vlan20",
+          "ip_address": "10.10.20.1",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "10.10.20.1",
+          "speed": null,
+          "duplex": null,
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": true,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": null
+        },
+        "Vlan30": {
+          "name": "Vlan30",
+          "ip_address": "10.10.30.1",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "10.10.30.1",
+          "speed": null,
+          "duplex": null,
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": true,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": null
+        }
+      },
+      "routes": [
+        {
+          "prefix": "0.0.0.0",
+          "netmask": "0.0.0.0",
+          "cidr": "/0",
+          "protocol": "S*",
+          "next_hop": "10.100.1.1",
+          "outgoing_interface": "GigabitEthernet1/0/1",
+          "metric": 0,
+          "admin_distance": 1
+        },
+        {
+          "prefix": "10.100.1.0",
+          "netmask": "255.255.255.252",
+          "cidr": "/30",
+          "protocol": "C",
+          "next_hop": "DIRECTLY_CONNECTED",
+          "outgoing_interface": "GigabitEthernet1/0/1",
+          "metric": 0,
+          "admin_distance": 0
+        },
+        {
+          "prefix": "10.10.10.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "C",
+          "next_hop": "DIRECTLY_CONNECTED",
+          "outgoing_interface": "Vlan10",
+          "metric": 0,
+          "admin_distance": 0
+        },
+        {
+          "prefix": "10.10.20.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "C",
+          "next_hop": "DIRECTLY_CONNECTED",
+          "outgoing_interface": "Vlan20",
+          "metric": 0,
+          "admin_distance": 0
+        },
+        {
+          "prefix": "10.10.30.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "C",
+          "next_hop": "DIRECTLY_CONNECTED",
+          "outgoing_interface": "Vlan30",
+          "metric": 0,
+          "admin_distance": 0
+        },
+        {
+          "prefix": "10.20.50.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "O",
+          "next_hop": "10.100.1.1",
+          "outgoing_interface": "GigabitEthernet1/0/1",
+          "metric": 11,
+          "admin_distance": 110
+        }
+      ],
+      "vlans": [
+        {
+          "vlan_id": 1,
+          "name": "default",
+          "status": "active",
+          "ports": []
+        },
+        {
+          "vlan_id": 10,
+          "name": "USERS_DATA",
+          "status": "active",
+          "ports": []
+        },
+        {
+          "vlan_id": 20,
+          "name": "VOIP_VOICE",
+          "status": "active",
+          "ports": []
+        },
+        {
+          "vlan_id": 30,
+          "name": "SERVERS",
+          "status": "active",
+          "ports": []
+        }
+      ],
+      "cdp_neighbors": [
+        {
+          "destination_host": "101-mdf-cr01-1.corp.local",
+          "management_ip": "10.100.1.1",
+          "local_interface": "GigabitEthernet1/0/1",
+          "remote_interface": "GigabitEthernet0/0/0",
+          "platform": "cisco ISR4451-X/K9",
+          "capabilities": [
+            "Router"
+          ],
+          "is_ap": false
+        },
+        {
+          "destination_host": "101-id1-swas-1.corp.local",
+          "management_ip": "10.10.10.11",
+          "local_interface": "GigabitEthernet1/0/2",
+          "remote_interface": "GigabitEthernet0/1",
+          "platform": "cisco WS-C2960X-48FPS-L",
+          "capabilities": [
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        },
+        {
+          "destination_host": "101-id2-swas-1.corp.local",
+          "management_ip": "10.10.10.12",
+          "local_interface": "GigabitEthernet1/0/3",
+          "remote_interface": "GigabitEthernet0/1",
+          "platform": "cisco WS-C2960X-48FPS-L",
+          "capabilities": [
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        },
+        {
+          "destination_host": "101-id3-swas-1.corp.local",
+          "management_ip": "10.10.10.99",
+          "local_interface": "GigabitEthernet1/0/4",
+          "remote_interface": "GigabitEthernet0/1",
+          "platform": "cisco WS-C2960X-24TD-L",
+          "capabilities": [
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        }
+      ],
+      "arp_table": [
+        {
+          "ip_address": "10.100.1.1",
+          "mac_address": "00a1.2b3c.0101",
+          "interface": "GigabitEthernet1/0/1",
+          "age": "10"
+        },
+        {
+          "ip_address": "10.10.10.11",
+          "mac_address": "00a1.2b3c.1011",
+          "interface": "Vlan10",
+          "age": "5"
+        },
+        {
+          "ip_address": "10.10.10.12",
+          "mac_address": "00a1.2b3c.1012",
+          "interface": "Vlan10",
+          "age": "5"
+        },
+        {
+          "ip_address": "10.10.10.50",
+          "mac_address": "0050.56a1.b2c3",
+          "interface": "Vlan10",
+          "age": "2"
+        },
+        {
+          "ip_address": "10.10.30.100",
+          "mac_address": "0050.56fe.9988",
+          "interface": "Vlan30",
+          "age": "1"
+        }
+      ]
+    },
+    {
+      "hostname": "202-id1-swas-1",
+      "ip_address": "10.20.50.10",
+      "platform": "WS-C2960X-24TD-L",
+      "os_version": "15.2(7)E4 cisco",
+      "serial_number": null,
+      "role": "L2 Switch",
+      "status": "REACHABLE",
+      "failure_reason": null,
+      "discovered_via": "202-mdf-swds-1 (GigabitEthernet1/0/2 -> GigabitEthernet0/1)",
+      "site_info": {
+        "site": "202",
+        "idf": "id1",
+        "role_code": "swas",
+        "iterator": "1",
+        "raw_hostname": "202-id1-swas-1"
+      },
+      "interfaces": {
+        "GigabitEthernet0/1": {
+          "name": "GigabitEthernet0/1",
+          "ip_address": null,
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.2010",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "UPLINK_TO_202-MDF-SWDS-1_Gi1/0/2"
+        },
+        "GigabitEthernet0/8": {
+          "name": "GigabitEthernet0/8",
+          "ip_address": null,
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.2088",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "REMOTE_SERVER_APP_88"
+        },
+        "Vlan50": {
+          "name": "Vlan50",
+          "ip_address": "10.20.50.10",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "10.20.50.10",
+          "speed": null,
+          "duplex": null,
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": true,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": null
+        }
+      },
+      "routes": [],
+      "vlans": [
+        {
+          "vlan_id": 1,
+          "name": "default",
+          "status": "active",
+          "ports": []
+        },
+        {
+          "vlan_id": 50,
+          "name": "REMOTE_DATA",
+          "status": "active",
+          "ports": [
+            "GigabitEthernet0/8"
+          ]
+        }
+      ],
+      "cdp_neighbors": [
+        {
+          "destination_host": "202-mdf-swds-1.corp.local",
+          "management_ip": "10.200.1.2",
+          "local_interface": "GigabitEthernet0/1",
+          "remote_interface": "GigabitEthernet1/0/2",
+          "platform": "cisco WS-C3850-24XS",
+          "capabilities": [
+            "Router",
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        }
+      ],
+      "arp_table": [
+        {
+          "ip_address": "10.20.50.1",
+          "mac_address": "00a1.2b3c.0204",
+          "interface": "Vlan50",
+          "age": "5"
+        },
+        {
+          "ip_address": "10.20.50.88",
+          "mac_address": "0050.56aa.7744",
+          "interface": "Vlan50",
+          "age": "1"
+        }
+      ]
+    },
+    {
+      "hostname": "202-mdf-cr01-1",
+      "ip_address": "10.254.1.2",
+      "platform": "ISR4451-X",
+      "os_version": "17.06.03 cisco",
+      "serial_number": null,
+      "role": "Router",
+      "status": "REACHABLE",
+      "failure_reason": null,
+      "discovered_via": "101-mdf-cr01-1 (GigabitEthernet0/0/1 -> GigabitEthernet0/0/1)",
+      "site_info": {
+        "site": "202",
+        "idf": "mdf",
+        "role_code": "cr01",
+        "iterator": "1",
+        "raw_hostname": "202-mdf-cr01-1"
+      },
+      "interfaces": {
+        "GigabitEthernet0/0/1": {
+          "name": "GigabitEthernet0/0/1",
+          "ip_address": "10.254.1.2",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.0201",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "WAN_TO_101-MDF-CR01-1_Gi0/0/1"
+        },
+        "GigabitEthernet0/0/2": {
+          "name": "GigabitEthernet0/0/2",
+          "ip_address": "10.200.1.1",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.0202",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "LINK_TO_202-MDF-SWDS-1_Gi1/0/1"
+        }
+      },
+      "routes": [
+        {
+          "prefix": "0.0.0.0",
+          "netmask": "0.0.0.0",
+          "cidr": "/0",
+          "protocol": "S*",
+          "next_hop": "10.254.1.1",
+          "outgoing_interface": "GigabitEthernet0/0/1",
+          "metric": 0,
+          "admin_distance": 1
+        },
+        {
+          "prefix": "10.254.1.0",
+          "netmask": "255.255.255.252",
+          "cidr": "/30",
+          "protocol": "C",
+          "next_hop": "DIRECTLY_CONNECTED",
+          "outgoing_interface": "GigabitEthernet0/0/1",
+          "metric": 0,
+          "admin_distance": 0
+        },
+        {
+          "prefix": "10.200.1.0",
+          "netmask": "255.255.255.252",
+          "cidr": "/30",
+          "protocol": "C",
+          "next_hop": "DIRECTLY_CONNECTED",
+          "outgoing_interface": "GigabitEthernet0/0/2",
+          "metric": 0,
+          "admin_distance": 0
+        },
+        {
+          "prefix": "10.20.50.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "O",
+          "next_hop": "10.200.1.2",
+          "outgoing_interface": "GigabitEthernet0/0/2",
+          "metric": 2,
+          "admin_distance": 110
+        },
+        {
+          "prefix": "10.10.10.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "O",
+          "next_hop": "10.254.1.1",
+          "outgoing_interface": "GigabitEthernet0/0/1",
+          "metric": 11,
+          "admin_distance": 110
+        },
+        {
+          "prefix": "10.10.30.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "O",
+          "next_hop": "10.254.1.1",
+          "outgoing_interface": "GigabitEthernet0/0/1",
+          "metric": 11,
+          "admin_distance": 110
+        }
+      ],
+      "vlans": [],
+      "cdp_neighbors": [
+        {
+          "destination_host": "101-mdf-cr01-1.corp.local",
+          "management_ip": "10.254.1.1",
+          "local_interface": "GigabitEthernet0/0/1",
+          "remote_interface": "GigabitEthernet0/0/1",
+          "platform": "cisco ISR4451-X/K9",
+          "capabilities": [
+            "Router"
+          ],
+          "is_ap": false
+        },
+        {
+          "destination_host": "202-mdf-swds-1.corp.local",
+          "management_ip": "10.200.1.2",
+          "local_interface": "GigabitEthernet0/0/2",
+          "remote_interface": "GigabitEthernet1/0/1",
+          "platform": "cisco WS-C3850-24XS",
+          "capabilities": [
+            "Router",
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        }
+      ],
+      "arp_table": [
+        {
+          "ip_address": "10.254.1.1",
+          "mac_address": "00a1.2b3c.0102",
+          "interface": "GigabitEthernet0/0/1",
+          "age": "5"
+        },
+        {
+          "ip_address": "10.200.1.2",
+          "mac_address": "00a1.2b3c.0203",
+          "interface": "GigabitEthernet0/0/2",
+          "age": "5"
+        }
+      ]
+    },
+    {
+      "hostname": "202-mdf-swds-1",
+      "ip_address": "10.200.1.2",
+      "platform": "WS-C3850-24XS",
+      "os_version": "16.12.04 cisco",
+      "serial_number": null,
+      "role": "L3 Switch",
+      "status": "REACHABLE",
+      "failure_reason": null,
+      "discovered_via": "202-mdf-cr01-1 (GigabitEthernet0/0/2 -> GigabitEthernet1/0/1)",
+      "site_info": {
+        "site": "202",
+        "idf": "mdf",
+        "role_code": "swds",
+        "iterator": "1",
+        "raw_hostname": "202-mdf-swds-1"
+      },
+      "interfaces": {
+        "GigabitEthernet1/0/1": {
+          "name": "GigabitEthernet1/0/1",
+          "ip_address": "10.200.1.2",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.0203",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "UPLINK_TO_202-MDF-CR01-1_Gi0/0/2"
+        },
+        "GigabitEthernet1/0/2": {
+          "name": "GigabitEthernet1/0/2",
+          "ip_address": null,
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "00a1.2b3c.0204",
+          "speed": "1000Mb/s",
+          "duplex": "Full",
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": false,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": "TRUNK_TO_202-ID1-SWAS-1"
+        },
+        "Vlan50": {
+          "name": "Vlan50",
+          "ip_address": "10.20.50.1",
+          "subnet_mask": null,
+          "cidr": null,
+          "mac_address": "10.20.50.1",
+          "speed": null,
+          "duplex": null,
+          "admin_status": "up",
+          "oper_status": "up",
+          "is_svi": true,
+          "is_trunk": false,
+          "access_vlan": null,
+          "allowed_vlans": null,
+          "description": null
+        }
+      },
+      "routes": [
+        {
+          "prefix": "0.0.0.0",
+          "netmask": "0.0.0.0",
+          "cidr": "/0",
+          "protocol": "S*",
+          "next_hop": "10.200.1.1",
+          "outgoing_interface": "GigabitEthernet1/0/1",
+          "metric": 0,
+          "admin_distance": 1
+        },
+        {
+          "prefix": "10.200.1.0",
+          "netmask": "255.255.255.252",
+          "cidr": "/30",
+          "protocol": "C",
+          "next_hop": "DIRECTLY_CONNECTED",
+          "outgoing_interface": "GigabitEthernet1/0/1",
+          "metric": 0,
+          "admin_distance": 0
+        },
+        {
+          "prefix": "10.20.50.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "C",
+          "next_hop": "DIRECTLY_CONNECTED",
+          "outgoing_interface": "Vlan50",
+          "metric": 0,
+          "admin_distance": 0
+        },
+        {
+          "prefix": "10.10.10.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "O",
+          "next_hop": "10.200.1.1",
+          "outgoing_interface": "GigabitEthernet1/0/1",
+          "metric": 12,
+          "admin_distance": 110
+        },
+        {
+          "prefix": "10.10.30.0",
+          "netmask": "255.255.255.0",
+          "cidr": "/24",
+          "protocol": "O",
+          "next_hop": "10.200.1.1",
+          "outgoing_interface": "GigabitEthernet1/0/1",
+          "metric": 12,
+          "admin_distance": 110
+        }
+      ],
+      "vlans": [
+        {
+          "vlan_id": 1,
+          "name": "default",
+          "status": "active",
+          "ports": []
+        },
+        {
+          "vlan_id": 50,
+          "name": "REMOTE_DATA",
+          "status": "active",
+          "ports": []
+        }
+      ],
+      "cdp_neighbors": [
+        {
+          "destination_host": "202-mdf-cr01-1.corp.local",
+          "management_ip": "10.200.1.1",
+          "local_interface": "GigabitEthernet1/0/1",
+          "remote_interface": "GigabitEthernet0/0/2",
+          "platform": "cisco ISR4451-X/K9",
+          "capabilities": [
+            "Router"
+          ],
+          "is_ap": false
+        },
+        {
+          "destination_host": "202-id1-swas-1.corp.local",
+          "management_ip": "10.20.50.10",
+          "local_interface": "GigabitEthernet1/0/2",
+          "remote_interface": "GigabitEthernet0/1",
+          "platform": "cisco WS-C2960X-24TD-L",
+          "capabilities": [
+            "Switch",
+            "IGMP"
+          ],
+          "is_ap": false
+        }
+      ],
+      "arp_table": [
+        {
+          "ip_address": "10.200.1.1",
+          "mac_address": "00a1.2b3c.0202",
+          "interface": "GigabitEthernet1/0/1",
+          "age": "5"
+        },
+        {
+          "ip_address": "10.20.50.10",
+          "mac_address": "00a1.2b3c.2010",
+          "interface": "Vlan50",
+          "age": "5"
+        },
+        {
+          "ip_address": "10.20.50.88",
+          "mac_address": "0050.56aa.7744",
+          "interface": "Vlan50",
+          "age": "1"
+        }
+      ]
+    }
+  ]
+}

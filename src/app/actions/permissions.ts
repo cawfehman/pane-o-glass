@@ -213,6 +213,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'ironport', role: 'ADMIN', isEnabled: true },
             { toolId: 'bec', role: 'ADMIN', isEnabled: true },
             { toolId: 'etd', role: 'ADMIN', isEnabled: true },
+            { toolId: 'crawler', role: 'ADMIN', isEnabled: true },
 
             { toolId: 'firewall', role: 'ANALYST', isEnabled: true },
             { toolId: 'ise', role: 'ANALYST', isEnabled: true },
@@ -225,6 +226,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'ironport', role: 'ANALYST', isEnabled: true },
             { toolId: 'bec', role: 'ANALYST', isEnabled: true },
             { toolId: 'etd', role: 'ANALYST', isEnabled: true },
+            { toolId: 'crawler', role: 'ANALYST', isEnabled: false },
 
             { toolId: 'firewall', role: 'USER', isEnabled: false },
             { toolId: 'ise', role: 'USER', isEnabled: false },
@@ -237,6 +239,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'ironport', role: 'USER', isEnabled: false },
             { toolId: 'bec', role: 'USER', isEnabled: false },
             { toolId: 'etd', role: 'USER', isEnabled: false },
+            { toolId: 'crawler', role: 'USER', isEnabled: false },
 
             { toolId: 'firewall', role: 'NETWORK', isEnabled: true },
             { toolId: 'ise', role: 'NETWORK', isEnabled: true },

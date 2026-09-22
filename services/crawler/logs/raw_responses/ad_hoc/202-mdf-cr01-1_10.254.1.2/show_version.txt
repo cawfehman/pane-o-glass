@@ -1,0 +1,13 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:55.693447
+Device: 202-mdf-cr01-1 (10.254.1.2)
+Command: show_version
+Snapshot ID: N/A
+================================================================================
+
+
+Cisco IOS XE Software, Version 17.06.03
+cisco ISR4451-X/K9 processor with 3574943K/6147K bytes of memory.
+Processor board ID FDO2145B1AA
+202-mdf-cr01-1 uptime is 20 weeks, 5 days, 2 hours, 10 minutes

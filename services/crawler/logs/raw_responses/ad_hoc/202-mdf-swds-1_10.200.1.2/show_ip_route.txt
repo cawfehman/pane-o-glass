@@ -1,0 +1,16 @@
+================================================================================
+AUDIT ARCHIVE: COMMAND RESPONSE
+Timestamp: 2026-09-22T09:54:55.871021
+Device: 202-mdf-swds-1 (10.200.1.2)
+Command: show_ip_route
+Snapshot ID: N/A
+================================================================================
+
+
+Gateway of last resort is 10.200.1.1 to network 0.0.0.0
+
+S*    0.0.0.0/0 [1/0] via 10.200.1.1, GigabitEthernet1/0/1
+C     10.200.1.0/30 is directly connected, GigabitEthernet1/0/1
+C     10.20.50.0/24 is directly connected, Vlan50
+O     10.10.10.0/24 [110/12] via 10.200.1.1, GigabitEthernet1/0/1
+O     10.10.30.0/24 [110/12] via 10.200.1.1, GigabitEthernet1/0/1
