@@ -17,7 +17,8 @@ import {
     Compass,
     KeyRound,
     Zap,
-    Hash
+    Hash,
+    Play
 } from "lucide-react";
 
 interface DeviceInspectorDrawerProps {
@@ -25,13 +26,15 @@ interface DeviceInspectorDrawerProps {
     onClose: () => void;
     onSetAsSource?: (ip: string) => void;
     onSetAsDestination?: (ip: string) => void;
+    onReseed?: (device: any) => void;
 }
 
 export default function DeviceInspectorDrawer({
     device,
     onClose,
     onSetAsSource,
-    onSetAsDestination
+    onSetAsDestination,
+    onReseed
 }: DeviceInspectorDrawerProps) {
     const [activeTab, setActiveTab] = useState<"overview" | "interfaces" | "routes" | "vlans" | "cdp">("overview");
 
@@ -147,6 +150,34 @@ export default function DeviceInspectorDrawer({
                             </button>
                         )}
                     </div>
+                </div>
+            )}
+
+            {/* Reseed Frontier Boundary Alert */}
+            {(device.isReseedFrontier || (Array.isArray(device.boundaryNeighbors) && device.boundaryNeighbors.length > 0)) && (
+                <div className="px-6 py-3 bg-amber-500/10 border-b border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                        <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                            <Compass className="w-4 h-4" />
+                        </div>
+                        <div>
+                            <span className="text-xs font-bold text-amber-300 block">
+                                Hop Depth Boundary (Hop {device.hopDistance ?? 10})
+                            </span>
+                            <span className="text-[11px] text-amber-200/80">
+                                {device.boundaryNeighbors?.length || 0} unvisited neighbor switch(es) detected at Hop {(device.hopDistance ?? 10) + 1}. Expansion halted safely.
+                            </span>
+                        </div>
+                    </div>
+                    {onReseed && (
+                        <button
+                            onClick={() => onReseed(device)}
+                            className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition shadow flex items-center gap-1.5 shrink-0 cursor-pointer"
+                        >
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            Reseed from this Switch
+                        </button>
+                    )}
                 </div>
             )}
 

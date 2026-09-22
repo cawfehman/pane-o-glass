@@ -67,7 +67,11 @@ class NetworkCrawler:
         self.ssh_timeout = ssh_timeout
         self.use_mock = use_mock
         self.crawl_profile = crawl_profile.lower()
-        self.max_hops = max_hops
+        # Default hop depth is 1. Hard-capped at 10 to prevent runaway crawls and loop formation.
+        if max_hops is not None:
+            self.max_hops = max(1, min(int(max_hops), 10))
+        else:
+            self.max_hops = 1
         self.enable_lldp = enable_lldp
         self.lldp_fallback_on_cdp_fail = lldp_fallback_on_cdp_fail
         self.hostname_regex = hostname_regex
@@ -81,6 +85,7 @@ class NetworkCrawler:
         self.queued_targets: Set[str] = set()
         self.discovered_via_map: Dict[str, str] = {} # ip -> discovered_via string
         self.known_hostname_map: Dict[str, str] = {} # ip -> hostname (if pre-known from CDP)
+        self.reseed_points: List[Dict[str, Any]] = [] # devices at boundary with unvisited neighbors at max_hops + 1
 
     def _notify(self, level: str, message: str) -> None:
         if self.progress_callback:
@@ -428,11 +433,59 @@ class NetworkCrawler:
                         all_neighbors = list(device.cdp_neighbors) + list(getattr(device, "lldp_neighbors", []))
 
                         if self.max_hops is not None and current_hop >= self.max_hops:
-                            self._notify(
-                                "info",
-                                f"Reached max hop depth limit ({self.max_hops}) at {device.hostname}. "
-                                f"Discovered {len(all_neighbors)} neighbors but skipping spider expansion."
-                            )
+                            # Inspect neighbors to detect unvisited switches beyond the hop limit (e.g. at hop 11 when max_hops=10)
+                            unvisited_boundary = []
+                            for neighbor in all_neighbors:
+                                if neighbor.is_ap or not neighbor.management_ip:
+                                    continue
+                                n_host = neighbor.destination_host.split(".")[0].strip().lower()
+                                if (
+                                    neighbor.management_ip not in self.visited_ips
+                                    and neighbor.management_ip not in self.queued_targets
+                                    and n_host not in self.visited_hosts
+                                ):
+                                    unvisited_boundary.append({
+                                        "destination_host": neighbor.destination_host.split(".")[0].strip(),
+                                        "management_ip": neighbor.management_ip,
+                                        "local_interface": neighbor.local_interface,
+                                        "remote_interface": neighbor.remote_interface,
+                                        "platform": neighbor.platform,
+                                    })
+
+                            if unvisited_boundary:
+                                device.is_reseed_frontier = True
+                                device.boundary_neighbors = unvisited_boundary
+                                self.reseed_points.append({
+                                    "hostname": device.hostname,
+                                    "ip_address": device.ip_address,
+                                    "hop_distance": current_hop,
+                                    "boundary_neighbors": unvisited_boundary,
+                                })
+                                audit.log(
+                                    event_type="BOUNDARY_HOP_LIMIT_REACHED",
+                                    severity="WARNING",
+                                    device_ip=device.ip_address,
+                                    hostname=device.hostname,
+                                    details={
+                                        "current_hop": current_hop,
+                                        "max_hops": self.max_hops,
+                                        "unvisited_boundary_count": len(unvisited_boundary),
+                                        "unvisited_neighbors": unvisited_boundary,
+                                        "action": "HALT_EXPANSION_REGISTER_RESEED_POINT",
+                                    },
+                                )
+                                self._notify(
+                                    "warning",
+                                    f"Boundary reached at Hop {current_hop} for {device.hostname}. "
+                                    f"Detected {len(unvisited_boundary)} unvisited neighbor(s) at Hop {current_hop + 1}. "
+                                    f"Expansion halted safely; registered {device.hostname} ({device.ip_address}) as Reseed Frontier candidate."
+                                )
+                            else:
+                                self._notify(
+                                    "info",
+                                    f"Reached max hop depth limit ({self.max_hops}) at {device.hostname}. "
+                                    f"Discovered {len(all_neighbors)} neighbors (all already visited or non-switch endpoints)."
+                                )
                         else:
                             for neighbor in all_neighbors:
                                 # CRITICAL SAFETY CHECK: Skip Access Points and phones!

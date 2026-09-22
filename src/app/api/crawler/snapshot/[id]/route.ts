@@ -60,7 +60,8 @@ export async function GET(
                 totalUnreachable: snapshot.totalUnreachable,
                 durationSeconds: snapshot.durationSeconds,
                 crawlProfile: snapshot.crawlProfile,
-                maxHops: snapshot.maxHops
+                maxHops: snapshot.maxHops,
+                reseedFrontier: snapshot.reseedFrontier || [],
             },
             summary: {
                 totalDevices: devices.length,

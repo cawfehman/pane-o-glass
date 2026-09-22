@@ -196,7 +196,8 @@ class DatabaseManager:
         seed_devices: List[str],
         duration_seconds: float,
         crawl_profile: str = "INTENSIVE",
-        max_hops: Optional[int] = None,
+        max_hops: Optional[int] = 1,
+        reseed_points: Optional[List[Dict[str, Any]]] = None,
     ) -> int:
         """Save a complete crawl snapshot to SQLite and export JSON archive."""
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -370,14 +371,17 @@ class DatabaseManager:
             conn.commit()
 
         # Also export standalone JSON archive file
-        self.export_snapshot_json(snapshot_id)
+        self.export_snapshot_json(snapshot_id, reseed_points=reseed_points)
         return snapshot_id
 
-    def export_snapshot_json(self, snapshot_id: int) -> Path:
+    def export_snapshot_json(self, snapshot_id: int, reseed_points: Optional[List[Dict[str, Any]]] = None) -> Path:
         """Export snapshot to a clean JSON file."""
         meta = self.get_snapshot_by_id(snapshot_id)
         if not meta:
             raise ValueError(f"Snapshot {snapshot_id} does not exist.")
+
+        if reseed_points:
+            meta.reseed_points = reseed_points
 
         devices = self.get_devices_for_snapshot(snapshot_id)
         safe_ts = meta.timestamp.replace(":", "-").replace(" ", "_")

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -100,6 +100,8 @@ class Device(BaseModel):
     credential_used: Optional[str] = None
     auth_time_ms: Optional[int] = None
     hop_distance: int = 0
+    is_reseed_frontier: bool = False
+    boundary_neighbors: List[Dict[str, Any]] = Field(default_factory=list)
     site_info: Optional[SiteInfo] = None
     interfaces: Dict[str, Interface] = Field(default_factory=dict)
     routes: List[Route] = Field(default_factory=list)
@@ -131,7 +133,8 @@ class SnapshotMetadata(BaseModel):
     total_unreachable: int
     duration_seconds: float
     crawl_profile: str = "INTENSIVE"
-    max_hops: Optional[int] = None
+    max_hops: Optional[int] = 1
+    reseed_points: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class PathHop(BaseModel):

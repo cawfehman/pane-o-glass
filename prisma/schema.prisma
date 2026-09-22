@@ -388,6 +388,7 @@ model CrawlSnapshot {
   totalReachable    Int           @default(0)
   totalUnreachable  Int           @default(0)
   durationSeconds   Float         @default(0.0)
+  reseedFrontier    Json?         @default("[]")
   devices           CrawlDevice[]
   links             CrawlLink[]
   createdAt         DateTime      @default(now())
@@ -398,22 +399,24 @@ model CrawlSnapshot {
 }
 
 model CrawlDevice {
-  id             String        @id @default(cuid())
-  snapshotId     String
-  snapshot       CrawlSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
-  hostname       String
-  ipAddress      String
-  platform       String?
-  osVersion      String?
-  serialNumber   String?
-  role           String        // Router, L3 Switch, L2 Switch, Unknown
-  status         String        // REACHABLE, TIMEOUT, AUTH_FAILED, ERROR
-  failureReason  String?
-  discoveredVia  String?
-  credentialUsed String?
-  authTimeMs     Int?
-  hopDistance    Int?          @default(0)
-  site           String?
+  id                String        @id @default(cuid())
+  snapshotId        String
+  snapshot          CrawlSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  hostname          String
+  ipAddress         String
+  platform          String?
+  osVersion         String?
+  serialNumber      String?
+  role              String        // Router, L3 Switch, L2 Switch, Unknown
+  status            String        // REACHABLE, TIMEOUT, AUTH_FAILED, ERROR
+  failureReason     String?
+  discoveredVia     String?
+  credentialUsed    String?
+  authTimeMs        Int?
+  hopDistance       Int?          @default(0)
+  isReseedFrontier  Boolean?      @default(false)
+  boundaryNeighbors Json?         @default("[]")
+  site              String?
   idf            String?
   roleCode       String?
   iterator       String?

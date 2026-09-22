@@ -83,7 +83,8 @@ export async function POST(request: NextRequest) {
         const seeds = Array.isArray(body.seeds) && body.seeds.length > 0 ? body.seeds : ["10.100.1.1"];
         const workers = body.workers || 10;
         const profile = typeof body.profile === "string" ? body.profile.toLowerCase() : "intensive";
-        const maxHops = body.maxHops ? parseInt(body.maxHops, 10) : null;
+        const rawHops = body.maxHops !== undefined && body.maxHops !== null ? Number(body.maxHops) : 1;
+        const maxHops = Math.min(Math.max(isNaN(rawHops) ? 1 : rawHops, 1), 10);
         const enableLldp = Boolean(body.enableLldp);
 
         const crawlerDir = path.join(process.cwd(), "services", "crawler");
@@ -97,9 +98,7 @@ export async function POST(request: NextRequest) {
         }
 
         args.push("--profile", profile);
-        if (maxHops && maxHops > 0) {
-            args.push("--max-hops", String(maxHops));
-        }
+        args.push("--max-hops", String(maxHops));
         if (enableLldp) {
             args.push("--enable-lldp");
         }
@@ -151,7 +150,8 @@ export async function POST(request: NextRequest) {
                 totalUnreachable: meta.total_unreachable || snapshotData.devices.filter((d: any) => d.status !== "REACHABLE").length,
                 durationSeconds: meta.duration_seconds || 1.5,
                 crawlProfile: (meta.crawl_profile || profile).toUpperCase(),
-                maxHops: meta.max_hops ?? (maxHops && maxHops > 0 ? maxHops : null),
+                maxHops: meta.max_hops ?? maxHops,
+                reseedFrontier: meta.reseed_points || [],
             }
         });
 
@@ -172,6 +172,8 @@ export async function POST(request: NextRequest) {
                     credentialUsed: dev.credential_used || null,
                     authTimeMs: dev.auth_time_ms ?? null,
                     hopDistance: dev.hop_distance ?? 0,
+                    isReseedFrontier: Boolean(dev.is_reseed_frontier),
+                    boundaryNeighbors: dev.boundary_neighbors || [],
                     site: dev.site_info?.site || null,
                     idf: dev.site_info?.idf || null,
                     roleCode: dev.site_info?.role_code || null,

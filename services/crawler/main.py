@@ -91,7 +91,7 @@ def cmd_crawl(args, cfg: dict):
         max_workers=workers,
         use_mock=use_mock,
         crawl_profile=getattr(args, "profile", "intensive") or "intensive",
-        max_hops=getattr(args, "max_hops", None),
+        max_hops=getattr(args, "max_hops", 1),
         enable_lldp=getattr(args, "enable_lldp", False),
         lldp_fallback_on_cdp_fail=not getattr(args, "no_lldp_fallback", False),
         hostname_regex=cfg.get("crawler", {}).get("hostname_regex"),
@@ -110,7 +110,8 @@ def cmd_crawl(args, cfg: dict):
         seed_devices=seeds,
         duration_seconds=duration,
         crawl_profile=getattr(args, "profile", "intensive") or "intensive",
-        max_hops=getattr(args, "max_hops", None),
+        max_hops=getattr(args, "max_hops", 1),
+        reseed_points=crawler.reseed_points,
     )
 
     # Topology and Map Generation
@@ -120,12 +121,15 @@ def cmd_crawl(args, cfg: dict):
     html_map = vis.generate_html_map(snapshot_id=snap_id)
     svg_map = vis.generate_svg_map(snapshot_id=snap_id)
 
+    reseed_info = f"Reseed Frontier Points: [yellow]{len(crawler.reseed_points)}[/yellow]\n" if crawler.reseed_points else ""
+
     console.print()
     console.print(Panel.fit(
         f"[bold green][OK] Crawl Complete![/bold green]\n"
         f"Snapshot ID: [bold white]{snap_id}[/bold white]\n"
         f"Reachable Devices: [green]{len(reachable)}[/green]\n"
         f"Failed/Unreachable Devices: [red]{len(unreachable)}[/red]\n"
+        f"{reseed_info}"
         f"Total Links Correlated: [cyan]{len(analyzer.links)}[/cyan]\n"
         f"Interactive Map: [blue]{html_map}[/blue]\n"
         f"Vector SVG Map: [blue]{svg_map}[/blue]",
@@ -339,7 +343,7 @@ def main():
     p_crawl.add_argument("--workers", type=int, help="Thread pool size")
     p_crawl.add_argument("--mock", action="store_true", help="Run against simulated mock lab network")
     p_crawl.add_argument("--profile", choices=["discovery", "mapping", "intensive"], default="intensive", help="Crawl profile: discovery, mapping, or intensive")
-    p_crawl.add_argument("--max-hops", type=int, default=None, help="Max distance in hops from seed devices")
+    p_crawl.add_argument("--max-hops", type=int, default=1, help="Max distance in hops from seed devices (default: 1, max: 10)")
     p_crawl.add_argument("--enable-lldp", action="store_true", help="Always query LLDP neighbors in addition to CDP")
     p_crawl.add_argument("--no-lldp-fallback", action="store_true", help="Disable LLDP fallback when CDP yields no neighbors")
 

@@ -18,6 +18,7 @@ def crawled_network(tmp_path):
     crawler = NetworkCrawler(
         seed_devices=["10.100.1.1"],
         use_mock=True,
+        max_hops=10,
     )
     reachable, unreachable = crawler.crawl()
 
@@ -86,3 +87,27 @@ def test_path_tracer_intra_site_inter_vlan(crawled_network):
     assert "101-id1-swas-1" in hop_devs
     assert "101-mdf-swds-1" in hop_devs
     assert "101-id2-swas-1" in hop_devs
+
+
+def test_hop_depth_limit_and_reseed_frontier():
+    """Verify that max_hops=1 halts expansion, flags reseed frontiers, and collects unvisited neighbors."""
+    crawler = NetworkCrawler(
+        seed_devices=["10.100.1.1"],
+        use_mock=True,
+        max_hops=1,
+    )
+    reachable, unreachable = crawler.crawl()
+
+    # With seed at 101-mdf-cr01-1 (hop 0), hop 1 reaches 101-mdf-swds-1 and 202-mdf-cr01-1
+    assert len(reachable) == 3
+    assert len(crawler.reseed_points) > 0
+
+    # 101-mdf-swds-1 is at hop 1 and has unvisited access switches at hop 2
+    swds = next(d for d in reachable if d.hostname == "101-mdf-swds-1")
+    assert swds.hop_distance == 1
+    assert swds.is_reseed_frontier is True
+    assert len(swds.boundary_neighbors) > 0
+
+    boundary_hosts = [b["destination_host"] for b in swds.boundary_neighbors]
+    assert "101-id1-swas-1" in boundary_hosts
+    assert "101-id2-swas-1" in boundary_hosts

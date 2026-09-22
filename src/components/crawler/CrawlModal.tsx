@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
     X, 
     Play, 
@@ -26,19 +26,29 @@ interface CrawlModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: (newSnapshotId: string) => void;
+    initialSeed?: string;
+    initialMaxHops?: number;
 }
 
-export default function CrawlModal({ isOpen, onClose, onSuccess }: CrawlModalProps) {
-    const [mode, setMode] = useState<"mock" | "live">("mock");
+export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, initialMaxHops }: CrawlModalProps) {
+    const [mode, setMode] = useState<"mock" | "live">(initialSeed ? "live" : "mock");
     const [profile, setProfile] = useState<"discovery" | "mapping" | "intensive">("intensive");
-    const [name, setName] = useState<string>("Lab Multi-Site Topology");
-    const [seeds, setSeeds] = useState<string>("10.10.1.1, 10.20.1.1");
-    const [maxHops, setMaxHops] = useState<number>(3);
-    const [unlimitedHops, setUnlimitedHops] = useState<boolean>(false);
+    const [name, setName] = useState<string>(initialSeed ? `Reseed from ${initialSeed}` : "Lab Multi-Site Topology");
+    const [seeds, setSeeds] = useState<string>(initialSeed || "10.10.1.1, 10.20.1.1");
+    const [maxHops, setMaxHops] = useState<number>(initialMaxHops ?? 1);
     const [enableLldp, setEnableLldp] = useState<boolean>(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (initialSeed) {
+            setMode("live");
+            setSeeds(initialSeed);
+            setName(`Reseed from ${initialSeed}`);
+            setMaxHops(initialMaxHops ?? 1);
+        }
+    }, [initialSeed, initialMaxHops]);
 
     if (!isOpen) return null;
 
@@ -51,14 +61,14 @@ export default function CrawlModal({ isOpen, onClose, onSuccess }: CrawlModalPro
             setStatusMessage(
                 mode === "mock" 
                     ? `Generating ${profile.toUpperCase()} topology from lab fixtures...` 
-                    : `Connecting to seeds via SSH worker (${profile.toUpperCase()} profile)...`
+                    : `Connecting to seeds via SSH worker (${profile.toUpperCase()} profile, ${maxHops} hop max)...`
             );
 
             const payload: any = {
                 name: name.trim() || (mode === "mock" ? "Mock Lab Topology" : "Live Production Crawl"),
                 useMock: mode === "mock",
                 profile,
-                maxHops: unlimitedHops ? null : maxHops,
+                maxHops: Math.min(Math.max(maxHops, 1), 10),
                 enableLldp,
                 seeds: mode === "live" ? seeds.split(",").map(s => s.trim()).filter(Boolean) : undefined,
             };
@@ -245,48 +255,47 @@ export default function CrawlModal({ isOpen, onClose, onSuccess }: CrawlModalPro
                                 <Hash className="w-4 h-4 text-blue-400" />
                                 <span className="font-semibold text-slate-200">Max Hop Distance from Seed</span>
                             </div>
-                            <label className="flex items-center gap-1.5 cursor-pointer text-slate-400 hover:text-slate-200">
-                                <input
-                                    type="checkbox"
-                                    checked={unlimitedHops}
-                                    onChange={(e) => setUnlimitedHops(e.target.checked)}
-                                    className="accent-blue-500 rounded cursor-pointer"
-                                />
-                                <span className="text-[11px]">Unlimited Hops</span>
-                            </label>
+                            <span className="font-mono text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded text-xs">
+                                {maxHops} {maxHops === 1 ? "Hop" : "Hops"}
+                            </span>
                         </div>
 
-                        {!unlimitedHops ? (
-                            <div className="space-y-2">
-                                <div className="flex justify-between text-xs">
-                                    <span className="text-slate-400">
-                                        {maxHops === 1 ? "1 Hop (Seed + Direct Neighbors only)" :
-                                         maxHops === 2 ? "2 Hops (Seed + Core/Dist + Access Switches)" :
-                                         `${maxHops} Hops (Extended Campus Depth)`}
-                                    </span>
-                                    <span className="font-mono text-blue-400 font-bold">{maxHops} hops</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min={1}
-                                    max={8}
-                                    value={maxHops}
-                                    onChange={(e) => setMaxHops(parseInt(e.target.value, 10))}
-                                    className="w-full accent-blue-500 cursor-pointer"
-                                />
-                                <div className="flex justify-between text-[10px] font-mono text-slate-600">
-                                    <span>1 (Direct)</span>
-                                    <span>2 (Tier 2)</span>
-                                    <span>3 (Campus)</span>
-                                    <span>5 (Enterprise)</span>
-                                    <span>8 (Deep)</span>
-                                </div>
+                        <div className="space-y-2">
+                            <div className="flex justify-between text-xs">
+                                <span className="text-slate-400">
+                                    {maxHops === 1 ? "1 Hop (Seed + Direct Neighbors only) — Default" :
+                                     maxHops === 2 ? "2 Hops (Seed + Core/Dist + Access Switches)" :
+                                     maxHops === 10 ? "10 Hops (Maximum Depth Boundary — Loop Safety Cap)" :
+                                     `${maxHops} Hops (Extended Campus Depth)`}
+                                </span>
                             </div>
-                        ) : (
-                            <p className="text-[11px] text-slate-400 italic">
-                                BFS queue will spider indefinitely until all discovered reachable neighbors are exhausted.
-                            </p>
-                        )}
+                            <input
+                                type="range"
+                                min={1}
+                                max={10}
+                                value={maxHops}
+                                onChange={(e) => setMaxHops(parseInt(e.target.value, 10))}
+                                className="w-full accent-blue-500 cursor-pointer"
+                            />
+                            <div className="flex justify-between text-[10px] font-mono text-slate-500">
+                                <span className="text-blue-400 font-semibold">1 (Default)</span>
+                                <span>2 (Dist)</span>
+                                <span>4 (Campus)</span>
+                                <span>7 (Extended)</span>
+                                <span className="text-amber-400 font-semibold">10 (Max Boundary)</span>
+                            </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-400 space-y-1">
+                            <div className="flex items-start gap-1.5 text-slate-300">
+                                <span className="text-blue-400 font-bold">•</span>
+                                <span><strong>Loop Safety:</strong> BFS depth is hard-capped at 10 hops. If switches exist at the 11th hop, crawl halts safely and registers the 10th-hop device for boundary reseeding.</span>
+                            </div>
+                            <div className="flex items-start gap-1.5 text-slate-400">
+                                <span className="text-emerald-400 font-bold">•</span>
+                                <span><strong>Direct SSH:</strong> Outbound sessions initiate directly from Pane-o-glass to each switch (no switch-to-switch daisy-chaining).</span>
+                            </div>
+                        </div>
                     </div>
 
                     {/* LLDP Fallback Optional Checkbox */}
@@ -357,7 +366,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess }: CrawlModalPro
                         <span className="font-semibold uppercase tracking-wider text-slate-500">Profile:</span>
                         <span className="font-bold text-white uppercase">{profile}</span>
                         <span>•</span>
-                        <span>{unlimitedHops ? "Unlimited Hops" : `${maxHops} Hop Limit`}</span>
+                        <span>{maxHops} {maxHops === 1 ? "Hop Limit" : "Hops Limit"}</span>
                     </div>
 
                     <div className="flex items-center gap-3">

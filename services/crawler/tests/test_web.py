@@ -14,7 +14,7 @@ def test_client(tmp_path):
     maps_dir = tmp_path / "web_maps"
 
     db = DatabaseManager(db_path=str(db_file), snapshots_dir=str(snaps_dir))
-    crawler = NetworkCrawler(seed_devices=["10.100.1.1"], use_mock=True)
+    crawler = NetworkCrawler(seed_devices=["10.100.1.1"], use_mock=True, max_hops=10)
     reachable, unreachable = crawler.crawl()
 
     snap_id = db.save_snapshot(

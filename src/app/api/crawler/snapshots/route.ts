@@ -22,6 +22,7 @@ export async function GET() {
                 durationSeconds: true,
                 crawlProfile: true,
                 maxHops: true,
+                reseedFrontier: true,
                 _count: {
                     select: {
                         devices: true,

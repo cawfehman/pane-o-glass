@@ -55,6 +55,7 @@ export default function AdminCrawlerPage() {
 
     // Crawl Modal
     const [isCrawlModalOpen, setIsCrawlModalOpen] = useState(false);
+    const [reseedDevice, setReseedDevice] = useState<any | null>(null);
 
     // Protect route for ADMIN role
     useEffect(() => {
@@ -127,6 +128,10 @@ export default function AdminCrawlerPage() {
     const links: any[] = currentSnapshotData?.links || [];
     const unreachableDevices = useMemo(() => {
         return devices.filter(d => (d.status && d.status !== "REACHABLE") || d.reachable === false || Boolean(d.failureReason) || Boolean(d.error));
+    }, [devices]);
+
+    const frontierDevices = useMemo(() => {
+        return devices.filter(d => Boolean(d.isReseedFrontier) || (Array.isArray(d.boundaryNeighbors) && d.boundaryNeighbors.length > 0));
     }, [devices]);
 
     const activeSnapshot = snapshots.find(s => s.id === selectedSnapshotId);
@@ -233,7 +238,10 @@ export default function AdminCrawlerPage() {
 
                     {/* New Crawl Button */}
                     <button
-                        onClick={() => setIsCrawlModalOpen(true)}
+                        onClick={() => {
+                            setReseedDevice(null);
+                            setIsCrawlModalOpen(true);
+                        }}
                         className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-blue-500/20 flex items-center gap-1.5 transition cursor-pointer"
                     >
                         <Play className="w-3.5 h-3.5 fill-current" />
@@ -304,6 +312,40 @@ export default function AdminCrawlerPage() {
                 <div className="p-3.5 bg-red-950/40 border border-red-800/80 rounded-xl text-xs text-red-300 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
                     <span>{error}</span>
+                </div>
+            )}
+
+            {/* Frontier Reseed Banner if Boundary Switch(es) exist */}
+            {frontierDevices.length > 0 && (
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 shrink-0">
+                            <Compass className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <span className="text-xs font-bold text-amber-300 block">
+                                Hop Depth Boundary Reached (Hop {activeSnapshot?.maxHops || 1})
+                            </span>
+                            <p className="text-[11px] text-amber-200/80">
+                                {frontierDevices.length} boundary switch(es) detected with unvisited neighbors at Hop {(activeSnapshot?.maxHops || 1) + 1}. Expansion halted safely to guarantee zero loops.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        {frontierDevices.slice(0, 2).map((fd) => (
+                            <button
+                                key={fd.id}
+                                onClick={() => {
+                                    setReseedDevice(fd);
+                                    setIsCrawlModalOpen(true);
+                                }}
+                                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition shadow flex items-center gap-1.5 cursor-pointer"
+                            >
+                                <Play className="w-3.5 h-3.5 fill-current" />
+                                Reseed from {fd.hostname}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             )}
 
@@ -445,15 +487,26 @@ export default function AdminCrawlerPage() {
                     setTracerDestIp(ip);
                     setActiveTab("tracer");
                 }}
+                onReseed={(dev) => {
+                    setReseedDevice(dev);
+                    setIsCrawlModalOpen(true);
+                }}
             />
 
             {/* Crawl Initiation Modal */}
             <CrawlModal
                 isOpen={isCrawlModalOpen}
-                onClose={() => setIsCrawlModalOpen(false)}
+                onClose={() => {
+                    setIsCrawlModalOpen(false);
+                    setReseedDevice(null);
+                }}
                 onSuccess={(newId) => {
+                    setIsCrawlModalOpen(false);
+                    setReseedDevice(null);
                     fetchSnapshots(newId);
                 }}
+                initialSeed={reseedDevice?.ipAddress}
+                initialMaxHops={1}
             />
         </div>
     );
