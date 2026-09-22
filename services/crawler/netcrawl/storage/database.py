@@ -36,8 +36,13 @@ class DatabaseManager:
         self.init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path))
+        conn = sqlite3.connect(str(self.db_path), timeout=60.0)
         conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA journal_mode=WAL;")
+            conn.execute("PRAGMA busy_timeout=60000;")
+        except Exception:
+            pass
         return conn
 
     def init_db(self) -> None:
@@ -389,8 +394,10 @@ class DatabaseManager:
         safe_ts = meta.timestamp.replace(":", "-").replace(" ", "_")
         target_path = self.snapshots_dir / f"snapshot_{snapshot_id}_{safe_ts}.json"
 
+        meta_dict = meta.model_dump()
         data = {
-            "metadata": meta.model_dump(),
+            "metadata": meta_dict,
+            "meta": meta_dict,
             "devices": [d.model_dump() for d in devices],
         }
 

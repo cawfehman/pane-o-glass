@@ -124,7 +124,8 @@ async function persistLatestSnapshot(
     const latestSnapshotFile = path.join(snapshotsDir, files[0].name);
     const rawContent = fs.readFileSync(latestSnapshotFile, "utf-8");
     const snapshotData = JSON.parse(rawContent);
-    const meta = snapshotData.meta || {};
+    const meta = snapshotData.metadata || snapshotData.meta || {};
+    const rawDevices = Array.isArray(snapshotData.devices) ? snapshotData.devices : [];
 
     const lastSnap = await prisma.crawlSnapshot.findFirst({
         orderBy: { snapshotNumber: "desc" },
@@ -132,22 +133,33 @@ async function persistLatestSnapshot(
     });
     const nextSnapshotNumber = (lastSnap?.snapshotNumber || 0) + 1;
 
+    let snapDate = new Date();
+    if (meta.timestamp) {
+        try {
+            const rawTs = typeof meta.timestamp === "string" ? meta.timestamp.replace(" ", "T") : meta.timestamp;
+            const parsed = new Date(rawTs);
+            if (!isNaN(parsed.getTime())) snapDate = parsed;
+        } catch {
+            snapDate = new Date();
+        }
+    }
+
     const newSnapshot = await prisma.crawlSnapshot.create({
         data: {
             snapshotNumber: nextSnapshotNumber,
-            timestamp: new Date(meta.timestamp.replace(" ", "T")),
+            timestamp: snapDate,
             seedDevices: meta.seed_devices || seeds,
-            totalDiscovered: meta.total_discovered || snapshotData.devices.length,
-            totalReachable: meta.total_reachable || snapshotData.devices.filter((d: any) => d.status === "REACHABLE").length,
-            totalUnreachable: meta.total_unreachable || snapshotData.devices.filter((d: any) => d.status !== "REACHABLE" && d.status !== "UNVERIFIED").length,
-            durationSeconds: meta.duration_seconds || 1.5,
+            totalDiscovered: meta.total_discovered ?? rawDevices.length,
+            totalReachable: meta.total_reachable ?? rawDevices.filter((d: any) => d.status === "REACHABLE").length,
+            totalUnreachable: meta.total_unreachable ?? rawDevices.filter((d: any) => d.status !== "REACHABLE" && d.status !== "UNVERIFIED").length,
+            durationSeconds: meta.duration_seconds ?? 1.5,
             crawlProfile: (meta.crawl_profile || profile).toUpperCase(),
             maxHops: meta.max_hops ?? maxHops,
             reseedFrontier: meta.reseed_points || [],
         }
     });
 
-    for (const dev of snapshotData.devices) {
+    for (const dev of rawDevices) {
         const shortHost = dev.hostname ? dev.hostname.split(".")[0].trim() : "";
         const fallbackSite = shortHost.length >= 3 ? shortHost.slice(0, 3).toUpperCase() : null;
         let fallbackIdf = "MDF";
@@ -188,7 +200,7 @@ async function persistLatestSnapshot(
         });
     }
 
-    const links = correlateLinks(snapshotData.devices);
+    const links = correlateLinks(rawDevices);
     for (const link of links) {
         await prisma.crawlLink.create({
             data: {
@@ -207,7 +219,7 @@ async function persistLatestSnapshot(
 
     await logAudit(
         'CRAWLER_TRIGGER',
-        `Executed ${useMock ? 'Virtual Mock Lab' : 'Live SSH'} Network Crawl. Created Snapshot #${newSnapshot.snapshotNumber} with ${snapshotData.devices.length} devices.`,
+        `Executed ${useMock ? 'Virtual Mock Lab' : 'Live SSH'} Network Crawl. Created Snapshot #${newSnapshot.snapshotNumber} with ${rawDevices.length} devices.`,
         (session?.user as any)?.id,
         (session?.user as any)?.ipAddress
     );
