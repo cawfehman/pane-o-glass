@@ -234,8 +234,49 @@ export async function POST(request: NextRequest) {
         if (body.username) customEnv.NETCRAWL_USER = String(body.username).trim();
         if (body.password) customEnv.NETCRAWL_PASS = String(body.password);
         if (body.secret) customEnv.NETCRAWL_SECRET = String(body.secret);
+        if (Array.isArray(body.fallbackCredentials) && body.fallbackCredentials.length > 0) {
+            customEnv.NETCRAWL_FALLBACK_JSON = JSON.stringify(body.fallbackCredentials);
+        }
 
         console.log(`[CRAWLER-TRIGGER] Using python: ${pythonBin} | args: ${args.join(" ")} in ${crawlerDir}`);
+
+        const runsDir = path.join(crawlerDir, "logs", "runs");
+        if (!fs.existsSync(runsDir)) {
+            try { fs.mkdirSync(runsDir, { recursive: true }); } catch {}
+        }
+
+        // Prune logs older than 7 days
+        try {
+            const now = Date.now();
+            const maxAgeMs = 7 * 24 * 60 * 60 * 1000;
+            if (fs.existsSync(runsDir)) {
+                for (const file of fs.readdirSync(runsDir)) {
+                    if (!file.endsWith(".log")) continue;
+                    const fullPath = path.join(runsDir, file);
+                    const stat = fs.statSync(fullPath);
+                    if (now - stat.mtimeMs > maxAgeMs) {
+                        try { fs.unlinkSync(fullPath); } catch {}
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Failed to prune old crawler run logs:", e);
+        }
+
+        const runLogLines: string[] = [
+            `============================================================`,
+            `  NETCRAWL EXECUTION AUDIT LOG`,
+            `============================================================`,
+            `Timestamp:    ${new Date().toISOString()}`,
+            `Seed Devices: ${seeds.join(", ")}`,
+            `Profile:      ${profile.toUpperCase()}`,
+            `Max Hops:     ${maxHops}`,
+            `Mode:         ${useMock ? "VIRTUAL LAB SIMULATION" : "LIVE CISCO SSH"}`,
+            `Primary User: ${body.username || "server-default"}`,
+            `Fallbacks:    ${Array.isArray(body.fallbackCredentials) && body.fallbackCredentials.length > 0 ? body.fallbackCredentials.map((f: any) => f.username).join(", ") : "None configured"}`,
+            `Python Exec:  ${pythonBin}`,
+            `============================================================\n`
+        ];
 
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
@@ -248,16 +289,17 @@ export async function POST(request: NextRequest) {
                     }
                 };
 
-                sendEvent({
-                    type: "status",
-                    message: `[INIT] Resolved Python: ${pythonBin} | Profile: ${profile.toUpperCase()} | Depth: ${maxHops} Hop(s)`
-                });
+                const logAndSend = (type: string, message: string) => {
+                    const stamped = `[${new Date().toISOString().substring(11, 19)}] [${type.toUpperCase()}] ${message}`;
+                    runLogLines.push(stamped);
+                    sendEvent({ type, [type === "log" || type === "stderr" ? "line" : "message"]: message });
+                };
+
+                logAndSend("status", `[INIT] Resolved Python: ${pythonBin} | Profile: ${profile.toUpperCase()} | Depth: ${maxHops} Hop(s)`);
 
                 if (!useMock) {
-                    sendEvent({
-                        type: "status",
-                        message: `[SSH] Connecting to seed(s): ${seeds.join(", ")} (User: ${body.username || "server-default"})...`
-                    });
+                    const fallbackCount = Array.isArray(body.fallbackCredentials) ? body.fallbackCredentials.length : 0;
+                    logAndSend("status", `[SSH] Connecting to seed(s): ${seeds.join(", ")} (User: ${body.username || "server-default"}, ${fallbackCount} fallback(s))...`);
                 }
 
                 const proc = spawn(pythonBin, args, {
@@ -281,7 +323,9 @@ export async function POST(request: NextRequest) {
                     const text = chunk.toString("utf-8");
                     const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
                     for (const line of lines) {
-                        sendEvent({ type: "log", line: line.trim() });
+                        const cleanLine = line.trim();
+                        runLogLines.push(`[${new Date().toISOString().substring(11, 19)}] ${cleanLine}`);
+                        sendEvent({ type: "log", line: cleanLine });
                     }
                 });
 
@@ -289,21 +333,33 @@ export async function POST(request: NextRequest) {
                     const text = chunk.toString("utf-8");
                     const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
                     for (const line of lines) {
-                        sendEvent({ type: "stderr", line: line.trim() });
+                        const cleanLine = line.trim();
+                        runLogLines.push(`[${new Date().toISOString().substring(11, 19)}] [STDERR] ${cleanLine}`);
+                        sendEvent({ type: "stderr", line: cleanLine });
                     }
                 });
 
                 proc.on("error", (err) => {
-                    sendEvent({ type: "error", error: `Failed to spawn crawler binary (${pythonBin}): ${err.message}` });
+                    const errMsg = `Failed to spawn crawler binary (${pythonBin}): ${err.message}`;
+                    runLogLines.push(`[ERROR] ${errMsg}`);
+                    sendEvent({ type: "error", error: errMsg });
+                    try {
+                        const errLogFile = path.join(runsDir, `crawl_error_${Date.now()}.log`);
+                        fs.writeFileSync(errLogFile, runLogLines.join("\n"), "utf-8");
+                    } catch {}
                     try { controller.close(); } catch {}
                 });
 
                 proc.on("close", async (code) => {
+                    runLogLines.push(`\n[EXIT] Process exited with return code: ${code}`);
+
                     if (code !== 0) {
-                        sendEvent({
-                            type: "error",
-                            error: `Crawler process exited with error code ${code}. Review logs above for details.`
-                        });
+                        const errMsg = `Crawler process exited with error code ${code}. Review logs above for details.`;
+                        sendEvent({ type: "error", error: errMsg });
+                        try {
+                            const errLogFile = path.join(runsDir, `crawl_error_${Date.now()}.log`);
+                            fs.writeFileSync(errLogFile, runLogLines.join("\n"), "utf-8");
+                        } catch {}
                         try { controller.close(); } catch {}
                         return;
                     }
@@ -319,16 +375,28 @@ export async function POST(request: NextRequest) {
                             useMock,
                             session
                         );
+
+                        // Save run log file named after snapshot for easy retrieval
+                        const snapLogFile = path.join(runsDir, `crawl_snapshot_${newSnapshot.id}.log`);
+                        fs.writeFileSync(snapLogFile, runLogLines.join("\n"), "utf-8");
+
                         sendEvent({
                             type: "done",
                             snapshotId: newSnapshot.id,
                             snapshotNumber: newSnapshot.snapshotNumber,
                             totalDiscovered: newSnapshot.totalDiscovered,
                             totalReachable: newSnapshot.totalReachable,
-                            totalUnreachable: newSnapshot.totalUnreachable
+                            totalUnreachable: newSnapshot.totalUnreachable,
+                            logFile: `crawl_snapshot_${newSnapshot.id}.log`
                         });
                     } catch (persistErr: any) {
-                        sendEvent({ type: "error", error: `Failed saving snapshot to database: ${persistErr.message}` });
+                        const saveErrMsg = `Failed saving snapshot to database: ${persistErr.message}`;
+                        runLogLines.push(`[ERROR] ${saveErrMsg}`);
+                        sendEvent({ type: "error", error: saveErrMsg });
+                        try {
+                            const fallbackLogFile = path.join(runsDir, `crawl_run_${Date.now()}.log`);
+                            fs.writeFileSync(fallbackLogFile, runLogLines.join("\n"), "utf-8");
+                        } catch {}
                     } finally {
                         try { controller.close(); } catch {}
                     }

@@ -27,8 +27,19 @@ import {
     StopCircle,
     Trash2,
     Plus,
-    Info
+    Info,
+    Download
 } from "lucide-react";
+
+export interface CredentialItem {
+    id: string;
+    label: string;
+    username: string;
+    password: string;
+    secret: string;
+    showPassword?: boolean;
+    showSecret?: boolean;
+}
 
 interface CrawlModalProps {
     isOpen: boolean;
@@ -46,24 +57,23 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
     const [maxHops, setMaxHops] = useState<number>(initialMaxHops ?? 1);
     const [enableLldp, setEnableLldp] = useState<boolean>(false);
 
-    // Ephemeral credentials for live crawl
+    // Ephemeral credentials for live crawl (supports Primary + sequential Fallbacks)
     const [authMode, setAuthMode] = useState<"server" | "custom">("server");
-    const [authUsername, setAuthUsername] = useState<string>("admin");
-    const [authPassword, setAuthPassword] = useState<string>("");
-    const [authSecret, setAuthSecret] = useState<string>("");
-    const [showPassword, setShowPassword] = useState<boolean>(false);
-    const [showEnableField, setShowEnableField] = useState<boolean>(false);
+    const [credentials, setCredentials] = useState<CredentialItem[]>([
+        { id: "primary", label: "Primary (TACACS+ / Domain)", username: "admin", password: "", secret: "" }
+    ]);
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
     const [logs, setLogs] = useState<string[]>([]);
     const [abortController, setAbortController] = useState<AbortController | null>(null);
-    const logsEndRef = useRef<HTMLDivElement>(null);
+    const terminalRef = useRef<HTMLDivElement>(null);
 
+    // Instant, container-only scroll to bottom without vibrating/jitter
     useEffect(() => {
-        if (logs.length > 0 && logsEndRef.current) {
-            logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+        if (terminalRef.current) {
+            terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
         }
     }, [logs]);
 
@@ -78,6 +88,40 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
 
     if (!isOpen) return null;
 
+    const handleAddFallback = () => {
+        setCredentials(prev => [
+            ...prev,
+            {
+                id: `fb-${Date.now()}`,
+                label: `Fallback #${prev.length} (Local Admin)`,
+                username: "localadmin",
+                password: "",
+                secret: ""
+            }
+        ]);
+    };
+
+    const handleRemoveFallback = (id: string) => {
+        setCredentials(prev => prev.filter(c => c.id !== id));
+    };
+
+    const handleUpdateCredential = (id: string, field: keyof CredentialItem, value: any) => {
+        setCredentials(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+    };
+
+    const handleDownloadLogs = () => {
+        if (logs.length === 0) return;
+        const blob = new Blob([logs.join("\n")], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `crawl_console_${new Date().toISOString().replace(/[:.]/g, "-")}.log`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
     const getLogLineStyle = (line: string) => {
         if (line.startsWith("[ERROR]") || line.includes("failed") || line.includes("Failed") || line.includes("AuthenticationException")) {
             return "text-red-400";
@@ -85,10 +129,10 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
         if (line.startsWith("[WARNING]") || line.includes("WARNING")) {
             return "text-amber-400";
         }
-        if (line.startsWith("[SUCCESS]") || line.startsWith("[DONE]") || line.includes("REACHABLE")) {
+        if (line.startsWith("[SUCCESS]") || line.startsWith("[DONE]") || line.includes("REACHABLE") || line.includes("FALLBACK_SUCCESS")) {
             return "text-emerald-400";
         }
-        if (line.startsWith("[SSH]") || line.includes("Attempting SSH")) {
+        if (line.startsWith("[SSH]") || line.includes("Attempting SSH") || line.includes("Connecting")) {
             return "text-yellow-300";
         }
         if (line.startsWith("[INIT]") || line.startsWith("[DB]") || line.startsWith("[STATUS]")) {
@@ -136,16 +180,24 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
             };
 
             if (mode === "live" && authMode === "custom") {
-                if (!authPassword) {
-                    setError("Please enter the switch SSH password or switch back to Server Default credentials.");
+                const primary = credentials[0];
+                if (!primary || !primary.password) {
+                    setError("Please enter the primary switch SSH password (or switch back to Server Default credentials).");
                     setLoading(false);
                     setAbortController(null);
                     return;
                 }
-                payload.username = authUsername.trim();
-                payload.password = authPassword;
-                if (authSecret) {
-                    payload.secret = authSecret;
+                payload.username = primary.username.trim();
+                payload.password = primary.password;
+                if (primary.secret) {
+                    payload.secret = primary.secret;
+                }
+                if (credentials.length > 1) {
+                    payload.fallbackCredentials = credentials.slice(1).map(c => ({
+                        username: c.username.trim(),
+                        password: c.password,
+                        secret: c.secret ? c.secret : undefined
+                    }));
                 }
             }
 
@@ -562,74 +614,110 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                             Using primary and fallback credentials defined in <code className="text-slate-300 font-mono">.env</code> and <code className="text-slate-300 font-mono">config.yaml</code> on the server.
                                         </div>
                                     ) : (
-                                        <div className="space-y-3 p-3 bg-slate-900/60 border border-slate-800 rounded-xl">
-                                            <div className="grid grid-cols-2 gap-2.5">
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-medium text-slate-400">Username</label>
-                                                    <input
-                                                        type="text"
-                                                        value={authUsername}
-                                                        onChange={(e) => setAuthUsername(e.target.value)}
-                                                        placeholder="admin"
-                                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
-                                                    />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-medium text-slate-400">Password</label>
-                                                    <div className="relative">
-                                                        <input
-                                                            type={showPassword ? "text" : "password"}
-                                                            value={authPassword}
-                                                            onChange={(e) => setAuthPassword(e.target.value)}
-                                                            placeholder="Enter password"
-                                                            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-2.5 pr-7 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
-                                                        />
+                                        <div className="space-y-3">
+                                            {credentials.map((cred, idx) => (
+                                                <div key={cred.id} className="p-3 bg-slate-900/70 border border-slate-800 rounded-xl space-y-2.5">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                                                            <span className={`w-2 h-2 rounded-full ${idx === 0 ? "bg-amber-400" : "bg-cyan-400"}`} />
+                                                            {cred.label}
+                                                        </span>
+                                                        {idx > 0 && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleRemoveFallback(cred.id)}
+                                                                className="text-slate-500 hover:text-red-400 transition cursor-pointer p-0.5"
+                                                                title="Remove Fallback"
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div className="space-y-1">
+                                                            <label className="text-[10px] font-medium text-slate-400">Username</label>
+                                                            <input
+                                                                type="text"
+                                                                value={cred.username}
+                                                                onChange={(e) => handleUpdateCredential(cred.id, "username", e.target.value)}
+                                                                placeholder="admin"
+                                                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[10px] font-medium text-slate-400">Password</label>
+                                                            <div className="relative">
+                                                                <input
+                                                                    type={cred.showPassword ? "text" : "password"}
+                                                                    value={cred.password}
+                                                                    onChange={(e) => handleUpdateCredential(cred.id, "password", e.target.value)}
+                                                                    placeholder="Password"
+                                                                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-2.5 pr-7 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleUpdateCredential(cred.id, "showPassword", !cred.showPassword)}
+                                                                    className="absolute right-1.5 top-1.5 text-slate-500 hover:text-slate-300 cursor-pointer"
+                                                                >
+                                                                    {cred.showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Optional Enable Secret */}
+                                                    {!cred.showSecret && !cred.secret ? (
                                                         <button
                                                             type="button"
-                                                            onClick={() => setShowPassword(!showPassword)}
-                                                            className="absolute right-1.5 top-1.5 text-slate-500 hover:text-slate-300 cursor-pointer"
+                                                            onClick={() => handleUpdateCredential(cred.id, "showSecret", true)}
+                                                            className="text-[10px] text-amber-400/90 hover:text-amber-300 flex items-center gap-1 transition cursor-pointer"
                                                         >
-                                                            {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                                            <Plus className="w-3 h-3" />
+                                                            Add Enable Secret (Optional)
                                                         </button>
-                                                    </div>
+                                                    ) : (
+                                                        <div className="space-y-1 pt-1.5 border-t border-slate-800/60">
+                                                            <div className="flex items-center justify-between">
+                                                                <label className="text-[10px] font-medium text-slate-400">Enable Secret (Privileged Exec)</label>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        handleUpdateCredential(cred.id, "showSecret", false);
+                                                                        handleUpdateCredential(cred.id, "secret", "");
+                                                                    }}
+                                                                    className="text-[10px] text-slate-500 hover:text-slate-300 cursor-pointer"
+                                                                >
+                                                                    Remove
+                                                                </button>
+                                                            </div>
+                                                            <input
+                                                                type={cred.showSecret ? "text" : "password"}
+                                                                value={cred.secret}
+                                                                onChange={(e) => handleUpdateCredential(cred.id, "secret", e.target.value)}
+                                                                placeholder="Optional enable password"
+                                                                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                                                            />
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            </div>
+                                            ))}
 
-                                            {/* Optional Enable Secret Accordion */}
-                                            {!showEnableField ? (
+                                            {/* Add Fallback Credential Button */}
+                                            {credentials.length < 5 && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => setShowEnableField(true)}
-                                                    className="text-[10px] text-amber-400/90 hover:text-amber-300 flex items-center gap-1 transition cursor-pointer"
+                                                    onClick={handleAddFallback}
+                                                    className="w-full py-2 px-3 rounded-xl border border-dashed border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 text-xs font-medium flex items-center justify-center gap-1.5 transition cursor-pointer bg-slate-900/40"
                                                 >
-                                                    <Plus className="w-3 h-3" />
-                                                    Add Enable Password (Optional)
+                                                    <Plus className="w-3.5 h-3.5 text-blue-400" />
+                                                    Add Fallback Credential (Local Admin / Emergency)
                                                 </button>
-                                            ) : (
-                                                <div className="space-y-1 pt-2 border-t border-slate-800/60">
-                                                    <div className="flex items-center justify-between">
-                                                        <label className="text-[10px] font-medium text-slate-400">Enable Secret</label>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => { setShowEnableField(false); setAuthSecret(""); }}
-                                                            className="text-[10px] text-slate-500 hover:text-slate-300 cursor-pointer"
-                                                        >
-                                                            Remove
-                                                        </button>
-                                                    </div>
-                                                    <input
-                                                        type={showPassword ? "text" : "password"}
-                                                        value={authSecret}
-                                                        onChange={(e) => setAuthSecret(e.target.value)}
-                                                        placeholder="Optional enable password"
-                                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 transition font-mono"
-                                                    />
-                                                </div>
                                             )}
 
                                             <div className="flex items-center gap-1.5 text-[10px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg">
                                                 <Lock className="w-3 h-3 shrink-0" />
-                                                <span><strong>Ephemeral:</strong> In-memory only; never written to disk or database.</span>
+                                                <span><strong>Ephemeral:</strong> All credential sets are held in memory only during execution; never written to disk or DB.</span>
                                             </div>
                                         </div>
                                     )}
@@ -655,25 +743,40 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                         ({logs.length} lines)
                                     </span>
                                 </div>
-                                {logs.length > 0 && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setLogs([])}
-                                        className="text-[11px] text-slate-500 hover:text-slate-300 flex items-center gap-1 transition cursor-pointer"
-                                    >
-                                        <Trash2 className="w-3 h-3" />
-                                        Clear
-                                    </button>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    {logs.length > 0 && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={handleDownloadLogs}
+                                                className="text-[11px] text-blue-400 hover:text-blue-300 flex items-center gap-1 transition cursor-pointer"
+                                                title="Save Execution Log"
+                                            >
+                                                <Download className="w-3 h-3" />
+                                                Save Log
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setLogs([])}
+                                                className="text-[11px] text-slate-500 hover:text-slate-300 flex items-center gap-1 transition cursor-pointer"
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                                Clear
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
                             </div>
-                            <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] leading-relaxed max-h-52 overflow-y-auto shadow-inner space-y-1 select-text">
+                            <div 
+                                ref={terminalRef} 
+                                className="bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] leading-relaxed h-64 overflow-y-auto shadow-inner space-y-1 select-text"
+                            >
                                 {logs.map((logLine, idx) => (
                                     <div key={idx} className={`font-mono break-all ${getLogLineStyle(logLine)}`}>
                                         <span className="text-slate-600 select-none mr-2">{String(idx + 1).padStart(2, "0")}</span>
                                         {logLine}
                                     </div>
                                 ))}
-                                <div ref={logsEndRef} />
                             </div>
                         </div>
                     )}

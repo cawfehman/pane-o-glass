@@ -52,7 +52,46 @@ def cmd_crawl(args, cfg: dict):
         secret = args.secret or os.getenv("NETCRAWL_SECRET") or cfg.get("crawler", {}).get("credentials", {}).get("secret", "")
 
     key_file = args.key_file or os.getenv("NETCRAWL_KEY_FILE") or cfg.get("crawler", {}).get("credentials", {}).get("key_file")
-    fallback_creds = cfg.get("crawler", {}).get("fallback_credentials", [])
+    
+    # Fallback credentials resolution: CLI --fallback-json > env NETCRAWL_FALLBACK_JSON > env NETCRAWL_FALLBACK_USER_X > config.yaml
+    fallback_creds = []
+    fallback_json_raw = getattr(args, "fallback_json", None) or os.getenv("NETCRAWL_FALLBACK_JSON")
+    if fallback_json_raw:
+        try:
+            import json
+            parsed = json.loads(fallback_json_raw)
+            if isinstance(parsed, list):
+                fallback_creds = [
+                    {
+                        "username": str(f.get("username", "")).strip(),
+                        "password": str(f.get("password", "")),
+                        "secret": str(f.get("secret", "")),
+                        "key_file": f.get("key_file")
+                    }
+                    for f in parsed if f.get("username") or f.get("password")
+                ]
+        except Exception as e:
+            console.print(f"[yellow]Warning: Failed parsing fallback credentials JSON: {e}[/yellow]")
+
+    if not fallback_creds:
+        # Check for indexed environment variables (e.g. NETCRAWL_FALLBACK_USER_1, NETCRAWL_FALLBACK_PASS_1, NETCRAWL_FALLBACK_SECRET_1)
+        idx = 1
+        while True:
+            fb_u = os.getenv(f"NETCRAWL_FALLBACK_USER_{idx}")
+            if not fb_u:
+                break
+            fb_p = os.getenv(f"NETCRAWL_FALLBACK_PASS_{idx}", "")
+            fb_s = os.getenv(f"NETCRAWL_FALLBACK_SECRET_{idx}", "")
+            fallback_creds.append({
+                "username": fb_u.strip(),
+                "password": fb_p,
+                "secret": fb_s
+            })
+            idx += 1
+
+    if not fallback_creds:
+        fallback_creds = cfg.get("crawler", {}).get("fallback_credentials", [])
+
     workers = args.workers or cfg.get("crawler", {}).get("max_workers", 15)
     use_mock = args.mock
 
@@ -338,6 +377,7 @@ def main():
     p_crawl.add_argument("--username", help="SSH username")
     p_crawl.add_argument("--password", help="SSH password")
     p_crawl.add_argument("--secret", help="Enable secret")
+    p_crawl.add_argument("--fallback-json", help="JSON array of fallback credentials: [{'username':..., 'password':..., 'secret':...}]")
     p_crawl.add_argument("--ask-pass", action="store_true", help="Interactively prompt for password and enable secret without echoing")
     p_crawl.add_argument("--key-file", help="Path to SSH private key file (e.g. ~/.ssh/id_rsa)")
     p_crawl.add_argument("--workers", type=int, help="Thread pool size")

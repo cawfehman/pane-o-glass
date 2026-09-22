@@ -17,7 +17,12 @@ import {
     Activity,
     CheckCircle2,
     Calendar,
-    ChevronDown
+    ChevronDown,
+    FileText,
+    Download,
+    Copy,
+    Check,
+    X
 } from "lucide-react";
 
 import TopologyGraph from "@/components/crawler/TopologyGraph";
@@ -41,10 +46,10 @@ export default function AdminCrawlerPage() {
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Active Tab
+    // Active sub-view tab
     const [activeTab, setActiveTab] = useState<"topology" | "tracer" | "failures">("topology");
 
-    // Device selection for Inspector Drawer
+    // Drawer selection
     const [selectedDevice, setSelectedDevice] = useState<any | null>(null);
 
     // Tracer inputs & highlighted path
@@ -56,6 +61,13 @@ export default function AdminCrawlerPage() {
     // Crawl Modal
     const [isCrawlModalOpen, setIsCrawlModalOpen] = useState(false);
     const [reseedDevice, setReseedDevice] = useState<any | null>(null);
+
+    // Snapshot Crawl Log Viewer Modal
+    const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+    const [logModalContent, setLogModalContent] = useState<string>("");
+    const [loadingLog, setLoadingLog] = useState(false);
+    const [logModalError, setLogModalError] = useState<string | null>(null);
+    const [copiedLog, setCopiedLog] = useState(false);
 
     // Protect route for ADMIN role
     useEffect(() => {
@@ -162,6 +174,39 @@ export default function AdminCrawlerPage() {
         }
     };
 
+    const handleOpenLogViewer = async (snapshotId: string) => {
+        if (!snapshotId) return;
+        setIsLogModalOpen(true);
+        setLoadingLog(true);
+        setLogModalError(null);
+        setLogModalContent("");
+        setCopiedLog(false);
+
+        try {
+            const res = await fetch(`/api/crawler/logs?snapshotId=${snapshotId}`);
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || "Failed to load log file.");
+            }
+            setLogModalContent(data.log || "No log content recorded.");
+        } catch (err: any) {
+            setLogModalError(err.message || "Failed to load log file.");
+        } finally {
+            setLoadingLog(false);
+        }
+    };
+
+    const handleDownloadLogFile = (snapshotId: string) => {
+        window.open(`/api/crawler/logs?snapshotId=${snapshotId}&download=1`, "_blank");
+    };
+
+    const handleCopyLog = () => {
+        if (!logModalContent) return;
+        navigator.clipboard.writeText(logModalContent);
+        setCopiedLog(true);
+        setTimeout(() => setCopiedLog(false), 2000);
+    };
+
     if (status === "loading" || (!isAdmin && status === "authenticated")) {
         return (
             <div className="flex items-center justify-center h-full min-h-[500px]">
@@ -225,6 +270,17 @@ export default function AdminCrawlerPage() {
                         </select>
                         <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
                     </div>
+
+                    {/* View Execution Log Button */}
+                    <button
+                        onClick={() => handleOpenLogViewer(selectedSnapshotId)}
+                        disabled={!selectedSnapshotId}
+                        className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-xl transition flex items-center gap-1.5 text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="View Execution Log (Retained 7 days)"
+                    >
+                        <FileText className="w-3.5 h-3.5 text-blue-400" />
+                        <span className="hidden md:inline">Run Log</span>
+                    </button>
 
                     {/* Refresh Snapshot */}
                     <button
@@ -508,6 +564,86 @@ export default function AdminCrawlerPage() {
                 initialSeed={reseedDevice?.ipAddress}
                 initialMaxHops={1}
             />
+
+            {/* Snapshot Crawl Execution Log Viewer Modal */}
+            {isLogModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                        {/* Header */}
+                        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400">
+                                    <FileText className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h2 className="text-base font-bold text-white tracking-tight">
+                                        Snapshot Execution Audit Log {activeSnapshot ? `(#${activeSnapshot.snapshotNumber})` : ""}
+                                    </h2>
+                                    <p className="text-xs text-slate-400">
+                                        Raw Python Netmiko terminal stream, SSH latencies, and device collection events. Retained for 7 days.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={handleCopyLog}
+                                    disabled={!logModalContent}
+                                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                                >
+                                    {copiedLog ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                    {copiedLog ? "Copied!" : "Copy"}
+                                </button>
+                                <button
+                                    onClick={() => handleDownloadLogFile(selectedSnapshotId)}
+                                    disabled={!logModalContent}
+                                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition cursor-pointer shadow shadow-blue-500/20 disabled:opacity-50"
+                                >
+                                    <Download className="w-3.5 h-3.5" />
+                                    Download .log
+                                </button>
+                                <button
+                                    onClick={() => setIsLogModalOpen(false)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition ml-1"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Body */}
+                        <div className="p-4 flex-1 overflow-hidden flex flex-col bg-slate-950">
+                            {loadingLog ? (
+                                <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-400 text-sm">
+                                    <RefreshCw className="w-6 h-6 animate-spin text-blue-400" />
+                                    <span>Retrieving snapshot log from server...</span>
+                                </div>
+                            ) : logModalError ? (
+                                <div className="p-6 text-center text-red-400 text-sm space-y-2">
+                                    <AlertTriangle className="w-8 h-8 text-red-400 mx-auto" />
+                                    <p>{logModalError}</p>
+                                    <p className="text-xs text-slate-500">Log files are automatically pruned after 7 days.</p>
+                                </div>
+                            ) : (
+                                <pre className="font-mono text-xs text-slate-300 p-4 rounded-xl bg-slate-950 border border-slate-800/80 overflow-y-auto flex-1 leading-relaxed select-text whitespace-pre-wrap">
+                                    {logModalContent}
+                                </pre>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-6 py-3 border-t border-slate-800 bg-slate-950 flex items-center justify-between text-xs text-slate-500">
+                            <span>Snapshot ID: {selectedSnapshotId}</span>
+                            <button
+                                onClick={() => setIsLogModalOpen(false)}
+                                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg transition"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
