@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
             timeout: 120000,
             env: {
                 ...process.env,
+                PYTHONPATH: crawlerDir,
                 PYTHONIOENCODING: "utf-8"
             }
         });
