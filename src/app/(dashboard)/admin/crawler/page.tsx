@@ -552,13 +552,15 @@ export default function AdminCrawlerPage() {
                 )}
 
                 {activeTab === "failures" && (
-                    <FailureInvestigationTable
-                        unreachableDevices={unreachableDevices}
-                        onSelectDevice={(host) => {
-                            handleSelectDeviceByHostname(host);
-                            setActiveTab("topology");
-                        }}
-                    />
+                    <div className="flex-1 h-full min-h-0 flex flex-col">
+                        <FailureInvestigationTable
+                            unreachableDevices={unreachableDevices}
+                            onSelectDevice={(host) => {
+                                handleSelectDeviceByHostname(host);
+                                setActiveTab("topology");
+                            }}
+                        />
+                    </div>
                 )}
             </div>
 

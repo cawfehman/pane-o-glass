@@ -829,6 +829,9 @@
   .min-h-\[300px\] {
     min-height: 300px;
   }
+  .min-h-\[320px\] {
+    min-height: 320px;
+  }
   .min-h-\[500px\] {
     min-height: 500px;
   }
@@ -1913,6 +1916,12 @@
       border-color: color-mix(in oklab, var(--color-slate-800) 80%, transparent);
     }
   }
+  .border-slate-800\/90 {
+    border-color: color-mix(in srgb, oklch(27.9% 0.041 260.031) 90%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-slate-800) 90%, transparent);
+    }
+  }
   .border-slate-900 {
     border-color: var(--color-slate-900);
   }
@@ -2596,9 +2605,6 @@
   }
   .bg-red-800 {
     background-color: var(--color-red-800);
-  }
-  .bg-red-950 {
-    background-color: var(--color-red-950);
   }
   .bg-red-950\/40 {
     background-color: color-mix(in srgb, oklch(25.8% 0.092 26.042) 40%, transparent);
@@ -4599,12 +4605,12 @@
         background-color: color-mix(in oklab, var(--color-slate-900) 50%, transparent);
       }
     }
-    .hover\:bg-slate-900\/60:hover {
-      background-color: color-mix(in srgb, oklch(20.8% 0.042 265.755) 60%, transparent);
+    .hover\:bg-slate-900\/80:hover {
+      background-color: color-mix(in srgb, oklch(20.8% 0.042 265.755) 80%, transparent);
     }
     @supports (color: color-mix(in lab, red, red)) {
-      .hover\:bg-slate-900\/60:hover {
-        background-color: color-mix(in oklab, var(--color-slate-900) 60%, transparent);
+      .hover\:bg-slate-900\/80:hover {
+        background-color: color-mix(in oklab, var(--color-slate-900) 80%, transparent);
       }
     }
     .hover\:bg-white\/5:hover {
@@ -4803,9 +4809,6 @@
     }
     .sm\:w-60 {
       width: calc(var(--spacing) * 60);
-    }
-    .sm\:w-64 {
-      width: calc(var(--spacing) * 64);
     }
     .sm\:w-72 {
       width: calc(var(--spacing) * 72);
