@@ -338,14 +338,16 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
     const healthRecommendations: string[] = [];
     let healthStatus: "EXCELLENT" | "GOOD" | "DEGRADED" | "ATTENTION_NEEDED" = "EXCELLENT";
 
-    if (journalMode.includes("postgresql")) {
+    const isPostgres = journalMode.includes("postgresql");
+
+    if (isPostgres) {
         healthStatus = "EXCELLENT";
     } else if (journalMode !== "wal") {
         healthStatus = "ATTENTION_NEEDED";
         healthRecommendations.push("Database is currently in rollback mode ('" + journalMode + "'). Enable WAL mode ('PRAGMA journal_mode = WAL;') for concurrent reads and writes.");
     }
 
-    if (walSizeBytes > 100 * 1024 * 1024) {
+    if (!isPostgres && walSizeBytes > 100 * 1024 * 1024) {
         if (healthStatus !== "ATTENTION_NEEDED") healthStatus = "DEGRADED";
         healthRecommendations.push(`WAL file is elevated (${formatBytes(walSizeBytes)}). Consider a checkpoint ('PRAGMA wal_checkpoint(TRUNCATE);').`);
     }
@@ -355,12 +357,15 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
         healthRecommendations.push(`Write lock latency is elevated (p95: ${walWriteCommit.p95}ms). Crons and web dispatches may be contending on writes.`);
     }
 
-    if (totalRows > 1_500_000) {
+    if (!isPostgres && totalRows > 1_500_000) {
         if (healthStatus === "EXCELLENT") healthStatus = "GOOD";
-        healthRecommendations.push(`Total database rows (${totalRows.toLocaleString()}) have crossed 1.5M. Consider implementing a 90-day VPN retention prune or prioritizing PostgreSQL migration.`);
+        healthRecommendations.push(`Total database rows (${totalRows.toLocaleString()}) have crossed 1.5M in SQLite. Consider implementing a 90-day VPN retention prune or prioritizing PostgreSQL migration.`);
+    } else if (isPostgres && totalRows > 10_000_000) {
+        if (healthStatus === "EXCELLENT") healthStatus = "GOOD";
+        healthRecommendations.push(`Total database rows (${totalRows.toLocaleString()}) have crossed 10M. Consider implementing a 90-day VPN retention prune to optimize table size.`);
     }
 
-    if (fragmentationPct > 25) {
+    if (!isPostgres && fragmentationPct > 25) {
         if (healthStatus === "EXCELLENT") healthStatus = "GOOD";
         healthRecommendations.push(`Database fragmentation is ${fragmentationPct}%. Running 'VACUUM;' during maintenance will reclaim unused disk pages.`);
     }
