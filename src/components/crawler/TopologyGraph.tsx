@@ -802,7 +802,7 @@ export default function TopologyGraph({
 
             if (isCollapsed) {
                 const siteWidth = 280;
-                const siteHeight = 86;
+                const siteHeight = 64;
 
                 // Wrap to next row if needed
                 if (currentSiteX > 40 && (currentSiteX + siteWidth > MAX_ROW_WIDTH)) {
@@ -1093,18 +1093,24 @@ export default function TopologyGraph({
         hasDraggedRef.current = false;
         lastPointerRef.current = { x: e.clientX, y: e.clientY };
         startPointerRef.current = { x: e.clientX, y: e.clientY };
-        try {
-            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-        } catch {
-            // pointer capture fallback
-        }
+        // DO NOT setPointerCapture here: capturing on down intercepts child element clicks.
+        // Pointer capture is deferred until movement actually exceeds the drag threshold in handlePointerMove.
     };
 
     const handlePointerMove = (e: React.PointerEvent) => {
         if (!isDraggingRef.current) return;
         const dist = Math.hypot(e.clientX - startPointerRef.current.x, e.clientY - startPointerRef.current.y);
-        if (dist > 3) {
-            hasDraggedRef.current = true;
+        if (dist > 5) {
+            if (!hasDraggedRef.current) {
+                hasDraggedRef.current = true;
+                try {
+                    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                } catch {
+                    // pointer capture fallback
+                }
+            }
+        } else {
+            return;
         }
 
         const svg = svgContainerRef.current?.querySelector("svg");
@@ -1149,7 +1155,9 @@ export default function TopologyGraph({
         if (!isDraggingRef.current) return;
         isDraggingRef.current = false;
         try {
-            (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+            if ((e.currentTarget as HTMLElement).hasPointerCapture?.(e.pointerId)) {
+                (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+            }
         } catch {
             // pointer release fallback
         }
@@ -1157,7 +1165,9 @@ export default function TopologyGraph({
             cancelAnimationFrame(rafIdRef.current);
             rafIdRef.current = null;
         }
-        setPan({ x: currentPanRef.current.x, y: currentPanRef.current.y });
+        if (hasDraggedRef.current) {
+            setPan({ x: currentPanRef.current.x, y: currentPanRef.current.y });
+        }
     };
 
     const isHopDevice = (hostname: string) => activeHopDevices.includes(hostname);
@@ -1888,8 +1898,14 @@ export default function TopologyGraph({
                                 return (
                                     <g
                                         key={`site-${site.siteCode}`}
-                                        onClick={() => toggleCollapseSite(site.siteCode)}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (!hasDraggedRef.current) {
+                                                toggleCollapseSite(site.siteCode);
+                                            }
+                                        }}
                                         className="cursor-pointer group"
+                                        title={`Click to expand site ${site.siteCode}${site.siteName ? ` (${site.siteName})` : ""}`}
                                     >
                                         <rect
                                             x={site.x}
@@ -1901,25 +1917,28 @@ export default function TopologyGraph({
                                             stroke="#3b82f6"
                                             strokeWidth={1.5}
                                             filter="drop-shadow(0 4px 12px rgba(0,0,0,0.6))"
-                                            className="group-hover:stroke-cyan-300 group-hover:brightness-110 transition"
+                                            className="group-hover:stroke-cyan-300 group-hover:brightness-125 transition"
                                         />
                                         {/* Accent Strip */}
                                         <path
                                             d={`M ${site.x} ${site.y + 8} A 8 8 0 0 1 ${site.x + 8} ${site.y} L ${site.x + 4} ${site.y} L ${site.x + 4} ${site.y + site.height} L ${site.x + 8} ${site.y + site.height} A 8 8 0 0 1 ${site.x} ${site.y + site.height - 8} Z`}
                                             fill="#3b82f6"
                                         />
-                                        <text x={site.x + 14} y={site.y + 22} fill="#ffffff" fontSize={11.5} fontWeight="bold" fontFamily="monospace">
+                                        {/* Site Code & Name */}
+                                        <text x={site.x + 14} y={site.y + 24} fill="#ffffff" fontSize={11.5} fontWeight="bold" fontFamily="monospace">
                                             SITE: {site.siteCode} {site.siteName ? `• ${site.siteName}` : ""}
                                         </text>
-                                        <text x={site.x + 14} y={site.y + 42} fill="#94a3b8" fontSize={9.5} fontFamily="monospace">
-                                            {site.deviceCount} Switches ({site.l3Count} L3 • {site.l2Count} L2)
-                                        </text>
-                                        <g transform={`translate(${site.x + 14}, ${site.y + 54})`}>
-                                            <rect x={0} y={0} width={138} height={18} rx={4} fill="rgba(59, 130, 246, 0.15)" stroke="#3b82f6" strokeWidth={0.5} />
-                                            <text x={69} y={12} fill="#60a5fa" fontSize={8.5} fontWeight="bold" textAnchor="middle">
-                                                CLICK TO EXPAND SITE ▾
+                                        {/* Expand Chevron Icon Badge */}
+                                        <g transform={`translate(${site.x + site.width - 24}, ${site.y + 12})`}>
+                                            <circle cx={6} cy={6} r={8} fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth={0.8} />
+                                            <text x={6} y={9.5} fill="#60a5fa" fontSize={10} fontWeight="bold" textAnchor="middle">
+                                                ▾
                                             </text>
                                         </g>
+                                        {/* Switch Census */}
+                                        <text x={site.x + 14} y={site.y + 46} fill="#94a3b8" fontSize={9.5} fontFamily="monospace">
+                                            {site.deviceCount} Switches ({site.l3Count} Core/L3 • {site.l2Count} Access/L2)
+                                        </text>
                                     </g>
                                 );
                             }
