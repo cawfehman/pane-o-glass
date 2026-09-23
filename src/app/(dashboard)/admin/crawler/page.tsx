@@ -58,6 +58,7 @@ export default function AdminCrawlerPage() {
     const [tracerDestIp, setTracerDestIp] = useState<string>("10.20.50.88");
     const [activeHopDevices, setActiveHopDevices] = useState<string[]>([]);
     const [highlightedLinks, setHighlightedLinks] = useState<Array<{ from: string; to: string }>>([]);
+    const [showMetrics, setShowMetrics] = useState(true);
 
     // Crawl Modal
     const [isCrawlModalOpen, setIsCrawlModalOpen] = useState(false);
@@ -220,7 +221,7 @@ export default function AdminCrawlerPage() {
     }
 
     return (
-        <div className="internal-scroll-layout flex flex-col h-full space-y-5 pb-8">
+        <div className="internal-scroll-layout wide-layout flex flex-col h-full space-y-3 pb-2">
             {/* Page Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
                 <div className="space-y-1">
@@ -272,6 +273,16 @@ export default function AdminCrawlerPage() {
                         <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
                     </div>
 
+                    {/* Toggle Overview / Pulse Metrics */}
+                    <button
+                        onClick={() => setShowMetrics(v => !v)}
+                        className="px-2.5 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-xl transition flex items-center gap-1.5 text-xs font-semibold cursor-pointer"
+                        title={showMetrics ? "Collapse overview cards to maximize diagram space" : "Show overview metric cards"}
+                    >
+                        <Activity className="w-3.5 h-3.5 text-blue-400" />
+                        <span className="hidden sm:inline">{showMetrics ? "Hide Overview" : "Show Overview"}</span>
+                    </button>
+
                     {/* View Execution Log Button */}
                     <button
                         onClick={() => handleOpenLogViewer(selectedSnapshotId)}
@@ -313,61 +324,63 @@ export default function AdminCrawlerPage() {
             </div>
 
             {/* Pulse Metrics Bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 shrink-0">
-                <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
-                        <Server className="w-5 h-5" />
+            {showMetrics && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 shrink-0">
+                    <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400">
+                            <Server className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <span className="text-[11px] text-slate-400 font-medium block">Monitored Devices</span>
+                            <span className="text-lg font-bold text-white font-mono">{devices.length}</span>
+                        </div>
                     </div>
-                    <div>
-                        <span className="text-[11px] text-slate-400 font-medium block">Monitored Devices</span>
-                        <span className="text-lg font-bold text-white font-mono">{devices.length}</span>
-                    </div>
-                </div>
 
-                <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
-                        <Activity className="w-5 h-5" />
+                    <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-400">
+                            <Activity className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <span className="text-[11px] text-slate-400 font-medium block">Inter-Switch Links</span>
+                            <span className="text-lg font-bold text-white font-mono">{links.length}</span>
+                        </div>
                     </div>
-                    <div>
-                        <span className="text-[11px] text-slate-400 font-medium block">Inter-Switch Links</span>
-                        <span className="text-lg font-bold text-white font-mono">{links.length}</span>
-                    </div>
-                </div>
 
-                <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${unreachableDevices.length > 0 ? "bg-red-500/10 text-red-400" : "bg-emerald-500/10 text-emerald-400"}`}>
-                        <ShieldAlert className="w-5 h-5" />
+                    <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${unreachableDevices.length > 0 ? "bg-red-500/10 text-red-400" : "bg-emerald-500/10 text-emerald-400"}`}>
+                            <ShieldAlert className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <span className="text-[11px] text-slate-400 font-medium block">Unreachable Nodes</span>
+                            <div className="flex items-center gap-2">
+                                <span className={`text-lg font-bold font-mono ${unreachableDevices.length > 0 ? "text-red-400" : "text-emerald-400"}`}>
+                                    {unreachableDevices.length}
+                                </span>
+                                {unreachableDevices.length > 0 && (
+                                    <button
+                                        onClick={() => setActiveTab("failures")}
+                                        className="text-[10px] text-red-400 underline font-sans"
+                                    >
+                                        Review
+                                    </button>
+                                )}
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <span className="text-[11px] text-slate-400 font-medium block">Unreachable Nodes</span>
-                        <div className="flex items-center gap-2">
-                            <span className={`text-lg font-bold font-mono ${unreachableDevices.length > 0 ? "text-red-400" : "text-emerald-400"}`}>
-                                {unreachableDevices.length}
+
+                    <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+                            <Clock className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <span className="text-[11px] text-slate-400 font-medium block">Snapshot Timestamp</span>
+                            <span className="text-xs font-semibold text-slate-200 truncate block">
+                                {activeSnapshot ? new Date(activeSnapshot.timestamp).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
                             </span>
-                            {unreachableDevices.length > 0 && (
-                                <button
-                                    onClick={() => setActiveTab("failures")}
-                                    className="text-[10px] text-red-400 underline font-sans"
-                                >
-                                    Review
-                                </button>
-                            )}
                         </div>
                     </div>
                 </div>
-
-                <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3.5 flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
-                        <Clock className="w-5 h-5" />
-                    </div>
-                    <div>
-                        <span className="text-[11px] text-slate-400 font-medium block">Snapshot Timestamp</span>
-                        <span className="text-xs font-semibold text-slate-200 truncate block">
-                            {activeSnapshot ? new Date(activeSnapshot.timestamp).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
-                        </span>
-                    </div>
-                </div>
-            </div>
+            )}
 
             {/* Error banner */}
             {error && (
@@ -463,9 +476,9 @@ export default function AdminCrawlerPage() {
             </div>
 
             {/* Tab Contents */}
-            <div className="flex-1 min-h-[500px]">
+            <div className="flex-1 min-h-0 flex flex-col">
                 {activeTab === "topology" && (
-                    <div className="h-full">
+                    <div className="flex-1 h-full min-h-0 flex flex-col">
                         <TopologyGraph
                             devices={devices}
                             links={links}
@@ -478,6 +491,7 @@ export default function AdminCrawlerPage() {
                                 setReseedDevice(d);
                                 setIsCrawlModalOpen(true);
                             }}
+                            className="relative w-full flex-1 h-full min-h-[660px]"
                         />
                     </div>
                 )}
@@ -531,6 +545,7 @@ export default function AdminCrawlerPage() {
                                     setReseedDevice(d);
                                     setIsCrawlModalOpen(true);
                                 }}
+                                className="relative w-full h-[620px] min-h-[500px]"
                             />
                         </div>
                     </div>

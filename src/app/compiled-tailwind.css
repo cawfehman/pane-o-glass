@@ -604,6 +604,9 @@
   .mb-10 {
     margin-bottom: calc(var(--spacing) * 10);
   }
+  .ml-0\.5 {
+    margin-left: calc(var(--spacing) * 0.5);
+  }
   .ml-1 {
     margin-left: var(--spacing);
   }
@@ -730,6 +733,9 @@
   .h-\[48px\] {
     height: 48px;
   }
+  .h-\[85vh\] {
+    height: 85vh;
+  }
   .h-\[90px\] {
     height: 90px;
   }
@@ -748,14 +754,17 @@
   .h-\[600px\] {
     height: 600px;
   }
-  .h-\[660px\] {
-    height: 660px;
+  .h-\[620px\] {
+    height: 620px;
   }
   .h-auto {
     height: auto;
   }
   .h-full {
     height: 100%;
+  }
+  .h-screen {
+    height: 100vh;
   }
   .max-h-28 {
     max-height: calc(var(--spacing) * 28);
@@ -768,6 +777,9 @@
   }
   .max-h-56 {
     max-height: calc(var(--spacing) * 56);
+  }
+  .max-h-60 {
+    max-height: calc(var(--spacing) * 60);
   }
   .max-h-72 {
     max-height: calc(var(--spacing) * 72);
@@ -822,6 +834,9 @@
   }
   .min-h-\[520px\] {
     min-height: 520px;
+  }
+  .min-h-\[660px\] {
+    min-height: 660px;
   }
   .min-h-full {
     min-height: 100%;
@@ -928,6 +943,9 @@
   .w-full {
     width: 100%;
   }
+  .w-screen {
+    width: 100vw;
+  }
   .max-w-2xl {
     max-width: var(--container-2xl);
   }
@@ -988,6 +1006,9 @@
   .max-w-\[1700px\] {
     max-width: 1700px;
   }
+  .max-w-\[calc\(100\%-2rem\)\] {
+    max-width: calc(100% - 2rem);
+  }
   .max-w-full {
     max-width: 100%;
   }
@@ -1011,6 +1032,9 @@
   }
   .min-w-\[3rem\] {
     min-width: 3rem;
+  }
+  .min-w-\[38px\] {
+    min-width: 38px;
   }
   .min-w-\[100px\] {
     min-width: 100px;
@@ -1351,6 +1375,9 @@
   .rounded-md {
     border-radius: var(--radius-md);
   }
+  .rounded-none {
+    border-radius: 0;
+  }
   .rounded-sm {
     border-radius: var(--radius-sm);
   }
@@ -1372,6 +1399,10 @@
   .border {
     border-style: var(--tw-border-style);
     border-width: 1px;
+  }
+  .border-0 {
+    border-style: var(--tw-border-style);
+    border-width: 0px;
   }
   .border-2 {
     border-style: var(--tw-border-style);
@@ -2680,6 +2711,12 @@
       background-color: color-mix(in oklab, var(--color-slate-800) 70%, transparent);
     }
   }
+  .bg-slate-800\/80 {
+    background-color: color-mix(in srgb, oklch(27.9% 0.041 260.031) 80%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-slate-800) 80%, transparent);
+    }
+  }
   .bg-slate-900 {
     background-color: var(--color-slate-900);
   }
@@ -3095,14 +3132,14 @@
   .pb-6 {
     padding-bottom: calc(var(--spacing) * 6);
   }
-  .pb-8 {
-    padding-bottom: calc(var(--spacing) * 8);
-  }
   .pb-\[1px\] {
     padding-bottom: 1px;
   }
   .pl-0\.5 {
     padding-left: calc(var(--spacing) * 0.5);
+  }
+  .pl-1 {
+    padding-left: var(--spacing);
   }
   .pl-2\.5 {
     padding-left: calc(var(--spacing) * 2.5);
@@ -3888,6 +3925,9 @@
       --tw-ring-color: color-mix(in oklab, var(--color-accent-primary) 60%, transparent);
     }
   }
+  .ring-amber-400 {
+    --tw-ring-color: var(--color-amber-400);
+  }
   .ring-amber-400\/50 {
     --tw-ring-color: color-mix(in srgb, oklch(82.8% 0.189 84.429) 50%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -3973,6 +4013,10 @@
     transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
     transition-duration: var(--tw-duration, var(--default-transition-duration));
   }
+  .duration-150 {
+    --tw-duration: 150ms;
+    transition-duration: 150ms;
+  }
   .duration-200 {
     --tw-duration: 200ms;
     transition-duration: 200ms;
@@ -4029,6 +4073,14 @@
     }
     .group-hover\:bg-blue-400:is(:where(.group):hover *) {
       background-color: var(--color-blue-400);
+    }
+    .group-hover\:fill-slate-800\/90:is(:where(.group):hover *) {
+      fill: color-mix(in srgb, oklch(27.9% 0.041 260.031) 90%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .group-hover\:fill-slate-800\/90:is(:where(.group):hover *) {
+        fill: color-mix(in oklab, var(--color-slate-800) 90%, transparent);
+      }
     }
     .group-hover\:stroke-blue-400:is(:where(.group):hover *) {
       stroke: var(--color-blue-400);
@@ -4247,6 +4299,9 @@
     }
     .hover\:bg-amber-400:hover {
       background-color: var(--color-amber-400);
+    }
+    .hover\:bg-amber-500:hover {
+      background-color: var(--color-amber-500);
     }
     .hover\:bg-amber-500\/10:hover {
       background-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 10%, transparent);
@@ -4636,6 +4691,9 @@
     .hover\:underline:hover {
       text-decoration-line: underline;
     }
+    .hover\:opacity-75:hover {
+      opacity: 75%;
+    }
     .hover\:opacity-80:hover {
       opacity: 80%;
     }
@@ -4737,6 +4795,9 @@
     opacity: 50%;
   }
   @media (width >= 40rem) {
+    .sm\:flex {
+      display: flex;
+    }
     .sm\:inline {
       display: inline;
     }

@@ -21,7 +21,9 @@ import {
     ExternalLink,
     Eye,
     EyeOff,
-    SlidersHorizontal
+    SlidersHorizontal,
+    Maximize2,
+    Minimize2
 } from "lucide-react";
 
 export interface SiteMetadataLookup {
@@ -38,6 +40,7 @@ interface TopologyGraphProps {
     activeHopDevices?: string[];
     highlightedLinks?: Array<{ from: string; to: string }>;
     onReseedDevice?: (dev: any) => void;
+    className?: string;
 }
 
 export function parseDeviceSiteAndIdf(hostname: string, devSite?: string | null, devIdf?: string | null) {
@@ -143,7 +146,8 @@ export default function TopologyGraph({
     onSelectDevice,
     activeHopDevices = [],
     highlightedLinks = [],
-    onReseedDevice
+    onReseedDevice,
+    className
 }: TopologyGraphProps) {
     const [zoom, setZoom] = useState(1);
     const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -157,7 +161,19 @@ export default function TopologyGraph({
     const [idfSpacing, setIdfSpacing] = useState<"compact" | "normal" | "spacious">("normal");
     const [fadedNodes, setFadedNodes] = useState<Set<string>>(new Set());
     const [clickMode, setClickMode] = useState<"inspect" | "fade">("inspect");
+    const [isFullscreen, setIsFullscreen] = useState(false);
     const svgContainerRef = useRef<HTMLDivElement>(null);
+
+    // Escape key listener to exit fullscreen
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && isFullscreen) {
+                setIsFullscreen(false);
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [isFullscreen]);
 
     // Smooth cursor-centric mouse wheel zooming
     useEffect(() => {
@@ -637,7 +653,13 @@ export default function TopologyGraph({
     const isHopDevice = (hostname: string) => activeHopDevices.includes(hostname);
 
     return (
-        <div className="relative w-full h-[720px] min-h-[620px] bg-slate-950/70 rounded-2xl border border-slate-800/80 overflow-hidden flex flex-col select-none shadow-xl">
+        <div 
+            className={`select-none overflow-hidden flex flex-col transition-all duration-150 ${
+                isFullscreen 
+                    ? "fixed inset-0 z-40 w-screen h-screen bg-slate-950 rounded-none border-0 shadow-none m-0 p-0" 
+                    : `${className || "relative w-full flex-1 h-full min-h-[660px]"} bg-slate-950/70 rounded-2xl border border-slate-800/80 shadow-xl`
+            }`}
+        >
             {/* Top Control Bar Overlay */}
             <div className="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 bg-slate-900/90 backdrop-blur-md px-3 py-2 rounded-xl border border-slate-800 shadow-2xl max-w-[calc(100%-2rem)]">
                 {/* Site Filter */}
@@ -841,7 +863,42 @@ export default function TopologyGraph({
                         <RotateCcw size={13} />
                     </button>
                 </div>
+
+                <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
+
+                {/* Fullscreen / Expand Canvas Toggle */}
+                <button
+                    type="button"
+                    onClick={() => setIsFullscreen(prev => !prev)}
+                    className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-sm ${
+                        isFullscreen
+                            ? "bg-amber-600 hover:bg-amber-500 text-white ring-1 ring-amber-400"
+                            : "bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800"
+                    }`}
+                    title={isFullscreen ? "Exit Fullscreen View (Esc)" : "Expand Canvas to Fullscreen (Esc to exit)"}
+                >
+                    {isFullscreen ? <Minimize2 size={13} className="text-amber-200" /> : <Maximize2 size={13} className="text-blue-400" />}
+                    <span className="text-[11px] font-medium">
+                        {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                    </span>
+                </button>
             </div>
+
+            {/* Floating Top-Right Exit Fullscreen Pill */}
+            {isFullscreen && (
+                <div className="absolute top-4 right-4 z-30 flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setIsFullscreen(false)}
+                        className="flex items-center gap-1.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white px-3 py-1.5 rounded-xl border border-slate-700 text-xs shadow-2xl transition cursor-pointer backdrop-blur-md"
+                        title="Exit Fullscreen (Esc)"
+                    >
+                        <Minimize2 className="w-3.5 h-3.5 text-amber-400" />
+                        <span className="font-semibold text-xs">Exit Fullscreen</span>
+                        <kbd className="ml-1 text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400 border border-slate-700 font-mono">ESC</kbd>
+                    </button>
+                </div>
+            )}
 
             {/* Bottom Legend Overlay */}
             <div className="absolute bottom-4 left-4 z-20 flex flex-wrap items-center gap-3.5 bg-slate-900/90 backdrop-blur-md px-4 py-2 rounded-xl border border-slate-800 text-[11px] text-slate-300 shadow-xl">
