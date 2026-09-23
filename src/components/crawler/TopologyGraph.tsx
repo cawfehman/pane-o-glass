@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { 
     ZoomIn, 
     ZoomOut, 
@@ -18,7 +18,10 @@ import {
     Workflow,
     Layers3,
     Cable,
-    ExternalLink
+    ExternalLink,
+    Eye,
+    EyeOff,
+    SlidersHorizontal
 } from "lucide-react";
 
 export interface SiteMetadataLookup {
@@ -149,6 +152,77 @@ export default function TopologyGraph({
     const [layoutMode, setLayoutMode] = useState<"container" | "flow">("container");
     const [hoveredLink, setHoveredLink] = useState<any | null>(null);
     const [collapsedSites, setCollapsedSites] = useState<Set<string>>(new Set());
+    const [idfSpacing, setIdfSpacing] = useState<"compact" | "normal" | "spacious">("normal");
+    const [fadedNodes, setFadedNodes] = useState<Set<string>>(new Set());
+    const [clickMode, setClickMode] = useState<"inspect" | "fade">("inspect");
+    const svgContainerRef = useRef<HTMLDivElement>(null);
+
+    // Smooth cursor-centric mouse wheel zooming
+    useEffect(() => {
+        const el = svgContainerRef.current;
+        if (!el) return;
+
+        const handleWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            const rect = el.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Zoom sensitivity factor
+            const zoomDelta = e.deltaY < 0 ? 1.14 : 0.88;
+
+            setZoom(prevZoom => {
+                const nextZoom = Math.min(Math.max(prevZoom * zoomDelta, 0.15), 5.0);
+                const ratio = nextZoom / prevZoom;
+
+                setPan(prevPan => ({
+                    x: mouseX - (mouseX - prevPan.x) * ratio,
+                    y: mouseY - (mouseY - prevPan.y) * ratio
+                }));
+
+                return nextZoom;
+            });
+        };
+
+        el.addEventListener("wheel", handleWheel, { passive: false });
+        return () => {
+            el.removeEventListener("wheel", handleWheel);
+        };
+    }, []);
+
+    const toggleFadeNode = (hostname: string) => {
+        setFadedNodes(prev => {
+            const next = new Set(prev);
+            if (next.has(hostname)) next.delete(hostname);
+            else next.add(hostname);
+            return next;
+        });
+    };
+
+    const handleNodeClick = (e: React.MouseEvent, dev: any) => {
+        e.stopPropagation();
+        if (e.shiftKey || e.altKey || clickMode === "fade") {
+            toggleFadeNode(dev.hostname);
+        } else {
+            onSelectDevice(dev);
+        }
+    };
+
+    const handleFadeOthers = () => {
+        if (!selectedDevice) return;
+        const keepSet = new Set<string>([selectedDevice.hostname]);
+        for (const l of links) {
+            if (l.sourceDevice === selectedDevice.hostname) keepSet.add(l.targetDevice);
+            if (l.targetDevice === selectedDevice.hostname) keepSet.add(l.sourceDevice);
+        }
+        const toFade = new Set<string>();
+        for (const d of filteredDevices) {
+            if (!keepSet.has(d.hostname)) {
+                toFade.add(d.hostname);
+            }
+        }
+        setFadedNodes(toFade);
+    };
 
     // Filter devices based on Site selection
     const filteredDevices = useMemo(() => {
@@ -238,16 +312,40 @@ export default function TopologyGraph({
         const siteContainers: SiteContainerBox[] = [];
         const idfContainers: IdfContainerBox[] = [];
 
+        const spacingConfig = {
+            compact: {
+                cardGapX: 32,
+                cardGapY: 42,
+                idfPadX: 20,
+                idfPadTop: 44,
+                idfPadBottom: 22,
+            },
+            normal: {
+                cardGapX: 56,
+                cardGapY: 66,
+                idfPadX: 28,
+                idfPadTop: 48,
+                idfPadBottom: 28,
+            },
+            spacious: {
+                cardGapX: 84,
+                cardGapY: 96,
+                idfPadX: 36,
+                idfPadTop: 56,
+                idfPadBottom: 36,
+            }
+        }[idfSpacing];
+
         const CARD_WIDTH = 172;
         const CARD_HEIGHT = 74;
-        const CARD_GAP_X = 20;
-        const CARD_GAP_Y = 16;
-        const IDF_PAD_X = 18;
-        const IDF_PAD_TOP = 36;
-        const IDF_PAD_BOTTOM = 16;
-        const SITE_PAD_X = 22;
-        const SITE_PAD_TOP = 46;
-        const SITE_PAD_BOTTOM = 22;
+        const CARD_GAP_X = spacingConfig.cardGapX;
+        const CARD_GAP_Y = spacingConfig.cardGapY;
+        const IDF_PAD_X = spacingConfig.idfPadX;
+        const IDF_PAD_TOP = spacingConfig.idfPadTop;
+        const IDF_PAD_BOTTOM = spacingConfig.idfPadBottom;
+        const SITE_PAD_X = 24;
+        const SITE_PAD_TOP = 50;
+        const SITE_PAD_BOTTOM = 24;
 
         if (layoutMode === "flow") {
             // Traditional Hierarchical Flow (Routers -> L3 Switches -> L2 Switches)
@@ -295,9 +393,9 @@ export default function TopologyGraph({
             idfMap.get(idf)!.push(dev);
         }
 
-        const MAX_ROW_WIDTH = 2200;
-        const SITE_GAP = 36;
-        const ROW_GAP = 48;
+        const MAX_ROW_WIDTH = 2500;
+        const SITE_GAP = 40;
+        const ROW_GAP = 54;
         let currentSiteX = 40;
         let currentSiteY = 40;
         let maxRowHeight = 0;
@@ -467,7 +565,7 @@ export default function TopologyGraph({
             idfBoxes: idfContainers,
             canvasSize: { width: totalWidth, height: totalHeight }
         };
-    }, [filteredDevices, layoutMode, siteDirectory, collapsedSites]);
+    }, [filteredDevices, layoutMode, siteDirectory, collapsedSites, idfSpacing]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         setIsDragging(true);
@@ -489,9 +587,9 @@ export default function TopologyGraph({
     const isHopDevice = (hostname: string) => activeHopDevices.includes(hostname);
 
     return (
-        <div className="relative w-full h-[660px] bg-slate-950/70 rounded-2xl border border-slate-800/80 overflow-hidden flex flex-col select-none shadow-xl">
+        <div className="relative w-full h-[720px] min-h-[620px] bg-slate-950/70 rounded-2xl border border-slate-800/80 overflow-hidden flex flex-col select-none shadow-xl">
             {/* Top Control Bar Overlay */}
-            <div className="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2.5 bg-slate-900/90 backdrop-blur-md px-3.5 py-2 rounded-xl border border-slate-800 shadow-2xl">
+            <div className="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 bg-slate-900/90 backdrop-blur-md px-3 py-2 rounded-xl border border-slate-800 shadow-2xl max-w-[calc(100%-2rem)]">
                 {/* Site Filter */}
                 <div className="flex items-center gap-1.5 text-xs">
                     <Building2 className="w-3.5 h-3.5 text-blue-400" />
@@ -520,7 +618,7 @@ export default function TopologyGraph({
                     <button
                         type="button"
                         onClick={() => setLayoutMode("container")}
-                        className={`px-2.5 py-1 rounded-md font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                        className={`px-2 py-1 rounded-md font-medium transition flex items-center gap-1 cursor-pointer ${
                             layoutMode === "container"
                                 ? "bg-blue-600 text-white shadow-sm"
                                 : "text-slate-400 hover:text-slate-200"
@@ -528,12 +626,12 @@ export default function TopologyGraph({
                         title="Group switches by Site and IDF containers"
                     >
                         <Box className="w-3 h-3" />
-                        Site &amp; IDF Containers
+                        Containers
                     </button>
                     <button
                         type="button"
                         onClick={() => setLayoutMode("flow")}
-                        className={`px-2.5 py-1 rounded-md font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                        className={`px-2 py-1 rounded-md font-medium transition flex items-center gap-1 cursor-pointer ${
                             layoutMode === "flow"
                                 ? "bg-blue-600 text-white shadow-sm"
                                 : "text-slate-400 hover:text-slate-200"
@@ -547,43 +645,136 @@ export default function TopologyGraph({
 
                 {layoutMode === "container" && (
                     <>
-                        <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
+                        {/* IDF Spacing Density Selector */}
+                        <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 px-1.5 flex items-center gap-1">
+                                <SlidersHorizontal className="w-3 h-3 text-cyan-400" />
+                                IDF Size:
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setIdfSpacing("compact")}
+                                className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
+                                    idfSpacing === "compact" ? "bg-cyan-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
+                                }`}
+                                title="Compact IDF closets"
+                            >
+                                Compact
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIdfSpacing("normal")}
+                                className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
+                                    idfSpacing === "normal" ? "bg-cyan-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
+                                }`}
+                                title="Standard spacious IDF closets"
+                            >
+                                Normal
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIdfSpacing("spacious")}
+                                className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
+                                    idfSpacing === "spacious" ? "bg-cyan-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
+                                }`}
+                                title="Extra spacious IDF closets with maximum clearance for links"
+                            >
+                                Spacious
+                            </button>
+                        </div>
+
                         <button
                             type="button"
                             onClick={collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? expandAllSites : collapseAllSites}
-                            className="px-2.5 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white rounded-lg transition text-[11px] font-medium flex items-center gap-1.5 cursor-pointer shadow-sm"
+                            className="px-2 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white rounded-lg transition text-[11px] font-medium flex items-center gap-1 cursor-pointer shadow-sm"
                             title={collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? "Expand all site containers" : "Collapse all sites to summary view"}
                         >
                             <Layers className="w-3 h-3 text-purple-400" />
-                            {collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? "Expand All Sites" : "Collapse All"}
+                            {collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? "Expand All" : "Collapse All"}
                         </button>
                     </>
                 )}
 
                 <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
 
-                {/* Zoom & Reset Controls */}
-                <div className="flex items-center gap-1">
+                {/* Click / Dim Mode Controls */}
+                <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
                     <button
-                        onClick={() => setZoom(z => Math.min(z + 0.15, 2.5))}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
-                        title="Zoom In"
+                        type="button"
+                        onClick={() => setClickMode("inspect")}
+                        className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
+                            clickMode === "inspect" ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
+                        }`}
+                        title="Clicking a switch opens the Device Inspector Drawer"
                     >
-                        <ZoomIn size={14} />
+                        Inspect
                     </button>
                     <button
-                        onClick={() => setZoom(z => Math.max(z - 0.15, 0.4))}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
-                        title="Zoom Out"
+                        type="button"
+                        onClick={() => setClickMode("fade")}
+                        className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
+                            clickMode === "fade" ? "bg-amber-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
+                        }`}
+                        title="Clicking a switch dims/fades it (or Shift+Click in any mode)"
                     >
-                        <ZoomOut size={14} />
+                        <EyeOff className="w-3 h-3" />
+                        Dim Mode
+                    </button>
+                </div>
+
+                {fadedNodes.size > 0 && (
+                    <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg text-[11px] text-amber-300">
+                        <span>Dimmed: <strong>{fadedNodes.size}</strong></span>
+                        <button
+                            type="button"
+                            onClick={() => setFadedNodes(new Set())}
+                            className="text-[10px] text-amber-400 hover:text-white underline cursor-pointer ml-1"
+                            title="Restore all dimmed nodes"
+                        >
+                            Reset
+                        </button>
+                    </div>
+                )}
+
+                {selectedDevice && (
+                    <button
+                        type="button"
+                        onClick={handleFadeOthers}
+                        className="px-2 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white rounded-lg transition text-[11px] font-medium flex items-center gap-1 cursor-pointer shadow-sm"
+                        title="Dim all switches except the selected switch and its neighbors"
+                    >
+                        <Eye className="w-3 h-3 text-cyan-400" />
+                        Dim Others
+                    </button>
+                )}
+
+                <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
+
+                {/* Zoom & Reset Controls */}
+                <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-800">
+                    <button
+                        onClick={() => setZoom(z => Math.max(z - 0.25, 0.15))}
+                        className="p-1 rounded bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+                        title="Zoom Out (Mouse Wheel Scroll Down)"
+                    >
+                        <ZoomOut size={13} />
+                    </button>
+                    <span className="text-[11px] font-mono text-slate-300 min-w-[38px] text-center font-bold">
+                        {Math.round(zoom * 100)}%
+                    </span>
+                    <button
+                        onClick={() => setZoom(z => Math.min(z + 0.25, 5.0))}
+                        className="p-1 rounded bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+                        title="Zoom In (Mouse Wheel Scroll Up)"
+                    >
+                        <ZoomIn size={13} />
                     </button>
                     <button
                         onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+                        className="p-1 rounded bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer ml-0.5"
                         title="Reset View"
                     >
-                        <RotateCcw size={14} />
+                        <RotateCcw size={13} />
                     </button>
                 </div>
             </div>
@@ -616,6 +807,13 @@ export default function TopologyGraph({
                         <span>Traced Hop</span>
                     </div>
                 )}
+                {fadedNodes.size > 0 && (
+                    <div className="flex items-center gap-1.5 text-amber-300">
+                        <EyeOff className="w-3.5 h-3.5 text-amber-400" />
+                        <span className="font-semibold">{fadedNodes.size} Dimmed</span>
+                        <span className="text-slate-400 text-[10px]">(Shift+Click to toggle)</span>
+                    </div>
+                )}
             </div>
 
             {/* Hovered Link Info Tooltip Card */}
@@ -646,6 +844,7 @@ export default function TopologyGraph({
 
             {/* Interactive SVG Canvas */}
             <div
+                ref={svgContainerRef}
                 className="w-full h-full cursor-grab active:cursor-grabbing"
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
@@ -811,6 +1010,11 @@ export default function TopologyGraph({
                             const isUnverified = bundle.status === "UNVERIFIED";
                             const isDown = bundle.status === "DOWN";
 
+                            const isSourceFaded = fadedNodes.has(bundle.sourceDevice);
+                            const isTargetFaded = fadedNodes.has(bundle.targetDevice);
+                            const isLinkFaded = isSourceFaded || isTargetFaded;
+                            const bothFaded = isSourceFaded && isTargetFaded;
+
                             const strokeColor = isHighlighted 
                                 ? "#f59e0b" 
                                 : isUnverified 
@@ -824,8 +1028,48 @@ export default function TopologyGraph({
                             const strokeWidth = isHighlighted ? 4 : bundle.isPortChannel ? 3.5 : 2;
                             const strokeDash = isUnverified ? "6,4" : undefined;
 
-                            const midX = (p1.x + p2.x) / 2;
-                            const midY = (p1.y + p2.y) / 2;
+                            // Calculate smooth curved paths to eliminate straight-line overlap
+                            const isVertical = Math.abs(p1.x - p2.x) < 14;
+                            const isHorizontal = Math.abs(p1.y - p2.y) < 14;
+                            let pathD: string;
+                            let midX = (p1.x + p2.x) / 2;
+                            let midY = (p1.y + p2.y) / 2;
+
+                            if (isVertical) {
+                                // Stacked vertically in the same closet column: curve gently to the side
+                                const hash = (bundle.sourceDevice.length + bundle.targetDevice.length) % 2 === 0 ? 1 : -1;
+                                const curveOffset = hash * 32;
+                                const ctrlX = midX + curveOffset;
+                                const ctrlY = midY;
+                                pathD = `M ${p1.x} ${p1.y} Q ${ctrlX} ${ctrlY} ${p2.x} ${p2.y}`;
+                                midX = midX + curveOffset * 0.5;
+                            } else if (isHorizontal) {
+                                // Side-by-side horizontally: curve slightly downward or upward
+                                const curveOffset = (bundle.id.length % 2 === 0 ? 1 : -1) * 24;
+                                const ctrlX = midX;
+                                const ctrlY = midY + curveOffset;
+                                pathD = `M ${p1.x} ${p1.y} Q ${ctrlX} ${ctrlY} ${p2.x} ${p2.y}`;
+                                midY = midY + curveOffset * 0.5;
+                            } else {
+                                // Diagonal or cross-site trunks: gentle bezier curve
+                                const deltaX = Math.abs(p1.x - p2.x);
+                                const deltaY = Math.abs(p1.y - p2.y);
+                                if (deltaX > 200 || deltaY > 150) {
+                                    pathD = `M ${p1.x} ${p1.y} C ${p1.x} ${midY}, ${p2.x} ${midY}, ${p2.x} ${p2.y}`;
+                                } else {
+                                    pathD = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+                                }
+                            }
+
+                            const linkOpacity = bothFaded 
+                                ? 0.06 
+                                : isLinkFaded 
+                                ? 0.16 
+                                : isHighlighted 
+                                ? 1 
+                                : isUnverified 
+                                ? 0.75 
+                                : 0.7;
 
                             return (
                                 <g 
@@ -833,41 +1077,36 @@ export default function TopologyGraph({
                                     onMouseEnter={() => setHoveredLink(bundle)}
                                     onMouseLeave={() => setHoveredLink(null)}
                                     className="cursor-pointer group"
+                                    opacity={bothFaded ? 0.15 : isLinkFaded ? 0.4 : 1}
                                 >
                                     {/* Invisible wider hit area for easy hover */}
-                                    <line
-                                        x1={p1.x}
-                                        y1={p1.y}
-                                        x2={p2.x}
-                                        y2={p2.y}
+                                    <path
+                                        d={pathD}
+                                        fill="none"
                                         stroke="transparent"
-                                        strokeWidth={14}
+                                        strokeWidth={16}
                                     />
 
                                     {/* Link Line */}
-                                    <line
-                                        x1={p1.x}
-                                        y1={p1.y}
-                                        x2={p2.x}
-                                        y2={p2.y}
+                                    <path
+                                        d={pathD}
+                                        fill="none"
                                         stroke={strokeColor}
                                         strokeWidth={strokeWidth}
                                         strokeDasharray={strokeDash}
-                                        opacity={isHighlighted ? 1 : isUnverified ? 0.75 : 0.7}
+                                        opacity={linkOpacity}
                                         className={isHighlighted ? "animate-pulse" : ""}
                                     />
 
                                     {/* Secondary line to visually represent Port-Channel multi-strand bundle */}
                                     {bundle.isPortChannel && (
-                                        <line
-                                            x1={p1.x}
-                                            y1={p1.y}
-                                            x2={p2.x}
-                                            y2={p2.y}
+                                        <path
+                                            d={pathD}
+                                            fill="none"
                                             stroke="#0f172a"
                                             strokeWidth={1}
                                             strokeDasharray="3,3"
-                                            opacity={0.9}
+                                            opacity={bothFaded ? 0.08 : 0.9}
                                         />
                                     )}
 
@@ -903,6 +1142,7 @@ export default function TopologyGraph({
                                             cy={midY}
                                             r={isHighlighted ? 4 : 2.5}
                                             fill={strokeColor}
+                                            opacity={linkOpacity}
                                         />
                                     )}
                                 </g>
@@ -947,6 +1187,7 @@ export default function TopologyGraph({
                                 cardBg = "rgba(6, 44, 34, 0.95)";
                             }
 
+                            const isFaded = fadedNodes.has(dev.hostname);
                             const CARD_W = 172;
                             const CARD_H = 74;
 
@@ -954,11 +1195,12 @@ export default function TopologyGraph({
                                 <g
                                     key={dev.hostname}
                                     transform={`translate(${pos.x}, ${pos.y})`}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onSelectDevice(dev);
-                                    }}
-                                    className="cursor-pointer transition-transform hover:scale-105"
+                                    onClick={(e) => handleNodeClick(e, dev)}
+                                    opacity={isFaded ? 0.22 : 1}
+                                    className={isFaded 
+                                        ? "cursor-pointer hover:opacity-75 transition-opacity" 
+                                        : "cursor-pointer transition-transform hover:scale-105"
+                                    }
                                 >
                                     {/* Selection or Traced Hop Highlight Ring */}
                                     {(isSelected || isHop) && (
@@ -1114,6 +1356,28 @@ export default function TopologyGraph({
                                                 ? `Verified: ${formatLastVerified(dev.lastVerifiedAt)}` 
                                                 : "Never verified"}
                                         </text>
+                                    </g>
+
+                                    {/* Quick Dim / Fade toggle button on card */}
+                                    <g
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleFadeNode(dev.hostname);
+                                        }}
+                                        className="cursor-pointer hover:opacity-100 transition opacity-50 hover:scale-110"
+                                        transform={`translate(${CARD_W / 2 - 20}, ${CARD_H / 2 - 20})`}
+                                    >
+                                        <rect x={0} y={0} width={15} height={15} rx={3.5} fill="rgba(15, 23, 42, 0.9)" stroke={isFaded ? "#f59e0b" : "rgba(148, 163, 184, 0.4)"} strokeWidth={0.8} />
+                                        {isFaded ? (
+                                            <g transform="translate(2, 2)">
+                                                <path d="M1 1l9 9M4.5 4.5a2 2 0 0 0 2.8 2.8M1 5.5a5.5 5.5 0 0 1 9.5-2.8M10.5 5.5a5.5 5.5 0 0 1-9.5 2.8" stroke="#f59e0b" strokeWidth="1" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                                            </g>
+                                        ) : (
+                                            <g transform="translate(2, 2)">
+                                                <path d="M1 5.5s2-3.5 4.5-3.5 4.5 3.5 4.5 3.5-2 3.5-4.5 3.5-4.5-3.5-4.5-3.5z" stroke="#94a3b8" strokeWidth="1" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                                                <circle cx="5.5" cy="5.5" r="1.3" stroke="#94a3b8" strokeWidth="1" fill="none" />
+                                            </g>
+                                        )}
                                     </g>
                                 </g>
                             );
