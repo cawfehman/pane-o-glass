@@ -242,39 +242,39 @@ export default function TopologyGraph({
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [isFullscreen, panSpeed]);
 
-    // Smooth cursor-centric mouse wheel zooming calibrated to SVG viewBox coordinates
+    // Mathematically exact cursor-centric mouse wheel zoom via inverse SVG Screen CTM
     useEffect(() => {
         const el = svgContainerRef.current;
         if (!el) return;
 
         const handleWheel = (e: WheelEvent) => {
             e.preventDefault();
-            const rect = el.getBoundingClientRect();
-            if (rect.width === 0 || rect.height === 0) return;
+            const svg = el.querySelector("svg");
+            if (!svg) return;
+            const ctm = svg.getScreenCTM();
+            if (!ctm) return;
 
-            const mouseScreenX = e.clientX - rect.left;
-            const mouseScreenY = e.clientY - rect.top;
-
-            const scaleX = canvasSizeRef.current.width / rect.width;
-            const scaleY = canvasSizeRef.current.height / rect.height;
-            const svgScale = Math.max(scaleX, scaleY);
-
-            // True SVG viewBox coordinate under the cursor
-            const mouseVbX = mouseScreenX * svgScale;
-            const mouseVbY = mouseScreenY * svgScale;
+            // True subpixel SVG viewBox coordinate directly under the mouse cursor
+            const pt = svg.createSVGPoint();
+            pt.x = e.clientX;
+            pt.y = e.clientY;
+            const svgP = pt.matrixTransform(ctm.inverse());
 
             const zoomDelta = e.deltaY < 0 ? 1.15 : 0.87;
 
             setZoom(prevZoom => {
-                const nextZoom = Math.min(Math.max(prevZoom * zoomDelta, 0.15), 5.0);
+                const nextZoom = Math.min(Math.max(prevZoom * zoomDelta, 0.05), 6.0);
                 const ratio = nextZoom / prevZoom;
 
                 setPan(prevPan => {
                     const newPan = {
-                        x: mouseVbX - (mouseVbX - prevPan.x) * ratio,
-                        y: mouseVbY - (mouseVbY - prevPan.y) * ratio
+                        x: svgP.x - (svgP.x - prevPan.x) * ratio,
+                        y: svgP.y - (svgP.y - prevPan.y) * ratio
                     };
                     currentPanRef.current = newPan;
+                    if (viewportRef.current) {
+                        viewportRef.current.setAttribute("transform", `translate(${newPan.x}, ${newPan.y}) scale(${nextZoom})`);
+                    }
                     return newPan;
                 });
 
@@ -373,6 +373,27 @@ export default function TopologyGraph({
         }
         return Array.from(sites).sort();
     }, [unifiedDevices]);
+
+    const [hasInitializedSiteMap, setHasInitializedSiteMap] = useState(false);
+
+    // Default to Site Map View: all sites start collapsed so the user gets an executive site overview
+    useEffect(() => {
+        if (!hasInitializedSiteMap && uniqueSites.length > 0) {
+            setCollapsedSites(new Set(uniqueSites));
+            setHasInitializedSiteMap(true);
+        }
+    }, [uniqueSites, hasInitializedSiteMap]);
+
+    // If user selects a specific site from the dropdown, automatically expand that site
+    useEffect(() => {
+        if (siteFilter !== "ALL") {
+            setCollapsedSites(prev => {
+                const next = new Set(prev);
+                next.delete(siteFilter);
+                return next;
+            });
+        }
+    }, [siteFilter]);
 
     // 4. Hierarchical tree data for Site & Floor Manager Sidebar
     const managerTree = useMemo(() => {
@@ -509,26 +530,30 @@ export default function TopologyGraph({
 
     const panToSwitch = (hostname: string) => {
         const canon = getCanonicalHostname(hostname);
+        const dev = unifiedDevices.find(d => (d.canonicalHostname || d.hostname) === canon);
+        if (dev) {
+            const { site } = parseDeviceSiteAndIdf(dev.hostname, dev.site, dev.idf);
+            if (site && collapsedSites.has(site)) {
+                setCollapsedSites(prev => {
+                    const next = new Set(prev);
+                    next.delete(site);
+                    return next;
+                });
+            }
+            onSelectDevice(dev);
+        }
+
         const pos = nodePositions.get(canon) || nodePositions.get(hostname);
-        if (!pos || !svgContainerRef.current) return;
-        const rect = svgContainerRef.current.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return;
+        if (!pos) return;
 
-        const scaleX = canvasSizeRef.current.width / rect.width;
-        const scaleY = canvasSizeRef.current.height / rect.height;
-        const svgScale = Math.max(scaleX, scaleY);
-
-        const targetX = (rect.width * svgScale) / 2 - pos.x * zoom;
-        const targetY = (rect.height * svgScale) / 2 - pos.y * zoom;
+        const targetX = canvasSizeRef.current.width / 2 - pos.x * zoom;
+        const targetY = canvasSizeRef.current.height / 2 - pos.y * zoom;
         const newPan = { x: targetX, y: targetY };
         currentPanRef.current = newPan;
         setPan(newPan);
         if (viewportRef.current) {
             viewportRef.current.setAttribute("transform", `translate(${targetX}, ${targetY}) scale(${zoom})`);
         }
-
-        const dev = unifiedDevices.find(d => (d.canonicalHostname || d.hostname) === canon);
-        if (dev) onSelectDevice(dev);
     };
 
     const toggleFadeNode = (hostname: string) => {
@@ -1082,16 +1107,25 @@ export default function TopologyGraph({
             hasDraggedRef.current = true;
         }
 
-        const rect = svgContainerRef.current?.getBoundingClientRect();
-        if (!rect || rect.width === 0 || rect.height === 0) return;
+        const svg = svgContainerRef.current?.querySelector("svg");
+        if (!svg) return;
+        const ctm = svg.getScreenCTM();
+        if (!ctm) return;
+        const ctmInv = ctm.inverse();
 
-        const scaleX = canvasSizeRef.current.width / rect.width;
-        const scaleY = canvasSizeRef.current.height / rect.height;
-        const svgScale = Math.max(scaleX, scaleY);
+        const pt1 = svg.createSVGPoint();
+        pt1.x = lastPointerRef.current.x;
+        pt1.y = lastPointerRef.current.y;
+        const p1 = pt1.matrixTransform(ctmInv);
 
-        // Accelerated drag calibrated to actual viewBox coordinates multiplied by user speed setting
-        const deltaX = (e.clientX - lastPointerRef.current.x) * svgScale * panSpeed;
-        const deltaY = (e.clientY - lastPointerRef.current.y) * svgScale * panSpeed;
+        const pt2 = svg.createSVGPoint();
+        pt2.x = e.clientX;
+        pt2.y = e.clientY;
+        const p2 = pt2.matrixTransform(ctmInv);
+
+        // Accelerated drag calibrated to exact SVG viewBox coordinates multiplied by user speed setting
+        const deltaX = (p2.x - p1.x) * panSpeed;
+        const deltaY = (p2.y - p1.y) * panSpeed;
 
         lastPointerRef.current = { x: e.clientX, y: e.clientY };
         currentPanRef.current.x += deltaX;
@@ -1283,27 +1317,45 @@ export default function TopologyGraph({
                             </button>
                         </div>
 
-                        {/* Site & IDF Collapse Macro Controls */}
+                        {/* High-Level View Mode Selector (Site Map vs Expanded) */}
                         <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
-                            <span className="text-[10px] uppercase font-bold text-slate-400 px-1.5 flex items-center gap-1">
-                                <Layers className="w-3 h-3 text-purple-400" />
-                                Collapse:
-                            </span>
                             <button
                                 type="button"
-                                onClick={collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? expandAllSites : collapseAllSites}
-                                className="px-2 py-0.5 rounded font-medium hover:bg-slate-800 text-slate-300 hover:text-white transition cursor-pointer"
-                                title={collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? "Expand all site containers" : "Collapse all sites to summary cards"}
+                                onClick={() => {
+                                    setCollapsedSites(new Set(uniqueSites));
+                                    setSiteFilter("ALL");
+                                }}
+                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
+                                    collapsedSites.size === uniqueSites.length && uniqueSites.length > 0
+                                        ? "bg-blue-600 text-white shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                                title="Site Map View: Compact overview of all sites with WAN trunks (default)"
                             >
-                                {collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? "Expand Sites" : "All Sites"}
+                                <Compass className="w-3 h-3 text-cyan-400" />
+                                Site Map View
                             </button>
                             <button
                                 type="button"
-                                onClick={collapsedIdfs.size > 0 ? expandAllIdfs : collapseAllIdfs}
-                                className="px-2 py-0.5 rounded font-medium hover:bg-slate-800 text-slate-300 hover:text-white transition cursor-pointer"
-                                title={collapsedIdfs.size > 0 ? "Expand all IDF closets" : "Collapse all IDF closets to compact cards"}
+                                onClick={() => setCollapsedSites(new Set())}
+                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
+                                    collapsedSites.size === 0
+                                        ? "bg-blue-600 text-white shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                                title="Expanded View: Fully expand all sites, floors, and individual switches"
                             >
-                                {collapsedIdfs.size > 0 ? "Expand IDFs" : "All IDFs"}
+                                <Building2 className="w-3 h-3 text-indigo-400" />
+                                Expanded View
+                            </button>
+                            <div className="h-3 w-[1px] bg-slate-800 mx-0.5"></div>
+                            <button
+                                type="button"
+                                onClick={collapsedIdfs.size > 0 ? expandAllIdfs : collapseAllIdfs}
+                                className="px-1.5 py-0.5 rounded font-medium hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer text-[10px]"
+                                title={collapsedIdfs.size > 0 ? "Expand all floor slabs" : "Collapse all floor slabs"}
+                            >
+                                {collapsedIdfs.size > 0 ? "Expand Floors" : "Collapse Floors"}
                             </button>
                         </div>
                     </>
@@ -1367,7 +1419,7 @@ export default function TopologyGraph({
                 {/* Zoom & Reset Controls */}
                 <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-800">
                     <button
-                        onClick={() => setZoom(z => Math.max(z - 0.25, 0.15))}
+                        onClick={() => setZoom(z => Math.max(z - 0.25, 0.05))}
                         className="p-1 rounded bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
                         title="Zoom Out (Mouse Wheel Scroll Down)"
                     >
@@ -1377,7 +1429,7 @@ export default function TopologyGraph({
                         {Math.round(zoom * 100)}%
                     </span>
                     <button
-                        onClick={() => setZoom(z => Math.min(z + 0.25, 5.0))}
+                        onClick={() => setZoom(z => Math.min(z + 0.25, 6.0))}
                         className="p-1 rounded bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
                         title="Zoom In (Mouse Wheel Scroll Up)"
                     >
@@ -1386,7 +1438,7 @@ export default function TopologyGraph({
                     <button
                         onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}
                         className="p-1 rounded bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer ml-0.5"
-                        title="Reset View"
+                        title="Reset View to 100%"
                     >
                         <RotateCcw size={13} />
                     </button>
@@ -1849,7 +1901,7 @@ export default function TopologyGraph({
                                             stroke="#3b82f6"
                                             strokeWidth={1.5}
                                             filter="drop-shadow(0 4px 12px rgba(0,0,0,0.6))"
-                                            className="group-hover:stroke-blue-400 group-hover:scale-[1.02] transition"
+                                            className="group-hover:stroke-cyan-300 group-hover:brightness-110 transition"
                                         />
                                         {/* Accent Strip */}
                                         <path
