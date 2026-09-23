@@ -118,7 +118,10 @@ export default function AdminCrawlerPage() {
         setLoadingDetails(true);
         try {
             const res = await fetch(`/api/crawler/snapshot/${id}`);
-            if (!res.ok) throw new Error("Failed to load snapshot details.");
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || `Failed to load snapshot details (HTTP ${res.status}).`);
+            }
             const data = await res.json();
             setCurrentSnapshotData(data);
             setSelectedDevice(null);

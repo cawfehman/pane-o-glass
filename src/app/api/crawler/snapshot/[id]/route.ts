@@ -13,10 +13,12 @@ export async function GET(
         }
 
         const { id } = await context.params;
-        const numId = parseInt(id, 10);
+        const cleanId = (id || "").trim();
+        const isNumeric = /^\d+$/.test(cleanId);
+        const numId = isNumeric ? parseInt(cleanId, 10) : NaN;
 
         const snapshot = await prisma.crawlSnapshot.findFirst({
-            where: isNaN(numId) ? { id } : { OR: [{ id }, { snapshotNumber: numId }] },
+            where: isNumeric ? { OR: [{ id: cleanId }, { snapshotNumber: numId }] } : { id: cleanId },
             include: {
                 devices: true,
                 links: true
@@ -24,7 +26,7 @@ export async function GET(
         });
 
         if (!snapshot) {
-            return NextResponse.json({ error: "Snapshot not found" }, { status: 404 });
+            return NextResponse.json({ error: `Snapshot '${cleanId}' not found` }, { status: 404 });
         }
 
         // Calculate summary counters
@@ -41,10 +43,17 @@ export async function GET(
 
         for (const dev of devices) {
             if (dev.site) sites.add(dev.site);
-            const intfs = typeof dev.interfaces === "string" ? JSON.parse(dev.interfaces) : dev.interfaces || {};
-            for (const intf of Object.values<any>(intfs)) {
-                if (intf.ip_address && intf.cidr) {
-                    subnets.add(`${intf.ip_address}${intf.cidr}`);
+            let intfs: Record<string, any> = {};
+            try {
+                intfs = typeof dev.interfaces === "string" ? JSON.parse(dev.interfaces) : (dev.interfaces || {});
+            } catch {
+                intfs = {};
+            }
+            if (intfs && typeof intfs === "object") {
+                for (const intf of Object.values<any>(intfs)) {
+                    if (intf && intf.ip_address && intf.cidr) {
+                        subnets.add(`${intf.ip_address}${intf.cidr}`);
+                    }
                 }
             }
         }
@@ -84,7 +93,7 @@ export async function GET(
                 orderBy: {
                     createdAt: "desc"
                 }
-            })
+            }).catch(() => [])
             : [];
 
         // Build CDP platform & connected peer port description lookup from all reachable neighbor tables
@@ -94,46 +103,58 @@ export async function GET(
 
         for (const dev of devices) {
             if (dev.status === "REACHABLE" && dev.cdpNeighbors) {
-                const rawIntfs = dev.interfaces;
-                const intfs: Record<string, any> = typeof rawIntfs === "string" 
-                    ? JSON.parse(rawIntfs) 
-                    : (rawIntfs || {});
+                let intfs: Record<string, any> = {};
+                try {
+                    intfs = typeof dev.interfaces === "string" 
+                        ? JSON.parse(dev.interfaces) 
+                        : (dev.interfaces || {});
+                } catch {
+                    intfs = {};
+                }
 
-                const neighbors: any[] = Array.isArray(dev.cdpNeighbors)
-                    ? dev.cdpNeighbors
-                    : typeof dev.cdpNeighbors === "string"
-                    ? JSON.parse(dev.cdpNeighbors)
-                    : [];
+                let neighbors: any[] = [];
+                try {
+                    neighbors = Array.isArray(dev.cdpNeighbors)
+                        ? dev.cdpNeighbors
+                        : typeof dev.cdpNeighbors === "string"
+                        ? JSON.parse(dev.cdpNeighbors)
+                        : [];
+                } catch {
+                    neighbors = [];
+                }
 
-                for (const n of neighbors) {
-                    const canon = n.destination_host ? n.destination_host.split(".")[0].split("(")[0].trim().toLowerCase() : null;
-                    const ip = n.management_ip ? n.management_ip.trim() : null;
+                if (Array.isArray(neighbors)) {
+                    for (const n of neighbors) {
+                        if (!n || typeof n !== "object") continue;
+                        const canon = n.destination_host ? String(n.destination_host).split(".")[0].split("(")[0].trim().toLowerCase() : null;
+                        const ip = n.management_ip ? String(n.management_ip).trim() : null;
 
-                    if (n.platform) {
-                        if (canon && !cdpPlatformMap.has(canon)) cdpPlatformMap.set(canon, n.platform);
-                        if (ip && !cdpPlatformMap.has(ip)) cdpPlatformMap.set(ip, n.platform);
-                    }
-
-                    if (n.local_interface) {
-                        const localIntfName = n.local_interface;
-                        if (canon && !cdpPortMap.has(canon)) cdpPortMap.set(canon, localIntfName);
-                        if (ip && !cdpPortMap.has(ip)) cdpPortMap.set(ip, localIntfName);
-
-                        let matchedIntf = intfs[localIntfName];
-                        if (!matchedIntf) {
-                            const targetKey = localIntfName.toLowerCase();
-                            for (const [k, v] of Object.entries(intfs)) {
-                                if (k.toLowerCase() === targetKey || k.toLowerCase().replace(/gigabitethernet/i, "gi") === targetKey.replace(/gigabitethernet/i, "gi")) {
-                                    matchedIntf = v;
-                                    break;
-                                }
-                            }
+                        if (n.platform) {
+                            if (canon && !cdpPlatformMap.has(canon)) cdpPlatformMap.set(canon, String(n.platform));
+                            if (ip && !cdpPlatformMap.has(ip)) cdpPlatformMap.set(ip, String(n.platform));
                         }
 
-                        const desc = matchedIntf?.description;
-                        if (desc) {
-                            if (canon && !cdpDescMap.has(canon)) cdpDescMap.set(canon, desc);
-                            if (ip && !cdpDescMap.has(ip)) cdpDescMap.set(ip, desc);
+                        if (n.local_interface) {
+                            const localIntfName = String(n.local_interface);
+                            if (canon && !cdpPortMap.has(canon)) cdpPortMap.set(canon, localIntfName);
+                            if (ip && !cdpPortMap.has(ip)) cdpPortMap.set(ip, localIntfName);
+
+                            let matchedIntf = intfs && typeof intfs === "object" ? intfs[localIntfName] : null;
+                            if (!matchedIntf && intfs && typeof intfs === "object") {
+                                const targetKey = localIntfName.toLowerCase();
+                                for (const [k, v] of Object.entries(intfs)) {
+                                    if (k.toLowerCase() === targetKey || k.toLowerCase().replace(/gigabitethernet/i, "gi") === targetKey.replace(/gigabitethernet/i, "gi")) {
+                                        matchedIntf = v;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            const desc = matchedIntf?.description;
+                            if (desc) {
+                                if (canon && !cdpDescMap.has(canon)) cdpDescMap.set(canon, String(desc));
+                                if (ip && !cdpDescMap.has(ip)) cdpDescMap.set(ip, String(desc));
+                            }
                         }
                     }
                 }
@@ -141,15 +162,22 @@ export async function GET(
         }
 
         // Fetch overrides
-        const overrides = await prisma.crawlerDeviceOverride.findMany();
-        const overrideMap = new Map<string, typeof overrides[0]>();
+        let overrides: any[] = [];
+        try {
+            overrides = await prisma.crawlerDeviceOverride.findMany();
+        } catch (e) {
+            console.warn("Could not query crawler overrides:", e);
+        }
+        const overrideMap = new Map<string, any>();
         for (const ov of overrides) {
-            overrideMap.set(ov.hostname.toLowerCase(), ov);
+            if (ov?.hostname) {
+                overrideMap.set(ov.hostname.toLowerCase(), ov);
+            }
         }
 
         const latestVerifiedMap = new Map<string, string>();
         for (const record of historicalSuccesses) {
-            if (!latestVerifiedMap.has(record.hostname)) {
+            if (record?.hostname && !latestVerifiedMap.has(record.hostname)) {
                 const ts = record.snapshot?.timestamp || record.createdAt;
                 latestVerifiedMap.set(record.hostname, ts ? ts.toISOString() : record.createdAt.toISOString());
             }
@@ -218,6 +246,6 @@ export async function GET(
         });
     } catch (error: any) {
         console.error("Failed to fetch snapshot details:", error);
-        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+        return NextResponse.json({ error: error?.message || "Internal Server Error" }, { status: 500 });
     }
 }

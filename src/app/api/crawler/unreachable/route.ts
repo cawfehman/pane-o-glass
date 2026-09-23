@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json([]);
         }
 
-        const [unreachableDevices, reachableDevices, overrides] = await Promise.all([
+        const [unreachableDevices, reachableDevices] = await Promise.all([
             prisma.crawlDevice.findMany({
                 where: {
                     snapshotId: targetSnapshot.id,
@@ -57,9 +57,16 @@ export async function GET(request: NextRequest) {
                     cdpNeighbors: true,
                     interfaces: true
                 }
-            }),
-            prisma.crawlerDeviceOverride.findMany()
+            })
         ]);
+
+        // Safely fetch overrides without crashing if table is locked or unmigrated
+        let overrides: any[] = [];
+        try {
+            overrides = await prisma.crawlerDeviceOverride.findMany();
+        } catch (e) {
+            console.warn("Could not query crawler overrides in unreachable route:", e);
+        }
 
         // Build CDP platform & connected peer port description lookup from all reachable neighbor tables
         const cdpPlatformMap = new Map<string, string>();
@@ -67,56 +74,70 @@ export async function GET(request: NextRequest) {
         const cdpDescMap = new Map<string, string>();
 
         for (const rDev of reachableDevices) {
-            const rawIntfs = rDev.interfaces;
-            const intfs: Record<string, any> = typeof rawIntfs === "string" 
-                ? JSON.parse(rawIntfs) 
-                : (rawIntfs || {});
+            let intfs: Record<string, any> = {};
+            try {
+                intfs = typeof rDev.interfaces === "string" 
+                    ? JSON.parse(rDev.interfaces) 
+                    : (rDev.interfaces || {});
+            } catch {
+                intfs = {};
+            }
 
-            const neighbors: any[] = Array.isArray(rDev.cdpNeighbors)
-                ? rDev.cdpNeighbors
-                : typeof rDev.cdpNeighbors === "string"
-                ? JSON.parse(rDev.cdpNeighbors)
-                : [];
+            let neighbors: any[] = [];
+            try {
+                neighbors = Array.isArray(rDev.cdpNeighbors)
+                    ? rDev.cdpNeighbors
+                    : typeof rDev.cdpNeighbors === "string"
+                    ? JSON.parse(rDev.cdpNeighbors)
+                    : [];
+            } catch {
+                neighbors = [];
+            }
 
-            for (const n of neighbors) {
-                const canon = n.destination_host ? n.destination_host.split(".")[0].split("(")[0].trim().toLowerCase() : null;
-                const ip = n.management_ip ? n.management_ip.trim() : null;
+            if (Array.isArray(neighbors)) {
+                for (const n of neighbors) {
+                    if (!n || typeof n !== "object") continue;
+                    const canon = n.destination_host ? String(n.destination_host).split(".")[0].split("(")[0].trim().toLowerCase() : null;
+                    const ip = n.management_ip ? String(n.management_ip).trim() : null;
 
-                if (n.platform) {
-                    if (canon && !cdpPlatformMap.has(canon)) cdpPlatformMap.set(canon, n.platform);
-                    if (ip && !cdpPlatformMap.has(ip)) cdpPlatformMap.set(ip, n.platform);
-                }
-
-                if (n.local_interface) {
-                    const localIntfName = n.local_interface;
-                    if (canon && !cdpPortMap.has(canon)) cdpPortMap.set(canon, localIntfName);
-                    if (ip && !cdpPortMap.has(ip)) cdpPortMap.set(ip, localIntfName);
-
-                    // Look up description on rDev's local interface
-                    let matchedIntf = intfs[localIntfName];
-                    if (!matchedIntf) {
-                        const targetKey = localIntfName.toLowerCase();
-                        for (const [k, v] of Object.entries(intfs)) {
-                            if (k.toLowerCase() === targetKey || k.toLowerCase().replace(/gigabitethernet/i, "gi") === targetKey.replace(/gigabitethernet/i, "gi")) {
-                                matchedIntf = v;
-                                break;
-                            }
-                        }
+                    if (n.platform) {
+                        if (canon && !cdpPlatformMap.has(canon)) cdpPlatformMap.set(canon, String(n.platform));
+                        if (ip && !cdpPlatformMap.has(ip)) cdpPlatformMap.set(ip, String(n.platform));
                     }
 
-                    const desc = matchedIntf?.description;
-                    if (desc) {
-                        if (canon && !cdpDescMap.has(canon)) cdpDescMap.set(canon, desc);
-                        if (ip && !cdpDescMap.has(ip)) cdpDescMap.set(ip, desc);
+                    if (n.local_interface) {
+                        const localIntfName = String(n.local_interface);
+                        if (canon && !cdpPortMap.has(canon)) cdpPortMap.set(canon, localIntfName);
+                        if (ip && !cdpPortMap.has(ip)) cdpPortMap.set(ip, localIntfName);
+
+                        // Look up description on rDev's local interface
+                        let matchedIntf = intfs && typeof intfs === "object" ? intfs[localIntfName] : null;
+                        if (!matchedIntf && intfs && typeof intfs === "object") {
+                            const targetKey = localIntfName.toLowerCase();
+                            for (const [k, v] of Object.entries(intfs)) {
+                                if (k.toLowerCase() === targetKey || k.toLowerCase().replace(/gigabitethernet/i, "gi") === targetKey.replace(/gigabitethernet/i, "gi")) {
+                                    matchedIntf = v;
+                                    break;
+                                }
+                            }
+                        }
+
+                        const desc = matchedIntf?.description;
+                        if (desc) {
+                            if (canon && !cdpDescMap.has(canon)) cdpDescMap.set(canon, String(desc));
+                            if (ip && !cdpDescMap.has(ip)) cdpDescMap.set(ip, String(desc));
+                        }
                     }
                 }
             }
         }
 
         // Build overrides lookup by normalized hostname
-        const overrideMap = new Map<string, typeof overrides[0]>();
+        const overrideMap = new Map<string, any>();
         for (const ov of overrides) {
-            overrideMap.set(ov.hostname.toLowerCase(), ov);
+            if (ov?.hostname) {
+                overrideMap.set(ov.hostname.toLowerCase(), ov);
+            }
         }
 
         const enriched = unreachableDevices.map(d => {
