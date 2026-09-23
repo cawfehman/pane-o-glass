@@ -34,6 +34,7 @@ import {
     Building,
     Filter,
     Layers2,
+    Zap,
     X
 } from "lucide-react";
 
@@ -188,8 +189,7 @@ export default function TopologyGraph({
 }: TopologyGraphProps) {
     const [zoom, setZoom] = useState(1);
     const [pan, setPan] = useState({ x: 0, y: 0 });
-    const [isDragging, setIsDragging] = useState(false);
-    const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+    const [panSpeed, setPanSpeed] = useState<number>(1.5);
     const [siteFilter, setSiteFilter] = useState<string>("ALL");
     const [layoutMode, setLayoutMode] = useState<"container" | "flow">("container");
     const [stackingMode, setStackingMode] = useState<"building" | "horizontal">("building");
@@ -204,20 +204,45 @@ export default function TopologyGraph({
     const [fadedNodes, setFadedNodes] = useState<Set<string>>(new Set());
     const [clickMode, setClickMode] = useState<"inspect" | "fade">("inspect");
     const [isFullscreen, setIsFullscreen] = useState(false);
-    const svgContainerRef = useRef<HTMLDivElement>(null);
 
-    // Escape key listener to exit fullscreen
+    const svgContainerRef = useRef<HTMLDivElement>(null);
+    const viewportRef = useRef<SVGGElement>(null);
+    const currentPanRef = useRef({ x: 0, y: 0 });
+    const lastPointerRef = useRef({ x: 0, y: 0 });
+    const startPointerRef = useRef({ x: 0, y: 0 });
+    const isDraggingRef = useRef(false);
+    const hasDraggedRef = useRef(false);
+    const rafIdRef = useRef<number | null>(null);
+    const canvasSizeRef = useRef({ width: 1400, height: 750 });
+
+    // Sync direct transform and pan reference when pan or zoom state updates
+    useEffect(() => {
+        currentPanRef.current = pan;
+        if (viewportRef.current) {
+            viewportRef.current.setAttribute("transform", `translate(${pan.x}, ${pan.y}) scale(${zoom})`);
+        }
+    }, [pan, zoom]);
+
+    // Keyboard navigation (Escape for fullscreen, Arrow keys for fast panning)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === "Escape" && isFullscreen) {
                 setIsFullscreen(false);
             }
+            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+                if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "SELECT") return;
+                e.preventDefault();
+                const step = 90 * panSpeed;
+                const dx = e.key === "ArrowLeft" ? step : e.key === "ArrowRight" ? -step : 0;
+                const dy = e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0;
+                setPan(p => ({ x: p.x + dx, y: p.y + dy }));
+            }
         };
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [isFullscreen]);
+    }, [isFullscreen, panSpeed]);
 
-    // Smooth cursor-centric mouse wheel zooming
+    // Smooth cursor-centric mouse wheel zooming calibrated to SVG viewBox coordinates
     useEffect(() => {
         const el = svgContainerRef.current;
         if (!el) return;
@@ -225,20 +250,33 @@ export default function TopologyGraph({
         const handleWheel = (e: WheelEvent) => {
             e.preventDefault();
             const rect = el.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
+            if (rect.width === 0 || rect.height === 0) return;
 
-            // Zoom sensitivity factor
-            const zoomDelta = e.deltaY < 0 ? 1.14 : 0.88;
+            const mouseScreenX = e.clientX - rect.left;
+            const mouseScreenY = e.clientY - rect.top;
+
+            const scaleX = canvasSizeRef.current.width / rect.width;
+            const scaleY = canvasSizeRef.current.height / rect.height;
+            const svgScale = Math.max(scaleX, scaleY);
+
+            // True SVG viewBox coordinate under the cursor
+            const mouseVbX = mouseScreenX * svgScale;
+            const mouseVbY = mouseScreenY * svgScale;
+
+            const zoomDelta = e.deltaY < 0 ? 1.15 : 0.87;
 
             setZoom(prevZoom => {
                 const nextZoom = Math.min(Math.max(prevZoom * zoomDelta, 0.15), 5.0);
                 const ratio = nextZoom / prevZoom;
 
-                setPan(prevPan => ({
-                    x: mouseX - (mouseX - prevPan.x) * ratio,
-                    y: mouseY - (mouseY - prevPan.y) * ratio
-                }));
+                setPan(prevPan => {
+                    const newPan = {
+                        x: mouseVbX - (mouseVbX - prevPan.x) * ratio,
+                        y: mouseVbY - (mouseVbY - prevPan.y) * ratio
+                    };
+                    currentPanRef.current = newPan;
+                    return newPan;
+                });
 
                 return nextZoom;
             });
@@ -474,9 +512,20 @@ export default function TopologyGraph({
         const pos = nodePositions.get(canon) || nodePositions.get(hostname);
         if (!pos || !svgContainerRef.current) return;
         const rect = svgContainerRef.current.getBoundingClientRect();
-        const targetX = rect.width / 2 - pos.x * zoom;
-        const targetY = rect.height / 2 - pos.y * zoom;
-        setPan({ x: targetX, y: targetY });
+        if (rect.width === 0 || rect.height === 0) return;
+
+        const scaleX = canvasSizeRef.current.width / rect.width;
+        const scaleY = canvasSizeRef.current.height / rect.height;
+        const svgScale = Math.max(scaleX, scaleY);
+
+        const targetX = (rect.width * svgScale) / 2 - pos.x * zoom;
+        const targetY = (rect.height * svgScale) / 2 - pos.y * zoom;
+        const newPan = { x: targetX, y: targetY };
+        currentPanRef.current = newPan;
+        setPan(newPan);
+        if (viewportRef.current) {
+            viewportRef.current.setAttribute("transform", `translate(${targetX}, ${targetY}) scale(${zoom})`);
+        }
 
         const dev = unifiedDevices.find(d => (d.canonicalHostname || d.hostname) === canon);
         if (dev) onSelectDevice(dev);
@@ -497,6 +546,7 @@ export default function TopologyGraph({
     };
 
     const handleNodeClick = (e: React.MouseEvent, dev: any) => {
+        if (hasDraggedRef.current) return;
         e.stopPropagation();
         const canon = dev.canonicalHostname || getCanonicalHostname(dev.hostname);
         if (e.shiftKey || e.altKey || clickMode === "fade") {
@@ -1011,21 +1061,69 @@ export default function TopologyGraph({
         };
     }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing]);
 
-    const handleMouseDown = (e: React.MouseEvent) => {
-        setIsDragging(true);
-        setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+    const handlePointerDown = (e: React.PointerEvent) => {
+        if (e.button !== 0) return;
+        if ((e.target as HTMLElement).closest("button, select, input, a")) return;
+        isDraggingRef.current = true;
+        hasDraggedRef.current = false;
+        lastPointerRef.current = { x: e.clientX, y: e.clientY };
+        startPointerRef.current = { x: e.clientX, y: e.clientY };
+        try {
+            (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        } catch {
+            // pointer capture fallback
+        }
     };
 
-    const handleMouseMove = (e: React.MouseEvent) => {
-        if (!isDragging) return;
-        setPan({
-            x: e.clientX - dragStart.x,
-            y: e.clientY - dragStart.y
-        });
+    const handlePointerMove = (e: React.PointerEvent) => {
+        if (!isDraggingRef.current) return;
+        const dist = Math.hypot(e.clientX - startPointerRef.current.x, e.clientY - startPointerRef.current.y);
+        if (dist > 3) {
+            hasDraggedRef.current = true;
+        }
+
+        const rect = svgContainerRef.current?.getBoundingClientRect();
+        if (!rect || rect.width === 0 || rect.height === 0) return;
+
+        const scaleX = canvasSizeRef.current.width / rect.width;
+        const scaleY = canvasSizeRef.current.height / rect.height;
+        const svgScale = Math.max(scaleX, scaleY);
+
+        // Accelerated drag calibrated to actual viewBox coordinates multiplied by user speed setting
+        const deltaX = (e.clientX - lastPointerRef.current.x) * svgScale * panSpeed;
+        const deltaY = (e.clientY - lastPointerRef.current.y) * svgScale * panSpeed;
+
+        lastPointerRef.current = { x: e.clientX, y: e.clientY };
+        currentPanRef.current.x += deltaX;
+        currentPanRef.current.y += deltaY;
+
+        // Direct hardware-accelerated SVG transform bypasses React re-render during rapid movement
+        if (rafIdRef.current === null) {
+            rafIdRef.current = requestAnimationFrame(() => {
+                rafIdRef.current = null;
+                if (viewportRef.current) {
+                    viewportRef.current.setAttribute(
+                        "transform",
+                        `translate(${currentPanRef.current.x}, ${currentPanRef.current.y}) scale(${zoom})`
+                    );
+                }
+            });
+        }
     };
 
-    const handleMouseUp = () => {
-        setIsDragging(false);
+    const handlePointerUp = (e: React.PointerEvent) => {
+        if (!isDraggingRef.current) return;
+        isDraggingRef.current = false;
+        try {
+            (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+        } catch {
+            // pointer release fallback
+        }
+        if (rafIdRef.current !== null) {
+            cancelAnimationFrame(rafIdRef.current);
+            rafIdRef.current = null;
+        }
+        setPan({ x: currentPanRef.current.x, y: currentPanRef.current.y });
     };
 
     const isHopDevice = (hostname: string) => activeHopDevices.includes(hostname);
@@ -1291,6 +1389,44 @@ export default function TopologyGraph({
                         title="Reset View"
                     >
                         <RotateCcw size={13} />
+                    </button>
+                </div>
+
+                <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
+
+                {/* Pan Speed Controls */}
+                <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-800" title="Click-and-Drag Pan Speed (or use Arrow Keys)">
+                    <Zap className="w-3 h-3 text-amber-400 ml-0.5" />
+                    <span className="text-[10px] text-slate-400 font-medium mr-0.5">Pan:</span>
+                    <button
+                        type="button"
+                        onClick={() => setPanSpeed(1.0)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition cursor-pointer ${
+                            panSpeed === 1.0 ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40" : "text-slate-400 hover:text-slate-200"
+                        }`}
+                        title="Normal Pan Speed (1.0x)"
+                    >
+                        1x
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setPanSpeed(1.5)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition cursor-pointer ${
+                            panSpeed === 1.5 ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40" : "text-slate-400 hover:text-slate-200"
+                        }`}
+                        title="Fast Pan Speed (1.5x - snappy)"
+                    >
+                        1.5x
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setPanSpeed(2.2)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition cursor-pointer ${
+                            panSpeed === 2.2 ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40" : "text-slate-400 hover:text-slate-200"
+                        }`}
+                        title="Quick Pan Speed (2.2x - ultra fast across large campuses)"
+                    >
+                        2.2x
                     </button>
                 </div>
 
@@ -1667,11 +1803,11 @@ export default function TopologyGraph({
             {/* Interactive SVG Canvas */}
             <div
                 ref={svgContainerRef}
-                className="w-full h-full cursor-grab active:cursor-grabbing"
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
+                className="w-full h-full cursor-grab active:cursor-grabbing touch-none select-none"
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
             >
                 <svg
                     width="100%"
@@ -1694,7 +1830,7 @@ export default function TopologyGraph({
                     {/* Canvas Background Grid */}
                     <rect width="100%" height="100%" fill="url(#grid-pattern)" />
 
-                    <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+                    <g ref={viewportRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
                         {layoutMode === "container" && siteBoxes.map((site) => {
                             if (site.isCollapsed) {
                                 return (
