@@ -69,8 +69,11 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
     const [logs, setLogs] = useState<string[]>([]);
     const [abortController, setAbortController] = useState<AbortController | null>(null);
+    const [showConfigDuringExecution, setShowConfigDuringExecution] = useState(false);
     const terminalRef = useRef<HTMLDivElement>(null);
     const modalBodyRef = useRef<HTMLDivElement>(null);
+
+    const isExecuting = loading || logs.length > 0;
 
     // Instant, container-only scroll to bottom without vibrating/jitter
     useEffect(() => {
@@ -78,13 +81,6 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
             terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
         }
     }, [logs]);
-
-    // Position modal body to terminal once when crawl begins
-    useEffect(() => {
-        if (loading && modalBodyRef.current) {
-            modalBodyRef.current.scrollTop = modalBodyRef.current.scrollHeight;
-        }
-    }, [loading]);
 
     useEffect(() => {
         if (initialSeed) {
@@ -170,6 +166,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
         setError(null);
         setStatusMessage(null);
         setLogs([]);
+        setShowConfigDuringExecution(false);
         setLoading(true);
 
         const controller = new AbortController();
@@ -298,7 +295,9 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className={`bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col transition-all duration-150 ${
+                isExecuting ? "h-[85vh] max-h-[85vh]" : "max-h-[90vh]"
+            }`}>
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/90 shrink-0">
                     <div className="flex items-center gap-3">
@@ -357,8 +356,50 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                 </div>
 
                 {/* Body */}
-                <div ref={modalBodyRef} className="p-6 space-y-5 overflow-y-auto flex-1 overscroll-contain">
-                    {mode === "mock" ? (
+                <div 
+                    ref={modalBodyRef} 
+                    className={`p-6 space-y-4 flex-1 overscroll-contain min-h-0 ${
+                        isExecuting ? "overflow-hidden flex flex-col" : "overflow-y-auto"
+                    }`}
+                >
+                    {/* Compact Configuration Summary during execution */}
+                    {isExecuting && (
+                        <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl flex items-center justify-between text-xs shrink-0">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                                <div className="flex items-center gap-2">
+                                    <span className="px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 font-semibold border border-blue-500/20 text-[11px] uppercase">
+                                        {mode === "live" ? "Live SSH" : "Simulation"}
+                                    </span>
+                                    <span className="text-white font-medium truncate max-w-xs">{name}</span>
+                                </div>
+                                <span className="text-slate-600 hidden sm:inline">•</span>
+                                <div className="text-slate-400 hidden sm:flex items-center gap-2 text-[11px]">
+                                    <span>Profile: <strong className="text-slate-200 uppercase">{profile}</strong></span>
+                                    <span>•</span>
+                                    <span>Limit: <strong className="text-slate-200">{maxHops} {maxHops === 1 ? "Hop" : "Hops"}</strong></span>
+                                    {mode === "live" && (
+                                        <>
+                                            <span>•</span>
+                                            <span className="truncate max-w-[200px] font-mono text-slate-300">
+                                                {seeds}
+                                            </span>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowConfigDuringExecution(!showConfigDuringExecution)}
+                                className="text-[11px] text-blue-400 hover:text-blue-300 font-medium ml-2 shrink-0 cursor-pointer"
+                            >
+                                {showConfigDuringExecution ? "Hide Settings" : "View Settings"}
+                            </button>
+                        </div>
+                    )}
+
+                    {(!isExecuting || showConfigDuringExecution) && (
+                        <div className={isExecuting ? "max-h-60 overflow-y-auto shrink-0 p-3 rounded-xl border border-slate-800 bg-slate-950/40 space-y-4" : "space-y-5"}>
+                            {mode === "mock" ? (
                         /* Clean, Spacious Mock Mode */
                         <div className="max-w-2xl mx-auto space-y-5 py-2">
                             <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs flex items-center gap-3">
@@ -748,80 +789,85 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                             </div>
                         </div>
                     )}
+                    </div>
+                )}
 
-                    {/* Live Execution Console Terminal (Full Width) */}
-                    {(loading || logs.length > 0) && (
-                        <div className="space-y-2 pt-2">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
-                                    <Terminal className="w-3.5 h-3.5 text-blue-400" />
-                                    <span>Live Execution Console</span>
-                                    {loading && (
-                                        <span className="flex items-center gap-1.5 text-[10px] text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full font-mono">
-                                            <span className="relative flex h-2 w-2">
-                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                                            </span>
-                                            STREAMING
+                {/* Live Execution Console Terminal (Full Width) */}
+                {isExecuting && (
+                    <div className="space-y-2 flex-1 min-h-0 flex flex-col pt-1">
+                        <div className="flex items-center justify-between shrink-0">
+                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
+                                <Terminal className="w-3.5 h-3.5 text-blue-400" />
+                                <span>Live Execution Console</span>
+                                {loading && (
+                                    <span className="flex items-center gap-1.5 text-[10px] text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full font-mono">
+                                        <span className="relative flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                                         </span>
-                                    )}
-                                    <span className="text-[10px] font-mono text-slate-500">
-                                        ({logs.length} lines)
+                                        STREAMING
                                     </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    {logs.length > 0 && (
-                                        <>
-                                            <button
-                                                type="button"
-                                                onClick={handleDownloadLogs}
-                                                className="text-[11px] text-blue-400 hover:text-blue-300 flex items-center gap-1 transition cursor-pointer"
-                                                title="Save Execution Log"
-                                            >
-                                                <Download className="w-3 h-3" />
-                                                Save Log
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setLogs([])}
-                                                className="text-[11px] text-slate-500 hover:text-slate-300 flex items-center gap-1 transition cursor-pointer"
-                                            >
-                                                <Trash2 className="w-3 h-3" />
-                                                Clear
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
+                                )}
+                                <span className="text-[10px] font-mono text-slate-500">
+                                    ({logs.length} lines)
+                                </span>
                             </div>
-                            <div 
-                                ref={terminalRef} 
-                                className="bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] leading-relaxed h-64 shrink-0 overflow-y-auto overscroll-contain shadow-inner space-y-1 select-text"
-                            >
-                                {logs.map((logLine, idx) => (
-                                    <div key={idx} className={`font-mono break-all ${getLogLineStyle(logLine)}`}>
-                                        <span className="text-slate-600 select-none mr-2">{String(idx + 1).padStart(2, "0")}</span>
-                                        {logLine}
-                                    </div>
-                                ))}
+                            <div className="flex items-center gap-2">
+                                {logs.length > 0 && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={handleDownloadLogs}
+                                            className="text-[11px] text-blue-400 hover:text-blue-300 flex items-center gap-1 transition cursor-pointer"
+                                            title="Save Execution Log"
+                                        >
+                                            <Download className="w-3 h-3" />
+                                            Save Log
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setLogs([]);
+                                                setShowConfigDuringExecution(false);
+                                            }}
+                                            className="text-[11px] text-slate-500 hover:text-slate-300 flex items-center gap-1 transition cursor-pointer"
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                            Clear
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </div>
-                    )}
-
-                    {/* Status message */}
-                    {statusMessage && (
-                        <div className="p-3 bg-blue-950/40 border border-blue-800/80 rounded-xl text-xs text-blue-300 flex items-center gap-2">
-                            <RefreshCw className={`w-4 h-4 text-blue-400 shrink-0 ${loading ? "animate-spin" : ""}`} />
-                            <span>{statusMessage}</span>
+                        <div 
+                            ref={terminalRef} 
+                            className="bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] leading-relaxed flex-1 min-h-0 overflow-y-auto overscroll-contain shadow-inner space-y-1 select-text"
+                        >
+                            {logs.map((logLine, idx) => (
+                                <div key={idx} className={`font-mono break-all ${getLogLineStyle(logLine)}`}>
+                                    <span className="text-slate-600 select-none mr-2">{String(idx + 1).padStart(2, "0")}</span>
+                                    {logLine}
+                                </div>
+                            ))}
                         </div>
-                    )}
+                    </div>
+                )}
 
-                    {/* Error message */}
-                    {error && (
-                        <div className="p-3 bg-red-950/40 border border-red-800 rounded-xl text-xs text-red-300 flex items-center gap-2">
-                            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                            <span>{error}</span>
-                        </div>
-                    )}
+                {/* Status message */}
+                {statusMessage && (
+                    <div className="p-3 bg-blue-950/40 border border-blue-800/80 rounded-xl text-xs text-blue-300 flex items-center gap-2 shrink-0">
+                        <RefreshCw className={`w-4 h-4 text-blue-400 shrink-0 ${loading ? "animate-spin" : ""}`} />
+                        <span>{statusMessage}</span>
+                    </div>
+                )}
+
+                {/* Error message */}
+                {error && (
+                    <div className="p-3 bg-red-950/40 border border-red-800 rounded-xl text-xs text-red-300 flex items-center gap-2 shrink-0">
+                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                        <span>{error}</span>
+                    </div>
+                )}
                 </div>
 
                 {/* Footer */}
