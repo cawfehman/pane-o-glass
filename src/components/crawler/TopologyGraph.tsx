@@ -2205,7 +2205,7 @@ export default function TopologyGraph({
                                     opacity={isFaded ? 0.22 : 1}
                                     className={isFaded 
                                         ? "cursor-pointer hover:opacity-75 transition-opacity" 
-                                        : "cursor-pointer transition-transform hover:scale-105"
+                                        : "cursor-pointer group"
                                     }
                                 >
                                     {/* 3D Stack Chassis Under-Layers (StackWise Visualization) */}
@@ -2264,6 +2264,7 @@ export default function TopologyGraph({
                                         stroke={borderColor}
                                         strokeWidth={isSelected || isHop ? 2 : 1.2}
                                         strokeDasharray={borderDash}
+                                        className="transition-all duration-150 group-hover:stroke-blue-400 group-hover:brightness-125"
                                         filter="drop-shadow(0 4px 10px rgba(0,0,0,0.6))"
                                     />
 
