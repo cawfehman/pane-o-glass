@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
 
 export async function GET() {
     try {
@@ -18,6 +19,13 @@ export async function GET() {
                 user: { select: { username: true } }
             }
         });
+
+        // Audit this export action
+        await logAudit(
+            "AUDIT_LOG_EXPORT",
+            `Exported ${logs.length} audit log records to CSV`,
+            session?.user?.id
+        );
 
         // Generate CSV string
         const safeString = (str: string) => str ? `'${str}` : '';

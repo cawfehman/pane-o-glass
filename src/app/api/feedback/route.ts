@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
 
 export async function POST(req: Request) {
     try {
@@ -24,6 +25,14 @@ export async function POST(req: Request) {
                 body: feedbackBody,
             }
         });
+
+        const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0] || "internal";
+        await logAudit(
+            "FEEDBACK_SUBMIT",
+            `Submitted feedback for tool '${tool}': "${subject}"`,
+            session.user?.id,
+            clientIp
+        );
 
         return NextResponse.json(feedback);
     } catch (error) {

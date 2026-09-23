@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/audit";
 
 export function normalizeHostname(h?: string | null): string {
     if (!h) return "";
@@ -46,6 +47,7 @@ export async function POST(request: NextRequest) {
         const excludeFromFailures = body.excludeFromFailures !== undefined ? Boolean(body.excludeFromFailures) : false;
         const ipAddress = body.ipAddress || null;
         const username = session?.user?.name || (session?.user as any)?.username || "admin";
+        const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0] || "internal";
 
         const override = await prisma.crawlerDeviceOverride.upsert({
             where: { hostname: normHost },
@@ -70,6 +72,13 @@ export async function POST(request: NextRequest) {
             }
         });
 
+        await logAudit(
+            "CRAWLER_OVERRIDE_SET",
+            `Configured governance override for device '${normHost}': Tag=${tag}, ExcludeTopology=${excludeFromTopology}, ExcludeFailures=${excludeFromFailures}${reason ? `, Reason: "${reason}"` : ""}`,
+            (session?.user as any)?.id,
+            clientIp
+        );
+
         return NextResponse.json(override);
     } catch (error: any) {
         console.error("Failed to save crawler device override:", error);
@@ -91,9 +100,18 @@ export async function DELETE(request: NextRequest) {
         }
 
         const normHost = normalizeHostname(hostParam);
+        const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0] || "internal";
+
         await prisma.crawlerDeviceOverride.deleteMany({
             where: { hostname: normHost }
         });
+
+        await logAudit(
+            "CRAWLER_OVERRIDE_REMOVE",
+            `Removed governance override for device '${normHost}'`,
+            (session?.user as any)?.id,
+            clientIp
+        );
 
         return NextResponse.json({ success: true, removed: normHost });
     } catch (error: any) {

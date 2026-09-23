@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/app/actions/permissions";
+import { logAudit } from "@/lib/audit";
 
 export async function GET(req: Request) {
     try {
@@ -113,6 +114,14 @@ export async function GET(req: Request) {
         });
 
         const csv = [header.join(","), ...rows].join("\n");
+        const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0] || "internal";
+
+        await logAudit(
+            "FIREWALL_SHUN_EXPORT",
+            `Exported ${rows.length} firewall shun database entries to CSV${search ? ` (Filter: "${search}")` : ""}`,
+            session.user?.id,
+            clientIp
+        );
 
         return new NextResponse(csv, {
             headers: {
