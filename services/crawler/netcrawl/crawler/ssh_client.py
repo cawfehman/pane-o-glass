@@ -86,7 +86,7 @@ def validate_readonly_command(command: str, host: Optional[str] = None) -> None:
 
 
 class CiscoSSHClient:
-    """Manages secure, read-only SSH connections to Cisco IOS devices."""
+    """Manages secure, read-only SSH connections to Cisco IOS and NX-OS devices."""
     
     def __init__(
         self,
@@ -97,6 +97,7 @@ class CiscoSSHClient:
         key_file: Optional[str] = None,
         port: int = 22,
         timeout: int = 15,
+        device_type: Optional[str] = None,
     ):
         self.host = host
         self.username = username
@@ -105,10 +106,11 @@ class CiscoSSHClient:
         self.key_file = key_file
         self.port = port
         self.timeout = timeout
+        self.device_type = device_type
         self.connection = None
 
     def connect(self) -> Tuple[bool, Optional[str]]:
-        """Establish SSH connection to Cisco IOS device with full audit tracking."""
+        """Establish SSH connection to Cisco IOS / NX-OS device with full audit tracking."""
         from netcrawl.audit.logger import get_audit_logger
         audit = get_audit_logger()
         audit.log(
@@ -120,13 +122,15 @@ class CiscoSSHClient:
                 "user": self.username,
                 "auth_method": "key" if self.key_file else "password",
                 "timeout": self.timeout,
+                "device_type": self.device_type or "cisco_ios",
             },
         )
         try:
             from netmiko import ConnectHandler
             
+            target_device_type = self.device_type or "cisco_ios"
             device_params = {
-                "device_type": "cisco_ios",
+                "device_type": target_device_type,
                 "host": self.host,
                 "username": self.username,
                 "password": self.password,
@@ -141,17 +145,37 @@ class CiscoSSHClient:
                 device_params["use_keys"] = True
                 device_params["key_file"] = self.key_file
 
-            self.connection = ConnectHandler(**device_params)
-            
-            # If secret is set, enter enable mode if not already in privilege exec
-            if self.secret and not self.connection.check_enable_mode():
-                self.connection.enable()
+            try:
+                self.connection = ConnectHandler(**device_params)
+            except Exception as initial_exc:
+                err_str = str(initial_exc).lower()
+                # If cisco_ios failed with prompt/driver pattern, attempt cisco_nxos fallback
+                if target_device_type == "cisco_ios" and not ("authentication failed" in err_str or "password" in err_str):
+                    logger.info("Retrying connection to %s using device_type='cisco_nxos'...", self.host)
+                    device_params["device_type"] = "cisco_nxos"
+                    self.connection = ConnectHandler(**device_params)
+                    self.device_type = "cisco_nxos"
+                else:
+                    raise
+
+            # On NX-OS, login is direct privilege 15/network-admin; enable mode does not exist
+            is_nxos = getattr(self.connection, "device_type", "") == "cisco_nxos" or self.device_type == "cisco_nxos"
+            if self.secret and not is_nxos:
+                try:
+                    if not self.connection.check_enable_mode():
+                        self.connection.enable()
+                except Exception as en_err:
+                    en_str = str(en_err).lower()
+                    if "invalid command" in en_str or "syntax error" in en_str or "unrecognized" in en_str:
+                        logger.info("Enable mode unsupported on %s (likely NX-OS); proceeding without enable.", self.host)
+                    else:
+                        raise
                 
             audit.log(
                 event_type="SSH_CONNECT_SUCCESS",
                 severity="INFO",
                 device_ip=self.host,
-                details={"port": self.port, "user": self.username},
+                details={"port": self.port, "user": self.username, "device_type": self.connection.device_type},
             )
             return True, None
         except Exception as exc:

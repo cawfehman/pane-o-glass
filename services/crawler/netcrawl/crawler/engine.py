@@ -120,7 +120,7 @@ class NetworkCrawler:
         has_routed_svi = any(intf.is_svi and intf.ip_address for intf in intfs.values())
         has_multiple_routes = len([r for r in routes if r.next_hop != "DIRECTLY_CONNECTED"]) > 1
 
-        if (has_routed_svi and has_multiple_routes) or any(k in lower_host for k in ["-ds", "swds", "dist", "core-sw"]):
+        if (has_routed_svi and has_multiple_routes) or any(k in lower_host for k in ["-ds", "swds", "dist", "core-sw", "swcs", "nexus", "n9k", "core", "agg"]):
             return DeviceRole.L3_SWITCH
         
         if vlans and not has_multiple_routes:
@@ -146,6 +146,11 @@ class NetworkCrawler:
             or (self.known_peer_desc_by_host.get(pre_known_name.lower()) if pre_known_name else None)
         )
 
+        # Detect if target is Cisco Nexus (NX-OS)
+        device_type = None
+        if pre_known_platform and any(k in pre_known_platform.lower() for k in ["nexus", "n9k", "n7k", "n5k", "n3k", "nx-os", "nxos"]):
+            device_type = "cisco_nxos"
+
         # Select client (Mock or real SSH)
         if self.use_mock:
             client = MockSSHClient(host=target_ip)
@@ -158,6 +163,7 @@ class NetworkCrawler:
                 key_file=self.key_file,
                 port=self.port,
                 timeout=self.ssh_timeout,
+                device_type=device_type,
             )
 
         t_auth_start = time.time()
@@ -180,6 +186,7 @@ class NetworkCrawler:
                             key_file=fallback.get("key_file"),
                             port=fallback.get("port", self.port),
                             timeout=self.ssh_timeout,
+                            device_type=device_type,
                         )
                         fb_t_start = time.time()
                         fb_success, fb_err = fb_client.connect()
@@ -240,10 +247,12 @@ class NetworkCrawler:
         out_arp = ""
 
         try:
-            # Send terminal settings safely (whitelist verified)
             try:
                 client.send_command("terminal length 0")
-                client.send_command("terminal width 512")
+            except Exception:
+                pass
+            try:
+                client.send_command("terminal width 511")
             except Exception:
                 pass
 

@@ -42,6 +42,8 @@ def normalize_interface(name: str) -> str:
         return f"Vlan{port_id}"
     if prefix in ["lo", "loopback"]:
         return f"Loopback{port_id}"
+    if prefix in ["mgmt", "management"]:
+        return f"mgmt{port_id}"
     return name
 
 
@@ -101,7 +103,7 @@ def parse_site_info(hostname: str, pattern: Optional[str] = None) -> Optional[Si
 
 
 def parse_version(output: str) -> Dict[str, Any]:
-    """Parse 'show version' output for hostname, platform, OS version, and serial number."""
+    """Parse 'show version' output for hostname, platform, OS version, and serial number across Cisco IOS and NX-OS."""
     info: Dict[str, Any] = {
         "hostname": None,
         "platform": None,
@@ -109,65 +111,90 @@ def parse_version(output: str) -> Dict[str, Any]:
         "serial_number": None,
     }
     
-    # OS Version
-    ver_match = re.search(
-        r"(?:Cisco IOS Software|IOS \(tm\)|Version)\s+([^\n,]+),?\s+(?:Version\s+)?([0-9a-zA-Z\.\(\):]+)",
-        output,
-        re.IGNORECASE,
-    )
-    if ver_match:
-        info["os_version"] = f"{ver_match.group(1).strip()} {ver_match.group(2).strip()}"
+    # OS Version (IOS / IOS-XE / NX-OS)
+    nx_ver = re.search(r"(?:NX-OS|system):\s*version\s*([0-9a-zA-Z\.\(\):]+)", output, re.IGNORECASE)
+    if nx_ver:
+        info["os_version"] = f"NX-OS {nx_ver.group(1).strip()}"
     else:
-        ver_alt = re.search(r"Version\s+([0-9a-zA-Z\.\(\):]+)", output, re.IGNORECASE)
-        if ver_alt:
-            info["os_version"] = ver_alt.group(1).strip()
+        ver_match = re.search(
+            r"(?:Cisco IOS Software|IOS \(tm\))\s+([^\n,]+),?\s+(?:Version\s+)?([0-9a-zA-Z\.\(\):]+)",
+            output,
+            re.IGNORECASE,
+        )
+        if ver_match:
+            info["os_version"] = f"{ver_match.group(1).strip()} {ver_match.group(2).strip()}"
+        else:
+            ver_alt = re.search(r"Version\s+([0-9a-zA-Z\.\(\):]+)", output, re.IGNORECASE)
+            if ver_alt:
+                info["os_version"] = ver_alt.group(1).strip()
 
-    # Platform/Model
-    model_match = re.search(
-        r"(?:cisco|Model number|System Serial Number:)\s*[:\s]?\s*(WS-C[0-9a-zA-Z-]+|C[0-9a-zA-Z-]+|ISR[0-9a-zA-Z-]+|ASR[0-9a-zA-Z-]+|CSR[0-9a-zA-Z-]+|[0-9]{4})",
+    # Platform/Model (IOS: WS-C..., C9..., ISR...; NX-OS: Nexus 9000, N9K-..., Nexus...)
+    nexus_match = re.search(
+        r"(?:cisco\s+)?(Nexus\s*[0-9]{3,5}[A-Za-z0-9\-]*(?:\s+[0-9a-zA-Z\-]+)?|N[3579]K-[0-9a-zA-Z-]+)\s*(?:Chassis)?",
         output,
         re.IGNORECASE,
     )
-    if model_match:
-        info["platform"] = model_match.group(1).strip()
+    if nexus_match:
+        info["platform"] = f"cisco {nexus_match.group(1).strip()}"
+    else:
+        model_match = re.search(
+            r"(?:cisco|Model number|System Serial Number:)\s*[:\s]?\s*(WS-C[0-9a-zA-Z-]+|C[0-9a-zA-Z-]+|ISR[0-9a-zA-Z-]+|ASR[0-9a-zA-Z-]+|CSR[0-9a-zA-Z-]+|[0-9]{4})",
+            output,
+            re.IGNORECASE,
+        )
+        if model_match:
+            info["platform"] = model_match.group(1).strip()
 
     # Serial Number
     serial_match = re.search(
-        r"(?:System Serial Number|Processor board ID|System serial number)\s*[:=]\s*([A-Za-z0-9]+)",
+        r"(?:System Serial Number|Processor board ID|System serial number|Chassis ID)\s*[:=]?\s*([A-Za-z0-9]+)",
         output,
         re.IGNORECASE,
     )
     if serial_match:
         info["serial_number"] = serial_match.group(1).strip()
 
-    # Hostname (e.g. "Router uptime is...", "101-mdf-swcs-1 uptime is...")
-    host_match = re.search(r"^([a-zA-Z0-9\-_]+)\s+uptime\s+is", output, re.MULTILINE | re.IGNORECASE)
-    if host_match:
-        info["hostname"] = host_match.group(1).strip()
+    # Hostname (IOS: "Router uptime is...", NX-OS: "Device name: switch-01", "Host Name: switch-01")
+    nx_host_match = re.search(r"(?:Device name|Host\s*Name)\s*:\s*([a-zA-Z0-9\-_]+)", output, re.IGNORECASE)
+    if nx_host_match:
+        info["hostname"] = nx_host_match.group(1).strip()
+    else:
+        host_match = re.search(r"^([a-zA-Z0-9\-_]+)\s+uptime\s+is", output, re.MULTILINE | re.IGNORECASE)
+        if host_match:
+            info["hostname"] = host_match.group(1).strip()
 
     return info
 
 
 def parse_ip_interface_brief(output: str) -> Dict[str, Interface]:
-    """Parse 'show ip interface brief'."""
+    """Parse 'show ip interface brief' for both Cisco IOS and NX-OS."""
     interfaces: Dict[str, Interface] = {}
     lines = output.splitlines()
     for line in lines:
         line = line.strip()
-        if not line or line.startswith("Interface") or line.startswith("---"):
+        if not line or line.startswith("Interface") or line.startswith("---") or line.startswith("IP Interface Status"):
             continue
         parts = line.split()
-        if len(parts) >= 5:
+        if len(parts) >= 3:
             raw_name = parts[0]
             norm_name = normalize_interface(raw_name)
-            ip_addr = parts[1] if parts[1].lower() != "unassigned" else None
-            # Last two columns are Status and Protocol
-            # "administratively down down" is 3 words, handle gracefully
-            if "administratively down" in line.lower():
-                admin_status = "administratively down"
-                oper_status = parts[-1].lower()
+            ip_addr = parts[1] if parts[1].lower() not in ["unassigned", "--"] else None
+            
+            # Check for NX-OS format: "protocol-up/link-up/admin-up"
+            status_candidate = parts[-1].lower()
+            if "/" in status_candidate and ("up" in status_candidate or "down" in status_candidate):
+                admin_status = "administratively down" if "admin-down" in status_candidate else "up"
+                oper_status = "up" if ("link-up" in status_candidate or "protocol-up" in status_candidate) else "down"
+            elif len(parts) >= 5:
+                # Cisco IOS format
+                if "administratively down" in line.lower():
+                    admin_status = "administratively down"
+                    oper_status = parts[-1].lower()
+                else:
+                    admin_status = parts[-2].lower()
+                    oper_status = parts[-1].lower()
             else:
-                admin_status = parts[-2].lower()
+                admin_status = parts[-1].lower()
                 oper_status = parts[-1].lower()
             
             is_svi = norm_name.lower().startswith("vlan")
@@ -246,11 +273,13 @@ def parse_interfaces_detail(output: str, current_interfaces: Dict[str, Interface
 
 
 def parse_interfaces_description(output: str, current_interfaces: Dict[str, Interface]) -> Dict[str, Interface]:
-    """Parse 'show interfaces description' to extract interface descriptions."""
+    """Parse 'show interfaces description' across Cisco IOS and NX-OS formats."""
     for line in output.splitlines():
         line = line.strip()
-        if not line or line.startswith("Interface") or line.startswith("---"):
+        if not line or line.startswith("Interface") or line.startswith("Port") or line.startswith("---") or line.startswith("=="):
             continue
+
+        # 1. IOS format: GigabitEthernet1/0/1 up up Description text
         m = re.match(
             r"^([A-Za-z0-9\/\.\-]+)\s+(up|down|admin down|administratively down)\s+(up|down)\s*(.*)$",
             line,
@@ -274,33 +303,66 @@ def parse_interfaces_description(output: str, current_interfaces: Dict[str, Inte
                     oper_status=oper_st,
                     is_svi=norm_name.lower().startswith("vlan"),
                 )
+            continue
+
+        # 2. NX-OS format:
+        # Port          Type   Speed    Description
+        # mgmt0         --     --       OOB-MGMT
+        # Eth1/1        eth    10G      TRUNK-TO-CORE-01
+        # Po1           eth    40G      VPC-PEER-LINK
+        # OR:
+        # Port          Status Description
+        # Eth1/1        up     TRUNK-TO-CORE-01
+        nx_match = re.match(
+            r"^([A-Za-z0-9\/\.\-]+)\s+(?:(?:eth|fc|--|[0-9]+[GMK]?)\s+(?:[0-9]+[GMK]?|auto|--)\s+|up\s+|down\s+)(.+)$",
+            line,
+            re.IGNORECASE,
+        )
+        if nx_match:
+            raw_name = nx_match.group(1)
+            norm_name = normalize_interface(raw_name)
+            desc = nx_match.group(2).strip()
+            if desc in ["--", "none"]:
+                desc = None
+            if norm_name in current_interfaces:
+                if desc:
+                    current_interfaces[norm_name].description = desc
+            else:
+                current_interfaces[norm_name] = Interface(
+                    name=norm_name,
+                    description=desc,
+                    admin_status="up",
+                    oper_status="up",
+                    is_svi=norm_name.lower().startswith("vlan"),
+                )
+
     return current_interfaces
 
 
 
 def parse_switchport_or_trunk(output: str, interfaces: Dict[str, Interface]) -> Dict[str, Interface]:
-    """Parse 'show interfaces switchport' or 'show interfaces trunk' to determine trunk/access mode."""
-    # Check if 'show interfaces trunk' format
-    if "Port" in output and "Mode" in output and "Encapsulation" in output:
+    """Parse 'show interfaces switchport' or 'show interfaces trunk' to determine trunk/access mode for IOS and NX-OS."""
+    # Check if 'show interfaces trunk' format (IOS: Port Mode Encapsulation; NX-OS: Port Native Vlan Status)
+    if "Port" in output and ("Mode" in output or "Native" in output or "trunking" in output.lower()):
         # Trunk output format
         in_trunk_table = False
         in_allowed_table = False
         allowed_map: Dict[str, str] = {}
         for line in output.splitlines():
             line = line.strip()
-            if not line:
+            if not line or line.startswith("---") or line.startswith("=="):
                 continue
-            if line.startswith("Port") and "Mode" in line:
+            if line.startswith("Port") and ("Mode" in line or "Native" in line or "Status" in line):
                 in_trunk_table = True
                 in_allowed_table = False
                 continue
-            if line.startswith("Port") and "Vlans allowed on trunk" in line:
+            if line.startswith("Port") and re.search(r"Vlans allowed on trunk", line, re.IGNORECASE):
                 in_trunk_table = False
                 in_allowed_table = True
                 continue
             if in_trunk_table:
                 parts = line.split()
-                if len(parts) >= 4 and parts[1].lower() in ["on", "desirable", "auto"]:
+                if len(parts) >= 2 and (any(m in line.lower() for m in ["on", "desirable", "auto", "trunking"])):
                     norm_name = normalize_interface(parts[0])
                     if norm_name in interfaces:
                         interfaces[norm_name].is_trunk = True
@@ -323,7 +385,7 @@ def parse_switchport_or_trunk(output: str, interfaces: Dict[str, Interface]) -> 
             mode_match = re.search(r"Administrative Mode:\s+(.*)", block)
             oper_mode_match = re.search(r"Operational Mode:\s+(.*)", block)
             access_vlan_match = re.search(r"Access Mode VLAN:\s+([0-9]+)", block)
-            trunk_vlans_match = re.search(r"Trunking VLANs Enabled:\s+(.*)", block)
+            trunk_vlans_match = re.search(r"Trunking VLANs (?:Enabled|Allowed):\s+(.*)", block, re.IGNORECASE)
             
             mode_str = (oper_mode_match.group(1) if oper_mode_match else (mode_match.group(1) if mode_match else "")).lower()
             is_trunk = "trunk" in mode_str
