@@ -204,6 +204,9 @@ export default function TopologyGraph({
     const [fadedNodes, setFadedNodes] = useState<Set<string>>(new Set());
     const [clickMode, setClickMode] = useState<"inspect" | "fade">("inspect");
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [showAllLinks, setShowAllLinks] = useState(false); // Clean up links: OFF by default
+    const [visibleUplinkSites, setVisibleUplinkSites] = useState<Set<string>>(new Set());
+    const [visibleUplinkIdfs, setVisibleUplinkIdfs] = useState<Set<string>>(new Set());
 
     const svgContainerRef = useRef<HTMLDivElement>(null);
     const viewportRef = useRef<SVGGElement>(null);
@@ -332,6 +335,18 @@ export default function TopologyGraph({
         }
         return Array.from(map.values());
     }, [devices]);
+
+    // Fast lookup for device -> { site, idf }
+    const deviceLocationMap = useMemo(() => {
+        const map = new Map<string, { site: string; idf: string }>();
+        for (const dev of unifiedDevices) {
+            const canon = dev.canonicalHostname || getCanonicalHostname(dev.hostname);
+            const { site, idf } = parseDeviceSiteAndIdf(dev.hostname, dev.site, dev.idf);
+            map.set(canon, { site, idf });
+            map.set(dev.hostname, { site, idf });
+        }
+        return map;
+    }, [unifiedDevices]);
 
     // 2. Unify links: Map source & target to canonical hostnames & remove self-loops
     const unifiedLinks = useMemo(() => {
@@ -637,6 +652,25 @@ export default function TopologyGraph({
 
     const expandAllIdfs = () => {
         setCollapsedIdfs(new Set());
+    };
+
+    const toggleSiteUplinks = (siteCode: string) => {
+        setVisibleUplinkSites(prev => {
+            const next = new Set(prev);
+            if (next.has(siteCode)) next.delete(siteCode);
+            else next.add(siteCode);
+            return next;
+        });
+    };
+
+    const toggleIdfUplinks = (siteCode: string, idfCode: string) => {
+        const key = `${siteCode}::${idfCode}`;
+        setVisibleUplinkIdfs(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
     };
 
     // Group parallel links between the same pairs of devices into Link Bundles (Port Channels / LAG)
@@ -1373,6 +1407,39 @@ export default function TopologyGraph({
 
                 <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
 
+                {/* Master Links Clean-Up Toggle (OFF by default) */}
+                <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+                    <button
+                        type="button"
+                        onClick={() => setShowAllLinks(prev => !prev)}
+                        className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                            showAllLinks 
+                                ? "bg-cyan-600 text-white shadow-sm" 
+                                : "text-slate-400 hover:text-slate-200"
+                        }`}
+                        title={showAllLinks ? "Hide all links (clean clutter-free mode)" : "Show all topology links across the entire diagram"}
+                    >
+                        <Cable className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>All Links: <strong className={showAllLinks ? "text-white" : "text-slate-400"}>{showAllLinks ? "ON" : "OFF"}</strong></span>
+                    </button>
+                    {(visibleUplinkSites.size > 0 || visibleUplinkIdfs.size > 0) && !showAllLinks && (
+                        <div className="flex items-center gap-1 pl-1.5 pr-1 text-[10px] text-cyan-300 font-mono border-l border-slate-800">
+                            <span>{visibleUplinkSites.size + visibleUplinkIdfs.size} active</span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setVisibleUplinkSites(new Set());
+                                    setVisibleUplinkIdfs(new Set());
+                                }}
+                                className="text-slate-400 hover:text-white underline cursor-pointer ml-0.5"
+                                title="Hide all selective uplinks"
+                            >
+                                Clear
+                            </button>
+                        </div>
+                    )}
+                </div>
+
                 {/* Click / Dim Mode Controls */}
                 <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
                     <button
@@ -1716,6 +1783,19 @@ export default function TopologyGraph({
                                             >
                                                 Only
                                             </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleSiteUplinks(site.siteCode)}
+                                                className={`px-1.5 py-0.2 rounded text-[10px] font-semibold transition cursor-pointer flex items-center gap-0.5 ${
+                                                    visibleUplinkSites.has(site.siteCode)
+                                                        ? "bg-cyan-600/30 text-cyan-300 border border-cyan-500/40"
+                                                        : "bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200"
+                                                }`}
+                                                title={`Toggle uplinks for site ${site.siteCode}`}
+                                            >
+                                                <Cable className="w-2.5 h-2.5" />
+                                                <span>Uplinks</span>
+                                            </button>
                                         </div>
                                     </div>
 
@@ -1783,6 +1863,19 @@ export default function TopologyGraph({
                                                                     title="Isolate this floor only"
                                                                 >
                                                                     Only
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleIdfUplinks(site.siteCode, floor.idfCode)}
+                                                                    className={`px-1 py-0.2 rounded text-[9px] font-semibold transition cursor-pointer flex items-center gap-0.5 ${
+                                                                        visibleUplinkIdfs.has(`${site.siteCode}::${floor.idfCode}`)
+                                                                            ? "bg-cyan-600/30 text-cyan-300 border border-cyan-500/40"
+                                                                            : "bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200"
+                                                                    }`}
+                                                                    title={`Toggle uplinks for floor ${floor.idfCode}`}
+                                                                >
+                                                                    <Cable className="w-2.5 h-2.5" />
+                                                                    <span>Uplinks</span>
                                                                 </button>
                                                             </div>
                                                         </div>
@@ -1928,6 +2021,38 @@ export default function TopologyGraph({
                                         <text x={site.x + 14} y={site.y + 24} fill="#ffffff" fontSize={11.5} fontWeight="bold" fontFamily="monospace">
                                             SITE: {site.siteCode} {site.siteName ? `• ${site.siteName}` : ""}
                                         </text>
+                                        {/* Uplinks Toggle Button on Collapsed Site */}
+                                        <g
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleSiteUplinks(site.siteCode);
+                                            }}
+                                            className="cursor-pointer hover:opacity-95 transition"
+                                            transform={`translate(${site.x + site.width - 92}, ${site.y + 11})`}
+                                            title={`Toggle WAN/core uplinks for site ${site.siteCode}`}
+                                        >
+                                            <rect
+                                                x={0}
+                                                y={0}
+                                                width={62}
+                                                height={18}
+                                                rx={4}
+                                                fill={visibleUplinkSites.has(site.siteCode) ? "rgba(56, 189, 248, 0.3)" : "rgba(148, 163, 184, 0.12)"}
+                                                stroke={visibleUplinkSites.has(site.siteCode) ? "#38bdf8" : "rgba(148, 163, 184, 0.3)"}
+                                                strokeWidth={0.8}
+                                            />
+                                            <text
+                                                x={31}
+                                                y={12.5}
+                                                fill={visibleUplinkSites.has(site.siteCode) ? "#38bdf8" : "#94a3b8"}
+                                                fontSize={9}
+                                                fontWeight="bold"
+                                                textAnchor="middle"
+                                            >
+                                                {visibleUplinkSites.has(site.siteCode) ? "✓ Uplinks" : "+ Uplinks"}
+                                            </text>
+                                        </g>
+
                                         {/* Expand Chevron Icon Badge */}
                                         <g transform={`translate(${site.x + site.width - 24}, ${site.y + 12})`}>
                                             <circle cx={6} cy={6} r={8} fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth={0.8} />
@@ -1972,9 +2097,41 @@ export default function TopologyGraph({
                                             )}
                                         </text>
 
-                                        <text x={site.width - 56} y={12} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
+                                        <text x={site.width - 128} y={12} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
                                             {site.deviceCount} {site.deviceCount === 1 ? "device" : "devices"} • {site.idfs.length} {site.idfs.length === 1 ? "IDF" : "IDFs"}
                                         </text>
+
+                                        {/* Site Uplinks Toggle Button */}
+                                        <g
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleSiteUplinks(site.siteCode);
+                                            }}
+                                            className="cursor-pointer hover:opacity-95 transition"
+                                            transform={`translate(${site.width - 120}, -3)`}
+                                            title={`Toggle all directly connected uplinks for site ${site.siteCode}`}
+                                        >
+                                            <rect
+                                                x={0}
+                                                y={0}
+                                                width={66}
+                                                height={20}
+                                                rx={5}
+                                                fill={visibleUplinkSites.has(site.siteCode) ? "rgba(56, 189, 248, 0.3)" : "rgba(148, 163, 184, 0.12)"}
+                                                stroke={visibleUplinkSites.has(site.siteCode) ? "#38bdf8" : "rgba(148, 163, 184, 0.3)"}
+                                                strokeWidth={0.8}
+                                            />
+                                            <text
+                                                x={33}
+                                                y={13.5}
+                                                fill={visibleUplinkSites.has(site.siteCode) ? "#38bdf8" : "#94a3b8"}
+                                                fontSize={9.5}
+                                                fontWeight="bold"
+                                                textAnchor="middle"
+                                            >
+                                                {visibleUplinkSites.has(site.siteCode) ? "✓ Uplinks" : "+ Uplinks"}
+                                            </text>
+                                        </g>
 
                                         {/* Collapse Site Button */}
                                         <g
@@ -1984,6 +2141,7 @@ export default function TopologyGraph({
                                             }}
                                             className="cursor-pointer hover:opacity-80 transition"
                                             transform={`translate(${site.width - 46}, -3)`}
+                                            title={`Collapse site ${site.siteCode}`}
                                         >
                                             <rect x={0} y={0} width={20} height={20} rx={5} fill="rgba(148, 163, 184, 0.12)" stroke="rgba(148, 163, 184, 0.3)" strokeWidth={0.8} />
                                             <text x={10} y={13.5} fill="#94a3b8" fontSize={13} fontWeight="bold" textAnchor="middle">
@@ -1994,6 +2152,8 @@ export default function TopologyGraph({
 
                                     {/* 2. RENDER NESTED IDF CONTAINERS */}
                                     {site.idfs.map((idf) => {
+                                        const isIdfUplinksOn = visibleUplinkIdfs.has(`${site.siteCode}::${idf.idfCode}`);
+
                                         if (idf.isCollapsed) {
                                             return (
                                                 <g
@@ -2019,6 +2179,38 @@ export default function TopologyGraph({
                                                     <text x={idf.x + 12} y={idf.y + 36} fill="#38bdf8" fontSize={9} fontWeight="bold">
                                                         CLICK TO EXPAND ▾
                                                     </text>
+
+                                                    {/* IDF Uplinks Toggle Button */}
+                                                    <g
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleIdfUplinks(site.siteCode, idf.idfCode);
+                                                        }}
+                                                        className="cursor-pointer hover:opacity-95 transition"
+                                                        transform={`translate(${idf.x + idf.width - 74}, ${idf.y + 14})`}
+                                                        title={`Toggle uplinks for IDF ${idf.idfCode}`}
+                                                    >
+                                                        <rect
+                                                            x={0}
+                                                            y={0}
+                                                            width={62}
+                                                            height={20}
+                                                            rx={4}
+                                                            fill={isIdfUplinksOn ? "rgba(56, 189, 248, 0.3)" : "rgba(148, 163, 184, 0.12)"}
+                                                            stroke={isIdfUplinksOn ? "#38bdf8" : "rgba(148, 163, 184, 0.3)"}
+                                                            strokeWidth={0.8}
+                                                        />
+                                                        <text
+                                                            x={31}
+                                                            y={13.5}
+                                                            fill={isIdfUplinksOn ? "#38bdf8" : "#94a3b8"}
+                                                            fontSize={9.5}
+                                                            fontWeight="bold"
+                                                            textAnchor="middle"
+                                                        >
+                                                            {isIdfUplinksOn ? "✓ Uplinks" : "+ Uplinks"}
+                                                        </text>
+                                                    </g>
                                                 </g>
                                             );
                                         }
@@ -2045,9 +2237,41 @@ export default function TopologyGraph({
                                                     <text x={24} y={10} fill="#cbd5e1" fontSize={11} fontWeight="bold" fontFamily="monospace">
                                                         {idf.floorLabel ? `${idf.floorLabel} • ` : ""}IDF: {idf.idfCode}
                                                     </text>
-                                                    <text x={idf.width - 50} y={10} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
+                                                    <text x={idf.width - 128} y={10} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
                                                         ({idf.deviceCount})
                                                     </text>
+
+                                                    {/* IDF Uplinks Toggle Button */}
+                                                    <g
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleIdfUplinks(site.siteCode, idf.idfCode);
+                                                        }}
+                                                        className="cursor-pointer hover:opacity-95 transition"
+                                                        transform={`translate(${idf.width - 120}, -3)`}
+                                                        title={`Toggle uplinks for IDF ${idf.idfCode}`}
+                                                    >
+                                                        <rect
+                                                            x={0}
+                                                            y={0}
+                                                            width={62}
+                                                            height={20}
+                                                            rx={4}
+                                                            fill={isIdfUplinksOn ? "rgba(56, 189, 248, 0.3)" : "rgba(148, 163, 184, 0.12)"}
+                                                            stroke={isIdfUplinksOn ? "#38bdf8" : "rgba(148, 163, 184, 0.3)"}
+                                                            strokeWidth={0.8}
+                                                        />
+                                                        <text
+                                                            x={31}
+                                                            y={13.5}
+                                                            fill={isIdfUplinksOn ? "#38bdf8" : "#94a3b8"}
+                                                            fontSize={9.5}
+                                                            fontWeight="bold"
+                                                            textAnchor="middle"
+                                                        >
+                                                            {isIdfUplinksOn ? "✓ Uplinks" : "+ Uplinks"}
+                                                        </text>
+                                                    </g>
 
                                                     {/* Collapse IDF Button */}
                                                     <g
@@ -2082,6 +2306,26 @@ export default function TopologyGraph({
                                 hl => (hl.from === bundle.sourceDevice && hl.to === bundle.targetDevice) ||
                                       (hl.from === bundle.targetDevice && hl.to === bundle.sourceDevice)
                             );
+
+                            const selectedCanon = selectedDevice ? (selectedDevice.canonicalHostname || getCanonicalHostname(selectedDevice.hostname)) : null;
+                            const isDirectlyConnectedToSelected = Boolean(
+                                selectedCanon && (bundle.sourceDevice === selectedCanon || bundle.targetDevice === selectedCanon)
+                            );
+
+                            const srcLoc = deviceLocationMap.get(bundle.sourceDevice);
+                            const tgtLoc = deviceLocationMap.get(bundle.targetDevice);
+                            const isSiteUplinkActive = Boolean(
+                                (srcLoc && visibleUplinkSites.has(srcLoc.site)) ||
+                                (tgtLoc && visibleUplinkSites.has(tgtLoc.site))
+                            );
+                            const isIdfUplinkActive = Boolean(
+                                (srcLoc && visibleUplinkIdfs.has(`${srcLoc.site}::${srcLoc.idf}`)) ||
+                                (tgtLoc && visibleUplinkIdfs.has(`${tgtLoc.site}::${tgtLoc.idf}`))
+                            );
+
+                            // Selective Uplink Visibility: off by default unless global toggle is ON or uplink is toggled
+                            const isLinkVisible = showAllLinks || isHighlighted || isDirectlyConnectedToSelected || isSiteUplinkActive || isIdfUplinkActive;
+                            if (!isLinkVisible) return null;
 
                             const isUnverified = bundle.status === "UNVERIFIED";
                             const isDown = bundle.status === "DOWN";

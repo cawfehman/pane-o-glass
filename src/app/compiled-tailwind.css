@@ -2459,6 +2459,12 @@
   .bg-cyan-600 {
     background-color: var(--color-cyan-600);
   }
+  .bg-cyan-600\/30 {
+    background-color: color-mix(in srgb, oklch(60.9% 0.126 221.723) 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-cyan-600) 30%, transparent);
+    }
+  }
   .bg-cyan-950\/50 {
     background-color: color-mix(in srgb, oklch(30.2% 0.056 229.695) 50%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -3245,6 +3251,9 @@
   }
   .pl-1 {
     padding-left: var(--spacing);
+  }
+  .pl-1\.5 {
+    padding-left: calc(var(--spacing) * 1.5);
   }
   .pl-2 {
     padding-left: calc(var(--spacing) * 2);
@@ -4855,6 +4864,9 @@
     }
     .hover\:opacity-90:hover {
       opacity: 90%;
+    }
+    .hover\:opacity-95:hover {
+      opacity: 95%;
     }
     .hover\:opacity-100:hover {
       opacity: 100%;
