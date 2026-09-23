@@ -79,3 +79,56 @@ def test_security_violation_audited(tmp_path, monkeypatch):
     assert len(events) == 1
     assert events[0]["severity"] == "SECURITY_ALERT"
     assert events[0]["details"]["command"] == "configure terminal"
+
+
+def test_concurrent_audit_logging_no_lock(tmp_path):
+    """Verify that multiple concurrent threads can log audit records simultaneously without SQLite lock errors."""
+    import concurrent.futures
+
+    db_file = tmp_path / "concurrent_audit.db"
+    log_dir = tmp_path / "logs"
+    audit = AuditLogger(db_path=str(db_file), log_dir=str(log_dir))
+
+    def worker(worker_id: int):
+        for i in range(10):
+            audit.log(
+                event_type="WORKER_EVENT",
+                severity="INFO",
+                device_ip=f"10.0.0.{worker_id}",
+                hostname=f"sw-{worker_id}",
+                details={"step": i},
+            )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        futures = [executor.submit(worker, w) for w in range(20)]
+        for f in futures:
+            f.result()
+
+    events = audit.get_events(limit=500)
+    assert len(events) == 200
+
+
+def test_disabled_sqlite_mode(tmp_path, monkeypatch):
+    """Verify that NETCRAWL_DISABLE_SQLITE bypasses SQLite completely while preserving JSONL logging."""
+    monkeypatch.setenv("NETCRAWL_DISABLE_SQLITE", "1")
+    db_file = tmp_path / "should_not_exist.db"
+    log_dir = tmp_path / "logs"
+    audit = AuditLogger(db_path=str(db_file), log_dir=str(log_dir))
+
+    audit.log(
+        event_type="BYPASS_TEST",
+        severity="INFO",
+        details={"test": True},
+    )
+
+    # SQLite file should not even be created
+    assert not db_file.exists()
+    assert audit.disabled_sqlite is True
+    assert audit.get_events() == []
+
+    # JSONL file should still exist and record the event
+    assert audit.audit_file.exists()
+    lines = audit.audit_file.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1
+    assert "BYPASS_TEST" in lines[0]
+

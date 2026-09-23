@@ -263,7 +263,8 @@ export async function POST(request: NextRequest) {
             PYTHONPATH: crawlerDir,
             PYTHONUNBUFFERED: "1",
             PYTHONIOENCODING: "utf-8",
-            NO_COLOR: "1" // Disable ANSI escape sequences for pure clean streaming logs
+            NO_COLOR: "1", // Disable ANSI escape sequences for pure clean streaming logs
+            NETCRAWL_DISABLE_SQLITE: "1" // Rely 100% on PostgreSQL, avoid redundant SQLite disk writes during web crawls
         };
         if (body.username) customEnv.NETCRAWL_USER = String(body.username).trim();
         if (body.password) customEnv.NETCRAWL_PASS = String(body.password);

@@ -1,28 +1,47 @@
 """Structured audit and compliance logging engine for NetCrawl."""
 
 from __future__ import annotations
+import atexit
 from datetime import datetime
 import json
 import logging
+import os
 from pathlib import Path
+import queue
 import sqlite3
+import threading
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("netcrawl.audit")
 
 
 class AuditLogger:
-    """Manages structured JSON-Lines audit trails, raw command archives, and SQLite audit tables."""
+    """Manages structured JSON-Lines audit trails, raw command archives, and SQLite audit tables with async queue serialization."""
 
     def __init__(self, db_path: str = "data/crawler.db", log_dir: str = "logs"):
         self.db_path = Path(db_path)
         self.log_dir = Path(log_dir)
         self.audit_file = self.log_dir / "audit.jsonl"
         self.raw_responses_dir = self.log_dir / "raw_responses"
+        self.disabled_sqlite = os.getenv("NETCRAWL_DISABLE_SQLITE", "").lower() in ("1", "true", "yes")
 
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.raw_responses_dir.mkdir(parents=True, exist_ok=True)
-        self._init_audit_table()
+
+        if not self.disabled_sqlite:
+            self._init_audit_table()
+            self._queue: Optional[queue.Queue] = queue.Queue()
+            self._stop_event = threading.Event()
+            self._worker: Optional[threading.Thread] = threading.Thread(
+                target=self._sqlite_worker, 
+                daemon=True, 
+                name="AuditLoggerWorker"
+            )
+            self._worker.start()
+            atexit.register(self.close)
+        else:
+            self._queue = None
+            self._worker = None
 
     def _get_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self.db_path), timeout=60.0)
@@ -56,6 +75,46 @@ class AuditLogger:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_audit_host ON audit_events(hostname);")
             conn.commit()
 
+    def _sqlite_worker(self) -> None:
+        """Dedicated background writer thread to serialize all SQLite writes with zero lock contention."""
+        conn = None
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            while True:
+                try:
+                    item = self._queue.get(timeout=0.2)
+                except queue.Empty:
+                    if self._stop_event.is_set():
+                        break
+                    continue
+
+                if item is None:
+                    self._queue.task_done()
+                    break
+
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO audit_events (timestamp, event_type, severity, device_ip, hostname, initiator, details_json)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        item,
+                    )
+                    conn.commit()
+                except Exception as exc:
+                    logger.error(f"Failed to record audit event to SQLite: {exc}")
+                finally:
+                    self._queue.task_done()
+        except Exception as exc:
+            logger.error(f"Audit logger worker encountered an error: {exc}")
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
     def log(
         self,
         event_type: str,
@@ -65,25 +124,17 @@ class AuditLogger:
         initiator: str = "system",
         details: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Record an audit event to SQLite, JSON-Lines file, and system logger."""
+        """Record an audit event to SQLite (non-blocking queue), JSON-Lines file, and system logger."""
         ts = datetime.now().isoformat()
         details_dict = details or {}
         details_str = json.dumps(details_dict)
 
-        # 1. SQLite record
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    INSERT INTO audit_events (timestamp, event_type, severity, device_ip, hostname, initiator, details_json)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (ts, event_type, severity, device_ip, hostname, initiator, details_str),
-                )
-                conn.commit()
-        except Exception as exc:
-            logger.error(f"Failed to record audit event to SQLite: {exc}")
+        # 1. SQLite record (via non-blocking asynchronous queue to eliminate thread contention)
+        if not self.disabled_sqlite and self._queue is not None:
+            try:
+                self._queue.put_nowait((ts, event_type, severity, device_ip, hostname, initiator, details_str))
+            except Exception as exc:
+                logger.error(f"Failed to enqueue audit event: {exc}")
 
         # 2. JSON-Lines audit log file (append-only)
         audit_entry = {
@@ -109,6 +160,19 @@ class AuditLogger:
             logger.warning(log_msg)
         else:
             logger.info(log_msg)
+
+    def flush(self) -> None:
+        """Wait for all pending in-memory audit logs to be flushed to SQLite."""
+        if self._queue is not None:
+            self._queue.join()
+
+    def close(self) -> None:
+        """Drain queue and safely terminate background SQLite worker."""
+        if self._worker is not None and self._worker.is_alive():
+            self.flush()
+            self._stop_event.set()
+            self._queue.put(None)
+            self._worker.join(timeout=3.0)
 
     def archive_command_response(
         self,
@@ -148,6 +212,12 @@ class AuditLogger:
         severity: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Query audit log events from SQLite with optional filtering."""
+        if self.disabled_sqlite:
+            return []
+
+        # Flush any pending async writes before querying
+        self.flush()
+
         query = "SELECT * FROM audit_events WHERE 1=1"
         params: List[Any] = []
 
