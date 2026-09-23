@@ -30,6 +30,7 @@ import DeviceInspectorDrawer from "@/components/crawler/DeviceInspectorDrawer";
 import PathTracerPanel from "@/components/crawler/PathTracerPanel";
 import FailureInvestigationTable from "@/components/crawler/FailureInvestigationTable";
 import CrawlModal from "@/components/crawler/CrawlModal";
+import ToolHelp from "@/components/ToolHelp";
 
 export default function AdminCrawlerPage() {
     const { data: session, status } = useSession();
@@ -303,6 +304,11 @@ export default function AdminCrawlerPage() {
                         <Play className="w-3.5 h-3.5 fill-current" />
                         Run Crawl
                     </button>
+
+                    {/* Tool Help Guide Modal */}
+                    <div className="flex items-center pl-1 border-l border-slate-800">
+                        <ToolHelp toolId="crawler" iconSize={16} />
+                    </div>
                 </div>
             </div>
 

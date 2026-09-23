@@ -27,6 +27,84 @@ export interface TooltipDetails {
 }
 
 export const helpData: Record<string, TooltipDetails> = {
+    crawler: {
+        title: "Cisco Network Crawler & Topology Visualizer",
+        version: "2.0.0",
+        category: "Network Discovery & L3/L2 Path Simulation",
+        description: "Automated recursive CDP/LLDP discovery, multi-tier site & IDF container visualization, Cisco StackWise multi-chassis detection, and hop-by-hop packet forwarding simulation.",
+        capabilities: [
+            {
+                title: "Recursive Multi-Hop CDP & LLDP Spidering",
+                detail: "Discovers network topology by crawling seed switches and recursively traversing neighbor switch connections up to a configurable hop limit (1–10 hops). Automatically excludes wireless APs and IP phones.",
+                tag: "Discovery Engine"
+            },
+            {
+                title: "Strict Read-Only Enforcement",
+                detail: "Programmatically prevents configuration changes. Whitelists only read-only 'show' inspection commands and terminal formatting, throwing immediate client-side and server-side exceptions if config mode commands are attempted.",
+                tag: "Security Guard"
+            },
+            {
+                title: "Layer 3 vs. Layer 2 Type Badging",
+                detail: "Identifies and visually distinguishes routed Layer 3 distribution/core switches (cyan chip) from switched Layer 2 access closets (emerald chip) across cards and drawers.",
+                tag: "L3 / L2 Badging"
+            },
+            {
+                title: "Site & IDF Nested Enclosures",
+                detail: "Automatically parses naming conventions (e.g. '101-id1-swas-1' into Site 101, IDF id1) to render hierarchical boundary containers, with vertical traffic flow (L3 Core on top, L2 access stacks below).",
+                tag: "Containers"
+            },
+            {
+                title: "Collapsible Site Cards & Multi-Row Grid",
+                detail: "Sites wrap across rows (up to 2200px) instead of stretching horizontally. Click [-] on any site header or 'Collapse All' to collapse complex sites into high-level summary cards.",
+                tag: "Macro View"
+            },
+            {
+                title: "Port Channel & Link Aggregation (LAG) Bundling",
+                detail: "Automatically aggregates parallel physical links (e.g. Gi1/0/23 and Gi1/0/24) between switches into unified Port Channel bundles with interactive midpoint tooltips.",
+                tag: "LAG Bundling"
+            },
+            {
+                title: "Cisco StackWise Detection & Port Management",
+                detail: "Detects multi-switch chassis stacks from interface numbering patterns. Highlights stacks with a purple chip and provides member switch filter tabs (Switch 1, Switch 2, etc.) in the Device Inspector.",
+                tag: "StackWise"
+            },
+            {
+                title: "Unverified Boundary Neighbors & Reseeding",
+                detail: "Switches situated at the max-hop boundary that cannot be visited are preserved as ghosted Unverified frontier nodes. Clicking on them provides a 1-click 'Reseed Crawl' workflow.",
+                tag: "Frontier Reseed"
+            },
+            {
+                title: "Hop-by-Hop IPv4 Path Tracer",
+                detail: "Simulates packet routing paths between source and destination IP addresses. Executes Longest Prefix Match (LPM) routing, resolves 802.1Q trunks, SVIs, and ARP table entries.",
+                tag: "Path Tracer"
+            },
+            {
+                title: "Sequential Credential Fallback",
+                detail: "Supports sequential authentication failover (e.g., TACACS+ primary domain credentials falling back to emergency local administrative credentials). All entered credentials remain in-memory and ephemeral.",
+                tag: "Auth Failover"
+            }
+        ],
+        colors: [
+            { name: "Cyan Strip (Layer 3 Switch)", meaning: "Routed core or distribution switch participating in IP routing protocols and SVIs.", rgb: "#0284c7" },
+            { name: "Emerald Strip (Layer 2 Switch)", meaning: "Switched access closet stack or IDF switch providing port capacity.", rgb: "#10b981" },
+            { name: "Amber Dashed Border (Unverified Boundary)", meaning: "Neighbor switch discovered at the max-hop boundary. Reachable via 1-click reseed.", rgb: "#f59e0b" },
+            { name: "Red Node (Unreachable / Failed)", meaning: "Switch failed SSH connection (authentication failure, timeout, or refused).", rgb: "#ef4444" },
+            { name: "Purple Chip [STK] (Cisco StackWise)", meaning: "Multi-chassis switch stack (e.g. Catalyst 9300 / 2960X stack).", rgb: "#a855f7" },
+            { name: "Cyan Edge [Po] (Port Channel / LAG)", meaning: "Bundled multi-link physical interfaces forming an EtherChannel / LAG trunk.", rgb: "#06b6d4" },
+            { name: "Green Dot (Recently Verified)", meaning: "Node successfully verified during crawl snapshot with timestamp.", rgb: "#22c55e" }
+        ],
+        shortcuts: [
+            "Click on any switch card in the diagram to open the Device Inspector Drawer with interfaces, routing tables, and VLANs.",
+            "Click [-] on any site container header to collapse it into a summary card.",
+            "Use the Layout toggle in the control bar to switch between 'Site Containers' and 'Hierarchical Flow'.",
+            "In Path Tracer tab, enter Source and Destination IP to trace forwarding step-by-step.",
+            "Press Esc or click backdrop to close modals and drawers."
+        ],
+        backgroundJobs: [
+            "SSH Discovery Worker: Spawns multi-threaded Netmiko workers streaming console logs over Server-Sent Events (SSE).",
+            "PostgreSQL Persistence: Saves snapshots, switches, interfaces, routes, and correlated links directly into PostgreSQL."
+        ]
+    },
     firewall: {
         title: "Cisco Firewall & Guardian",
         version: "2.0.0",
