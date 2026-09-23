@@ -133,6 +133,11 @@ export default function DeviceInspectorDrawer({
                             }`}>
                                 {isL3 ? 'L3' : 'L2'}
                             </span>
+                            {device.isVendorManaged && (
+                                <span className="px-2 py-0.5 text-[10px] font-bold rounded border bg-purple-950/80 text-purple-300 border-purple-800">
+                                    Vendor Managed
+                                </span>
+                            )}
                             {stackInfo.isStack && (
                                 <span className="px-2 py-0.5 text-[10px] font-bold rounded border bg-purple-500/10 text-purple-300 border-purple-500/40 flex items-center gap-1">
                                     <Layers className="w-3 h-3 text-purple-400" />

@@ -217,6 +217,7 @@ export default function TopologyGraph({
     const [visibleUplinkSites, setVisibleUplinkSites] = useState<Set<string>>(new Set());
     const [visibleUplinkIdfs, setVisibleUplinkIdfs] = useState<Set<string>>(new Set());
     const [convergeTrunks, setConvergeTrunks] = useState(true); // Converge multi-neighbor trunks and MPLS into single physical links
+    const [showVendorManaged, setShowVendorManaged] = useState(false); // Vendor Managed devices excluded from topology by default
 
     const svgContainerRef = useRef<HTMLDivElement>(null);
     const viewportRef = useRef<SVGGElement>(null);
@@ -341,10 +342,26 @@ export default function TopologyGraph({
                 if (dev.lastVerifiedAt && (!existing.lastVerifiedAt || new Date(dev.lastVerifiedAt) > new Date(existing.lastVerifiedAt))) {
                     existing.lastVerifiedAt = dev.lastVerifiedAt;
                 }
+                if (dev.platform && !existing.platform) {
+                    existing.platform = dev.platform;
+                }
+                if (dev.isVendorManaged || dev.excludeFromTopology) {
+                    existing.isVendorManaged = true;
+                    existing.excludeFromTopology = true;
+                    existing.tag = dev.tag || existing.tag;
+                }
+                if (dev.overrideReason && !existing.overrideReason) {
+                    existing.overrideReason = dev.overrideReason;
+                }
             }
         }
         return Array.from(map.values());
     }, [devices]);
+
+    // Count vendor managed devices
+    const vendorManagedCount = useMemo(() => {
+        return unifiedDevices.filter(d => d.isVendorManaged || d.excludeFromTopology).length;
+    }, [unifiedDevices]);
 
     // Fast lookup for device -> { site, idf }
     const deviceLocationMap = useMemo(() => {
@@ -375,9 +392,12 @@ export default function TopologyGraph({
             .filter(lnk => lnk.sourceDevice !== lnk.targetDevice);
     }, [links]);
 
-    // 3. Filter devices based on Site selection and Manager Checkboxes
+    // 3. Filter devices based on Site selection, Manager Checkboxes, and Vendor Managed Toggle
     const filteredDevices = useMemo(() => {
         let result = unifiedDevices;
+        if (!showVendorManaged) {
+            result = result.filter(d => !d.isVendorManaged && !d.excludeFromTopology);
+        }
         if (siteFilter !== "ALL") {
             result = result.filter(d => {
                 const { site } = parseDeviceSiteAndIdf(d.hostname, d.site, d.idf);
@@ -388,7 +408,7 @@ export default function TopologyGraph({
             result = result.filter(d => !deselectedSwitches.has(d.canonicalHostname || d.hostname));
         }
         return result;
-    }, [unifiedDevices, siteFilter, deselectedSwitches]);
+    }, [unifiedDevices, showVendorManaged, siteFilter, deselectedSwitches]);
 
     const uniqueSites = useMemo(() => {
         const sites = new Set<string>();
@@ -1648,6 +1668,28 @@ export default function TopologyGraph({
                     <span>Converge Trunks: <strong className={convergeTrunks ? "text-purple-300" : "text-slate-400"}>{convergeTrunks ? "ON" : "OFF"}</strong></span>
                 </button>
 
+                {/* Vendor Managed Nodes Filter Toggle (Excluded by default) */}
+                <button
+                    type="button"
+                    onClick={() => setShowVendorManaged(prev => !prev)}
+                    className={`px-2 py-1 rounded-lg border text-[11px] font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                        showVendorManaged
+                            ? "bg-purple-950/70 border-purple-500/60 text-purple-200 shadow-sm"
+                            : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
+                    }`}
+                    title={showVendorManaged 
+                        ? "Vendor Managed devices are currently visible in the topology. Click to exclude them." 
+                        : "Vendor Managed devices are currently excluded from the topology. Click to show them."}
+                >
+                    <ShieldAlert className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Vendor Managed: <strong className={showVendorManaged ? "text-purple-300" : "text-slate-400"}>{showVendorManaged ? "INCLUDED" : "EXCLUDED"}</strong></span>
+                    {vendorManagedCount > 0 && (
+                        <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                            {vendorManagedCount}
+                        </span>
+                    )}
+                </button>
+
                 {/* Click / Dim Mode Controls */}
                 <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
                     <button
@@ -2858,7 +2900,10 @@ export default function TopologyGraph({
                             let borderDash: string | undefined = undefined;
                             let cardBg = "#0f172a";
 
-                            if (isUnverified) {
+                            if (dev.isVendorManaged) {
+                                borderColor = isSelected ? "#ffffff" : "#a855f7";
+                                cardBg = "rgba(28, 14, 46, 0.95)";
+                            } else if (isUnverified) {
                                 borderColor = "#f59e0b";
                                 borderDash = "5,3";
                                 cardBg = "rgba(20, 24, 39, 0.95)";
@@ -2888,6 +2933,7 @@ export default function TopologyGraph({
                                         : "cursor-pointer group"
                                     }
                                 >
+                                    <title>{`${canonHost}${dev.platform ? ` [${dev.platform}]` : ""}${dev.isVendorManaged ? " • Vendor Managed" : ""}`}</title>
                                     {/* 3D Stack Chassis Under-Layers (StackWise Visualization) */}
                                     {stackInfo.isStack && (
                                         <g opacity={isFaded ? 0.3 : 0.85}>
@@ -2951,7 +2997,7 @@ export default function TopologyGraph({
                                     {/* Left Accent Strip (L3 Cyan, L2 Green, Unverified Amber, Unreachable Red) */}
                                     <path
                                         d={`M ${-CARD_W / 2} ${-CARD_H / 2 + 8} A 8 8 0 0 1 ${-CARD_W / 2 + 8} ${-CARD_H / 2} L ${-CARD_W / 2 + 4} ${-CARD_H / 2} L ${-CARD_W / 2 + 4} ${CARD_H / 2} L ${-CARD_W / 2 + 8} ${CARD_H / 2} A 8 8 0 0 1 ${-CARD_W / 2} ${CARD_H / 2 - 8} Z`}
-                                        fill={isUnverified ? "#f59e0b" : isUnreachable ? "#ef4444" : layer === "L3" ? "#0284c7" : "#10b981"}
+                                        fill={dev.isVendorManaged ? "#a855f7" : isUnverified ? "#f59e0b" : isUnreachable ? "#ef4444" : layer === "L3" ? "#0284c7" : "#10b981"}
                                     />
 
                                     {/* L3 vs L2 & Switch Stack Badge Chips (Top-Right) */}
@@ -2988,20 +3034,20 @@ export default function TopologyGraph({
                                                 width={22}
                                                 height={13}
                                                 rx={3}
-                                                fill={isUnverified ? "rgba(245, 158, 11, 0.2)" : layer === "L3" ? "rgba(56, 189, 248, 0.2)" : "rgba(16, 185, 129, 0.2)"}
-                                                stroke={isUnverified ? "#f59e0b" : layer === "L3" ? "#38bdf8" : "#10b981"}
+                                                fill={dev.isVendorManaged ? "rgba(168, 85, 247, 0.2)" : isUnverified ? "rgba(245, 158, 11, 0.2)" : layer === "L3" ? "rgba(56, 189, 248, 0.2)" : "rgba(16, 185, 129, 0.2)"}
+                                                stroke={dev.isVendorManaged ? "#a855f7" : isUnverified ? "#f59e0b" : layer === "L3" ? "#38bdf8" : "#10b981"}
                                                 strokeWidth={0.8}
                                             />
                                             <text
                                                 x={11}
                                                 y={9.5}
-                                                fill={isUnverified ? "#fbbf24" : layer === "L3" ? "#7dd3fc" : "#6ee7b7"}
+                                                fill={dev.isVendorManaged ? "#d8b4fe" : isUnverified ? "#fbbf24" : layer === "L3" ? "#7dd3fc" : "#6ee7b7"}
                                                 fontSize={8}
                                                 fontWeight="bold"
                                                 fontFamily="monospace"
                                                 textAnchor="middle"
                                             >
-                                                {isUnverified ? "BND" : layer}
+                                                {dev.isVendorManaged ? "VND" : isUnverified ? "BND" : layer}
                                             </text>
                                         </g>
                                     </g>
@@ -3032,7 +3078,14 @@ export default function TopologyGraph({
 
                                     {/* Sub-label: Site/IDF & Status Pill */}
                                     <g transform={`translate(${-CARD_W / 2 + 14}, ${-CARD_H / 2 + 42})`}>
-                                        {isUnverified ? (
+                                        {dev.isVendorManaged ? (
+                                            <g>
+                                                <rect x={0} y={0} width={80} height={12} rx={3} fill="rgba(168, 85, 247, 0.25)" stroke="#a855f7" strokeWidth={0.6} />
+                                                <text x={4} y={9} fill="#d8b4fe" fontSize={7.5} fontWeight="bold" fontFamily="monospace">
+                                                    VENDOR MGD
+                                                </text>
+                                            </g>
+                                        ) : isUnverified ? (
                                             <g>
                                                 <rect x={0} y={0} width={105} height={12} rx={3} fill="rgba(245, 158, 11, 0.2)" stroke="#f59e0b" strokeWidth={0.5} />
                                                 <text x={4} y={9} fill="#f59e0b" fontSize={7.5} fontWeight="bold" fontFamily="monospace">

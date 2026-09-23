@@ -85,6 +85,8 @@ class NetworkCrawler:
         self.queued_targets: Set[str] = set()
         self.discovered_via_map: Dict[str, str] = {} # ip -> discovered_via string
         self.known_hostname_map: Dict[str, str] = {} # ip -> hostname (if pre-known from CDP)
+        self.known_platform_map: Dict[str, str] = {} # ip -> platform model (if pre-known from CDP/LLDP)
+        self.known_platform_by_host: Dict[str, str] = {} # hostname -> platform model
         self.reseed_points: List[Dict[str, Any]] = [] # devices at boundary with unvisited neighbors at max_hops + 1
         self.unverified_devices: List[Device] = [] # frontier boundary devices beyond hop limit
 
@@ -130,6 +132,11 @@ class NetworkCrawler:
         """Connect to one device, run profile-specific show commands, parse output, and return Device model."""
         discovered_via = self.discovered_via_map.get(target_ip)
         pre_known_name = self.known_hostname_map.get(target_ip)
+        pre_known_platform = (
+            self.known_platform_map.get(target_ip)
+            or self.known_platform_by_host.get(target_ip.lower())
+            or (self.known_platform_by_host.get(pre_known_name.lower()) if pre_known_name else None)
+        )
 
         # Select client (Mock or real SSH)
         if self.use_mock:
@@ -193,6 +200,7 @@ class NetworkCrawler:
                 return Device(
                     hostname=host_label,
                     ip_address=target_ip,
+                    platform=pre_known_platform,
                     status=fail_status,
                     failure_reason=err,
                     discovered_via=discovered_via,
@@ -413,9 +421,11 @@ class NetworkCrawler:
                         device = future.result()
                     except Exception as exc:
                         logger.error(f"Unexpected error crawling {target_ip}: {exc}", exc_info=True)
+                        exc_plat = self.known_platform_map.get(target_ip) or self.known_platform_by_host.get(target_ip.lower())
                         device = Device(
                             hostname=f"Unknown-{target_ip}",
                             ip_address=target_ip,
+                            platform=exc_plat,
                             status=DeviceStatus.ERROR,
                             failure_reason=str(exc),
                             discovered_via=self.discovered_via_map.get(target_ip),
@@ -577,6 +587,9 @@ class NetworkCrawler:
                                         f"{device.hostname} ({neighbor.local_interface} -> {neighbor.remote_interface})"
                                     )
                                     self.known_hostname_map[neighbor_ip] = neighbor_host
+                                    if getattr(neighbor, "platform", None):
+                                        self.known_platform_map[neighbor_ip] = neighbor.platform
+                                        self.known_platform_by_host[neighbor_host.lower()] = neighbor.platform
                                     pending_targets.append((neighbor_ip, current_hop + 1))
                                     self._notify(
                                         "spider",

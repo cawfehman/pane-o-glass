@@ -87,6 +87,36 @@ export async function GET(
             })
             : [];
 
+        // Build CDP platform lookup from all reachable neighbor tables
+        const cdpPlatformMap = new Map<string, string>();
+        for (const dev of devices) {
+            if (dev.status === "REACHABLE" && dev.cdpNeighbors) {
+                const neighbors: any[] = Array.isArray(dev.cdpNeighbors)
+                    ? dev.cdpNeighbors
+                    : typeof dev.cdpNeighbors === "string"
+                    ? JSON.parse(dev.cdpNeighbors)
+                    : [];
+                for (const n of neighbors) {
+                    if (n.platform) {
+                        if (n.destination_host) {
+                            const canon = n.destination_host.split(".")[0].split("(")[0].trim().toLowerCase();
+                            cdpPlatformMap.set(canon, n.platform);
+                        }
+                        if (n.management_ip) {
+                            cdpPlatformMap.set(n.management_ip.trim(), n.platform);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fetch overrides
+        const overrides = await prisma.crawlerDeviceOverride.findMany();
+        const overrideMap = new Map<string, typeof overrides[0]>();
+        for (const ov of overrides) {
+            overrideMap.set(ov.hostname.toLowerCase(), ov);
+        }
+
         const latestVerifiedMap = new Map<string, string>();
         for (const record of historicalSuccesses) {
             if (!latestVerifiedMap.has(record.hostname)) {
@@ -103,9 +133,22 @@ export async function GET(
             } else if (latestVerifiedMap.has(d.hostname)) {
                 lastVerifiedAt = latestVerifiedMap.get(d.hostname)!;
             }
+
+            const canon = (d.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
+            const ip = (d.ipAddress || "").trim();
+            const cdpPlatform = d.platform || cdpPlatformMap.get(canon) || (ip ? cdpPlatformMap.get(ip) : null) || null;
+            const override = overrideMap.get(canon) || (ip ? overrideMap.get(ip) : null);
+
             return {
                 ...d,
-                lastVerifiedAt
+                platform: cdpPlatform,
+                lastVerifiedAt,
+                tag: override?.tag || null,
+                isVendorManaged: override?.tag === "VENDOR_MANAGED",
+                isIgnored: override?.tag === "IGNORED",
+                overrideReason: override?.reason || null,
+                excludeFromTopology: override ? override.excludeFromTopology : false,
+                excludeFromFailures: override ? override.excludeFromFailures : false
             };
         });
 

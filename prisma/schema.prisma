@@ -453,4 +453,19 @@ model CrawlLink {
   @@index([targetDevice])
 }
 
+model CrawlerDeviceOverride {
+  hostname            String   @id // canonical hostname (e.g. 101-id3-swas-1)
+  rawHostname         String?  // original discovered hostname
+  ipAddress           String?
+  tag                 String   @default("VENDOR_MANAGED") // "VENDOR_MANAGED", "IGNORED", "OUT_OF_SCOPE"
+  reason              String?
+  excludeFromTopology Boolean  @default(true)
+  excludeFromFailures Boolean  @default(false)
+  createdBy           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([tag])
+}
+
 

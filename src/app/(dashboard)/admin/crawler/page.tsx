@@ -559,6 +559,11 @@ export default function AdminCrawlerPage() {
                                 handleSelectDeviceByHostname(host);
                                 setActiveTab("topology");
                             }}
+                            onRefresh={() => {
+                                if (selectedSnapshotId) {
+                                    fetchSnapshotDetails(selectedSnapshotId);
+                                }
+                            }}
                         />
                     </div>
                 )}
