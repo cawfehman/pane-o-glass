@@ -239,9 +239,11 @@ class NetworkCrawler:
             if should_check_lldp:
                 out_lldp = client.send_command("show lldp neighbors detail")
 
+            # Always run show ip interface brief to catalog all configured interface/SVI IPs and prevent dual-path duplicates
+            out_ip_int = client.send_command("show ip interface brief")
+
             # 4. Profile: Mapping & Intensive commands (physical connectivity, VLANs, IP assignments)
             if not is_discovery:
-                out_ip_int = client.send_command("show ip interface brief")
                 out_trunk = client.send_command("show interfaces trunk")
                 if not out_trunk or "% Invalid input" in out_trunk or "Port" not in out_trunk:
                     out_trunk = client.send_command("show interfaces switchport")
@@ -421,7 +423,34 @@ class NetworkCrawler:
                         )
 
                     if device.status == DeviceStatus.REACHABLE:
+                        canonical_h = device.hostname.split(".")[0].split("(")[0].strip().lower()
+                        
+                        # Check if this switch was already collected under another management/SVI IP
+                        existing_dev = next(
+                            (d for d in reachable_devices if d.hostname.split(".")[0].split("(")[0].strip().lower() == canonical_h),
+                            None
+                        )
+                        if existing_dev:
+                            if device.ip_address != existing_dev.ip_address and device.ip_address not in existing_dev.alias_ips:
+                                existing_dev.alias_ips.append(device.ip_address)
+                            # Register all its interface IPs to visited_ips
+                            for intf in device.interfaces.values():
+                                if intf.ip_address:
+                                    self.visited_ips.add(intf.ip_address)
+                            self._notify(
+                                "info",
+                                f"Merged secondary IP {device.ip_address} into existing switch {existing_dev.hostname}"
+                            )
+                            continue
+
+                        self.visited_hosts.add(canonical_h)
                         self.visited_hosts.add(device.hostname.lower())
+
+                        # Add all configured interface/SVI IPs to visited_ips immediately
+                        for intf in device.interfaces.values():
+                            if intf.ip_address:
+                                self.visited_ips.add(intf.ip_address)
+
                         reachable_devices.append(device)
                         self._notify(
                             "success",
@@ -533,7 +562,7 @@ class NetworkCrawler:
                                     continue
 
                                 neighbor_ip = neighbor.management_ip
-                                neighbor_host = neighbor.destination_host.split(".")[0].strip()
+                                neighbor_host = neighbor.destination_host.split(".")[0].split("(")[0].strip()
 
                                 if not neighbor_ip:
                                     continue

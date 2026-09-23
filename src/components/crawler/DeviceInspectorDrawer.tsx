@@ -21,7 +21,7 @@ import {
     Play,
     Clock
 } from "lucide-react";
-import { detectSwitchStack } from "./TopologyGraph";
+import { detectSwitchStack, parseFloorFromIdf } from "./TopologyGraph";
 
 export function formatFullVerifiedDate(ts?: string | null): string {
     if (!ts) return "Never Verified";
@@ -94,6 +94,7 @@ export default function DeviceInspectorDrawer({
     const shortHost = (device.hostname || "").split(".")[0].trim();
     const siteCode = device.site || (shortHost.length >= 3 ? shortHost.slice(0, 3).toUpperCase() : "UNK");
     const idfCode = device.idf || (shortHost.includes("-") && shortHost.split("-")[1] ? shortHost.split("-")[1].slice(0, 3).toUpperCase() : "MDF");
+    const floorInfo = parseFloorFromIdf(idfCode);
     const isL3 = device.role === "Router" || device.role === "L3 Switch" || device.role === "L3";
 
     return (
@@ -147,6 +148,8 @@ export default function DeviceInspectorDrawer({
                             <span className="px-1.5 py-0.2 bg-slate-800 text-slate-300 rounded font-semibold">Site: {siteCode}</span>
                             <span>•</span>
                             <span className="px-1.5 py-0.2 bg-slate-800 text-slate-300 rounded font-semibold">IDF: {idfCode}</span>
+                            <span>•</span>
+                            <span className="px-1.5 py-0.2 bg-blue-900/40 text-blue-300 border border-blue-700/40 rounded font-semibold">{floorInfo.floorLabel}</span>
                             {(device.hopDistance !== undefined && device.hopDistance !== null) && (
                                 <>
                                     <span>•</span>
@@ -156,6 +159,18 @@ export default function DeviceInspectorDrawer({
                                 </>
                             )}
                         </div>
+                        {device.allIps && device.allIps.length > 1 && (
+                            <div className="flex items-center gap-1.5 mt-1.5 text-[11px] text-slate-400">
+                                <span className="text-slate-500 font-medium">Reachable via {device.allIps.length} IPs:</span>
+                                <div className="flex flex-wrap gap-1">
+                                    {device.allIps.map((ip: string) => (
+                                        <span key={ip} className="font-mono text-cyan-300 bg-cyan-950/50 px-1.5 py-0.2 rounded border border-cyan-800/40 text-[10px]">
+                                            {ip}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                         <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 mt-1.5">
                             <div className="flex items-center gap-1.5">
                                 <Clock className="w-3.5 h-3.5 text-slate-400" />
@@ -316,7 +331,7 @@ export default function DeviceInspectorDrawer({
                     <div className="space-y-6">
                         {/* Switch Stack Architecture Card */}
                         {stackInfo.isStack && (
-                            <div className="bg-purple-950/20 rounded-xl p-4 border border-purple-800/60 space-y-2">
+                            <div className="bg-purple-950/20 rounded-xl p-4 border border-purple-800/60 space-y-3">
                                 <div className="flex items-center justify-between">
                                     <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
                                         <Layers className="w-4 h-4 text-purple-400" />
@@ -329,6 +344,43 @@ export default function DeviceInspectorDrawer({
                                 <p className="text-xs text-purple-200/80 leading-relaxed">
                                     This managed switch operates as a unified multi-chassis StackWise stack of {stackInfo.stackSize} physical switches under a single management plane. Interfaces span {Array.from({ length: stackInfo.stackSize }, (_, i) => `Switch ${i + 1}`).join(", ")}.
                                 </p>
+                                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-purple-900/40">
+                                    <span className="text-[11px] font-semibold text-purple-300">Inspect Member:</span>
+                                    {stackInfo.members.map((m) => (
+                                        <button
+                                            key={m}
+                                            type="button"
+                                            onClick={() => {
+                                                setStackMemberFilter(m);
+                                                setActiveTab("interfaces");
+                                            }}
+                                            className="px-2.5 py-1 text-xs rounded-lg bg-purple-900/40 hover:bg-purple-800/60 text-purple-200 border border-purple-700/60 transition cursor-pointer flex items-center gap-1 font-mono"
+                                        >
+                                            <span>Switch {m}</span>
+                                            <span className="text-[10px] text-purple-400">→</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Multi-IP Inventory & SVIs Card */}
+                        {device.allIps && device.allIps.length > 1 && (
+                            <div className="bg-slate-950/60 rounded-xl p-4 border border-cyan-800/40 space-y-2">
+                                <h3 className="text-xs font-semibold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                                    <Network className="w-3.5 h-3.5 text-cyan-400" />
+                                    Multi-IP Inventory & SVIs ({device.allIps.length} Detected IPs)
+                                </h3>
+                                <p className="text-[11px] text-slate-400">
+                                    This switch is reachable and managed across multiple configured IP addresses (SVIs, Loopbacks, or routed ports) unified under this canonical device:
+                                </p>
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                    {device.allIps.map((ip: string) => (
+                                        <span key={ip} className="font-mono text-xs text-cyan-300 bg-cyan-950/50 px-2 py-0.5 rounded-lg border border-cyan-800/50">
+                                            {ip}
+                                        </span>
+                                    ))}
+                                </div>
                             </div>
                         )}
 

@@ -23,7 +23,18 @@ import {
     EyeOff,
     SlidersHorizontal,
     Maximize2,
-    Minimize2
+    Minimize2,
+    PanelLeft,
+    PanelLeftClose,
+    ChevronRight,
+    ChevronDown,
+    CheckSquare,
+    Square,
+    Search,
+    Building,
+    Filter,
+    Layers2,
+    X
 } from "lucide-react";
 
 export interface SiteMetadataLookup {
@@ -43,8 +54,15 @@ interface TopologyGraphProps {
     className?: string;
 }
 
+export function getCanonicalHostname(hostname: string): string {
+    if (!hostname) return "UNKNOWN";
+    let clean = (hostname || "").split(".")[0].trim();
+    clean = clean.split("(")[0].trim();
+    return clean;
+}
+
 export function parseDeviceSiteAndIdf(hostname: string, devSite?: string | null, devIdf?: string | null) {
-    const shortHost = (hostname || "").split(".")[0].trim();
+    const shortHost = getCanonicalHostname(hostname);
     let site = (devSite || (shortHost.length >= 3 ? shortHost.slice(0, 3) : "UNK")).toUpperCase();
     let idf = "MDF";
     if (devIdf) {
@@ -58,6 +76,22 @@ export function parseDeviceSiteAndIdf(hostname: string, devSite?: string | null,
     return { site, idf, shortHost };
 }
 
+export function parseFloorFromIdf(idfCode: string): { floorNum: number; floorLabel: string } {
+    const clean = (idfCode || "").trim().toUpperCase();
+    if (clean === "MDF" || clean === "DC" || clean === "SERVER") {
+        return { floorNum: 1, floorLabel: "Ground / MDF" };
+    }
+    if (clean === "LL" || clean === "BSMT" || clean === "SUB") {
+        return { floorNum: -1, floorLabel: "Basement / LL" };
+    }
+    const match = clean.match(/(\d+)/);
+    if (match) {
+        const num = parseInt(match[1], 10);
+        return { floorNum: num, floorLabel: `Floor ${num}` };
+    }
+    return { floorNum: 1, floorLabel: clean };
+}
+
 export function formatLastVerified(ts?: string | null): string {
     if (!ts) return "Never";
     const d = new Date(ts);
@@ -67,7 +101,7 @@ export function formatLastVerified(ts?: string | null): string {
     return `${dateStr} ${timeStr}`;
 }
 
-export function detectSwitchStack(dev: any): { isStack: boolean; stackSize: number; portCount: number } {
+export function detectSwitchStack(dev: any): { isStack: boolean; stackSize: number; portCount: number; members: string[] } {
     const rawInterfaces = dev.interfaces || {};
     const intfList: any[] = Array.isArray(rawInterfaces)
         ? rawInterfaces
@@ -89,10 +123,11 @@ export function detectSwitchStack(dev: any): { isStack: boolean; stackSize: numb
         }
     }
 
+    const members = Array.from(stackMembers).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
     if (stackMembers.size > 1) {
-        return { isStack: true, stackSize: stackMembers.size, portCount: ethPorts };
+        return { isStack: true, stackSize: stackMembers.size, portCount: ethPorts, members };
     }
-    return { isStack: false, stackSize: 1, portCount: ethPorts };
+    return { isStack: false, stackSize: 1, portCount: ethPorts, members: ["1"] };
 }
 
 export function getDeviceLayer(dev: any): { layer: "L3" | "L2"; label: string } {
@@ -130,6 +165,8 @@ interface SiteContainerBox {
 interface IdfContainerBox {
     siteCode: string;
     idfCode: string;
+    floorNum: number;
+    floorLabel: string;
     x: number;
     y: number;
     width: number;
@@ -155,6 +192,11 @@ export default function TopologyGraph({
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
     const [siteFilter, setSiteFilter] = useState<string>("ALL");
     const [layoutMode, setLayoutMode] = useState<"container" | "flow">("container");
+    const [stackingMode, setStackingMode] = useState<"building" | "horizontal">("building");
+    const [isSiteManagerOpen, setIsSiteManagerOpen] = useState(false);
+    const [deselectedSwitches, setDeselectedSwitches] = useState<Set<string>>(new Set());
+    const [managerSearch, setManagerSearch] = useState("");
+    const [collapsedManagerNodes, setCollapsedManagerNodes] = useState<Set<string>>(new Set());
     const [hoveredLink, setHoveredLink] = useState<any | null>(null);
     const [collapsedSites, setCollapsedSites] = useState<Set<string>>(new Set());
     const [collapsedIdfs, setCollapsedIdfs] = useState<Set<string>>(new Set());
@@ -208,19 +250,257 @@ export default function TopologyGraph({
         };
     }, []);
 
+    // 1. Unify devices: Deduplicate by canonical hostname & merge alias IPs
+    const unifiedDevices = useMemo(() => {
+        const map = new Map<string, any>();
+        for (const dev of devices) {
+            const canon = getCanonicalHostname(dev.hostname);
+            const devIp = dev.ipAddress || dev.ip_address;
+            const aliasIps: string[] = Array.isArray(dev.alias_ips) ? dev.alias_ips : [];
+
+            if (!map.has(canon)) {
+                const allIps = new Set<string>();
+                if (devIp) allIps.add(devIp);
+                aliasIps.forEach(ip => allIps.add(ip));
+
+                map.set(canon, {
+                    ...dev,
+                    canonicalHostname: canon,
+                    allIps: Array.from(allIps),
+                });
+            } else {
+                const existing = map.get(canon)!;
+                const allIps = new Set<string>(existing.allIps || []);
+                if (devIp) allIps.add(devIp);
+                aliasIps.forEach(ip => allIps.add(ip));
+                existing.allIps = Array.from(allIps);
+
+                // Prefer reachable status and more complete device info
+                if (dev.status === "REACHABLE" && existing.status !== "REACHABLE") {
+                    existing.status = dev.status;
+                    existing.interfaces = dev.interfaces || existing.interfaces;
+                    existing.role = dev.role || existing.role;
+                    existing.site = dev.site || existing.site;
+                    existing.idf = dev.idf || existing.idf;
+                    existing.hostname = dev.hostname;
+                }
+                if (dev.interfaces && typeof dev.interfaces === "object") {
+                    existing.interfaces = { ...(existing.interfaces || {}), ...dev.interfaces };
+                }
+                if (dev.lastVerifiedAt && (!existing.lastVerifiedAt || new Date(dev.lastVerifiedAt) > new Date(existing.lastVerifiedAt))) {
+                    existing.lastVerifiedAt = dev.lastVerifiedAt;
+                }
+            }
+        }
+        return Array.from(map.values());
+    }, [devices]);
+
+    // 2. Unify links: Map source & target to canonical hostnames & remove self-loops
+    const unifiedLinks = useMemo(() => {
+        return links
+            .map(lnk => {
+                const s = getCanonicalHostname(lnk.sourceDevice);
+                const t = getCanonicalHostname(lnk.targetDevice);
+                return {
+                    ...lnk,
+                    sourceDevice: s,
+                    targetDevice: t,
+                    rawSource: lnk.sourceDevice,
+                    rawTarget: lnk.targetDevice
+                };
+            })
+            .filter(lnk => lnk.sourceDevice !== lnk.targetDevice);
+    }, [links]);
+
+    // 3. Filter devices based on Site selection and Manager Checkboxes
+    const filteredDevices = useMemo(() => {
+        let result = unifiedDevices;
+        if (siteFilter !== "ALL") {
+            result = result.filter(d => {
+                const { site } = parseDeviceSiteAndIdf(d.hostname, d.site, d.idf);
+                return site === siteFilter;
+            });
+        }
+        if (deselectedSwitches.size > 0) {
+            result = result.filter(d => !deselectedSwitches.has(d.canonicalHostname || d.hostname));
+        }
+        return result;
+    }, [unifiedDevices, siteFilter, deselectedSwitches]);
+
+    const uniqueSites = useMemo(() => {
+        const sites = new Set<string>();
+        for (const d of unifiedDevices) {
+            const { site } = parseDeviceSiteAndIdf(d.hostname, d.site, d.idf);
+            if (site) sites.add(site);
+        }
+        return Array.from(sites).sort();
+    }, [unifiedDevices]);
+
+    // 4. Hierarchical tree data for Site & Floor Manager Sidebar
+    const managerTree = useMemo(() => {
+        const tree: Array<{
+            siteCode: string;
+            siteName: string | null;
+            switches: any[];
+            floors: Array<{
+                idfCode: string;
+                floorNum: number;
+                floorLabel: string;
+                switches: any[];
+            }>;
+        }> = [];
+
+        const siteMap = new Map<string, Map<string, any[]>>();
+        for (const dev of unifiedDevices) {
+            const { site, idf } = parseDeviceSiteAndIdf(dev.hostname, dev.site, dev.idf);
+            if (!siteMap.has(site)) siteMap.set(site, new Map());
+            const idfMap = siteMap.get(site)!;
+            if (!idfMap.has(idf)) idfMap.set(idf, []);
+            idfMap.get(idf)!.push(dev);
+        }
+
+        const sortedSites = Array.from(siteMap.keys()).sort();
+        for (const sCode of sortedSites) {
+            const idfMap = siteMap.get(sCode)!;
+            const siteLookup = siteDirectory[sCode];
+            const siteName = siteLookup?.name || null;
+            const allSiteSwitches: any[] = [];
+
+            const floors: Array<{ idfCode: string; floorNum: number; floorLabel: string; switches: any[] }> = [];
+
+            for (const [idfCode, devs] of idfMap.entries()) {
+                const { floorNum, floorLabel } = parseFloorFromIdf(idfCode);
+                allSiteSwitches.push(...devs);
+                floors.push({
+                    idfCode,
+                    floorNum,
+                    floorLabel,
+                    switches: devs.sort((a, b) => a.hostname.localeCompare(b.hostname))
+                });
+            }
+
+            // Sort floors descending (top floor first, ground / MDF at bottom)
+            floors.sort((a, b) => {
+                if (b.floorNum !== a.floorNum) return b.floorNum - a.floorNum;
+                return a.idfCode.localeCompare(b.idfCode);
+            });
+
+            tree.push({
+                siteCode: sCode,
+                siteName,
+                switches: allSiteSwitches,
+                floors
+            });
+        }
+
+        return tree;
+    }, [unifiedDevices, siteDirectory]);
+
+    // Selection helpers for Site Manager
+    const toggleSwitchVisibility = (canonicalHost: string) => {
+        setDeselectedSwitches(prev => {
+            const next = new Set(prev);
+            if (next.has(canonicalHost)) next.delete(canonicalHost);
+            else next.add(canonicalHost);
+            return next;
+        });
+    };
+
+    const toggleSiteVisibility = (siteSwitches: any[]) => {
+        const hosts = siteSwitches.map(s => s.canonicalHostname || s.hostname);
+        const anySelected = hosts.some(h => !deselectedSwitches.has(h));
+        setDeselectedSwitches(prev => {
+            const next = new Set(prev);
+            if (anySelected) {
+                hosts.forEach(h => next.add(h));
+            } else {
+                hosts.forEach(h => next.delete(h));
+            }
+            return next;
+        });
+    };
+
+    const isolateSite = (siteSwitches: any[]) => {
+        const keepHosts = new Set(siteSwitches.map(s => s.canonicalHostname || s.hostname));
+        const next = new Set<string>();
+        for (const d of unifiedDevices) {
+            const h = d.canonicalHostname || d.hostname;
+            if (!keepHosts.has(h)) next.add(h);
+        }
+        setDeselectedSwitches(next);
+    };
+
+    const toggleFloorVisibility = (floorSwitches: any[]) => {
+        const hosts = floorSwitches.map(s => s.canonicalHostname || s.hostname);
+        const anySelected = hosts.some(h => !deselectedSwitches.has(h));
+        setDeselectedSwitches(prev => {
+            const next = new Set(prev);
+            if (anySelected) {
+                hosts.forEach(h => next.add(h));
+            } else {
+                hosts.forEach(h => next.delete(h));
+            }
+            return next;
+        });
+    };
+
+    const isolateFloor = (floorSwitches: any[]) => {
+        const keepHosts = new Set(floorSwitches.map(s => s.canonicalHostname || s.hostname));
+        const next = new Set<string>();
+        for (const d of unifiedDevices) {
+            const h = d.canonicalHostname || d.hostname;
+            if (!keepHosts.has(h)) next.add(h);
+        }
+        setDeselectedSwitches(next);
+    };
+
+    const selectAllSwitches = () => setDeselectedSwitches(new Set());
+    const deselectAllSwitches = () => {
+        const all = new Set(unifiedDevices.map(d => d.canonicalHostname || d.hostname));
+        setDeselectedSwitches(all);
+    };
+
+    const toggleManagerNodeCollapse = (nodeKey: string) => {
+        setCollapsedManagerNodes(prev => {
+            const next = new Set(prev);
+            if (next.has(nodeKey)) next.delete(nodeKey);
+            else next.add(nodeKey);
+            return next;
+        });
+    };
+
+    const panToSwitch = (hostname: string) => {
+        const canon = getCanonicalHostname(hostname);
+        const pos = nodePositions.get(canon) || nodePositions.get(hostname);
+        if (!pos || !svgContainerRef.current) return;
+        const rect = svgContainerRef.current.getBoundingClientRect();
+        const targetX = rect.width / 2 - pos.x * zoom;
+        const targetY = rect.height / 2 - pos.y * zoom;
+        setPan({ x: targetX, y: targetY });
+
+        const dev = unifiedDevices.find(d => (d.canonicalHostname || d.hostname) === canon);
+        if (dev) onSelectDevice(dev);
+    };
+
     const toggleFadeNode = (hostname: string) => {
+        const canon = getCanonicalHostname(hostname);
         setFadedNodes(prev => {
             const next = new Set(prev);
-            if (next.has(hostname)) next.delete(hostname);
-            else next.add(hostname);
+            if (next.has(canon) || next.has(hostname)) {
+                next.delete(canon);
+                next.delete(hostname);
+            } else {
+                next.add(canon);
+            }
             return next;
         });
     };
 
     const handleNodeClick = (e: React.MouseEvent, dev: any) => {
         e.stopPropagation();
+        const canon = dev.canonicalHostname || getCanonicalHostname(dev.hostname);
         if (e.shiftKey || e.altKey || clickMode === "fade") {
-            toggleFadeNode(dev.hostname);
+            toggleFadeNode(canon);
         } else {
             onSelectDevice(dev);
         }
@@ -228,37 +508,21 @@ export default function TopologyGraph({
 
     const handleFadeOthers = () => {
         if (!selectedDevice) return;
-        const keepSet = new Set<string>([selectedDevice.hostname]);
-        for (const l of links) {
-            if (l.sourceDevice === selectedDevice.hostname) keepSet.add(l.targetDevice);
-            if (l.targetDevice === selectedDevice.hostname) keepSet.add(l.sourceDevice);
+        const selectedCanon = getCanonicalHostname(selectedDevice.hostname);
+        const keepSet = new Set<string>([selectedCanon]);
+        for (const l of unifiedLinks) {
+            if (l.sourceDevice === selectedCanon) keepSet.add(l.targetDevice);
+            if (l.targetDevice === selectedCanon) keepSet.add(l.sourceDevice);
         }
         const toFade = new Set<string>();
         for (const d of filteredDevices) {
-            if (!keepSet.has(d.hostname)) {
-                toFade.add(d.hostname);
+            const c = d.canonicalHostname || getCanonicalHostname(d.hostname);
+            if (!keepSet.has(c)) {
+                toFade.add(c);
             }
         }
         setFadedNodes(toFade);
     };
-
-    // Filter devices based on Site selection
-    const filteredDevices = useMemo(() => {
-        if (siteFilter === "ALL") return devices;
-        return devices.filter(d => {
-            const { site } = parseDeviceSiteAndIdf(d.hostname, d.site, d.idf);
-            return site === siteFilter;
-        });
-    }, [devices, siteFilter]);
-
-    const uniqueSites = useMemo(() => {
-        const sites = new Set<string>();
-        for (const d of devices) {
-            const { site } = parseDeviceSiteAndIdf(d.hostname, d.site, d.idf);
-            if (site) sites.add(site);
-        }
-        return Array.from(sites).sort();
-    }, [devices]);
 
     const toggleCollapseSite = (siteCode: string) => {
         setCollapsedSites(prev => {
@@ -312,7 +576,7 @@ export default function TopologyGraph({
             status: string;
         }>();
 
-        for (const link of links) {
+        for (const link of unifiedLinks) {
             const pair = [link.sourceDevice, link.targetDevice].sort().join(" <--> ");
             const isPo = Boolean(
                 link.linkType === "PORT_CHANNEL" ||
@@ -345,9 +609,9 @@ export default function TopologyGraph({
         }
 
         return Array.from(map.values());
-    }, [links]);
+    }, [unifiedLinks]);
 
-    // Dynamic layout positioning: Container Hierarchy (Site -> IDF -> Devices) or Hierarchical Flow
+    // Dynamic layout positioning: Container Hierarchy (Site -> Floor/IDF -> Devices) or Hierarchical Flow
     const { nodePositions, siteBoxes, idfBoxes, canvasSize } = useMemo(() => {
         const positions = new Map<string, { x: number; y: number }>();
         const siteContainers: SiteContainerBox[] = [];
@@ -400,7 +664,7 @@ export default function TopologyGraph({
                 if (rowDevs.length === 0) return;
                 const spacing = width / (rowDevs.length + 1);
                 rowDevs.forEach((dev, idx) => {
-                    positions.set(dev.hostname, {
+                    positions.set(dev.canonicalHostname || dev.hostname, {
                         x: spacing * (idx + 1),
                         y: yPos
                     });
@@ -435,7 +699,7 @@ export default function TopologyGraph({
         }
 
         const MAX_ROW_WIDTH = 2500;
-        const SITE_GAP = 40;
+        const SITE_GAP = 48;
         const ROW_GAP = 54;
         let currentSiteX = 40;
         let currentSiteY = 40;
@@ -476,7 +740,7 @@ export default function TopologyGraph({
                 const centerX = currentSiteX + siteWidth / 2;
                 const centerY = currentSiteY + siteHeight / 2;
                 for (const d of allSiteDevs) {
-                    positions.set(d.hostname, { x: centerX, y: centerY });
+                    positions.set(d.canonicalHostname || d.hostname, { x: centerX, y: centerY });
                 }
 
                 siteContainers.push({
@@ -500,126 +764,240 @@ export default function TopologyGraph({
             }
 
             // Expanded site layout
-            const sortedIdfs = Array.from(idfMap.keys()).sort((a, b) => {
-                if (a === "MDF") return -1;
-                if (b === "MDF") return 1;
-                return a.localeCompare(b);
-            });
-
-            // Calculate preliminary width of expanded site
-            let preliminarySiteWidth = SITE_PAD_X;
-            let maxIdfHeightInSite = 0;
-            const computedIdfDims: Array<{ idfCode: string; devs: any[]; width: number; height: number; cols: number; rows: number; isCollapsed: boolean }> = [];
-
-            for (const idfCode of sortedIdfs) {
-                const devs = idfMap.get(idfCode)!;
-                const isIdfCollapsed = collapsedIdfs.has(`${siteCode}::${idfCode}`);
-
-                // Sort devices: L3 routers/switches first at the top, then L2 access stacks below
-                devs.sort((a, b) => {
-                    const lA = getDeviceLayer(a).layer;
-                    const lB = getDeviceLayer(b).layer;
-                    if (lA === "L3" && lB === "L2") return -1;
-                    if (lA === "L2" && lB === "L3") return 1;
-                    return a.hostname.localeCompare(b.hostname);
+            if (stackingMode === "building") {
+                // --- VERTICAL BUILDING FLOOR STACKING (Building Cross-Section View) ---
+                // Sort IDFs by floor descending (Floor 3 -> Floor 2 -> Ground / MDF -> Basement)
+                const sortedFloors = Array.from(idfMap.keys()).map(idfCode => {
+                    const { floorNum, floorLabel } = parseFloorFromIdf(idfCode);
+                    const devs = idfMap.get(idfCode)!;
+                    return { idfCode, floorNum, floorLabel, devs };
+                }).sort((a, b) => {
+                    if (b.floorNum !== a.floorNum) return b.floorNum - a.floorNum;
+                    return a.idfCode.localeCompare(b.idfCode);
                 });
 
-                let idfWidth: number;
-                let idfHeight: number;
-                let cols = 1;
-                let rows = 1;
+                // Determine required building width based on the widest floor
+                let maxFloorDevs = 1;
+                for (const f of sortedFloors) {
+                    if (f.devs.length > maxFloorDevs) maxFloorDevs = f.devs.length;
+                }
+                const buildingInnerCols = Math.min(Math.max(maxFloorDevs, 1), 4);
+                const buildingInnerWidth = buildingInnerCols * CARD_WIDTH + (buildingInnerCols - 1) * CARD_GAP_X + IDF_PAD_X * 2;
+                const siteWidth = Math.max(buildingInnerWidth + SITE_PAD_X * 2, 360);
+                const floorSlabWidth = siteWidth - SITE_PAD_X * 2;
 
-                if (isIdfCollapsed) {
-                    idfWidth = 200;
-                    idfHeight = 52;
-                } else {
-                    cols = devs.length > 3 ? 2 : 1;
-                    rows = Math.ceil(devs.length / cols);
-                    idfWidth = cols * CARD_WIDTH + (cols - 1) * CARD_GAP_X + IDF_PAD_X * 2;
-                    idfHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP_Y + IDF_PAD_TOP + IDF_PAD_BOTTOM;
+                // Wrap to next row if needed
+                if (currentSiteX > 40 && (currentSiteX + siteWidth > MAX_ROW_WIDTH)) {
+                    currentSiteX = 40;
+                    currentSiteY += maxRowHeight + ROW_GAP;
+                    maxRowHeight = 0;
                 }
 
-                computedIdfDims.push({ idfCode, devs, width: idfWidth, height: idfHeight, cols, rows, isCollapsed: isIdfCollapsed });
-                preliminarySiteWidth += idfWidth + 24;
-                if (idfHeight > maxIdfHeightInSite) {
-                    maxIdfHeightInSite = idfHeight;
-                }
-            }
+                const FLOOR_GAP = 18;
+                let currentFloorY = currentSiteY + SITE_PAD_TOP;
+                const siteIdfBoxes: IdfContainerBox[] = [];
 
-            const siteWidth = Math.max(preliminarySiteWidth - 24 + SITE_PAD_X, 260);
-            const siteHeight = maxIdfHeightInSite + SITE_PAD_TOP + SITE_PAD_BOTTOM;
+                for (const { idfCode, floorNum, floorLabel, devs } of sortedFloors) {
+                    const isIdfCollapsed = collapsedIdfs.has(`${siteCode}::${idfCode}`);
 
-            // Wrap to next row if needed
-            if (currentSiteX > 40 && (currentSiteX + siteWidth > MAX_ROW_WIDTH)) {
-                currentSiteX = 40;
-                currentSiteY += maxRowHeight + ROW_GAP;
-                maxRowHeight = 0;
-            }
+                    // Sort devices: L3 routers/switches first, then L2 access
+                    devs.sort((a, b) => {
+                        const lA = getDeviceLayer(a).layer;
+                        const lB = getDeviceLayer(b).layer;
+                        if (lA === "L3" && lB === "L2") return -1;
+                        if (lA === "L2" && lB === "L3") return 1;
+                        return a.hostname.localeCompare(b.hostname);
+                    });
 
-            // Position IDFs and devices at the resolved (currentSiteX, currentSiteY)
-            let currentIdfX = currentSiteX + SITE_PAD_X;
-            const siteIdfBoxes: IdfContainerBox[] = [];
+                    const floorCols = buildingInnerCols;
+                    const floorRows = Math.ceil(devs.length / floorCols);
+                    const floorHeight = isIdfCollapsed 
+                        ? 44 
+                        : floorRows * CARD_HEIGHT + (floorRows - 1) * CARD_GAP_Y + IDF_PAD_TOP + IDF_PAD_BOTTOM;
 
-            for (const { idfCode, devs, width: idfWidth, cols, isCollapsed: isIdfCollapsed } of computedIdfDims) {
-                const idfBox: IdfContainerBox = {
-                    siteCode,
-                    idfCode,
-                    x: currentIdfX,
-                    y: currentSiteY + SITE_PAD_TOP,
-                    width: idfWidth,
-                    height: isIdfCollapsed ? 52 : maxIdfHeightInSite,
-                    deviceCount: devs.length,
-                    isCollapsed: isIdfCollapsed
-                };
-                siteIdfBoxes.push(idfBox);
-                idfContainers.push(idfBox);
+                    const idfBox: IdfContainerBox = {
+                        siteCode,
+                        idfCode,
+                        floorNum,
+                        floorLabel,
+                        x: currentSiteX + SITE_PAD_X,
+                        y: currentFloorY,
+                        width: floorSlabWidth,
+                        height: floorHeight,
+                        deviceCount: devs.length,
+                        isCollapsed: isIdfCollapsed
+                    };
+                    siteIdfBoxes.push(idfBox);
+                    idfContainers.push(idfBox);
 
-                if (isIdfCollapsed) {
-                    // Map all devices inside this collapsed IDF to its center for clean link attachment
-                    const centerX = idfBox.x + idfBox.width / 2;
-                    const centerY = idfBox.y + idfBox.height / 2;
-                    for (const dev of devs) {
-                        positions.set(dev.hostname, {
-                            x: centerX,
-                            y: centerY
+                    if (isIdfCollapsed) {
+                        const centerX = idfBox.x + idfBox.width / 2;
+                        const centerY = idfBox.y + idfBox.height / 2;
+                        for (const dev of devs) {
+                            positions.set(dev.canonicalHostname || dev.hostname, {
+                                x: centerX,
+                                y: centerY
+                            });
+                        }
+                    } else {
+                        devs.forEach((dev, idx) => {
+                            const col = idx % floorCols;
+                            const row = Math.floor(idx / floorCols);
+
+                            const nodeCenterX = idfBox.x + IDF_PAD_X + col * (CARD_WIDTH + CARD_GAP_X) + CARD_WIDTH / 2;
+                            const nodeCenterY = idfBox.y + IDF_PAD_TOP + row * (CARD_HEIGHT + CARD_GAP_Y) + CARD_HEIGHT / 2;
+
+                            positions.set(dev.canonicalHostname || dev.hostname, {
+                                x: nodeCenterX,
+                                y: nodeCenterY
+                            });
                         });
                     }
-                } else {
-                    // Position device nodes inside expanded IDF
-                    devs.forEach((dev, idx) => {
-                        const col = idx % cols;
-                        const row = Math.floor(idx / cols);
 
-                        const nodeCenterX = idfBox.x + IDF_PAD_X + col * (CARD_WIDTH + CARD_GAP_X) + CARD_WIDTH / 2;
-                        const nodeCenterY = idfBox.y + IDF_PAD_TOP + row * (CARD_HEIGHT + CARD_GAP_Y) + CARD_HEIGHT / 2;
-
-                        positions.set(dev.hostname, {
-                            x: nodeCenterX,
-                            y: nodeCenterY
-                        });
-                    });
+                    currentFloorY += floorHeight + FLOOR_GAP;
                 }
 
-                currentIdfX += idfWidth + 24;
+                const siteHeight = currentFloorY - currentSiteY - FLOOR_GAP + SITE_PAD_BOTTOM;
+
+                siteContainers.push({
+                    siteCode,
+                    siteName,
+                    x: currentSiteX,
+                    y: currentSiteY,
+                    width: siteWidth,
+                    height: siteHeight,
+                    deviceCount: totalDevsInSite,
+                    l3Count,
+                    l2Count,
+                    isCollapsed: false,
+                    idfs: siteIdfBoxes
+                });
+
+                if (siteHeight > maxRowHeight) maxRowHeight = siteHeight;
+                currentSiteX += siteWidth + SITE_GAP;
+                if (currentSiteX > maxCanvasWidth) maxCanvasWidth = currentSiteX;
+
+            } else {
+                // --- HORIZONTAL CLOSETS VIEW ---
+                const sortedIdfs = Array.from(idfMap.keys()).sort((a, b) => {
+                    if (a === "MDF") return -1;
+                    if (b === "MDF") return 1;
+                    return a.localeCompare(b);
+                });
+
+                let preliminarySiteWidth = SITE_PAD_X;
+                let maxIdfHeightInSite = 0;
+                const computedIdfDims: Array<{ idfCode: string; floorNum: number; floorLabel: string; devs: any[]; width: number; height: number; cols: number; rows: number; isCollapsed: boolean }> = [];
+
+                for (const idfCode of sortedIdfs) {
+                    const devs = idfMap.get(idfCode)!;
+                    const { floorNum, floorLabel } = parseFloorFromIdf(idfCode);
+                    const isIdfCollapsed = collapsedIdfs.has(`${siteCode}::${idfCode}`);
+
+                    devs.sort((a, b) => {
+                        const lA = getDeviceLayer(a).layer;
+                        const lB = getDeviceLayer(b).layer;
+                        if (lA === "L3" && lB === "L2") return -1;
+                        if (lA === "L2" && lB === "L3") return 1;
+                        return a.hostname.localeCompare(b.hostname);
+                    });
+
+                    let idfWidth: number;
+                    let idfHeight: number;
+                    let cols = 1;
+                    let rows = 1;
+
+                    if (isIdfCollapsed) {
+                        idfWidth = 200;
+                        idfHeight = 52;
+                    } else {
+                        cols = devs.length > 3 ? 2 : 1;
+                        rows = Math.ceil(devs.length / cols);
+                        idfWidth = cols * CARD_WIDTH + (cols - 1) * CARD_GAP_X + IDF_PAD_X * 2;
+                        idfHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP_Y + IDF_PAD_TOP + IDF_PAD_BOTTOM;
+                    }
+
+                    computedIdfDims.push({ idfCode, floorNum, floorLabel, devs, width: idfWidth, height: idfHeight, cols, rows, isCollapsed: isIdfCollapsed });
+                    preliminarySiteWidth += idfWidth + 24;
+                    if (idfHeight > maxIdfHeightInSite) {
+                        maxIdfHeightInSite = idfHeight;
+                    }
+                }
+
+                const siteWidth = Math.max(preliminarySiteWidth - 24 + SITE_PAD_X, 260);
+                const siteHeight = maxIdfHeightInSite + SITE_PAD_TOP + SITE_PAD_BOTTOM;
+
+                // Wrap to next row if needed
+                if (currentSiteX > 40 && (currentSiteX + siteWidth > MAX_ROW_WIDTH)) {
+                    currentSiteX = 40;
+                    currentSiteY += maxRowHeight + ROW_GAP;
+                    maxRowHeight = 0;
+                }
+
+                let currentIdfX = currentSiteX + SITE_PAD_X;
+                const siteIdfBoxes: IdfContainerBox[] = [];
+
+                for (const { idfCode, floorNum, floorLabel, devs, width: idfWidth, cols, isCollapsed: isIdfCollapsed } of computedIdfDims) {
+                    const idfBox: IdfContainerBox = {
+                        siteCode,
+                        idfCode,
+                        floorNum,
+                        floorLabel,
+                        x: currentIdfX,
+                        y: currentSiteY + SITE_PAD_TOP,
+                        width: idfWidth,
+                        height: isIdfCollapsed ? 52 : maxIdfHeightInSite,
+                        deviceCount: devs.length,
+                        isCollapsed: isIdfCollapsed
+                    };
+                    siteIdfBoxes.push(idfBox);
+                    idfContainers.push(idfBox);
+
+                    if (isIdfCollapsed) {
+                        const centerX = idfBox.x + idfBox.width / 2;
+                        const centerY = idfBox.y + idfBox.height / 2;
+                        for (const dev of devs) {
+                            positions.set(dev.canonicalHostname || dev.hostname, {
+                                x: centerX,
+                                y: centerY
+                            });
+                        }
+                    } else {
+                        devs.forEach((dev, idx) => {
+                            const col = idx % cols;
+                            const row = Math.floor(idx / cols);
+
+                            const nodeCenterX = idfBox.x + IDF_PAD_X + col * (CARD_WIDTH + CARD_GAP_X) + CARD_WIDTH / 2;
+                            const nodeCenterY = idfBox.y + IDF_PAD_TOP + row * (CARD_HEIGHT + CARD_GAP_Y) + CARD_HEIGHT / 2;
+
+                            positions.set(dev.canonicalHostname || dev.hostname, {
+                                x: nodeCenterX,
+                                y: nodeCenterY
+                            });
+                        });
+                    }
+
+                    currentIdfX += idfWidth + 24;
+                }
+
+                siteContainers.push({
+                    siteCode,
+                    siteName,
+                    x: currentSiteX,
+                    y: currentSiteY,
+                    width: siteWidth,
+                    height: siteHeight,
+                    deviceCount: totalDevsInSite,
+                    l3Count,
+                    l2Count,
+                    isCollapsed: false,
+                    idfs: siteIdfBoxes
+                });
+
+                if (siteHeight > maxRowHeight) maxRowHeight = siteHeight;
+                currentSiteX += siteWidth + SITE_GAP;
+                if (currentSiteX > maxCanvasWidth) maxCanvasWidth = currentSiteX;
             }
-
-            siteContainers.push({
-                siteCode,
-                siteName,
-                x: currentSiteX,
-                y: currentSiteY,
-                width: siteWidth,
-                height: siteHeight,
-                deviceCount: totalDevsInSite,
-                l3Count,
-                l2Count,
-                isCollapsed: false,
-                idfs: siteIdfBoxes
-            });
-
-            if (siteHeight > maxRowHeight) maxRowHeight = siteHeight;
-            currentSiteX += siteWidth + SITE_GAP;
-            if (currentSiteX > maxCanvasWidth) maxCanvasWidth = currentSiteX;
         }
 
         const totalWidth = Math.max(maxCanvasWidth + 60, 1400);
@@ -631,7 +1009,7 @@ export default function TopologyGraph({
             idfBoxes: idfContainers,
             canvasSize: { width: totalWidth, height: totalHeight }
         };
-    }, [filteredDevices, layoutMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing]);
+    }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         setIsDragging(true);
@@ -662,6 +1040,28 @@ export default function TopologyGraph({
         >
             {/* Top Control Bar Overlay */}
             <div className="absolute top-4 left-4 z-20 flex flex-wrap items-center gap-2 bg-slate-900/90 backdrop-blur-md px-3 py-2 rounded-xl border border-slate-800 shadow-2xl max-w-[calc(100%-2rem)]">
+                {/* Site & Floor Manager Sidebar Toggle */}
+                <button
+                    type="button"
+                    onClick={() => setIsSiteManagerOpen(prev => !prev)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-sm ${
+                        isSiteManagerOpen
+                            ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-400"
+                            : "bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800"
+                    }`}
+                    title="Open Site & Floor Manager Sidebar (Tree hierarchy, checkboxes, floor selection)"
+                >
+                    {isSiteManagerOpen ? <PanelLeftClose className="w-3.5 h-3.5" /> : <PanelLeft className="w-3.5 h-3.5 text-blue-400" />}
+                    <span>Site Manager</span>
+                    {deselectedSwitches.size > 0 && (
+                        <span className="bg-amber-500/20 text-amber-300 text-[10px] font-mono px-1.5 py-0.2 rounded-full border border-amber-500/40">
+                            {unifiedDevices.length - deselectedSwitches.size}/{unifiedDevices.length}
+                        </span>
+                    )}
+                </button>
+
+                <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
+
                 {/* Site Filter */}
                 <div className="flex items-center gap-1.5 text-xs">
                     <Building2 className="w-3.5 h-3.5 text-blue-400" />
@@ -671,9 +1071,9 @@ export default function TopologyGraph({
                         onChange={(e) => setSiteFilter(e.target.value)}
                         className="bg-slate-950 border border-slate-700 text-white text-xs rounded-lg px-2.5 py-1 outline-none cursor-pointer focus:border-blue-500 transition font-medium"
                     >
-                        <option value="ALL">All Sites ({devices.length} devices)</option>
+                        <option value="ALL">All Sites ({unifiedDevices.length} devices)</option>
                         {uniqueSites.map(s => {
-                            const count = devices.filter(d => parseDeviceSiteAndIdf(d.hostname, d.site, d.idf).site === s).length;
+                            const count = unifiedDevices.filter(d => parseDeviceSiteAndIdf(d.hostname, d.site, d.idf).site === s).length;
                             const siteMeta = siteDirectory[s];
                             const label = siteMeta?.name ? `Site ${s} (${siteMeta.name})` : `Site ${s}`;
                             return (
@@ -717,6 +1117,36 @@ export default function TopologyGraph({
 
                 {layoutMode === "container" && (
                     <>
+                        {/* Stacking Mode: Vertical Building Floors vs Horizontal Closets */}
+                        <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+                            <button
+                                type="button"
+                                onClick={() => setStackingMode("building")}
+                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
+                                    stackingMode === "building"
+                                        ? "bg-blue-600 text-white shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                                title="Vertical Building Floor Stacking (Top floor down to Ground/MDF)"
+                            >
+                                <Layers2 className="w-3 h-3" />
+                                Building Stack
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setStackingMode("horizontal")}
+                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
+                                    stackingMode === "horizontal"
+                                        ? "bg-blue-600 text-white shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                                title="Horizontal Closets (Side-by-side IDFs)"
+                            >
+                                <Box className="w-3 h-3" />
+                                Closets
+                            </button>
+                        </div>
+
                         {/* IDF Spacing Density Selector */}
                         <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
                             <span className="text-[10px] uppercase font-bold text-slate-400 px-1.5 flex items-center gap-1">
@@ -963,6 +1393,277 @@ export default function TopologyGraph({
                 </div>
             )}
 
+            {/* Site & Floor Manager Left Sidebar Drawer */}
+            {isSiteManagerOpen && (
+                <div className="absolute top-16 left-4 bottom-14 z-30 w-80 bg-slate-900/95 backdrop-blur-md rounded-2xl border border-slate-800 shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-left-4 duration-200">
+                    {/* Drawer Header */}
+                    <div className="p-3.5 border-b border-slate-800/80 bg-slate-950/70 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <PanelLeft className="w-4 h-4 text-blue-400" />
+                            <span className="font-bold text-xs text-white tracking-tight">Site & Floor Manager</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsSiteManagerOpen(false)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                            title="Close Site Manager"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    {/* Search & Actions Bar */}
+                    <div className="p-3 border-b border-slate-800/60 bg-slate-950/40 space-y-2">
+                        {/* Search Input */}
+                        <div className="relative">
+                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                            <input
+                                type="text"
+                                value={managerSearch}
+                                onChange={(e) => setManagerSearch(e.target.value)}
+                                placeholder="Filter sites, floors, switches..."
+                                className="w-full bg-slate-900 border border-slate-700/80 rounded-lg pl-8 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                            />
+                            {managerSearch && (
+                                <button
+                                    onClick={() => setManagerSearch("")}
+                                    className="absolute right-2 top-2 text-slate-400 hover:text-white cursor-pointer"
+                                >
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Quick Macro Toggles */}
+                        <div className="flex items-center justify-between text-[11px]">
+                            <div className="flex items-center gap-1.5">
+                                <button
+                                    type="button"
+                                    onClick={selectAllSwitches}
+                                    className="px-2 py-0.5 rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 font-semibold transition cursor-pointer"
+                                >
+                                    Select All
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={deselectAllSwitches}
+                                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition cursor-pointer"
+                                >
+                                    Deselect All
+                                </button>
+                            </div>
+                            <span className="text-[10px] font-mono text-slate-400">
+                                {filteredDevices.length} / {unifiedDevices.length} shown
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Scrollable Hierarchy Tree */}
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1 text-xs">
+                        {managerTree.map(site => {
+                            const siteKey = `site-${site.siteCode}`;
+                            const isSiteCollapsed = collapsedManagerNodes.has(siteKey);
+                            const siteSwitches = site.switches;
+                            const siteHostnames = siteSwitches.map(s => s.canonicalHostname || s.hostname);
+                            const selectedInSiteCount = siteHostnames.filter(h => !deselectedSwitches.has(h)).length;
+                            const isAllSiteSelected = selectedInSiteCount === siteHostnames.length;
+                            const isNoneSiteSelected = selectedInSiteCount === 0;
+
+                            // Filter search
+                            const searchLower = managerSearch.toLowerCase().trim();
+                            const siteMatchesSearch = !searchLower || 
+                                site.siteCode.toLowerCase().includes(searchLower) ||
+                                (site.siteName && site.siteName.toLowerCase().includes(searchLower));
+
+                            return (
+                                <div key={site.siteCode} className="rounded-xl border border-slate-800/60 bg-slate-950/30 overflow-hidden">
+                                    {/* Site Header Row */}
+                                    <div className="flex items-center justify-between p-2 hover:bg-slate-800/40 transition">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleManagerNodeCollapse(siteKey)}
+                                                className="p-0.5 text-slate-400 hover:text-white cursor-pointer"
+                                            >
+                                                {isSiteCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleSiteVisibility(siteSwitches)}
+                                                className="text-slate-300 hover:text-blue-400 transition cursor-pointer"
+                                            >
+                                                {isAllSiteSelected ? (
+                                                    <CheckSquare className="w-4 h-4 text-blue-400" />
+                                                ) : isNoneSiteSelected ? (
+                                                    <Square className="w-4 h-4 text-slate-600" />
+                                                ) : (
+                                                    <div className="w-4 h-4 rounded border border-blue-400 bg-blue-500/30 flex items-center justify-center">
+                                                        <div className="w-2 h-0.5 bg-blue-300"></div>
+                                                    </div>
+                                                )}
+                                            </button>
+                                            <span className="font-bold text-white font-mono text-[11px] truncate">
+                                                {site.siteCode} {site.siteName ? `• ${site.siteName}` : ""}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0 ml-1">
+                                            <span className="text-[10px] font-mono text-slate-400">
+                                                [{selectedInSiteCount}/{siteSwitches.length}]
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => isolateSite(siteSwitches)}
+                                                className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-800 hover:bg-blue-600/30 text-slate-400 hover:text-blue-300 transition cursor-pointer"
+                                                title="Isolate this site only"
+                                            >
+                                                Only
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Floors / IDFs inside Site */}
+                                    {!isSiteCollapsed && (
+                                        <div className="pl-4 pr-1 pb-1.5 space-y-1">
+                                            {site.floors.map(floor => {
+                                                const floorKey = `floor-${site.siteCode}-${floor.idfCode}`;
+                                                const isFloorCollapsed = collapsedManagerNodes.has(floorKey);
+                                                const floorHostnames = floor.switches.map(s => s.canonicalHostname || s.hostname);
+                                                const selectedInFloorCount = floorHostnames.filter(h => !deselectedSwitches.has(h)).length;
+                                                const isAllFloorSelected = selectedInFloorCount === floorHostnames.length;
+                                                const isNoneFloorSelected = selectedInFloorCount === 0;
+
+                                                const floorMatchesSearch = !searchLower ||
+                                                    floor.idfCode.toLowerCase().includes(searchLower) ||
+                                                    floor.floorLabel.toLowerCase().includes(searchLower) ||
+                                                    floor.switches.some(s => 
+                                                        s.hostname.toLowerCase().includes(searchLower) || 
+                                                        (s.canonicalHostname && s.canonicalHostname.toLowerCase().includes(searchLower)) ||
+                                                        (s.ipAddress && s.ipAddress.toLowerCase().includes(searchLower))
+                                                    );
+
+                                                if (!siteMatchesSearch && !floorMatchesSearch) return null;
+
+                                                return (
+                                                    <div key={floor.idfCode} className="border-l-2 border-slate-800 pl-2 space-y-1 my-1">
+                                                        {/* Floor Header */}
+                                                        <div className="flex items-center justify-between py-1 px-1 rounded hover:bg-slate-800/30">
+                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleManagerNodeCollapse(floorKey)}
+                                                                    className="p-0.5 text-slate-500 hover:text-white cursor-pointer"
+                                                                >
+                                                                    {isFloorCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => toggleFloorVisibility(floor.switches)}
+                                                                    className="text-slate-400 hover:text-blue-400 transition cursor-pointer"
+                                                                >
+                                                                    {isAllFloorSelected ? (
+                                                                        <CheckSquare className="w-3.5 h-3.5 text-blue-400" />
+                                                                    ) : isNoneFloorSelected ? (
+                                                                        <Square className="w-3.5 h-3.5 text-slate-600" />
+                                                                    ) : (
+                                                                        <div className="w-3.5 h-3.5 rounded border border-blue-400 bg-blue-500/30 flex items-center justify-center">
+                                                                            <div className="w-1.5 h-0.5 bg-blue-300"></div>
+                                                                        </div>
+                                                                    )}
+                                                                </button>
+                                                                <span className="font-semibold text-slate-300 text-[11px] truncate">
+                                                                    {floor.floorLabel} <span className="text-slate-500 font-mono">({floor.idfCode})</span>
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1 shrink-0">
+                                                                <span className="text-[10px] font-mono text-slate-500">
+                                                                    ({selectedInFloorCount}/{floor.switches.length})
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => isolateFloor(floor.switches)}
+                                                                    className="px-1 py-0.2 rounded text-[9px] font-semibold bg-slate-800/80 hover:bg-blue-600/30 text-slate-400 hover:text-blue-300 transition cursor-pointer"
+                                                                    title="Isolate this floor only"
+                                                                >
+                                                                    Only
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Switch items within Floor */}
+                                                        {!isFloorCollapsed && (
+                                                            <div className="pl-5 space-y-0.5">
+                                                                {floor.switches.map(sw => {
+                                                                    const canon = sw.canonicalHostname || sw.hostname;
+                                                                    const isVisible = !deselectedSwitches.has(canon);
+                                                                    const stInfo = detectSwitchStack(sw);
+                                                                    const devLayer = getDeviceLayer(sw).layer;
+
+                                                                    const swMatches = !searchLower ||
+                                                                        sw.hostname.toLowerCase().includes(searchLower) ||
+                                                                        canon.toLowerCase().includes(searchLower) ||
+                                                                        (sw.ipAddress && sw.ipAddress.toLowerCase().includes(searchLower));
+
+                                                                    if (!siteMatchesSearch && !swMatches) return null;
+
+                                                                    return (
+                                                                        <div
+                                                                            key={canon}
+                                                                            className={`flex items-center justify-between py-1 px-1.5 rounded transition ${
+                                                                                selectedDevice?.hostname === sw.hostname
+                                                                                    ? "bg-blue-600/20 border border-blue-500/30"
+                                                                                    : "hover:bg-slate-800/40"
+                                                                            }`}
+                                                                        >
+                                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => toggleSwitchVisibility(canon)}
+                                                                                    className="text-slate-400 hover:text-blue-400 transition cursor-pointer"
+                                                                                >
+                                                                                    {isVisible ? (
+                                                                                        <CheckSquare className="w-3.5 h-3.5 text-blue-400" />
+                                                                                    ) : (
+                                                                                        <Square className="w-3.5 h-3.5 text-slate-600" />
+                                                                                    )}
+                                                                                </button>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => panToSwitch(sw.hostname)}
+                                                                                    className="text-left font-mono text-[11px] text-slate-300 hover:text-blue-300 truncate cursor-pointer"
+                                                                                    title={`Click to focus and inspect ${sw.hostname}`}
+                                                                                >
+                                                                                    {canon}
+                                                                                </button>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-1 shrink-0">
+                                                                                {stInfo.isStack && (
+                                                                                    <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                                                                        {stInfo.stackSize}x
+                                                                                    </span>
+                                                                                )}
+                                                                                <span className={`text-[9px] font-mono px-1 py-0.2 rounded ${
+                                                                                    devLayer === "L3" ? "bg-cyan-500/20 text-cyan-300" : "bg-emerald-500/20 text-emerald-300"
+                                                                                }`}>
+                                                                                    {devLayer}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
             {/* Interactive SVG Canvas */}
             <div
                 ref={svgContainerRef}
@@ -1106,7 +1807,7 @@ export default function TopologyGraph({
                                                         className="group-hover:stroke-blue-400 group-hover:fill-slate-800/90 transition"
                                                     />
                                                     <text x={idf.x + 12} y={idf.y + 20} fill="#e2e8f0" fontSize={11} fontWeight="bold" fontFamily="monospace">
-                                                        IDF: {idf.idfCode} ({idf.deviceCount} Switches)
+                                                        {idf.floorLabel ? `${idf.floorLabel} • ` : ""}IDF: {idf.idfCode} ({idf.deviceCount} Switches)
                                                     </text>
                                                     <text x={idf.x + 12} y={idf.y + 36} fill="#38bdf8" fontSize={9} fontWeight="bold">
                                                         CLICK TO EXPAND ▾
@@ -1135,7 +1836,7 @@ export default function TopologyGraph({
                                                         ■
                                                     </text>
                                                     <text x={24} y={10} fill="#cbd5e1" fontSize={11} fontWeight="bold" fontFamily="monospace">
-                                                        IDF: {idf.idfCode}
+                                                        {idf.floorLabel ? `${idf.floorLabel} • ` : ""}IDF: {idf.idfCode}
                                                     </text>
                                                     <text x={idf.width - 50} y={10} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
                                                         ({idf.deviceCount})
@@ -1325,11 +2026,12 @@ export default function TopologyGraph({
                                 return null;
                             }
 
-                            const pos = nodePositions.get(dev.hostname);
+                            const canonHost = dev.canonicalHostname || getCanonicalHostname(dev.hostname);
+                            const pos = nodePositions.get(canonHost) || nodePositions.get(dev.hostname);
                             if (!pos) return null;
 
-                            const isSelected = selectedDevice?.hostname === dev.hostname;
-                            const isHop = isHopDevice(dev.hostname);
+                            const isSelected = selectedDevice && (getCanonicalHostname(selectedDevice.hostname) === canonHost);
+                            const isHop = isHopDevice(dev.hostname) || isHopDevice(canonHost);
                             const isUnverified = dev.status === "UNVERIFIED";
                             const isUnreachable = dev.status !== "REACHABLE" && !isUnverified;
                             const { layer, label: layerLabel } = getDeviceLayer(dev);
@@ -1355,13 +2057,13 @@ export default function TopologyGraph({
                                 cardBg = "rgba(6, 44, 34, 0.95)";
                             }
 
-                            const isFaded = fadedNodes.has(dev.hostname);
+                            const isFaded = fadedNodes.has(canonHost) || fadedNodes.has(dev.hostname);
                             const CARD_W = 172;
                             const CARD_H = 74;
 
                             return (
                                 <g
-                                    key={dev.hostname}
+                                    key={canonHost}
                                     transform={`translate(${pos.x}, ${pos.y})`}
                                     onClick={(e) => handleNodeClick(e, dev)}
                                     opacity={isFaded ? 0.22 : 1}
@@ -1370,6 +2072,34 @@ export default function TopologyGraph({
                                         : "cursor-pointer transition-transform hover:scale-105"
                                     }
                                 >
+                                    {/* 3D Stack Chassis Under-Layers (StackWise Visualization) */}
+                                    {stackInfo.isStack && (
+                                        <g opacity={isFaded ? 0.3 : 0.85}>
+                                            <rect
+                                                x={-CARD_W / 2 + 4}
+                                                y={-CARD_H / 2 - 4}
+                                                width={CARD_W - 8}
+                                                height={CARD_H}
+                                                rx={7}
+                                                fill="#091426"
+                                                stroke="rgba(168, 85, 247, 0.45)"
+                                                strokeWidth={1}
+                                            />
+                                            {stackInfo.stackSize > 2 && (
+                                                <rect
+                                                    x={-CARD_W / 2 + 8}
+                                                    y={-CARD_H / 2 - 8}
+                                                    width={CARD_W - 16}
+                                                    height={CARD_H}
+                                                    rx={6}
+                                                    fill="#050b14"
+                                                    stroke="rgba(168, 85, 247, 0.3)"
+                                                    strokeWidth={0.8}
+                                                />
+                                            )}
+                                        </g>
+                                    )}
+
                                     {/* Selection or Traced Hop Highlight Ring */}
                                     {(isSelected || isHop) && (
                                         <rect
@@ -1468,10 +2198,10 @@ export default function TopologyGraph({
                                         fontWeight="bold"
                                         fontFamily="monospace"
                                     >
-                                        {dev.hostname.length > 15 ? dev.hostname.slice(0, 14) + "…" : dev.hostname}
+                                        {canonHost.length > 15 ? canonHost.slice(0, 14) + "…" : canonHost}
                                     </text>
 
-                                    {/* Device IP Address */}
+                                    {/* Device IP Address & Multi-IP Indicator */}
                                     <text
                                         x={-CARD_W / 2 + 14}
                                         y={-CARD_H / 2 + 33}
@@ -1480,6 +2210,7 @@ export default function TopologyGraph({
                                         fontFamily="monospace"
                                     >
                                         {dev.ipAddress || dev.ip_address || "No IP"}
+                                        {dev.allIps && dev.allIps.length > 1 ? ` (+${dev.allIps.length - 1} IPs)` : ""}
                                     </text>
 
                                     {/* Sub-label: Site/IDF & Status Pill */}

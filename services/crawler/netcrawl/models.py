@@ -110,6 +110,7 @@ class Device(BaseModel):
     cdp_neighbors: List[CDPNeighbor] = Field(default_factory=list)
     lldp_neighbors: List[CDPNeighbor] = Field(default_factory=list)
     arp_table: List[ARPEntry] = Field(default_factory=list)
+    alias_ips: List[str] = Field(default_factory=list)
 
 
 class TopologyLink(BaseModel):
