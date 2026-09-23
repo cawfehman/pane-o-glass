@@ -30,7 +30,7 @@ import DeviceInspectorDrawer from "@/components/crawler/DeviceInspectorDrawer";
 import PathTracerPanel from "@/components/crawler/PathTracerPanel";
 import FailureInvestigationTable from "@/components/crawler/FailureInvestigationTable";
 import CrawlModal from "@/components/crawler/CrawlModal";
-import ToolHelp from "@/components/ToolHelp";
+import { ToolHelp } from "@/components/ToolHelp";
 
 export default function AdminCrawlerPage() {
     const { data: session, status } = useSession();

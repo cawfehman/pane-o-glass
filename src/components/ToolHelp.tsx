@@ -855,3 +855,5 @@ export function ToolHelp({ toolId, iconSize = 20, triggerStyle }: ToolHelpProps)
         </>
     );
 }
+
+export default ToolHelp;
