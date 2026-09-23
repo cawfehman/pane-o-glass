@@ -19,6 +19,7 @@ from netcrawl.models import (
 from netcrawl.parsers.ios_parsers import (
     parse_arp_table,
     parse_cdp_neighbors_detail,
+    parse_interfaces_description,
     parse_interfaces_detail,
     parse_ip_interface_brief,
     parse_lldp_neighbors_detail,
@@ -87,6 +88,8 @@ class NetworkCrawler:
         self.known_hostname_map: Dict[str, str] = {} # ip -> hostname (if pre-known from CDP)
         self.known_platform_map: Dict[str, str] = {} # ip -> platform model (if pre-known from CDP/LLDP)
         self.known_platform_by_host: Dict[str, str] = {} # hostname -> platform model
+        self.known_peer_desc_map: Dict[str, str] = {} # ip -> peer connected port description
+        self.known_peer_desc_by_host: Dict[str, str] = {} # hostname -> peer connected port description
         self.reseed_points: List[Dict[str, Any]] = [] # devices at boundary with unvisited neighbors at max_hops + 1
         self.unverified_devices: List[Device] = [] # frontier boundary devices beyond hop limit
 
@@ -136,6 +139,11 @@ class NetworkCrawler:
             self.known_platform_map.get(target_ip)
             or self.known_platform_by_host.get(target_ip.lower())
             or (self.known_platform_by_host.get(pre_known_name.lower()) if pre_known_name else None)
+        )
+        pre_known_desc = (
+            self.known_peer_desc_map.get(target_ip)
+            or self.known_peer_desc_by_host.get(target_ip.lower())
+            or (self.known_peer_desc_by_host.get(pre_known_name.lower()) if pre_known_name else None)
         )
 
         # Select client (Mock or real SSH)
@@ -197,13 +205,19 @@ class NetworkCrawler:
             if not success:
                 host_label = pre_known_name or f"Unknown-{target_ip}"
                 site_info = parse_site_info(host_label, self.hostname_regex)
+                final_disc_via = discovered_via
+                if pre_known_desc and final_disc_via and pre_known_desc not in final_disc_via:
+                    final_disc_via = f"{final_disc_via} [{pre_known_desc}]"
+                elif pre_known_desc and not final_disc_via:
+                    final_disc_via = f"Peer port desc: [{pre_known_desc}]"
+
                 return Device(
                     hostname=host_label,
                     ip_address=target_ip,
                     platform=pre_known_platform,
                     status=fail_status,
                     failure_reason=err,
-                    discovered_via=discovered_via,
+                    discovered_via=final_disc_via,
                     credential_used=None,
                     auth_time_ms=auth_time_ms,
                     hop_distance=current_hop,
@@ -216,6 +230,7 @@ class NetworkCrawler:
 
         out_version = ""
         out_ip_int = ""
+        out_desc = ""
         out_intfs = ""
         out_trunk = ""
         out_routes = ""
@@ -247,8 +262,9 @@ class NetworkCrawler:
             if should_check_lldp:
                 out_lldp = client.send_command("show lldp neighbors detail")
 
-            # Always run show ip interface brief to catalog all configured interface/SVI IPs and prevent dual-path duplicates
+            # Always run show ip interface brief & show interfaces description to catalog IP assignments and port descriptions
             out_ip_int = client.send_command("show ip interface brief")
+            out_desc = client.send_command("show interfaces description")
 
             # 4. Profile: Mapping & Intensive commands (physical connectivity, VLANs, IP assignments)
             if not is_discovery:
@@ -282,6 +298,7 @@ class NetworkCrawler:
             ("show_cdp_neighbors_detail", out_cdp),
             ("show_lldp_neighbors_detail", out_lldp),
             ("show_ip_interface_brief", out_ip_int),
+            ("show_interfaces_description", out_desc),
             ("show_interfaces", out_intfs),
             ("show_trunk_or_switchport", out_trunk),
             ("show_ip_route", out_routes),
@@ -299,6 +316,8 @@ class NetworkCrawler:
 
         site_info = parse_site_info(hostname, self.hostname_regex)
         interfaces = parse_ip_interface_brief(out_ip_int) if out_ip_int else {}
+        if out_desc and "%" not in out_desc:
+            interfaces = parse_interfaces_description(out_desc, interfaces)
         if out_intfs:
             interfaces = parse_interfaces_detail(out_intfs, interfaces)
         if out_trunk:
@@ -515,6 +534,10 @@ class NetworkCrawler:
                                             if any(k in b_plat.lower() for k in ["isr", "asr", "router", "cr0"])
                                             else DeviceRole.L2_SWITCH
                                         )
+                                        b_intf = device.interfaces.get(b_neighbor['local_interface'])
+                                        b_desc = b_intf.description if b_intf else None
+                                        b_desc_str = f" [{b_desc}]" if b_desc else ""
+
                                         unverified_dev = Device(
                                             hostname=b_host,
                                             ip_address=b_ip,
@@ -522,7 +545,7 @@ class NetworkCrawler:
                                             role=b_role,
                                             status=DeviceStatus.UNVERIFIED,
                                             failure_reason=f"Unverified: Hop limit reached ({self.max_hops})",
-                                            discovered_via=f"{device.hostname} ({b_neighbor['local_interface']})",
+                                            discovered_via=f"{device.hostname} ({b_neighbor['local_interface']}){b_desc_str}",
                                             hop_distance=current_hop + 1,
                                             site_info=parse_site_info(b_host, self.hostname_regex),
                                         )
@@ -583,8 +606,17 @@ class NetworkCrawler:
                                     and neighbor_host.lower() not in self.visited_hosts
                                 ):
                                     self.queued_targets.add(neighbor_ip)
+                                    local_intf_obj = device.interfaces.get(neighbor.local_interface)
+                                    peer_desc = local_intf_obj.description if local_intf_obj else None
+                                    if peer_desc:
+                                        self.known_peer_desc_map[neighbor_ip] = peer_desc
+                                        self.known_peer_desc_by_host[neighbor_host.lower()] = peer_desc
+                                        desc_suffix = f" [{peer_desc}]"
+                                    else:
+                                        desc_suffix = ""
+
                                     self.discovered_via_map[neighbor_ip] = (
-                                        f"{device.hostname} ({neighbor.local_interface} -> {neighbor.remote_interface})"
+                                        f"{device.hostname} ({neighbor.local_interface} -> {neighbor.remote_interface}){desc_suffix}"
                                     )
                                     self.known_hostname_map[neighbor_ip] = neighbor_host
                                     if getattr(neighbor, "platform", None):

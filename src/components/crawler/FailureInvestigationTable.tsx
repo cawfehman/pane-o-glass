@@ -136,7 +136,8 @@ export default function FailureInvestigationTable({
             const host = (d.hostname || "").toLowerCase();
             const port = (d.discoveredPort || d.discovered_port || "").toLowerCase();
             const plat = (d.platform || "").toLowerCase();
-            return host.includes(query) || disc.includes(query) || err.includes(query) || ip.includes(query) || port.includes(query) || plat.includes(query);
+            const desc = (d.peerInterfaceDescription || "").toLowerCase();
+            return host.includes(query) || disc.includes(query) || err.includes(query) || ip.includes(query) || port.includes(query) || plat.includes(query) || desc.includes(query);
         });
     }, [unreachableDevices, search, filterTab, localOverrides]);
 
@@ -364,10 +365,10 @@ export default function FailureInvestigationTable({
                                 <th 
                                     className="py-3 px-4 cursor-pointer select-none hover:text-white transition"
                                     onClick={() => handleSort("port")}
-                                    title="Sort by Port"
+                                    title="Sort by Connected Port or Description"
                                 >
                                     <div className="flex items-center gap-1">
-                                        Port / Link
+                                        Connected Port & Description
                                         {renderSortIndicator("port")}
                                     </div>
                                 </th>
@@ -467,8 +468,23 @@ export default function FailureInvestigationTable({
                                         </td>
 
                                         {/* Port / Link */}
-                                        <td className="py-3 px-4 text-slate-400">
-                                            {discPort}
+                                        <td className="py-3 px-4 font-sans">
+                                            <span className="text-slate-300 font-mono text-[11px] block font-medium">
+                                                {discPort}
+                                            </span>
+                                            {item.peerInterfaceDescription ? (
+                                                <span 
+                                                    className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10.5px] font-mono bg-cyan-950/60 text-cyan-300 border border-cyan-800/60 max-w-[240px] truncate" 
+                                                    title={`Connected Peer Port Description: "${item.peerInterfaceDescription}"`}
+                                                >
+                                                    <Tag className="w-2.5 h-2.5 text-cyan-400 shrink-0" />
+                                                    <span className="truncate">{item.peerInterfaceDescription}</span>
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] text-slate-500 italic block mt-0.5">
+                                                    No desc on peer port
+                                                </span>
+                                            )}
                                         </td>
 
                                         {/* Failure Reason */}

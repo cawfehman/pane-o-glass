@@ -19,7 +19,8 @@ import {
     Zap,
     Hash,
     Play,
-    Clock
+    Clock,
+    Tag
 } from "lucide-react";
 import { detectSwitchStack, parseFloorFromIdf } from "./TopologyGraph";
 
@@ -334,6 +335,43 @@ export default function DeviceInspectorDrawer({
 
                 {activeTab === "overview" && (
                     <div className="space-y-6">
+                        {/* Connected Peer Port & Description (Clue on Purpose / Vendor Ownership) */}
+                        {(device.peerInterfaceDescription || device.discoveredPort || device.discoveredVia) && (
+                            <div className="bg-slate-950/70 rounded-xl p-4 border border-cyan-800/50 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-cyan-300 flex items-center gap-1.5 uppercase tracking-wide">
+                                        <Tag className="w-3.5 h-3.5 text-cyan-400" />
+                                        Discovered Peer Port & Purpose Clue
+                                    </span>
+                                    {device.discoveredPort && (
+                                        <span className="text-[11px] font-mono text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800/60 font-semibold">
+                                            {device.discoveredPort}
+                                        </span>
+                                    )}
+                                </div>
+                                {device.peerInterfaceDescription ? (
+                                    <div className="p-2.5 rounded-lg bg-cyan-950/40 border border-cyan-800/40">
+                                        <span className="text-[10px] text-slate-400 uppercase font-bold block mb-1">
+                                            Connected Peer Interface Description:
+                                        </span>
+                                        <span className="font-mono text-xs font-semibold text-cyan-200 block">
+                                            "{device.peerInterfaceDescription}"
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-slate-400">
+                                        No interface description configured on discovering switch port.
+                                    </p>
+                                )}
+                                {device.discoveredVia && (
+                                    <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1 border-t border-slate-800/60">
+                                        <span className="text-slate-500">Discovered via peer:</span>
+                                        <span className="font-mono text-slate-300 font-medium">{device.discoveredVia}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* Switch Stack Architecture Card */}
                         {stackInfo.isStack && (
                             <div className="bg-purple-950/20 rounded-xl p-4 border border-purple-800/60 space-y-3">

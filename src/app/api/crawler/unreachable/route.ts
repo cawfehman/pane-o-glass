@@ -54,30 +54,60 @@ export async function GET(request: NextRequest) {
                 },
                 select: {
                     hostname: true,
-                    cdpNeighbors: true
+                    cdpNeighbors: true,
+                    interfaces: true
                 }
             }),
             prisma.crawlerDeviceOverride.findMany()
         ]);
 
-        // Build CDP platform lookup from all reachable neighbor tables
-        // destination_host (canonical lowercase) -> platform
-        // management_ip -> platform
+        // Build CDP platform & connected peer port description lookup from all reachable neighbor tables
         const cdpPlatformMap = new Map<string, string>();
+        const cdpPortMap = new Map<string, string>();
+        const cdpDescMap = new Map<string, string>();
+
         for (const rDev of reachableDevices) {
+            const rawIntfs = rDev.interfaces;
+            const intfs: Record<string, any> = typeof rawIntfs === "string" 
+                ? JSON.parse(rawIntfs) 
+                : (rawIntfs || {});
+
             const neighbors: any[] = Array.isArray(rDev.cdpNeighbors)
                 ? rDev.cdpNeighbors
                 : typeof rDev.cdpNeighbors === "string"
                 ? JSON.parse(rDev.cdpNeighbors)
                 : [];
+
             for (const n of neighbors) {
+                const canon = n.destination_host ? n.destination_host.split(".")[0].split("(")[0].trim().toLowerCase() : null;
+                const ip = n.management_ip ? n.management_ip.trim() : null;
+
                 if (n.platform) {
-                    if (n.destination_host) {
-                        const canon = n.destination_host.split(".")[0].split("(")[0].trim().toLowerCase();
-                        cdpPlatformMap.set(canon, n.platform);
+                    if (canon && !cdpPlatformMap.has(canon)) cdpPlatformMap.set(canon, n.platform);
+                    if (ip && !cdpPlatformMap.has(ip)) cdpPlatformMap.set(ip, n.platform);
+                }
+
+                if (n.local_interface) {
+                    const localIntfName = n.local_interface;
+                    if (canon && !cdpPortMap.has(canon)) cdpPortMap.set(canon, localIntfName);
+                    if (ip && !cdpPortMap.has(ip)) cdpPortMap.set(ip, localIntfName);
+
+                    // Look up description on rDev's local interface
+                    let matchedIntf = intfs[localIntfName];
+                    if (!matchedIntf) {
+                        const targetKey = localIntfName.toLowerCase();
+                        for (const [k, v] of Object.entries(intfs)) {
+                            if (k.toLowerCase() === targetKey || k.toLowerCase().replace(/gigabitethernet/i, "gi") === targetKey.replace(/gigabitethernet/i, "gi")) {
+                                matchedIntf = v;
+                                break;
+                            }
+                        }
                     }
-                    if (n.management_ip) {
-                        cdpPlatformMap.set(n.management_ip.trim(), n.platform);
+
+                    const desc = matchedIntf?.description;
+                    if (desc) {
+                        if (canon && !cdpDescMap.has(canon)) cdpDescMap.set(canon, desc);
+                        if (ip && !cdpDescMap.has(ip)) cdpDescMap.set(ip, desc);
                     }
                 }
             }
@@ -93,11 +123,15 @@ export async function GET(request: NextRequest) {
             const canon = (d.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
             const ip = (d.ipAddress || "").trim();
             const cdpPlatform = d.platform || cdpPlatformMap.get(canon) || (ip ? cdpPlatformMap.get(ip) : null) || null;
+            const cdpPort = cdpPortMap.get(canon) || (ip ? cdpPortMap.get(ip) : null) || null;
+            const peerDesc = cdpDescMap.get(canon) || (ip ? cdpDescMap.get(ip) : null) || null;
             const override = overrideMap.get(canon) || (ip ? overrideMap.get(ip) : null);
 
             return {
                 ...d,
                 platform: cdpPlatform,
+                discoveredPort: (d as any).discoveredPort || cdpPort || null,
+                peerInterfaceDescription: peerDesc,
                 tag: override?.tag || null,
                 isVendorManaged: override?.tag === "VENDOR_MANAGED",
                 isIgnored: override?.tag === "IGNORED",

@@ -245,6 +245,39 @@ def parse_interfaces_detail(output: str, current_interfaces: Dict[str, Interface
     return current_interfaces
 
 
+def parse_interfaces_description(output: str, current_interfaces: Dict[str, Interface]) -> Dict[str, Interface]:
+    """Parse 'show interfaces description' to extract interface descriptions."""
+    for line in output.splitlines():
+        line = line.strip()
+        if not line or line.startswith("Interface") or line.startswith("---"):
+            continue
+        m = re.match(
+            r"^([A-Za-z0-9\/\.\-]+)\s+(up|down|admin down|administratively down)\s+(up|down)\s*(.*)$",
+            line,
+            re.IGNORECASE,
+        )
+        if m:
+            raw_name = m.group(1)
+            norm_name = normalize_interface(raw_name)
+            desc = m.group(4).strip() if m.group(4) else None
+            admin_st = m.group(2).strip().lower()
+            oper_st = m.group(3).strip().lower()
+
+            if norm_name in current_interfaces:
+                if desc:
+                    current_interfaces[norm_name].description = desc
+            else:
+                current_interfaces[norm_name] = Interface(
+                    name=norm_name,
+                    description=desc,
+                    admin_status=admin_st,
+                    oper_status=oper_st,
+                    is_svi=norm_name.lower().startswith("vlan"),
+                )
+    return current_interfaces
+
+
+
 def parse_switchport_or_trunk(output: str, interfaces: Dict[str, Interface]) -> Dict[str, Interface]:
     """Parse 'show interfaces switchport' or 'show interfaces trunk' to determine trunk/access mode."""
     # Check if 'show interfaces trunk' format
