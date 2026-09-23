@@ -132,6 +132,7 @@ interface IdfContainerBox {
     width: number;
     height: number;
     deviceCount: number;
+    isCollapsed: boolean;
 }
 
 export default function TopologyGraph({
@@ -152,6 +153,7 @@ export default function TopologyGraph({
     const [layoutMode, setLayoutMode] = useState<"container" | "flow">("container");
     const [hoveredLink, setHoveredLink] = useState<any | null>(null);
     const [collapsedSites, setCollapsedSites] = useState<Set<string>>(new Set());
+    const [collapsedIdfs, setCollapsedIdfs] = useState<Set<string>>(new Set());
     const [idfSpacing, setIdfSpacing] = useState<"compact" | "normal" | "spacious">("normal");
     const [fadedNodes, setFadedNodes] = useState<Set<string>>(new Set());
     const [clickMode, setClickMode] = useState<"inspect" | "fade">("inspect");
@@ -257,6 +259,29 @@ export default function TopologyGraph({
 
     const expandAllSites = () => {
         setCollapsedSites(new Set());
+    };
+
+    const toggleCollapseIdf = (siteCode: string, idfCode: string) => {
+        const key = `${siteCode}::${idfCode}`;
+        setCollapsedIdfs(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    };
+
+    const collapseAllIdfs = () => {
+        const all = new Set<string>();
+        for (const d of filteredDevices) {
+            const { site, idf } = parseDeviceSiteAndIdf(d.hostname, d.site, d.idf);
+            all.add(`${site}::${idf}`);
+        }
+        setCollapsedIdfs(all);
+    };
+
+    const expandAllIdfs = () => {
+        setCollapsedIdfs(new Set());
     };
 
     // Group parallel links between the same pairs of devices into Link Bundles (Port Channels / LAG)
@@ -468,10 +493,12 @@ export default function TopologyGraph({
             // Calculate preliminary width of expanded site
             let preliminarySiteWidth = SITE_PAD_X;
             let maxIdfHeightInSite = 0;
-            const computedIdfDims: Array<{ idfCode: string; devs: any[]; width: number; height: number; cols: number; rows: number }> = [];
+            const computedIdfDims: Array<{ idfCode: string; devs: any[]; width: number; height: number; cols: number; rows: number; isCollapsed: boolean }> = [];
 
             for (const idfCode of sortedIdfs) {
                 const devs = idfMap.get(idfCode)!;
+                const isIdfCollapsed = collapsedIdfs.has(`${siteCode}::${idfCode}`);
+
                 // Sort devices: L3 routers/switches first at the top, then L2 access stacks below
                 devs.sort((a, b) => {
                     const lA = getDeviceLayer(a).layer;
@@ -481,19 +508,29 @@ export default function TopologyGraph({
                     return a.hostname.localeCompare(b.hostname);
                 });
 
-                const cols = devs.length > 3 ? 2 : 1;
-                const rows = Math.ceil(devs.length / cols);
-                const idfWidth = cols * CARD_WIDTH + (cols - 1) * CARD_GAP_X + IDF_PAD_X * 2;
-                const idfHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP_Y + IDF_PAD_TOP + IDF_PAD_BOTTOM;
+                let idfWidth: number;
+                let idfHeight: number;
+                let cols = 1;
+                let rows = 1;
 
-                computedIdfDims.push({ idfCode, devs, width: idfWidth, height: idfHeight, cols, rows });
-                preliminarySiteWidth += idfWidth + 20;
+                if (isIdfCollapsed) {
+                    idfWidth = 200;
+                    idfHeight = 52;
+                } else {
+                    cols = devs.length > 3 ? 2 : 1;
+                    rows = Math.ceil(devs.length / cols);
+                    idfWidth = cols * CARD_WIDTH + (cols - 1) * CARD_GAP_X + IDF_PAD_X * 2;
+                    idfHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP_Y + IDF_PAD_TOP + IDF_PAD_BOTTOM;
+                }
+
+                computedIdfDims.push({ idfCode, devs, width: idfWidth, height: idfHeight, cols, rows, isCollapsed: isIdfCollapsed });
+                preliminarySiteWidth += idfWidth + 24;
                 if (idfHeight > maxIdfHeightInSite) {
                     maxIdfHeightInSite = idfHeight;
                 }
             }
 
-            const siteWidth = Math.max(preliminarySiteWidth - 20 + SITE_PAD_X, 260);
+            const siteWidth = Math.max(preliminarySiteWidth - 24 + SITE_PAD_X, 260);
             const siteHeight = maxIdfHeightInSite + SITE_PAD_TOP + SITE_PAD_BOTTOM;
 
             // Wrap to next row if needed
@@ -507,34 +544,47 @@ export default function TopologyGraph({
             let currentIdfX = currentSiteX + SITE_PAD_X;
             const siteIdfBoxes: IdfContainerBox[] = [];
 
-            for (const { idfCode, devs, width: idfWidth, cols } of computedIdfDims) {
+            for (const { idfCode, devs, width: idfWidth, cols, isCollapsed: isIdfCollapsed } of computedIdfDims) {
                 const idfBox: IdfContainerBox = {
                     siteCode,
                     idfCode,
                     x: currentIdfX,
                     y: currentSiteY + SITE_PAD_TOP,
                     width: idfWidth,
-                    height: maxIdfHeightInSite,
-                    deviceCount: devs.length
+                    height: isIdfCollapsed ? 52 : maxIdfHeightInSite,
+                    deviceCount: devs.length,
+                    isCollapsed: isIdfCollapsed
                 };
                 siteIdfBoxes.push(idfBox);
                 idfContainers.push(idfBox);
 
-                // Position device nodes inside IDF
-                devs.forEach((dev, idx) => {
-                    const col = idx % cols;
-                    const row = Math.floor(idx / cols);
+                if (isIdfCollapsed) {
+                    // Map all devices inside this collapsed IDF to its center for clean link attachment
+                    const centerX = idfBox.x + idfBox.width / 2;
+                    const centerY = idfBox.y + idfBox.height / 2;
+                    for (const dev of devs) {
+                        positions.set(dev.hostname, {
+                            x: centerX,
+                            y: centerY
+                        });
+                    }
+                } else {
+                    // Position device nodes inside expanded IDF
+                    devs.forEach((dev, idx) => {
+                        const col = idx % cols;
+                        const row = Math.floor(idx / cols);
 
-                    const nodeCenterX = idfBox.x + IDF_PAD_X + col * (CARD_WIDTH + CARD_GAP_X) + CARD_WIDTH / 2;
-                    const nodeCenterY = idfBox.y + IDF_PAD_TOP + row * (CARD_HEIGHT + CARD_GAP_Y) + CARD_HEIGHT / 2;
+                        const nodeCenterX = idfBox.x + IDF_PAD_X + col * (CARD_WIDTH + CARD_GAP_X) + CARD_WIDTH / 2;
+                        const nodeCenterY = idfBox.y + IDF_PAD_TOP + row * (CARD_HEIGHT + CARD_GAP_Y) + CARD_HEIGHT / 2;
 
-                    positions.set(dev.hostname, {
-                        x: nodeCenterX,
-                        y: nodeCenterY
+                        positions.set(dev.hostname, {
+                            x: nodeCenterX,
+                            y: nodeCenterY
+                        });
                     });
-                });
+                }
 
-                currentIdfX += idfWidth + 20;
+                currentIdfX += idfWidth + 24;
             }
 
             siteContainers.push({
@@ -565,7 +615,7 @@ export default function TopologyGraph({
             idfBoxes: idfContainers,
             canvasSize: { width: totalWidth, height: totalHeight }
         };
-    }, [filteredDevices, layoutMode, siteDirectory, collapsedSites, idfSpacing]);
+    }, [filteredDevices, layoutMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
         setIsDragging(true);
@@ -683,15 +733,29 @@ export default function TopologyGraph({
                             </button>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? expandAllSites : collapseAllSites}
-                            className="px-2 py-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white rounded-lg transition text-[11px] font-medium flex items-center gap-1 cursor-pointer shadow-sm"
-                            title={collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? "Expand all site containers" : "Collapse all sites to summary view"}
-                        >
-                            <Layers className="w-3 h-3 text-purple-400" />
-                            {collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? "Expand All" : "Collapse All"}
-                        </button>
+                        {/* Site & IDF Collapse Macro Controls */}
+                        <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 px-1.5 flex items-center gap-1">
+                                <Layers className="w-3 h-3 text-purple-400" />
+                                Collapse:
+                            </span>
+                            <button
+                                type="button"
+                                onClick={collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? expandAllSites : collapseAllSites}
+                                className="px-2 py-0.5 rounded font-medium hover:bg-slate-800 text-slate-300 hover:text-white transition cursor-pointer"
+                                title={collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? "Expand all site containers" : "Collapse all sites to summary cards"}
+                            >
+                                {collapsedSites.size === uniqueSites.length && uniqueSites.length > 0 ? "Expand Sites" : "All Sites"}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={collapsedIdfs.size > 0 ? expandAllIdfs : collapseAllIdfs}
+                                className="px-2 py-0.5 rounded font-medium hover:bg-slate-800 text-slate-300 hover:text-white transition cursor-pointer"
+                                title={collapsedIdfs.size > 0 ? "Expand all IDF closets" : "Collapse all IDF closets to compact cards"}
+                            >
+                                {collapsedIdfs.size > 0 ? "Expand IDFs" : "All IDFs"}
+                            </button>
+                        </div>
                     </>
                 )}
 
@@ -964,34 +1028,81 @@ export default function TopologyGraph({
                                     </g>
 
                                     {/* 2. RENDER NESTED IDF CONTAINERS */}
-                                    {site.idfs.map((idf) => (
-                                        <g key={`idf-${site.siteCode}-${idf.idfCode}`}>
-                                            <rect
-                                                x={idf.x}
-                                                y={idf.y}
-                                                width={idf.width}
-                                                height={idf.height}
-                                                rx={10}
-                                                fill="rgba(30, 41, 59, 0.45)"
-                                                stroke="rgba(100, 116, 139, 0.4)"
-                                                strokeWidth={1}
-                                            />
+                                    {site.idfs.map((idf) => {
+                                        if (idf.isCollapsed) {
+                                            return (
+                                                <g
+                                                    key={`idf-${site.siteCode}-${idf.idfCode}`}
+                                                    onClick={() => toggleCollapseIdf(site.siteCode, idf.idfCode)}
+                                                    className="cursor-pointer group"
+                                                >
+                                                    <rect
+                                                        x={idf.x}
+                                                        y={idf.y}
+                                                        width={idf.width}
+                                                        height={idf.height}
+                                                        rx={8}
+                                                        fill="rgba(30, 41, 59, 0.9)"
+                                                        stroke="#38bdf8"
+                                                        strokeWidth={1.2}
+                                                        strokeDasharray="4,2"
+                                                        className="group-hover:stroke-blue-400 group-hover:fill-slate-800/90 transition"
+                                                    />
+                                                    <text x={idf.x + 12} y={idf.y + 20} fill="#e2e8f0" fontSize={11} fontWeight="bold" fontFamily="monospace">
+                                                        IDF: {idf.idfCode} ({idf.deviceCount} Switches)
+                                                    </text>
+                                                    <text x={idf.x + 12} y={idf.y + 36} fill="#38bdf8" fontSize={9} fontWeight="bold">
+                                                        CLICK TO EXPAND ▾
+                                                    </text>
+                                                </g>
+                                            );
+                                        }
 
-                                            {/* IDF Header */}
-                                            <g transform={`translate(${idf.x + 12}, ${idf.y + 14})`}>
-                                                <rect x={0} y={-2} width={18} height={16} rx={4} fill="rgba(148, 163, 184, 0.15)" />
-                                                <text x={9} y={10} fill="#cbd5e1" fontSize={9} fontWeight="bold" textAnchor="middle">
-                                                    ■
-                                                </text>
-                                                <text x={24} y={10} fill="#cbd5e1" fontSize={11} fontWeight="bold" fontFamily="monospace">
-                                                    IDF: {idf.idfCode}
-                                                </text>
-                                                <text x={idf.width - 24} y={10} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
-                                                    ({idf.deviceCount})
-                                                </text>
+                                        return (
+                                            <g key={`idf-${site.siteCode}-${idf.idfCode}`}>
+                                                <rect
+                                                    x={idf.x}
+                                                    y={idf.y}
+                                                    width={idf.width}
+                                                    height={idf.height}
+                                                    rx={10}
+                                                    fill="rgba(30, 41, 59, 0.45)"
+                                                    stroke="rgba(100, 116, 139, 0.4)"
+                                                    strokeWidth={1}
+                                                />
+
+                                                {/* IDF Header */}
+                                                <g transform={`translate(${idf.x + 12}, ${idf.y + 14})`}>
+                                                    <rect x={0} y={-2} width={18} height={16} rx={4} fill="rgba(148, 163, 184, 0.15)" />
+                                                    <text x={9} y={10} fill="#cbd5e1" fontSize={9} fontWeight="bold" textAnchor="middle">
+                                                        ■
+                                                    </text>
+                                                    <text x={24} y={10} fill="#cbd5e1" fontSize={11} fontWeight="bold" fontFamily="monospace">
+                                                        IDF: {idf.idfCode}
+                                                    </text>
+                                                    <text x={idf.width - 50} y={10} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
+                                                        ({idf.deviceCount})
+                                                    </text>
+
+                                                    {/* Collapse IDF Button */}
+                                                    <g
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            toggleCollapseIdf(site.siteCode, idf.idfCode);
+                                                        }}
+                                                        className="cursor-pointer hover:opacity-80 transition"
+                                                        transform={`translate(${idf.width - 44}, -3)`}
+                                                        title={`Collapse IDF ${idf.idfCode}`}
+                                                    >
+                                                        <rect x={0} y={0} width={18} height={16} rx={4} fill="rgba(148, 163, 184, 0.12)" stroke="rgba(148, 163, 184, 0.3)" strokeWidth={0.8} />
+                                                        <text x={9} y={11} fill="#94a3b8" fontSize={11} fontWeight="bold" textAnchor="middle">
+                                                            −
+                                                        </text>
+                                                    </g>
+                                                </g>
                                             </g>
-                                        </g>
-                                    ))}
+                                        );
+                                    })}
                                 </g>
                             );
                         })}
@@ -1152,8 +1263,8 @@ export default function TopologyGraph({
                         {/* 4. RENDER DEVICE NODES */}
                         {filteredDevices.map((dev) => {
                             const { site, idf } = parseDeviceSiteAndIdf(dev.hostname, dev.site, dev.idf);
-                            // Do not render individual nodes if their site container is collapsed
-                            if (layoutMode === "container" && collapsedSites.has(site)) {
+                            // Do not render individual nodes if their site container or IDF is collapsed
+                            if (layoutMode === "container" && (collapsedSites.has(site) || collapsedIdfs.has(`${site}::${idf}`))) {
                                 return null;
                             }
 
