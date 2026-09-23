@@ -35,8 +35,17 @@ import {
     Filter,
     Layers2,
     Zap,
+    GitMerge,
     X
 } from "lucide-react";
+
+export function getBasePhysicalInterface(intf?: string | null): string {
+    if (!intf) return "unknown";
+    const clean = intf.trim();
+    // Strip subinterface dot notation (e.g. GigabitEthernet0/0/1.100 -> GigabitEthernet0/0/1)
+    const base = clean.split(".")[0];
+    return base.toLowerCase();
+}
 
 export interface SiteMetadataLookup {
     name: string;
@@ -207,6 +216,7 @@ export default function TopologyGraph({
     const [showAllLinks, setShowAllLinks] = useState(false); // Clean up links: OFF by default
     const [visibleUplinkSites, setVisibleUplinkSites] = useState<Set<string>>(new Set());
     const [visibleUplinkIdfs, setVisibleUplinkIdfs] = useState<Set<string>>(new Set());
+    const [convergeTrunks, setConvergeTrunks] = useState(true); // Converge multi-neighbor trunks and MPLS into single physical links
 
     const svgContainerRef = useRef<HTMLDivElement>(null);
     const viewportRef = useRef<SVGGElement>(null);
@@ -673,7 +683,7 @@ export default function TopologyGraph({
         });
     };
 
-    // Group parallel links between the same pairs of devices into Link Bundles (Port Channels / LAG)
+    // Group parallel links between the same pairs of devices (or between collapsed sites) into Link Bundles
     const bundledLinks = useMemo(() => {
         const map = new Map<string, {
             id: string;
@@ -681,12 +691,27 @@ export default function TopologyGraph({
             targetDevice: string;
             links: any[];
             isPortChannel: boolean;
+            isSiteTrunk?: boolean;
             channelName?: string;
             status: string;
         }>();
 
         for (const link of unifiedLinks) {
-            const pair = [link.sourceDevice, link.targetDevice].sort().join(" <--> ");
+            const srcLoc = deviceLocationMap.get(link.sourceDevice);
+            const tgtLoc = deviceLocationMap.get(link.targetDevice);
+            const bothSitesCollapsed = Boolean(
+                convergeTrunks &&
+                srcLoc && tgtLoc &&
+                srcLoc.site && tgtLoc.site &&
+                srcLoc.site !== tgtLoc.site &&
+                collapsedSites.has(srcLoc.site) &&
+                collapsedSites.has(tgtLoc.site)
+            );
+
+            const pair = bothSitesCollapsed
+                ? `SITE::${[srcLoc!.site, tgtLoc!.site].sort().join(" <--> ")}`
+                : [link.sourceDevice, link.targetDevice].sort().join(" <--> ");
+
             const isPo = Boolean(
                 link.linkType === "PORT_CHANNEL" ||
                 (link.sourceInterface && link.sourceInterface.toLowerCase().startsWith("po")) ||
@@ -694,8 +719,13 @@ export default function TopologyGraph({
             );
 
             let channelName: string | undefined = undefined;
-            if (link.sourceInterface?.toLowerCase().startsWith("po")) channelName = link.sourceInterface;
-            else if (link.targetInterface?.toLowerCase().startsWith("po")) channelName = link.targetInterface;
+            if (bothSitesCollapsed) {
+                channelName = `Site Trunk (${srcLoc!.site} ↔ ${tgtLoc!.site})`;
+            } else if (link.sourceInterface?.toLowerCase().startsWith("po")) {
+                channelName = link.sourceInterface;
+            } else if (link.targetInterface?.toLowerCase().startsWith("po")) {
+                channelName = link.targetInterface;
+            }
 
             if (!map.has(pair)) {
                 map.set(pair, {
@@ -703,7 +733,8 @@ export default function TopologyGraph({
                     sourceDevice: link.sourceDevice,
                     targetDevice: link.targetDevice,
                     links: [link],
-                    isPortChannel: isPo,
+                    isPortChannel: isPo || bothSitesCollapsed,
+                    isSiteTrunk: bothSitesCollapsed,
                     channelName,
                     status: link.status || "UP"
                 });
@@ -711,14 +742,19 @@ export default function TopologyGraph({
                 const item = map.get(pair)!;
                 item.links.push(link);
                 item.isPortChannel = true; // Multiple physical connections form a Port Channel / LAG bundle
+                if (bothSitesCollapsed) {
+                    item.isSiteTrunk = true;
+                    item.channelName = `Site Trunk (${item.links.length} links)`;
+                } else if (!item.channelName && channelName) {
+                    item.channelName = channelName;
+                }
                 if (link.status === "DOWN" || item.status === "DOWN") item.status = "DOWN";
                 else if (link.status === "UNVERIFIED" || item.status === "UNVERIFIED") item.status = "UNVERIFIED";
-                if (!item.channelName && channelName) item.channelName = channelName;
             }
         }
 
         return Array.from(map.values());
-    }, [unifiedLinks]);
+    }, [unifiedLinks, deviceLocationMap, collapsedSites, convergeTrunks]);
 
     // Dynamic layout positioning: Container Hierarchy (Site -> Floor/IDF -> Devices) or Hierarchical Flow
     const { nodePositions, siteBoxes, idfBoxes, canvasSize } = useMemo(() => {
@@ -1120,6 +1156,161 @@ export default function TopologyGraph({
         };
     }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing]);
 
+    // Multi-neighbor trunk & MPLS convergence model
+    // Converges multiple links that share the same physical trunk/interface into a single stem before connecting to the switch/site
+    const convergedModel = useMemo(() => {
+        if (!convergeTrunks) {
+            return {
+                adjustedLinks: bundledLinks,
+                trunkStems: [],
+                junctionHubs: []
+            };
+        }
+
+        // 1. Group link bundles by (device, physical interface)
+        const devInterfaceMap = new Map<string, Map<string, Array<{ neighbor: string; bundle: typeof bundledLinks[0] }>>>();
+
+        for (const bundle of bundledLinks) {
+            const p1 = nodePositions.get(bundle.sourceDevice);
+            const p2 = nodePositions.get(bundle.targetDevice);
+            if (!p1 || !p2 || (p1.x === p2.x && p1.y === p2.y)) continue;
+
+            const l0 = bundle.links[0];
+            const srcIntf = getBasePhysicalInterface(l0?.sourceInterface || bundle.channelName);
+            const tgtIntf = getBasePhysicalInterface(l0?.targetInterface || bundle.channelName);
+
+            // Source device interface mapping
+            if (!devInterfaceMap.has(bundle.sourceDevice)) devInterfaceMap.set(bundle.sourceDevice, new Map());
+            const srcMap = devInterfaceMap.get(bundle.sourceDevice)!;
+            if (!srcMap.has(srcIntf)) srcMap.set(srcIntf, []);
+            srcMap.get(srcIntf)!.push({ neighbor: bundle.targetDevice, bundle });
+
+            // Target device interface mapping
+            if (!devInterfaceMap.has(bundle.targetDevice)) devInterfaceMap.set(bundle.targetDevice, new Map());
+            const tgtMap = devInterfaceMap.get(bundle.targetDevice)!;
+            if (!tgtMap.has(tgtIntf)) tgtMap.set(tgtIntf, []);
+            tgtMap.get(tgtIntf)!.push({ neighbor: bundle.sourceDevice, bundle });
+        }
+
+        // 2. Identify converged endpoints: any (device, intf) that connects to >= 2 distinct neighbor positions
+        const junctionMap = new Map<string, {
+            id: string;
+            x: number;
+            y: number;
+            device: string;
+            intf: string;
+            neighbors: string[];
+            status: string;
+            memberLinks: any[];
+        }>();
+
+        const trunkStems: Array<{
+            id: string;
+            device: string;
+            intf: string;
+            p1: { x: number; y: number };
+            p2: { x: number; y: number };
+            status: string;
+            neighborCount: number;
+            neighbors: string[];
+            memberLinks: any[];
+        }> = [];
+
+        for (const [dev, intfMap] of devInterfaceMap.entries()) {
+            const pDev = nodePositions.get(dev);
+            if (!pDev) continue;
+
+            for (const [intf, entries] of intfMap.entries()) {
+                if (intf === "unknown" && entries.length < 2) continue;
+
+                const neighborHosts = Array.from(new Set(entries.map(e => e.neighbor)));
+                const validNeighbors = neighborHosts.filter(n => {
+                    const pn = nodePositions.get(n);
+                    return pn && (pn.x !== pDev.x || pn.y !== pDev.y);
+                });
+
+                if (validNeighbors.length >= 2) {
+                    // Average direction towards neighbors
+                    let dx = 0;
+                    let dy = 0;
+                    let minNeighborDist = Infinity;
+                    for (const n of validNeighbors) {
+                        const pn = nodePositions.get(n)!;
+                        dx += (pn.x - pDev.x);
+                        dy += (pn.y - pDev.y);
+                        const dist = Math.hypot(pn.x - pDev.x, pn.y - pDev.y);
+                        if (dist < minNeighborDist) minNeighborDist = dist;
+                    }
+                    dx /= validNeighbors.length;
+                    dy /= validNeighbors.length;
+                    let len = Math.hypot(dx, dy);
+                    if (len < 1) { dx = 0; dy = 1; len = 1; }
+                    const ux = dx / len;
+                    const uy = dy / len;
+
+                    // Place junction ~25px outside card perimeter, at most 42% towards nearest neighbor
+                    const cardRadius = Math.hypot(ux * 95, uy * 48);
+                    const stemDist = Math.max(cardRadius + 18, Math.min(cardRadius + 50, minNeighborDist * 0.42));
+                    const jx = pDev.x + ux * stemDist;
+                    const jy = pDev.y + uy * stemDist;
+
+                    const allLinks = entries.flatMap(e => e.bundle.links);
+                    const isDown = entries.some(e => e.bundle.status === "DOWN");
+                    const isUnverified = entries.some(e => e.bundle.status === "UNVERIFIED");
+                    const stemStatus = isDown ? "DOWN" : isUnverified ? "UNVERIFIED" : "UP";
+
+                    const jKey = `${dev}::${intf}`;
+                    const jData = {
+                        id: `hub-${jKey}`,
+                        x: jx,
+                        y: jy,
+                        device: dev,
+                        intf,
+                        neighbors: validNeighbors,
+                        status: stemStatus,
+                        memberLinks: allLinks
+                    };
+                    junctionMap.set(jKey, jData);
+
+                    trunkStems.push({
+                        id: `stem-${jKey}`,
+                        device: dev,
+                        intf,
+                        p1: pDev,
+                        p2: { x: jx, y: jy },
+                        status: stemStatus,
+                        neighborCount: validNeighbors.length,
+                        neighbors: validNeighbors,
+                        memberLinks: allLinks
+                    });
+                }
+            }
+        }
+
+        // 3. Connect branches from junctions to neighbors (or between junctions)
+        const adjustedLinks = bundledLinks.map(bundle => {
+            const l0 = bundle.links[0];
+            const srcIntf = getBasePhysicalInterface(l0?.sourceInterface || bundle.channelName);
+            const tgtIntf = getBasePhysicalInterface(l0?.targetInterface || bundle.channelName);
+
+            const srcJunction = junctionMap.get(`${bundle.sourceDevice}::${srcIntf}`);
+            const tgtJunction = junctionMap.get(`${bundle.targetDevice}::${tgtIntf}`);
+
+            return {
+                ...bundle,
+                srcPointOverride: srcJunction ? { x: srcJunction.x, y: srcJunction.y } : undefined,
+                tgtPointOverride: tgtJunction ? { x: tgtJunction.x, y: tgtJunction.y } : undefined,
+                isConvergedBranch: Boolean(srcJunction || tgtJunction)
+            };
+        });
+
+        return {
+            adjustedLinks,
+            trunkStems,
+            junctionHubs: Array.from(junctionMap.values())
+        };
+    }, [bundledLinks, nodePositions, convergeTrunks]);
+
     const handlePointerDown = (e: React.PointerEvent) => {
         if (e.button !== 0) return;
         if ((e.target as HTMLElement).closest("button, select, input, a")) return;
@@ -1440,6 +1631,23 @@ export default function TopologyGraph({
                     )}
                 </div>
 
+                {/* Converge Multi-Neighbor Trunks & MPLS */}
+                <button
+                    type="button"
+                    onClick={() => setConvergeTrunks(prev => !prev)}
+                    className={`px-2 py-1 rounded-lg border text-[11px] font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                        convergeTrunks
+                            ? "bg-purple-950/60 border-purple-500/50 text-purple-200 shadow-sm"
+                            : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
+                    }`}
+                    title={convergeTrunks 
+                        ? "Converging multi-neighbor trunks and MPLS into single physical links before entering switch/site (click to disable)" 
+                        : "Showing separate lines for each neighbor (click to converge multi-neighbor trunks)"}
+                >
+                    <GitMerge className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Converge Trunks: <strong className={convergeTrunks ? "text-purple-300" : "text-slate-400"}>{convergeTrunks ? "ON" : "OFF"}</strong></span>
+                </button>
+
                 {/* Click / Dim Mode Controls */}
                 <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
                     <button
@@ -1612,6 +1820,13 @@ export default function TopologyGraph({
                     <span className="font-semibold text-blue-300">Po / LAG</span>
                     <span className="text-slate-400">Port Channel Bundle</span>
                 </div>
+                {convergeTrunks && (
+                    <div className="flex items-center gap-1.5 text-purple-300">
+                        <GitMerge className="w-3.5 h-3.5 text-purple-400" />
+                        <span className="font-semibold">Trunk / MPLS Hub</span>
+                        <span className="text-slate-400">Converged</span>
+                    </div>
+                )}
                 <div className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded border border-dashed border-amber-400 bg-amber-500/20"></span>
                     <span className="font-semibold text-amber-300">Unverified</span>
@@ -2296,10 +2511,158 @@ export default function TopologyGraph({
                             );
                         })}
 
-                        {/* 3. RENDER LINKS & PORT-CHANNEL BUNDLES */}
-                        {bundledLinks.map((bundle) => {
-                            const p1 = nodePositions.get(bundle.sourceDevice);
-                            const p2 = nodePositions.get(bundle.targetDevice);
+                        {/* 3A. RENDER CONVERGED TRUNK STEMS (Single Physical Trunk Lines Entering Switch/Site) */}
+                        {convergedModel.trunkStems.map((stem) => {
+                            const devLoc = deviceLocationMap.get(stem.device);
+                            const selectedCanon = selectedDevice ? (selectedDevice.canonicalHostname || getCanonicalHostname(selectedDevice.hostname)) : null;
+                            const isDirectlyConnectedToSelected = Boolean(selectedCanon && stem.device === selectedCanon);
+                            const isSiteUplinkActive = Boolean(devLoc && visibleUplinkSites.has(devLoc.site));
+                            const isIdfUplinkActive = Boolean(devLoc && visibleUplinkIdfs.has(`${devLoc.site}::${devLoc.idf}`));
+                            const isHighlighted = highlightedLinks.some(hl => hl.from === stem.device || hl.to === stem.device);
+
+                            // Check if any neighbor is active
+                            let anyNeighborActive = false;
+                            for (const n of stem.neighbors) {
+                                const nLoc = deviceLocationMap.get(n);
+                                if (nLoc && (visibleUplinkSites.has(nLoc.site) || visibleUplinkIdfs.has(`${nLoc.site}::${nLoc.idf}`))) {
+                                    anyNeighborActive = true;
+                                    break;
+                                }
+                                if (selectedCanon && n === selectedCanon) {
+                                    anyNeighborActive = true;
+                                    break;
+                                }
+                            }
+
+                            const isStemVisible = showAllLinks || isHighlighted || isDirectlyConnectedToSelected || isSiteUplinkActive || isIdfUplinkActive || anyNeighborActive;
+                            if (!isStemVisible) return null;
+
+                            const p1 = stem.p1;
+                            const p2 = stem.p2;
+                            const isFaded = fadedNodes.has(stem.device);
+                            const strokeColor = isHighlighted 
+                                ? "#f59e0b" 
+                                : stem.status === "DOWN" 
+                                ? "#ef4444" 
+                                : stem.status === "UNVERIFIED" 
+                                ? "#f59e0b" 
+                                : "#a855f7";
+
+                            const pathD = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+
+                            return (
+                                <g
+                                    key={stem.id}
+                                    onMouseEnter={() => setHoveredLink({
+                                        id: stem.id,
+                                        isPortChannel: true,
+                                        channelName: `Trunk Stem: ${stem.intf} (${stem.neighborCount} Converged Neighbors)`,
+                                        links: stem.memberLinks,
+                                        status: stem.status
+                                    })}
+                                    onMouseLeave={() => setHoveredLink(null)}
+                                    className="cursor-pointer group"
+                                    opacity={isFaded ? 0.3 : 1}
+                                >
+                                    {/* Wider invisible hit area */}
+                                    <path d={pathD} fill="none" stroke="transparent" strokeWidth={18} />
+                                    {/* Outer glow */}
+                                    <path d={pathD} fill="none" stroke={strokeColor} strokeWidth={6} opacity={0.25} />
+                                    {/* Main Trunk Solid Line */}
+                                    <path d={pathD} fill="none" stroke={strokeColor} strokeWidth={3.8} />
+                                    {/* Multi-Strand Trunk Inner Dash Line */}
+                                    <path d={pathD} fill="none" stroke="#ffffff" strokeWidth={1.2} strokeDasharray="3,3" opacity={0.8} />
+                                </g>
+                            );
+                        })}
+
+                        {/* 3B. RENDER TRUNK & MPLS CONVERGENCE JUNCTION HUBS */}
+                        {convergedModel.junctionHubs.map((hub) => {
+                            const devLoc = deviceLocationMap.get(hub.device);
+                            const selectedCanon = selectedDevice ? (selectedDevice.canonicalHostname || getCanonicalHostname(selectedDevice.hostname)) : null;
+                            const isDirectlyConnectedToSelected = Boolean(selectedCanon && hub.device === selectedCanon);
+                            const isSiteUplinkActive = Boolean(devLoc && visibleUplinkSites.has(devLoc.site));
+                            const isIdfUplinkActive = Boolean(devLoc && visibleUplinkIdfs.has(`${devLoc.site}::${devLoc.idf}`));
+                            const isHighlighted = highlightedLinks.some(hl => hl.from === hub.device || hl.to === hub.device);
+
+                            let anyNeighborActive = false;
+                            for (const n of hub.neighbors) {
+                                const nLoc = deviceLocationMap.get(n);
+                                if (nLoc && (visibleUplinkSites.has(nLoc.site) || visibleUplinkIdfs.has(`${nLoc.site}::${nLoc.idf}`))) {
+                                    anyNeighborActive = true;
+                                    break;
+                                }
+                                if (selectedCanon && n === selectedCanon) {
+                                    anyNeighborActive = true;
+                                    break;
+                                }
+                            }
+
+                            const isHubVisible = showAllLinks || isHighlighted || isDirectlyConnectedToSelected || isSiteUplinkActive || isIdfUplinkActive || anyNeighborActive;
+                            if (!isHubVisible) return null;
+
+                            const isFaded = fadedNodes.has(hub.device);
+                            const strokeColor = isHighlighted 
+                                ? "#f59e0b" 
+                                : hub.status === "DOWN" 
+                                ? "#ef4444" 
+                                : hub.status === "UNVERIFIED" 
+                                ? "#f59e0b" 
+                                : "#a855f7";
+
+                            return (
+                                <g
+                                    key={hub.id}
+                                    transform={`translate(${hub.x}, ${hub.y})`}
+                                    onMouseEnter={() => setHoveredLink({
+                                        id: hub.id,
+                                        isPortChannel: true,
+                                        channelName: `Trunk Junction: ${hub.intf} (${hub.neighbors.length} Neighbors)`,
+                                        links: hub.memberLinks,
+                                        status: hub.status
+                                    })}
+                                    onMouseLeave={() => setHoveredLink(null)}
+                                    className="cursor-pointer group"
+                                    opacity={isFaded ? 0.3 : 1}
+                                >
+                                    {/* Outer Pulse Ring */}
+                                    <circle cx={0} cy={0} r={8.5} fill={strokeColor} opacity={0.25} className="group-hover:scale-125 transition-transform" />
+                                    {/* Hub Body */}
+                                    <circle cx={0} cy={0} r={5} fill="#090d16" stroke={strokeColor} strokeWidth={1.5} />
+                                    <circle cx={0} cy={0} r={2} fill={strokeColor} />
+
+                                    {/* Trunk Interface & Count Badge */}
+                                    <g transform="translate(8, -8)" className="pointer-events-none">
+                                        <rect
+                                            x={0}
+                                            y={0}
+                                            width={hub.intf.length * 5.6 + 28}
+                                            height={15}
+                                            rx={3.5}
+                                            fill="#090d16"
+                                            stroke={strokeColor}
+                                            strokeWidth={0.8}
+                                            filter="drop-shadow(0 2px 4px rgba(0,0,0,0.6))"
+                                        />
+                                        <text
+                                            x={4}
+                                            y={10.5}
+                                            fill="#d8b4fe"
+                                            fontSize={8}
+                                            fontWeight="bold"
+                                            fontFamily="monospace"
+                                        >
+                                            {hub.intf} ({hub.neighbors.length}x)
+                                        </text>
+                                    </g>
+                                </g>
+                            );
+                        })}
+
+                        {/* 3C. RENDER LINKS & PORT-CHANNEL BUNDLES (Adjusted with Convergence) */}
+                        {convergedModel.adjustedLinks.map((bundle) => {
+                            const p1 = bundle.srcPointOverride || nodePositions.get(bundle.sourceDevice);
+                            const p2 = bundle.tgtPointOverride || nodePositions.get(bundle.targetDevice);
                             if (!p1 || !p2 || (p1.x === p2.x && p1.y === p2.y)) return null;
 
                             const isHighlighted = highlightedLinks.some(
@@ -2341,11 +2704,13 @@ export default function TopologyGraph({
                                 ? "#f59e0b" 
                                 : isDown 
                                 ? "#ef4444" 
+                                : bundle.isSiteTrunk
+                                ? "#a855f7"
                                 : bundle.isPortChannel 
                                 ? "#38bdf8" 
                                 : "#0284c7";
 
-                            const strokeWidth = isHighlighted ? 4 : bundle.isPortChannel ? 3.5 : 2;
+                            const strokeWidth = isHighlighted ? 4 : bundle.isSiteTrunk ? 3.5 : bundle.isPortChannel ? 3.2 : 2;
                             const strokeDash = isUnverified ? "6,4" : undefined;
 
                             // Calculate smooth curved paths to eliminate straight-line overlap
@@ -2418,8 +2783,8 @@ export default function TopologyGraph({
                                         className={isHighlighted ? "animate-pulse" : ""}
                                     />
 
-                                    {/* Secondary line to visually represent Port-Channel multi-strand bundle */}
-                                    {bundle.isPortChannel && (
+                                    {/* Secondary line to visually represent Port-Channel / Site Trunk multi-strand bundle */}
+                                    {(bundle.isPortChannel || bundle.isSiteTrunk) && (
                                         <path
                                             d={pathD}
                                             fill="none"
@@ -2430,13 +2795,13 @@ export default function TopologyGraph({
                                         />
                                     )}
 
-                                    {/* Port-Channel / Bundle Midpoint Badge */}
-                                    {bundle.isPortChannel ? (
+                                    {/* Port-Channel / Site Trunk / Bundle Midpoint Badge */}
+                                    {bundle.isPortChannel || bundle.isSiteTrunk ? (
                                         <g transform={`translate(${midX}, ${midY})`}>
                                             <rect
-                                                x={-28}
+                                                x={-34}
                                                 y={-9}
-                                                width={56}
+                                                width={68}
                                                 height={18}
                                                 rx={5}
                                                 fill="#090d16"
