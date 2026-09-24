@@ -148,27 +148,6 @@ export async function GET(
         const reachable = devices.filter(d => d.status === "REACHABLE").length;
         const unreachable = devices.filter(d => d.status !== "REACHABLE").length;
 
-        // Collect unique sites & subnets
-        const sites = new Set<string>();
-        const subnets = new Set<string>();
-
-        for (const dev of devices) {
-            if (dev.site) sites.add(dev.site);
-            let intfs: Record<string, any> = {};
-            try {
-                intfs = typeof dev.interfaces === "string" ? JSON.parse(dev.interfaces) : (dev.interfaces || {});
-            } catch {
-                intfs = {};
-            }
-            if (intfs && typeof intfs === "object") {
-                for (const intf of Object.values<any>(intfs)) {
-                    if (intf && intf.ip_address && intf.cidr) {
-                        subnets.add(`${intf.ip_address}${intf.cidr}`);
-                    }
-                }
-            }
-        }
-
         // Load site directory to enrich site containers with facility names
         let siteDirectory: Record<string, { name: string; address?: string }> = {};
         try {
@@ -208,12 +187,24 @@ export async function GET(
             : [];
 
         // Build CDP platform & connected peer port description lookup from all reachable neighbor tables
+        // Also track discovering closets so unverified devices inherit their neighbor's closet instead of creating phantom IDFs/sites
         const cdpPlatformMap = new Map<string, string>();
         const cdpPortMap = new Map<string, string>();
         const cdpDescMap = new Map<string, string>();
 
+        interface DiscoveringClosetRecord {
+            site: string;
+            idf: string;
+            discoveringHostname: string;
+            platform: string | null;
+        }
+        const discoveringClosetsMap = new Map<string, DiscoveringClosetRecord[]>();
+
         for (const dev of devices) {
             if (dev.status === "REACHABLE" && dev.cdpNeighbors) {
+                const devSite = dev.site ? String(dev.site).trim().toUpperCase() : "UNKNOWN";
+                const devIdf = dev.idf ? String(dev.idf).trim().toUpperCase() : "MAIN";
+
                 let intfs: Record<string, any> = {};
                 try {
                     intfs = typeof dev.interfaces === "string" 
@@ -243,6 +234,21 @@ export async function GET(
                         if (n.platform) {
                             if (canon && !cdpPlatformMap.has(canon)) cdpPlatformMap.set(canon, String(n.platform));
                             if (ip && !cdpPlatformMap.has(ip)) cdpPlatformMap.set(ip, String(n.platform));
+                        }
+
+                        const closetRecord: DiscoveringClosetRecord = {
+                            site: devSite,
+                            idf: devIdf,
+                            discoveringHostname: dev.hostname,
+                            platform: n.platform ? String(n.platform).trim() : null
+                        };
+                        if (canon) {
+                            if (!discoveringClosetsMap.has(canon)) discoveringClosetsMap.set(canon, []);
+                            discoveringClosetsMap.get(canon)!.push(closetRecord);
+                        }
+                        if (ip) {
+                            if (!discoveringClosetsMap.has(ip)) discoveringClosetsMap.set(ip, []);
+                            discoveringClosetsMap.get(ip)!.push(closetRecord);
                         }
 
                         if (n.local_interface) {
@@ -314,8 +320,65 @@ export async function GET(
             const peerDesc = cdpDescMap.get(canon) || (ip ? cdpDescMap.get(ip) : null) || null;
             const override = overrideMap.get(canon) || (ip ? overrideMap.get(ip) : null);
 
+            let site = d.site;
+            let idf = d.idf;
+            let isMultiCloset = false;
+            let flaggedForInvestigation = false;
+            let investigationReason: string | null = null;
+            let discoveredClosets: Array<{ site: string; idf: string; discoveringSwitches: string[] }> = [];
+
+            if (d.status !== "REACHABLE") {
+                const neighborClosets = [
+                    ...(discoveringClosetsMap.get(canon) || []),
+                    ...(ip ? (discoveringClosetsMap.get(ip) || []) : [])
+                ];
+
+                if (neighborClosets.length > 0) {
+                    const uniqueClosetMap = new Map<string, { site: string; idf: string; discoveringSwitches: string[] }>();
+                    for (const nc of neighborClosets) {
+                        const key = `${nc.site}::${nc.idf}`;
+                        if (!uniqueClosetMap.has(key)) {
+                            uniqueClosetMap.set(key, {
+                                site: nc.site,
+                                idf: nc.idf,
+                                discoveringSwitches: [nc.discoveringHostname]
+                            });
+                        } else {
+                            const entry = uniqueClosetMap.get(key)!;
+                            if (!entry.discoveringSwitches.includes(nc.discoveringHostname)) {
+                                entry.discoveringSwitches.push(nc.discoveringHostname);
+                            }
+                        }
+                    }
+
+                    discoveredClosets = Array.from(uniqueClosetMap.values());
+
+                    if (discoveredClosets.length === 1) {
+                        // Inherit discovering neighbor's site and IDF - avoid creating phantom sites/IDFs
+                        site = discoveredClosets[0].site;
+                        idf = discoveredClosets[0].idf;
+                        isMultiCloset = false;
+                        flaggedForInvestigation = false;
+                    } else if (discoveredClosets.length > 1) {
+                        // Multi-closet conflict! Discovered across multiple distinct closets
+                        isMultiCloset = true;
+                        flaggedForInvestigation = true;
+                        site = discoveredClosets[0].site;
+                        idf = discoveredClosets[0].idf;
+                        const closetSummary = discoveredClosets.map(c => `${c.site}/${c.idf} (via ${c.discoveringSwitches.join(', ')})`).join(' and ');
+                        investigationReason = `Multi-closet conflict: Discovered by neighbors in multiple closets (${closetSummary}). Unverified device cannot be authoritatively placed into a single closet.`;
+                    }
+                }
+            }
+
             return {
                 ...d,
+                site,
+                idf,
+                isMultiCloset,
+                flaggedForInvestigation,
+                investigationReason,
+                discoveredClosets,
                 platform: cdpPlatform,
                 discoveredPort: (d as any).discoveredPort || cdpPort || null,
                 peerInterfaceDescription: peerDesc,
@@ -328,6 +391,27 @@ export async function GET(
                 excludeFromFailures: override ? override.excludeFromFailures : false
             };
         });
+
+        // Collect unique sites & subnets from enrichedDevices (eliminating phantom sites)
+        const sites = new Set<string>();
+        const subnets = new Set<string>();
+
+        for (const dev of enrichedDevices) {
+            if (dev.site) sites.add(dev.site);
+            let intfs: Record<string, any> = {};
+            try {
+                intfs = typeof dev.interfaces === "string" ? JSON.parse(dev.interfaces) : (dev.interfaces || {});
+            } catch {
+                intfs = {};
+            }
+            if (intfs && typeof intfs === "object") {
+                for (const intf of Object.values<any>(intfs)) {
+                    if (intf && intf.ip_address && intf.cidr) {
+                        subnets.add(`${intf.ip_address}${intf.cidr}`);
+                    }
+                }
+            }
+        }
 
         return NextResponse.json({
             metadata: {

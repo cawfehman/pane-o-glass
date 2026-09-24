@@ -393,7 +393,7 @@ export default function FailureInvestigationTable({
                         <tbody className="divide-y divide-slate-800/80 font-mono">
                             {paginatedItems.map((item, idx) => {
                                 const rowNumber = (page - 1) * limit + idx + 1;
-                                const reason = item.failureReason || item.error || "Connection timed out on TCP/22";
+                                const reason = item.investigationReason || item.failureReason || item.error || "Connection timed out on TCP/22";
                                 const isAuth = reason.toLowerCase().includes("auth") || reason.toLowerCase().includes("tacacs");
                                 const isTimeout = reason.toLowerCase().includes("timeout") || reason.toLowerCase().includes("timed out");
                                 const discHost = item.discoveredVia || item.discovered_by;
@@ -427,6 +427,12 @@ export default function FailureInvestigationTable({
                                                 {isVendor && (
                                                     <span className="px-1.5 py-0.2 rounded text-[10px] font-sans font-bold bg-purple-950/80 text-purple-300 border border-purple-800/80">
                                                         Vendor Managed
+                                                    </span>
+                                                )}
+                                                {(item.isMultiCloset || item.flaggedForInvestigation) && (
+                                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-sans font-bold bg-amber-950/80 text-amber-300 border border-amber-700/80 flex items-center gap-1">
+                                                        <AlertTriangle className="w-3 h-3 text-amber-400" />
+                                                        Multi-Closet Conflict
                                                     </span>
                                                 )}
                                             </div>

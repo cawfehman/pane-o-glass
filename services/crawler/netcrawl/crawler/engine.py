@@ -556,7 +556,7 @@ class NetworkCrawler:
                                             failure_reason=f"Unverified: Hop limit reached ({self.max_hops})",
                                             discovered_via=f"{device.hostname} ({b_neighbor['local_interface']}){b_desc_str}",
                                             hop_distance=current_hop + 1,
-                                            site_info=parse_site_info(b_host, self.hostname_regex),
+                                            site_info=device.site_info,
                                         )
                                         self.unverified_devices.append(unverified_dev)
 

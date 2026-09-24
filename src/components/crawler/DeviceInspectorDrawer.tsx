@@ -140,6 +140,12 @@ export default function DeviceInspectorDrawer({
                                     Vendor Managed
                                 </span>
                             )}
+                            {(device.isMultiCloset || device.flaggedForInvestigation) && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border bg-amber-950/80 text-amber-300 border-amber-600/80">
+                                    <AlertTriangle className="w-3 h-3 text-amber-400" />
+                                    Multi-Closet Conflict
+                                </span>
+                            )}
                             {stackInfo.isStack && (
                                 <span className="px-2 py-0.5 text-[10px] font-bold rounded border bg-purple-500/10 text-purple-300 border-purple-500/40 flex items-center gap-1">
                                     <Layers className="w-3 h-3 text-purple-400" />
@@ -242,6 +248,25 @@ export default function DeviceInspectorDrawer({
                             </button>
                         )}
                     </div>
+                </div>
+            )}
+
+            {/* Multi-Closet Conflict Investigation Alert */}
+            {(device.flaggedForInvestigation || device.isMultiCloset) && (
+                <div className="px-6 py-3 bg-amber-500/15 border-b border-amber-500/40 flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-amber-300 font-bold text-xs uppercase tracking-wider">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                        Multi-Closet Conflict (Flagged for Investigation)
+                    </div>
+                    <p className="text-xs text-amber-200/90 leading-relaxed">
+                        This unverified device was discovered via CDP by switches across multiple distinct closets {Array.isArray(device.discoveredClosets) && device.discoveredClosets.length > 0 ? `(${device.discoveredClosets.map((c: any) => `${c.site} / ${c.idf}`).join(', ')})` : ""}.
+                        Per network discovery policy, unverified devices adopt discovering closets and do not spawn unverified Sites or IDFs. Instances are placed in each discovering closet.
+                    </p>
+                    {device.investigationReason && (
+                        <div className="text-[11px] font-mono text-amber-300/80 bg-amber-950/60 p-2 rounded border border-amber-500/30">
+                            {device.investigationReason}
+                        </div>
+                    )}
                 </div>
             )}
 

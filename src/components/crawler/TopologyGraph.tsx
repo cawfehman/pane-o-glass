@@ -346,6 +346,15 @@ export default function TopologyGraph({
                 if (dev.platform && !existing.platform) {
                     existing.platform = dev.platform;
                 }
+                if (dev.isMultiCloset) existing.isMultiCloset = true;
+                if (dev.flaggedForInvestigation) existing.flaggedForInvestigation = true;
+                if (dev.investigationReason && !existing.investigationReason) existing.investigationReason = dev.investigationReason;
+                if (Array.isArray(dev.discoveredClosets)) {
+                    const cMap = new Map<string, any>();
+                    for (const c of (existing.discoveredClosets || [])) cMap.set(`${c.site}::${c.idf}`, c);
+                    for (const c of dev.discoveredClosets) cMap.set(`${c.site}::${c.idf}`, c);
+                    existing.discoveredClosets = Array.from(cMap.values());
+                }
                 if (dev.isVendorManaged || dev.excludeFromTopology) {
                     existing.isVendorManaged = true;
                     existing.excludeFromTopology = true;
@@ -402,7 +411,11 @@ export default function TopologyGraph({
         if (siteFilter !== "ALL") {
             result = result.filter(d => {
                 const { site } = parseDeviceSiteAndIdf(d.hostname, d.site, d.idf);
-                return site === siteFilter;
+                if (site === siteFilter) return true;
+                if (d.isMultiCloset && Array.isArray(d.discoveredClosets)) {
+                    return d.discoveredClosets.some((c: any) => c.site === siteFilter);
+                }
+                return false;
             });
         }
         if (deselectedSwitches.size > 0) {
@@ -416,6 +429,11 @@ export default function TopologyGraph({
         for (const d of unifiedDevices) {
             const { site } = parseDeviceSiteAndIdf(d.hostname, d.site, d.idf);
             if (site) sites.add(site);
+            if (d.isMultiCloset && Array.isArray(d.discoveredClosets)) {
+                for (const c of d.discoveredClosets) {
+                    if (c.site) sites.add(c.site);
+                }
+            }
         }
         return Array.from(sites).sort();
     }, [unifiedDevices]);
@@ -457,11 +475,22 @@ export default function TopologyGraph({
 
         const siteMap = new Map<string, Map<string, any[]>>();
         for (const dev of unifiedDevices) {
-            const { site, idf } = parseDeviceSiteAndIdf(dev.hostname, dev.site, dev.idf);
-            if (!siteMap.has(site)) siteMap.set(site, new Map());
-            const idfMap = siteMap.get(site)!;
-            if (!idfMap.has(idf)) idfMap.set(idf, []);
-            idfMap.get(idf)!.push(dev);
+            if (dev.isMultiCloset && Array.isArray(dev.discoveredClosets) && dev.discoveredClosets.length > 1) {
+                for (const closet of dev.discoveredClosets) {
+                    const site = (closet.site || "UNK").toUpperCase();
+                    const idf = (closet.idf || "MDF").toUpperCase();
+                    if (!siteMap.has(site)) siteMap.set(site, new Map());
+                    const idfMap = siteMap.get(site)!;
+                    if (!idfMap.has(idf)) idfMap.set(idf, []);
+                    idfMap.get(idf)!.push(dev);
+                }
+            } else {
+                const { site, idf } = parseDeviceSiteAndIdf(dev.hostname, dev.site, dev.idf);
+                if (!siteMap.has(site)) siteMap.set(site, new Map());
+                const idfMap = siteMap.get(site)!;
+                if (!idfMap.has(idf)) idfMap.set(idf, []);
+                idfMap.get(idf)!.push(dev);
+            }
         }
 
         const sortedSites = Array.from(siteMap.keys()).sort();
@@ -818,6 +847,8 @@ export default function TopologyGraph({
         const SITE_PAD_TOP = 50;
         const SITE_PAD_BOTTOM = 24;
 
+        const layoutDevs: any[] = [];
+
         if (layoutMode === "flow") {
             // Traditional Hierarchical Flow (Routers -> L3 Switches -> L2 Switches)
             const width = 1200;
@@ -845,23 +876,45 @@ export default function TopologyGraph({
                 nodePositions: positions, 
                 siteBoxes: [], 
                 idfBoxes: [], 
-                canvasSize: { width, height } 
+                canvasSize: { width, height },
+                layoutDevices: filteredDevices
             };
         }
 
         // --- Container Grouping Mode (Site -> IDF -> Devices) ---
-        // 1. Group devices by site -> idf
+        // 1. Group devices by site -> idf (cloning multi-closet boundary devices into each discovered closet)
         const siteGroups = new Map<string, Map<string, any[]>>();
         for (const dev of filteredDevices) {
-            const { site, idf } = parseDeviceSiteAndIdf(dev.hostname, dev.site, dev.idf);
-            if (!siteGroups.has(site)) {
-                siteGroups.set(site, new Map());
+            if (dev.isMultiCloset && Array.isArray(dev.discoveredClosets) && dev.discoveredClosets.length > 1) {
+                const canon = dev.canonicalHostname || getCanonicalHostname(dev.hostname);
+                for (const closet of dev.discoveredClosets) {
+                    const s = (closet.site || "UNK").toUpperCase();
+                    const i = (closet.idf || "MDF").toUpperCase();
+                    if (siteFilter !== "ALL" && s !== siteFilter) continue;
+
+                    if (!siteGroups.has(s)) siteGroups.set(s, new Map());
+                    const idfMap = siteGroups.get(s)!;
+                    if (!idfMap.has(i)) idfMap.set(i, []);
+                    idfMap.get(i)!.push({
+                        ...dev,
+                        site: s,
+                        idf: i,
+                        _instanceClosetKey: `${s}::${i}`,
+                        _instanceNodeKey: `${canon}__closet__${s}_${i}`,
+                        _isMultiClosetClone: true
+                    });
+                }
+            } else {
+                const { site, idf } = parseDeviceSiteAndIdf(dev.hostname, dev.site, dev.idf);
+                if (!siteGroups.has(site)) {
+                    siteGroups.set(site, new Map());
+                }
+                const idfMap = siteGroups.get(site)!;
+                if (!idfMap.has(idf)) {
+                    idfMap.set(idf, []);
+                }
+                idfMap.get(idf)!.push(dev);
             }
-            const idfMap = siteGroups.get(site)!;
-            if (!idfMap.has(idf)) {
-                idfMap.set(idf, []);
-            }
-            idfMap.get(idf)!.push(dev);
         }
 
         const MAX_ROW_WIDTH = 2500;
@@ -906,7 +959,12 @@ export default function TopologyGraph({
                 const centerX = currentSiteX + siteWidth / 2;
                 const centerY = currentSiteY + siteHeight / 2;
                 for (const d of allSiteDevs) {
-                    positions.set(d.canonicalHostname || d.hostname, { x: centerX, y: centerY });
+                    const nodeKey = d._instanceNodeKey || d.canonicalHostname || d.hostname;
+                    positions.set(nodeKey, { x: centerX, y: centerY });
+                    if (!positions.has(d.canonicalHostname || d.hostname)) {
+                        positions.set(d.canonicalHostname || d.hostname, { x: centerX, y: centerY });
+                    }
+                    layoutDevs.push(d);
                 }
 
                 siteContainers.push({
@@ -1000,10 +1058,15 @@ export default function TopologyGraph({
                         const centerX = idfBox.x + idfBox.width / 2;
                         const centerY = idfBox.y + idfBox.height / 2;
                         for (const dev of devs) {
-                            positions.set(dev.canonicalHostname || dev.hostname, {
+                            const nodeKey = dev._instanceNodeKey || dev.canonicalHostname || dev.hostname;
+                            positions.set(nodeKey, {
                                 x: centerX,
                                 y: centerY
                             });
+                            if (!positions.has(dev.canonicalHostname || dev.hostname)) {
+                                positions.set(dev.canonicalHostname || dev.hostname, { x: centerX, y: centerY });
+                            }
+                            layoutDevs.push(dev);
                         }
                     } else {
                         devs.forEach((dev, idx) => {
@@ -1013,10 +1076,15 @@ export default function TopologyGraph({
                             const nodeCenterX = idfBox.x + IDF_PAD_X + col * (CARD_WIDTH + CARD_GAP_X) + CARD_WIDTH / 2;
                             const nodeCenterY = idfBox.y + IDF_PAD_TOP + row * (CARD_HEIGHT + CARD_GAP_Y) + CARD_HEIGHT / 2;
 
-                            positions.set(dev.canonicalHostname || dev.hostname, {
+                            const nodeKey = dev._instanceNodeKey || dev.canonicalHostname || dev.hostname;
+                            positions.set(nodeKey, {
                                 x: nodeCenterX,
                                 y: nodeCenterY
                             });
+                            if (!positions.has(dev.canonicalHostname || dev.hostname)) {
+                                positions.set(dev.canonicalHostname || dev.hostname, { x: nodeCenterX, y: nodeCenterY });
+                            }
+                            layoutDevs.push(dev);
                         });
                     }
 
@@ -1123,10 +1191,15 @@ export default function TopologyGraph({
                         const centerX = idfBox.x + idfBox.width / 2;
                         const centerY = idfBox.y + idfBox.height / 2;
                         for (const dev of devs) {
-                            positions.set(dev.canonicalHostname || dev.hostname, {
+                            const nodeKey = dev._instanceNodeKey || dev.canonicalHostname || dev.hostname;
+                            positions.set(nodeKey, {
                                 x: centerX,
                                 y: centerY
                             });
+                            if (!positions.has(dev.canonicalHostname || dev.hostname)) {
+                                positions.set(dev.canonicalHostname || dev.hostname, { x: centerX, y: centerY });
+                            }
+                            layoutDevs.push(dev);
                         }
                     } else {
                         devs.forEach((dev, idx) => {
@@ -1136,10 +1209,15 @@ export default function TopologyGraph({
                             const nodeCenterX = idfBox.x + IDF_PAD_X + col * (CARD_WIDTH + CARD_GAP_X) + CARD_WIDTH / 2;
                             const nodeCenterY = idfBox.y + IDF_PAD_TOP + row * (CARD_HEIGHT + CARD_GAP_Y) + CARD_HEIGHT / 2;
 
-                            positions.set(dev.canonicalHostname || dev.hostname, {
+                            const nodeKey = dev._instanceNodeKey || dev.canonicalHostname || dev.hostname;
+                            positions.set(nodeKey, {
                                 x: nodeCenterX,
                                 y: nodeCenterY
                             });
+                            if (!positions.has(dev.canonicalHostname || dev.hostname)) {
+                                positions.set(dev.canonicalHostname || dev.hostname, { x: nodeCenterX, y: nodeCenterY });
+                            }
+                            layoutDevs.push(dev);
                         });
                     }
 
@@ -1173,7 +1251,8 @@ export default function TopologyGraph({
             nodePositions: positions,
             siteBoxes: siteContainers,
             idfBoxes: idfContainers,
-            canvasSize: { width: totalWidth, height: totalHeight }
+            canvasSize: { width: totalWidth, height: totalHeight },
+            layoutDevices: layoutDevs
         };
     }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing]);
 
@@ -2704,8 +2783,16 @@ export default function TopologyGraph({
 
                         {/* 3C. RENDER LINKS & PORT-CHANNEL BUNDLES (Adjusted with Convergence) */}
                         {convergedModel.adjustedLinks.map((bundle) => {
-                            const p1 = bundle.srcPointOverride || nodePositions.get(bundle.sourceDevice);
-                            const p2 = bundle.tgtPointOverride || nodePositions.get(bundle.targetDevice);
+                            const getDevPoint = (devName: string, peerDevName: string) => {
+                                const peerLoc = deviceLocationMap.get(peerDevName);
+                                if (peerLoc) {
+                                    const specific = nodePositions.get(`${devName}__closet__${peerLoc.site}_${peerLoc.idf}`);
+                                    if (specific) return specific;
+                                }
+                                return nodePositions.get(devName);
+                            };
+                            const p1 = bundle.srcPointOverride || getDevPoint(bundle.sourceDevice, bundle.targetDevice);
+                            const p2 = bundle.tgtPointOverride || getDevPoint(bundle.targetDevice, bundle.sourceDevice);
                             if (!p1 || !p2 || (p1.x === p2.x && p1.y === p2.y)) return null;
 
                             const isHighlighted = highlightedLinks.some(
@@ -2878,7 +2965,7 @@ export default function TopologyGraph({
                         })}
 
                         {/* 4. RENDER DEVICE NODES */}
-                        {filteredDevices.map((dev) => {
+                        {layoutDevices.map((dev) => {
                             const { site, idf } = parseDeviceSiteAndIdf(dev.hostname, dev.site, dev.idf);
                             // Do not render individual nodes if their site container or IDF is collapsed
                             if (layoutMode === "container" && (collapsedSites.has(site) || collapsedIdfs.has(`${site}::${idf}`))) {
@@ -2886,17 +2973,19 @@ export default function TopologyGraph({
                             }
 
                             const canonHost = dev.canonicalHostname || getCanonicalHostname(dev.hostname);
-                            const pos = nodePositions.get(canonHost) || nodePositions.get(dev.hostname);
+                            const nodeKey = dev._instanceNodeKey || canonHost;
+                            const pos = nodePositions.get(nodeKey) || nodePositions.get(canonHost);
                             if (!pos) return null;
 
                             const isSelected = selectedDevice && (getCanonicalHostname(selectedDevice.hostname) === canonHost);
                             const isHop = isHopDevice(dev.hostname) || isHopDevice(canonHost);
+                            const isMultiConflict = Boolean(dev.isMultiCloset || dev.flaggedForInvestigation);
                             const isUnverified = dev.status === "UNVERIFIED";
                             const isUnreachable = dev.status !== "REACHABLE" && !isUnverified;
                             const { layer, label: layerLabel } = getDeviceLayer(dev);
                             const stackInfo = detectSwitchStack(dev);
 
-                            // Node Color scheme based on L3 vs L2 vs Unverified
+                            // Node Color scheme based on L3 vs L2 vs Unverified vs Multi-Closet Conflict
                             let borderColor = isSelected ? "#38bdf8" : isHop ? "#fbbf24" : "rgba(255,255,255,0.18)";
                             let borderDash: string | undefined = undefined;
                             let cardBg = "#0f172a";
@@ -2904,6 +2993,10 @@ export default function TopologyGraph({
                             if (dev.isVendorManaged) {
                                 borderColor = isSelected ? "#ffffff" : "#a855f7";
                                 cardBg = "rgba(28, 14, 46, 0.95)";
+                            } else if (isMultiConflict) {
+                                borderColor = isSelected ? "#ffffff" : "#f59e0b";
+                                borderDash = "4,2";
+                                cardBg = "rgba(35, 24, 12, 0.95)";
                             } else if (isUnverified) {
                                 borderColor = "#f59e0b";
                                 borderDash = "5,3";
@@ -2925,7 +3018,7 @@ export default function TopologyGraph({
 
                             return (
                                 <g
-                                    key={canonHost}
+                                    key={nodeKey}
                                     transform={`translate(${pos.x}, ${pos.y})`}
                                     onClick={(e) => handleNodeClick(e, dev)}
                                     opacity={isFaded ? 0.22 : 1}
@@ -2934,7 +3027,7 @@ export default function TopologyGraph({
                                         : "cursor-pointer group"
                                     }
                                 >
-                                    <title>{`${canonHost}${dev.platform ? ` [${dev.platform}]` : ""}${dev.isVendorManaged ? " • Vendor Managed" : ""}`}</title>
+                                    <title>{`${canonHost}${dev.platform ? ` [${dev.platform}]` : ""}${isMultiConflict ? " • Multi-Closet Conflict (Flagged for Investigation)" : ""}${dev.isVendorManaged ? " • Vendor Managed" : ""}`}</title>
                                     {/* 3D Stack Chassis Under-Layers (StackWise Visualization) */}
                                     {stackInfo.isStack && (
                                         <g opacity={isFaded ? 0.3 : 0.85}>
@@ -2998,11 +3091,11 @@ export default function TopologyGraph({
                                     {/* Left Accent Strip (L3 Cyan, L2 Green, Unverified Amber, Unreachable Red) */}
                                     <path
                                         d={`M ${-CARD_W / 2} ${-CARD_H / 2 + 8} A 8 8 0 0 1 ${-CARD_W / 2 + 8} ${-CARD_H / 2} L ${-CARD_W / 2 + 4} ${-CARD_H / 2} L ${-CARD_W / 2 + 4} ${CARD_H / 2} L ${-CARD_W / 2 + 8} ${CARD_H / 2} A 8 8 0 0 1 ${-CARD_W / 2} ${CARD_H / 2 - 8} Z`}
-                                        fill={dev.isVendorManaged ? "#a855f7" : isUnverified ? "#f59e0b" : isUnreachable ? "#ef4444" : layer === "L3" ? "#0284c7" : "#10b981"}
+                                        fill={dev.isVendorManaged ? "#a855f7" : isMultiConflict ? "#f59e0b" : isUnverified ? "#f59e0b" : isUnreachable ? "#ef4444" : layer === "L3" ? "#0284c7" : "#10b981"}
                                     />
 
                                     {/* L3 vs L2 & Switch Stack Badge Chips (Top-Right) */}
-                                    <g transform={`translate(${CARD_W / 2 - (stackInfo.isStack ? 58 : 28)}, ${-CARD_H / 2 + 7})`}>
+                                    <g transform={`translate(${CARD_W / 2 - (stackInfo.isStack ? (isMultiConflict ? 74 : 58) : (isMultiConflict ? 44 : 28))}, ${-CARD_H / 2 + 7})`}>
                                         {stackInfo.isStack && (
                                             <g transform="translate(0, 0)">
                                                 <rect
@@ -3032,23 +3125,23 @@ export default function TopologyGraph({
                                             <rect
                                                 x={0}
                                                 y={0}
-                                                width={22}
+                                                width={isMultiConflict ? 40 : 22}
                                                 height={13}
                                                 rx={3}
-                                                fill={dev.isVendorManaged ? "rgba(168, 85, 247, 0.2)" : isUnverified ? "rgba(245, 158, 11, 0.2)" : layer === "L3" ? "rgba(56, 189, 248, 0.2)" : "rgba(16, 185, 129, 0.2)"}
-                                                stroke={dev.isVendorManaged ? "#a855f7" : isUnverified ? "#f59e0b" : layer === "L3" ? "#38bdf8" : "#10b981"}
+                                                fill={dev.isVendorManaged ? "rgba(168, 85, 247, 0.2)" : isMultiConflict ? "rgba(245, 158, 11, 0.25)" : isUnverified ? "rgba(245, 158, 11, 0.2)" : layer === "L3" ? "rgba(56, 189, 248, 0.2)" : "rgba(16, 185, 129, 0.2)"}
+                                                stroke={dev.isVendorManaged ? "#a855f7" : isMultiConflict ? "#f59e0b" : isUnverified ? "#f59e0b" : layer === "L3" ? "#38bdf8" : "#10b981"}
                                                 strokeWidth={0.8}
                                             />
                                             <text
-                                                x={11}
+                                                x={isMultiConflict ? 20 : 11}
                                                 y={9.5}
-                                                fill={dev.isVendorManaged ? "#d8b4fe" : isUnverified ? "#fbbf24" : layer === "L3" ? "#7dd3fc" : "#6ee7b7"}
-                                                fontSize={8}
+                                                fill={dev.isVendorManaged ? "#d8b4fe" : isMultiConflict ? "#fbbf24" : isUnverified ? "#fbbf24" : layer === "L3" ? "#7dd3fc" : "#6ee7b7"}
+                                                fontSize={isMultiConflict ? 6.8 : 8}
                                                 fontWeight="bold"
                                                 fontFamily="monospace"
                                                 textAnchor="middle"
                                             >
-                                                {dev.isVendorManaged ? "VND" : isUnverified ? "BND" : layer}
+                                                {dev.isVendorManaged ? "VND" : isMultiConflict ? "CONFLICT" : isUnverified ? "BND" : layer}
                                             </text>
                                         </g>
                                     </g>
@@ -3084,6 +3177,13 @@ export default function TopologyGraph({
                                                 <rect x={0} y={0} width={80} height={12} rx={3} fill="rgba(168, 85, 247, 0.25)" stroke="#a855f7" strokeWidth={0.6} />
                                                 <text x={4} y={9} fill="#d8b4fe" fontSize={7.5} fontWeight="bold" fontFamily="monospace">
                                                     VENDOR MGD
+                                                </text>
+                                            </g>
+                                        ) : isMultiConflict ? (
+                                            <g>
+                                                <rect x={0} y={0} width={128} height={12} rx={3} fill="rgba(245, 158, 11, 0.25)" stroke="#f59e0b" strokeWidth={0.6} />
+                                                <text x={4} y={9} fill="#fbbf24" fontSize={7.2} fontWeight="bold" fontFamily="monospace">
+                                                    ⚠️ MULTI-CLOSET ({dev.discoveredClosets?.length || 2} IDFs)
                                                 </text>
                                             </g>
                                         ) : isUnverified ? (
