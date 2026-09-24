@@ -36,7 +36,8 @@ import {
     Layers2,
     Zap,
     GitMerge,
-    X
+    X,
+    Edit3
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 
@@ -64,6 +65,7 @@ interface TopologyGraphProps {
     activeHopDevices?: string[];
     highlightedLinks?: Array<{ from: string; to: string }>;
     onReseedDevice?: (dev: any) => void;
+    onRefreshSnapshot?: () => void;
     className?: string;
 }
 
@@ -201,6 +203,7 @@ export default function TopologyGraph({
     activeHopDevices = [],
     highlightedLinks = [],
     onReseedDevice,
+    onRefreshSnapshot,
     className
 }: TopologyGraphProps) {
     const [zoom, setZoom] = useState(1);
@@ -226,6 +229,18 @@ export default function TopologyGraph({
     const [convergeTrunks, setConvergeTrunks] = useState(true); // Converge multi-neighbor trunks and MPLS into single physical links
     const [showVendorManaged, setShowVendorManaged] = useState(false); // Vendor Managed devices excluded from topology by default
     const [showUncrawledSites, setShowUncrawledSites] = useState(false); // Uncrawled Directory sites hidden by default
+
+    // Bulk Node Governance Overrides
+    const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
+    const [bulkTargetHostnames, setBulkTargetHostnames] = useState<string[]>([]);
+    const [bulkSiteOverride, setBulkSiteOverride] = useState("");
+    const [bulkIdfOverride, setBulkIdfOverride] = useState("");
+    const [bulkRoleOverride, setBulkRoleOverride] = useState("");
+    const [bulkReason, setBulkReason] = useState("");
+    const [bulkCleanupEmptySite, setBulkCleanupEmptySite] = useState(true);
+    const [savingBulkOverrides, setSavingBulkOverrides] = useState(false);
+    const [bulkOverrideSuccess, setBulkOverrideSuccess] = useState<string | null>(null);
+    const [bulkOverrideError, setBulkOverrideError] = useState<string | null>(null);
 
     const svgContainerRef = useRef<HTMLDivElement>(null);
     const viewportRef = useRef<SVGGElement>(null);
@@ -623,6 +638,61 @@ export default function TopologyGraph({
     const deselectAllSwitches = () => {
         const all = new Set(unifiedDevices.map(d => d.canonicalHostname || d.hostname));
         setDeselectedSwitches(all);
+    };
+
+    const handleOpenBulkEdit = () => {
+        const hostnames = filteredDevices.map(d => getCanonicalHostname(d.hostname));
+        setBulkTargetHostnames(hostnames);
+        setBulkSiteOverride("");
+        setBulkIdfOverride("");
+        setBulkRoleOverride("");
+        setBulkReason("");
+        setBulkCleanupEmptySite(true);
+        setBulkOverrideError(null);
+        setBulkOverrideSuccess(null);
+        setIsBulkEditModalOpen(true);
+    };
+
+    const handleSaveBulkOverrides = async () => {
+        if (bulkTargetHostnames.length === 0) {
+            setBulkOverrideError("Please select at least one switch to edit.");
+            return;
+        }
+        if (!bulkSiteOverride.trim() && !bulkIdfOverride.trim() && !bulkRoleOverride.trim()) {
+            setBulkOverrideError("Please specify at least a Site, IDF, or Role to override.");
+            return;
+        }
+        setSavingBulkOverrides(true);
+        setBulkOverrideError(null);
+        setBulkOverrideSuccess(null);
+        try {
+            const payload: any = {
+                hostnames: bulkTargetHostnames,
+                reason: bulkReason.trim() || `Bulk node governance override for ${bulkTargetHostnames.length} devices`,
+                cleanupEmptySite: bulkCleanupEmptySite
+            };
+            if (bulkSiteOverride.trim()) payload.siteOverride = bulkSiteOverride.trim().toUpperCase();
+            if (bulkIdfOverride.trim()) payload.idfOverride = bulkIdfOverride.trim().toUpperCase();
+            if (bulkRoleOverride.trim()) payload.roleOverride = bulkRoleOverride.trim();
+
+            const res = await fetch("/api/crawler/overrides", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to save bulk overrides.");
+            setBulkOverrideSuccess(`Successfully updated ${bulkTargetHostnames.length} switches! Refreshing...`);
+            if (onRefreshSnapshot) onRefreshSnapshot();
+            setTimeout(() => {
+                setIsBulkEditModalOpen(false);
+                setBulkOverrideSuccess(null);
+            }, 1200);
+        } catch (e: any) {
+            setBulkOverrideError(e.message || "Failed to save bulk overrides.");
+        } finally {
+            setSavingBulkOverrides(false);
+        }
     };
 
     const toggleManagerNodeCollapse = (nodeKey: string) => {
@@ -2140,26 +2210,39 @@ export default function TopologyGraph({
                         </div>
 
                         {/* Quick Macro Toggles */}
-                        <div className="flex items-center justify-between text-[11px]">
-                            <div className="flex items-center gap-1.5">
-                                <button
-                                    type="button"
-                                    onClick={selectAllSwitches}
-                                    className="px-2 py-0.5 rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 font-semibold transition cursor-pointer"
-                                >
-                                    Select All
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={deselectAllSwitches}
-                                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition cursor-pointer"
-                                >
-                                    Deselect All
-                                </button>
+                        <div className="flex flex-col gap-2 text-[11px]">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={selectAllSwitches}
+                                        className="px-2 py-0.5 rounded bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 font-semibold transition cursor-pointer"
+                                    >
+                                        Select All
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={deselectAllSwitches}
+                                        className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition cursor-pointer"
+                                    >
+                                        Deselect All
+                                    </button>
+                                </div>
+                                <span className="text-[10px] font-mono text-slate-400">
+                                    {filteredDevices.length} / {unifiedDevices.length} shown
+                                </span>
                             </div>
-                            <span className="text-[10px] font-mono text-slate-400">
-                                {filteredDevices.length} / {unifiedDevices.length} shown
-                            </span>
+
+                            <button
+                                type="button"
+                                onClick={handleOpenBulkEdit}
+                                disabled={filteredDevices.length === 0}
+                                className="w-full py-1 px-2.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 disabled:opacity-40 text-amber-300 border border-amber-500/30 font-semibold text-xs transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                                title="Bulk edit authoritative site, IDF, and role for selected/visible switches"
+                            >
+                                <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Bulk Edit Visible ({filteredDevices.length})</span>
+                            </button>
                         </div>
                     </div>
 
@@ -3499,6 +3582,194 @@ export default function TopologyGraph({
                     </g>
                 </svg>
             </div>
+
+            {/* Bulk Node Governance Override Modal */}
+            {isBulkEditModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+                        {/* Modal Header */}
+                        <div className="px-5 py-3.5 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400">
+                                    <Edit3 className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-white tracking-tight">Bulk Node Governance Override</h3>
+                                    <p className="text-[11px] text-slate-400">
+                                        Authoritatively relocate switches or correct naming standards across {bulkTargetHostnames.length} devices.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsBulkEditModalOpen(false)}
+                                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-slate-300">Target Authoritative Site</label>
+                                    <input
+                                        type="text"
+                                        value={bulkSiteOverride}
+                                        onChange={(e) => setBulkSiteOverride(e.target.value.toUpperCase())}
+                                        placeholder="e.g. KEL (leave blank to keep)"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono uppercase focus:outline-none focus:border-amber-400"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-slate-300">Target Authoritative IDF</label>
+                                    <input
+                                        type="text"
+                                        value={bulkIdfOverride}
+                                        onChange={(e) => setBulkIdfOverride(e.target.value.toUpperCase())}
+                                        placeholder="e.g. 2MC (leave blank to keep)"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono uppercase focus:outline-none focus:border-amber-400"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-slate-300">Device Role</label>
+                                    <select
+                                        value={bulkRoleOverride}
+                                        onChange={(e) => setBulkRoleOverride(e.target.value)}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 cursor-pointer"
+                                    >
+                                        <option value="">(Keep Existing Roles)</option>
+                                        <option value="WLC">WLC (Wireless Controller)</option>
+                                        <option value="L3 Switch">L3 Switch (Core / Distribution)</option>
+                                        <option value="L2 Switch">L2 Switch (Access)</option>
+                                        <option value="Router">Router (WAN / Edge)</option>
+                                        <option value="Firewall">Firewall</option>
+                                        <option value="Access Point">Access Point</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-slate-300">Reason</label>
+                                    <input
+                                        type="text"
+                                        value={bulkReason}
+                                        onChange={(e) => setBulkReason(e.target.value)}
+                                        placeholder="e.g. Campus re-architecture"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Errant site cleanup option */}
+                            <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer pt-1">
+                                <input
+                                    type="checkbox"
+                                    checked={bulkCleanupEmptySite}
+                                    onChange={(e) => setBulkCleanupEmptySite(e.target.checked)}
+                                    className="w-4 h-4 accent-amber-500 rounded bg-slate-950 border-slate-700 cursor-pointer"
+                                />
+                                <span>Clean up any former sites from Site Directory if left with 0 devices</span>
+                            </label>
+
+                            {/* Targeted devices selector */}
+                            <div className="space-y-1.5 pt-2">
+                                <div className="flex items-center justify-between text-xs">
+                                    <label className="font-semibold text-slate-300">
+                                        Affected Switches ({bulkTargetHostnames.length})
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (bulkTargetHostnames.length === filteredDevices.length) {
+                                                setBulkTargetHostnames([]);
+                                            } else {
+                                                setBulkTargetHostnames(filteredDevices.map(d => getCanonicalHostname(d.hostname)));
+                                            }
+                                        }}
+                                        className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold cursor-pointer"
+                                    >
+                                        {bulkTargetHostnames.length === filteredDevices.length ? "Deselect All" : "Select All Visible"}
+                                    </button>
+                                </div>
+
+                                <div className="max-h-48 overflow-y-auto border border-slate-800 bg-slate-950 rounded-xl p-2.5 space-y-1">
+                                    {filteredDevices.map(d => {
+                                        const canon = getCanonicalHostname(d.hostname);
+                                        const isChecked = bulkTargetHostnames.includes(canon);
+                                        return (
+                                            <label key={canon} className="flex items-center justify-between text-[11px] font-mono text-slate-300 p-1 rounded hover:bg-slate-900 cursor-pointer">
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setBulkTargetHostnames(prev => [...prev, canon]);
+                                                            } else {
+                                                                setBulkTargetHostnames(prev => prev.filter(h => h !== canon));
+                                                            }
+                                                        }}
+                                                        className="w-3.5 h-3.5 accent-amber-500 rounded bg-slate-900 border-slate-700 cursor-pointer"
+                                                    />
+                                                    <span className="text-white font-medium">{canon}</span>
+                                                </div>
+                                                <span className="text-slate-500 text-[10px]">{d.site || "UNK"} / {d.idf || "MDF"}</span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {bulkOverrideError && (
+                                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                                    <AlertCircle className="w-4 h-4 shrink-0" />
+                                    <span>{bulkOverrideError}</span>
+                                </div>
+                            )}
+
+                            {bulkOverrideSuccess && (
+                                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+                                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                                    <span>{bulkOverrideSuccess}</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="px-5 py-3 border-t border-slate-800 bg-slate-950 flex items-center justify-end gap-2 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setIsBulkEditModalOpen(false)}
+                                disabled={savingBulkOverrides}
+                                className="px-3.5 py-1.5 text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveBulkOverrides}
+                                disabled={savingBulkOverrides || bulkTargetHostnames.length === 0}
+                                className="px-4 py-1.5 text-xs font-semibold bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                                {savingBulkOverrides ? (
+                                    <>
+                                        <span className="w-3.5 h-3.5 border-2 border-slate-950/20 border-t-slate-950 rounded-full animate-spin"></span>
+                                        Saving...
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        Apply Overrides ({bulkTargetHostnames.length})
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

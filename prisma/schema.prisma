@@ -457,15 +457,19 @@ model CrawlerDeviceOverride {
   hostname            String   @id // canonical hostname (e.g. 101-id3-swas-1)
   rawHostname         String?  // original discovered hostname
   ipAddress           String?
-  tag                 String   @default("VENDOR_MANAGED") // "VENDOR_MANAGED", "IGNORED", "OUT_OF_SCOPE"
+  tag                 String   @default("CUSTOM") // "CUSTOM", "VENDOR_MANAGED", "IGNORED", "OUT_OF_SCOPE"
+  siteOverride        String?  // authoritative site code (e.g. KEL)
+  idfOverride         String?  // authoritative IDF code (e.g. 2MC)
+  roleOverride        String?  // authoritative role (e.g. WLC, Router, L3 Switch, L2 Switch)
   reason              String?
-  excludeFromTopology Boolean  @default(true)
+  excludeFromTopology Boolean  @default(false)
   excludeFromFailures Boolean  @default(false)
   createdBy           String?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
   @@index([tag])
+  @@index([siteOverride])
 }
 
 

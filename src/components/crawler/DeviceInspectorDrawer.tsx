@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
     X, 
     Server, 
@@ -20,7 +20,8 @@ import {
     Hash,
     Play,
     Clock,
-    Tag
+    Tag,
+    Edit3
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 import { detectSwitchStack, parseFloorFromIdf } from "./TopologyGraph";
@@ -45,6 +46,7 @@ interface DeviceInspectorDrawerProps {
     onSetAsSource?: (ip: string) => void;
     onSetAsDestination?: (ip: string) => void;
     onReseed?: (device: any) => void;
+    onRefresh?: () => void;
 }
 
 export default function DeviceInspectorDrawer({
@@ -52,10 +54,28 @@ export default function DeviceInspectorDrawer({
     onClose,
     onSetAsSource,
     onSetAsDestination,
-    onReseed
+    onReseed,
+    onRefresh
 }: DeviceInspectorDrawerProps) {
     const [activeTab, setActiveTab] = useState<"overview" | "interfaces" | "routes" | "vlans" | "cdp">("overview");
     const [stackMemberFilter, setStackMemberFilter] = useState<string>("ALL");
+
+    // Node Governance Override State
+    const [isEditingNode, setIsEditingNode] = useState(false);
+    const [targetSite, setTargetSite] = useState("");
+    const [targetIdf, setTargetIdf] = useState("");
+    const [targetRole, setTargetRole] = useState("");
+    const [overrideReason, setOverrideReason] = useState("");
+    const [cleanupEmptySite, setCleanupEmptySite] = useState(true);
+    const [savingOverride, setSavingOverride] = useState(false);
+    const [overrideSuccess, setOverrideSuccess] = useState<string | null>(null);
+    const [overrideError, setOverrideError] = useState<string | null>(null);
+
+    useEffect(() => {
+        setIsEditingNode(false);
+        setOverrideSuccess(null);
+        setOverrideError(null);
+    }, [device?.hostname]);
 
     if (!device) return null;
 
@@ -94,10 +114,82 @@ export default function DeviceInspectorDrawer({
     const deviceModel = device.platform || device.model || "Cisco Catalyst";
 
     const shortHost = (device.hostname || "").split(".")[0].trim();
-    const siteCode = device.site || (shortHost.length >= 3 ? shortHost.slice(0, 3).toUpperCase() : "UNK");
-    const idfCode = device.idf || (shortHost.includes("-") && shortHost.split("-")[1] ? shortHost.split("-")[1].slice(0, 3).toUpperCase() : "MDF");
+    const siteCode = device.siteOverride || device.site || (shortHost.length >= 3 ? shortHost.slice(0, 3).toUpperCase() : "UNK");
+    const idfCode = device.idfOverride || device.idf || (shortHost.includes("-") && shortHost.split("-")[1] ? shortHost.split("-")[1].slice(0, 3).toUpperCase() : "MDF");
     const floorInfo = parseFloorFromIdf(idfCode);
     const isL3 = device.role === "Router" || device.role === "L3 Switch" || device.role === "L3";
+
+    const initEditForm = () => {
+        setTargetSite(device.siteOverride || device.site || siteCode);
+        setTargetIdf(device.idfOverride || device.idf || idfCode);
+        setTargetRole(device.roleOverride || device.role || "L2 Switch");
+        setOverrideReason(device.overrideReason || "");
+        setCleanupEmptySite(true);
+        setOverrideSuccess(null);
+        setOverrideError(null);
+        setIsEditingNode(true);
+    };
+
+    const handleSaveOverride = async () => {
+        if (!targetSite.trim()) {
+            setOverrideError("Target Site code is required (e.g. KEL).");
+            return;
+        }
+        setSavingOverride(true);
+        setOverrideError(null);
+        setOverrideSuccess(null);
+        try {
+            const canonical = (device.hostname || "").trim().toLowerCase();
+            const res = await fetch("/api/crawler/overrides", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    hostname: canonical,
+                    siteOverride: targetSite.trim().toUpperCase(),
+                    idfOverride: targetIdf.trim().toUpperCase(),
+                    roleOverride: targetRole.trim(),
+                    reason: overrideReason.trim() || "Manual node governance override",
+                    cleanupEmptySite,
+                    formerSite: device.site || siteCode
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to save node override.");
+            setOverrideSuccess("Node override saved! Refreshing topology...");
+            if (onRefresh) onRefresh();
+            setTimeout(() => {
+                setIsEditingNode(false);
+                setOverrideSuccess(null);
+            }, 1200);
+        } catch (e: any) {
+            setOverrideError(e.message || "Failed to save node override.");
+        } finally {
+            setSavingOverride(false);
+        }
+    };
+
+    const handleResetOverride = async () => {
+        setSavingOverride(true);
+        setOverrideError(null);
+        try {
+            const canonical = (device.hostname || "").trim().toLowerCase();
+            const res = await fetch(`/api/crawler/overrides?hostname=${encodeURIComponent(canonical)}`, {
+                method: "DELETE"
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to reset node override.");
+            setOverrideSuccess("Node override reset to hostname defaults.");
+            if (onRefresh) onRefresh();
+            setTimeout(() => {
+                setIsEditingNode(false);
+                setOverrideSuccess(null);
+            }, 1200);
+        } catch (e: any) {
+            setOverrideError(e.message || "Failed to reset node override.");
+        } finally {
+            setSavingOverride(false);
+        }
+    };
 
     return (
         <div className="fixed inset-y-0 right-0 w-full sm:w-[540px] bg-slate-900 border-l border-slate-800 shadow-2xl z-50 flex flex-col transition-all duration-300">
@@ -150,6 +242,12 @@ export default function DeviceInspectorDrawer({
                                 <span className="px-2 py-0.5 text-[10px] font-bold rounded border bg-purple-500/10 text-purple-300 border-purple-500/40 flex items-center gap-1">
                                     <Layers className="w-3 h-3 text-purple-400" />
                                     StackWise ({stackInfo.stackSize}x • {stackInfo.portCount}p)
+                                </span>
+                            )}
+                            {(device.isCustomOverride || device.siteOverride || device.idfOverride) && (
+                                <span className="px-2 py-0.5 text-[10px] font-bold rounded border bg-amber-500/10 text-amber-300 border-amber-500/40 flex items-center gap-1">
+                                    <Tag className="w-3 h-3 text-amber-400" />
+                                    Admin Override
                                 </span>
                             )}
                         </div>
@@ -216,37 +314,191 @@ export default function DeviceInspectorDrawer({
                 </button>
             </div>
 
-            {/* Quick Actions (Set as Source / Dest / Initiate Crawl) */}
-            {primaryIp && (
-                <div className="px-6 py-2.5 bg-slate-800/40 border-b border-slate-800 flex items-center justify-between">
-                    <span className="text-xs text-slate-400 font-medium">Quick Actions:</span>
-                    <div className="flex items-center gap-2">
-                        {onReseed && isReachable && (
-                            <button
-                                onClick={() => onReseed(device)}
-                                className="px-2.5 py-1 text-xs font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 border border-blue-500/30 hover:border-blue-400/60 rounded-lg transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-                                title={`Initiate crawl seeding from ${device.hostname} (${primaryIp})`}
+            {/* Quick Actions (Edit Node / Initiate Crawl / Set as Source / Dest) */}
+            <div className="px-6 py-2.5 bg-slate-800/40 border-b border-slate-800 flex items-center justify-between">
+                <span className="text-xs text-slate-400 font-medium">Quick Actions:</span>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={initEditForm}
+                        className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                            isEditingNode
+                                ? "bg-amber-500 text-slate-950 font-bold"
+                                : "bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 border border-amber-500/30"
+                        }`}
+                        title="Edit Node details (Site, IDF closet, Role, or fix non-standard naming)"
+                    >
+                        <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Edit Node</span>
+                    </button>
+                    {onReseed && isReachable && primaryIp && (
+                        <button
+                            onClick={() => onReseed(device)}
+                            className="px-2.5 py-1 text-xs font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 border border-blue-500/30 hover:border-blue-400/60 rounded-lg transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                            title={`Initiate crawl seeding from ${device.hostname} (${primaryIp})`}
+                        >
+                            <CrawlIcon size={14} className="text-blue-400" />
+                            Initiate Crawl
+                        </button>
+                    )}
+                    {onSetAsSource && primaryIp && (
+                        <button
+                            onClick={() => onSetAsSource(primaryIp)}
+                            className="px-2.5 py-1 text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg transition"
+                        >
+                            Set as Source IP
+                        </button>
+                    )}
+                    {onSetAsDestination && primaryIp && (
+                        <button
+                            onClick={() => onSetAsDestination(primaryIp)}
+                            className="px-2.5 py-1 text-xs font-semibold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-lg transition"
+                        >
+                            Set as Dest IP
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Authoritative Node Governance Override Inline Form */}
+            {isEditingNode && (
+                <div className="p-4 mx-4 my-2.5 rounded-xl border border-amber-500/40 bg-slate-950 shadow-xl space-y-3 animate-in fade-in duration-150 shrink-0">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                        <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                            <Edit3 className="w-4 h-4 text-amber-400" />
+                            <span>Authoritative Node Governance Override</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsEditingNode(false)}
+                            className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 transition cursor-pointer"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Correct devices with non-standard hostnames (e.g. <code>WLC-AMB-9800</code>). Setting these values updates the authoritative placement and prevents errant site creation in future crawls.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <label className="text-[11px] font-semibold text-slate-300">Authoritative Site</label>
+                            <input
+                                type="text"
+                                value={targetSite}
+                                onChange={(e) => setTargetSite(e.target.value.toUpperCase())}
+                                placeholder="e.g. KEL"
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono uppercase focus:outline-none focus:border-amber-400"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[11px] font-semibold text-slate-300">Authoritative IDF</label>
+                            <input
+                                type="text"
+                                value={targetIdf}
+                                onChange={(e) => setTargetIdf(e.target.value.toUpperCase())}
+                                placeholder="e.g. 2MC or MDF"
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono uppercase focus:outline-none focus:border-amber-400"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <label className="text-[11px] font-semibold text-slate-300">Role</label>
+                            <select
+                                value={targetRole}
+                                onChange={(e) => setTargetRole(e.target.value)}
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400 cursor-pointer"
                             >
-                                <CrawlIcon size={14} className="text-blue-400" />
-                                Initiate Crawl
-                            </button>
-                        )}
-                        {onSetAsSource && (
+                                <option value="WLC">WLC (Wireless Controller)</option>
+                                <option value="L3 Switch">L3 Switch (Core / Distribution)</option>
+                                <option value="L2 Switch">L2 Switch (Access)</option>
+                                <option value="Router">Router (WAN / Edge)</option>
+                                <option value="Firewall">Firewall</option>
+                                <option value="Access Point">Access Point</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[11px] font-semibold text-slate-300">Reason</label>
+                            <input
+                                type="text"
+                                value={overrideReason}
+                                onChange={(e) => setOverrideReason(e.target.value)}
+                                placeholder="e.g. Non-standard naming convention"
+                                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-400"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Errant site cleanup option */}
+                    <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer pt-1">
+                        <input
+                            type="checkbox"
+                            checked={cleanupEmptySite}
+                            onChange={(e) => setCleanupEmptySite(e.target.checked)}
+                            className="w-4 h-4 accent-amber-500 rounded bg-slate-900 border-slate-700 cursor-pointer"
+                        />
+                        <span className="text-[11px]">
+                            Clean up former site <code>{device.site || siteCode}</code> from Site Directory if left with 0 devices
+                        </span>
+                    </label>
+
+                    {overrideError && (
+                        <div className="p-2 rounded bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-1.5">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                            <span>{overrideError}</span>
+                        </div>
+                    )}
+
+                    {overrideSuccess && (
+                        <div className="p-2 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                            <span>{overrideSuccess}</span>
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                        {(device.isCustomOverride || device.siteOverride || device.idfOverride) ? (
                             <button
-                                onClick={() => onSetAsSource(primaryIp)}
-                                className="px-2.5 py-1 text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg transition"
+                                type="button"
+                                onClick={handleResetOverride}
+                                disabled={savingOverride}
+                                className="text-xs text-rose-400 hover:text-rose-300 transition cursor-pointer"
                             >
-                                Set as Source IP
+                                Reset to Default Parsing
                             </button>
-                        )}
-                        {onSetAsDestination && (
+                        ) : <span />}
+
+                        <div className="flex items-center gap-2">
                             <button
-                                onClick={() => onSetAsDestination(primaryIp)}
-                                className="px-2.5 py-1 text-xs font-semibold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-lg transition"
+                                type="button"
+                                onClick={() => setIsEditingNode(false)}
+                                disabled={savingOverride}
+                                className="px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
                             >
-                                Set as Dest IP
+                                Cancel
                             </button>
-                        )}
+                            <button
+                                type="button"
+                                onClick={handleSaveOverride}
+                                disabled={savingOverride}
+                                className="px-3.5 py-1.5 text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg shadow-md transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                                {savingOverride ? (
+                                    <>
+                                        <span className="w-3 h-3 border-2 border-slate-950/20 border-t-slate-950 rounded-full animate-spin"></span>
+                                        Saving...
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        Save Override
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

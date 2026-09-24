@@ -325,14 +325,15 @@ export async function GET(
             const peerDesc = cdpDescMap.get(canon) || (ip ? cdpDescMap.get(ip) : null) || null;
             const override = overrideMap.get(canon) || (ip ? overrideMap.get(ip) : null);
 
-            let site = d.site;
-            let idf = d.idf;
+            let site = override?.siteOverride ? String(override.siteOverride).trim().toUpperCase() : d.site;
+            let idf = override?.idfOverride ? String(override.idfOverride).trim().toUpperCase() : d.idf;
+            let role = override?.roleOverride || d.role;
             let isMultiCloset = false;
             let flaggedForInvestigation = false;
             let investigationReason: string | null = null;
             let discoveredClosets: Array<{ site: string; idf: string; discoveringSwitches: string[] }> = [];
 
-            if (d.status !== "REACHABLE") {
+            if (d.status !== "REACHABLE" && !override?.siteOverride && !override?.idfOverride) {
                 const neighborClosets = [
                     ...(discoveringClosetsMap.get(canon) || []),
                     ...(ip ? (discoveringClosetsMap.get(ip) || []) : [])
@@ -380,6 +381,7 @@ export async function GET(
                 ...d,
                 site,
                 idf,
+                role,
                 isMultiCloset,
                 flaggedForInvestigation,
                 investigationReason,
@@ -391,6 +393,10 @@ export async function GET(
                 tag: override?.tag || null,
                 isVendorManaged: override?.tag === "VENDOR_MANAGED",
                 isIgnored: override?.tag === "IGNORED",
+                isCustomOverride: Boolean(override?.siteOverride || override?.idfOverride || override?.roleOverride),
+                siteOverride: override?.siteOverride || null,
+                idfOverride: override?.idfOverride || null,
+                roleOverride: override?.roleOverride || null,
                 overrideReason: override?.reason || null,
                 excludeFromTopology: override ? override.excludeFromTopology : false,
                 excludeFromFailures: override ? override.excludeFromFailures : false

@@ -529,6 +529,9 @@
   .mx-1 {
     margin-inline: var(--spacing);
   }
+  .mx-4 {
+    margin-inline: calc(var(--spacing) * 4);
+  }
   .mx-auto {
     margin-inline: auto;
   }
@@ -540,6 +543,9 @@
   }
   .my-2 {
     margin-block: calc(var(--spacing) * 2);
+  }
+  .my-2\.5 {
+    margin-block: calc(var(--spacing) * 2.5);
   }
   .my-4 {
     margin-block: calc(var(--spacing) * 4);
@@ -2050,6 +2056,12 @@
   .border-slate-900 {
     border-color: var(--color-slate-900);
   }
+  .border-slate-950\/20 {
+    border-color: color-mix(in srgb, oklch(12.9% 0.042 264.695) 20%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-slate-950) 20%, transparent);
+    }
+  }
   .border-teal-500\/20 {
     border-color: color-mix(in srgb, oklch(70.4% 0.14 182.503) 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -2103,6 +2115,9 @@
   }
   .border-t-blue-500 {
     border-top-color: var(--color-blue-500);
+  }
+  .border-t-slate-950 {
+    border-top-color: var(--color-slate-950);
   }
   .border-t-transparent {
     border-top-color: transparent;
@@ -2483,6 +2498,12 @@
     background-color: color-mix(in srgb, oklch(54.6% 0.245 262.881) 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-blue-600) 20%, transparent);
+    }
+  }
+  .bg-blue-600\/30 {
+    background-color: color-mix(in srgb, oklch(54.6% 0.245 262.881) 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-blue-600) 30%, transparent);
     }
   }
   .bg-blue-900\/40 {
@@ -4024,6 +4045,9 @@
   .accent-accent-primary {
     accent-color: var(--color-accent-primary);
   }
+  .accent-amber-500 {
+    accent-color: var(--color-amber-500);
+  }
   .accent-blue-500 {
     accent-color: var(--color-blue-500);
   }
@@ -4218,6 +4242,12 @@
     --tw-shadow-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 10%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       --tw-shadow-color: color-mix(in oklab, color-mix(in oklab, var(--color-emerald-500) 10%, transparent) var(--tw-shadow-alpha), transparent);
+    }
+  }
+  .shadow-emerald-500\/20 {
+    --tw-shadow-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 20%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      --tw-shadow-color: color-mix(in oklab, color-mix(in oklab, var(--color-emerald-500) 20%, transparent) var(--tw-shadow-alpha), transparent);
     }
   }
   .shadow-emerald-950\/30 {
@@ -4668,6 +4698,14 @@
         background-color: color-mix(in oklab, var(--color-amber-500) 20%, transparent);
       }
     }
+    .hover\:bg-amber-500\/25:hover {
+      background-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 25%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-amber-500\/25:hover {
+        background-color: color-mix(in oklab, var(--color-amber-500) 25%, transparent);
+      }
+    }
     .hover\:bg-amber-500\/30:hover {
       background-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 30%, transparent);
     }
@@ -4996,6 +5034,9 @@
         background-color: color-mix(in oklab, var(--color-slate-800) 60%, transparent);
       }
     }
+    .hover\:bg-slate-900:hover {
+      background-color: var(--color-slate-900);
+    }
     .hover\:bg-slate-900\/50:hover {
       background-color: color-mix(in srgb, oklch(20.8% 0.042 265.755) 50%, transparent);
     }
@@ -5066,6 +5107,9 @@
     .hover\:text-accent-primary:hover {
       color: var(--color-accent-primary);
     }
+    .hover\:text-amber-200:hover {
+      color: var(--color-amber-200);
+    }
     .hover\:text-amber-300:hover {
       color: var(--color-amber-300);
     }
@@ -5080,6 +5124,9 @@
     }
     .hover\:text-red-400:hover {
       color: var(--color-red-400);
+    }
+    .hover\:text-rose-300:hover {
+      color: var(--color-rose-300);
     }
     .hover\:text-rose-400:hover {
       color: var(--color-rose-400);
@@ -5137,6 +5184,9 @@
   }
   .focus\:border-accent-primary:focus {
     border-color: var(--color-accent-primary);
+  }
+  .focus\:border-amber-400:focus {
+    border-color: var(--color-amber-400);
   }
   .focus\:border-amber-500:focus {
     border-color: var(--color-amber-500);

@@ -187,10 +187,25 @@ export async function ensureSitesExistFromDevices(
         return { createdCount: 0, newSites: [], siteMap };
     }
 
+    // Query overrides so devices with siteOverride use their authoritative overridden site
+    let overrideMap = new Map<string, any>();
+    try {
+        const overrides = await prisma.crawlerDeviceOverride.findMany();
+        for (const ov of overrides) {
+            if (ov.hostname) overrideMap.set(ov.hostname.toLowerCase(), ov);
+        }
+    } catch {}
+
     const missingSites = new Map<string, any>();
 
     for (const dev of reachableDevices) {
-        let siteCode = dev.site ? String(dev.site).trim().toUpperCase() : "";
+        const normHost = dev.hostname ? String(dev.hostname).split(".")[0].split("(")[0].trim().toLowerCase() : "";
+        const override = overrideMap.get(normHost) || (dev.ipAddress ? overrideMap.get(String(dev.ipAddress).trim().toLowerCase()) : null);
+        
+        let siteCode = override?.siteOverride ? String(override.siteOverride).trim().toUpperCase() : "";
+        if (!siteCode) {
+            siteCode = dev.site ? String(dev.site).trim().toUpperCase() : "";
+        }
         if (!siteCode && dev.site_info?.site) {
             siteCode = String(dev.site_info.site).trim().toUpperCase();
         }
@@ -258,4 +273,48 @@ export async function ensureSitesExistFromDevices(
         siteMap
     };
 }
+
+/**
+ * Removes specified site codes from the authoritative Site Directory (SiteMapVersion).
+ * Useful when an errant site (like 'WLC') was created due to non-standard hostnames
+ * and has been corrected via device overrides.
+ */
+export async function removeDirectorySites(
+    siteCodesToRemove: string[],
+    sessionUser?: { id?: string; username?: string; email?: string; ipAddress?: string }
+): Promise<{ removedCount: number; remainingSites: SiteMetadata[] }> {
+    const siteMap = await getCurrentSiteMap();
+    if (!Array.isArray(siteCodesToRemove) || siteCodesToRemove.length === 0) {
+        return { removedCount: 0, remainingSites: Array.from(siteMap.values()) };
+    }
+
+    const removeSet = new Set(siteCodesToRemove.map(s => s.trim().toUpperCase()));
+    let removedCount = 0;
+
+    for (const code of Array.from(siteMap.keys())) {
+        if (removeSet.has(code.toUpperCase())) {
+            siteMap.delete(code);
+            removedCount++;
+        }
+    }
+
+    if (removedCount > 0) {
+        const remaining = Array.from(siteMap.values());
+        const csv = stringifySiteCsv(remaining);
+        const creator = sessionUser?.username || sessionUser?.email || "crawler-admin";
+        await saveSiteMap(csv, "site_directory_cleanup.csv", creator);
+
+        await logAudit(
+            "SITE_REMOVED_BY_ADMIN",
+            `Removed ${removedCount} empty/errant site(s) from authoritative Site Directory: ${Array.from(removeSet).join(", ")}.`,
+            sessionUser?.id,
+            sessionUser?.ipAddress
+        );
+
+        return { removedCount, remainingSites: remaining };
+    }
+
+    return { removedCount: 0, remainingSites: Array.from(siteMap.values()) };
+}
+
 

@@ -100,6 +100,132 @@ function correlateLinks(devices: any[]): any[] {
     return links;
 }
 
+export interface HopSiteBreakdown {
+    site: string;
+    total: number;
+    verified: number;
+    sshErrors: number;
+    timeouts: number;
+    unverifiedBoundary: number;
+    devices: Array<{
+        hostname: string;
+        ip: string;
+        status: string;
+        failureReason?: string;
+    }>;
+}
+
+export interface HopBreakdown {
+    hop: number;
+    label: string;
+    totalDevices: number;
+    sites: HopSiteBreakdown[];
+}
+
+export function buildHopBreakdown(rawDevices: any[], overrides?: Map<string, any>): { breakdown: HopBreakdown[]; textSummary: string[] } {
+    const hopMap = new Map<number, any[]>();
+    for (const d of rawDevices) {
+        const hop = d.hop_distance !== undefined && d.hop_distance !== null ? Number(d.hop_distance) : 0;
+        if (!hopMap.has(hop)) hopMap.set(hop, []);
+        hopMap.get(hop)!.push(d);
+    }
+
+    const sortedHops = Array.from(hopMap.keys()).sort((a, b) => a - b);
+    const breakdown: HopBreakdown[] = [];
+    const textLines: string[] = [
+        "============================================================",
+        "  POST-CRAWL DISCOVERY BREAKDOWN BY HOP & SITE",
+        "============================================================"
+    ];
+
+    for (const hop of sortedHops) {
+        const devs = hopMap.get(hop)!;
+        const hopLabel = hop === 0 ? "Hop 0 (Seed Devices)" : `Hop ${hop}`;
+        const siteGroupMap = new Map<string, any[]>();
+
+        for (const d of devs) {
+            const canon = (d.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
+            const ov = overrides?.get(canon) || (d.ip_address ? overrides?.get(d.ip_address.toLowerCase()) : null);
+            let s = ov?.siteOverride || d.site_info?.site || d.site;
+            if (!s && d.hostname) {
+                const parts = d.hostname.split(".")[0].trim();
+                s = parts.length >= 3 ? parts.slice(0, 3).toUpperCase() : "UNK";
+            }
+            s = (s || "UNKNOWN").toUpperCase();
+
+            if (!siteGroupMap.has(s)) siteGroupMap.set(s, []);
+            siteGroupMap.get(s)!.push(d);
+        }
+
+        const sites: HopSiteBreakdown[] = [];
+        textLines.push(`\n[${hopLabel}] - ${devs.length} device(s) across ${siteGroupMap.size} site(s):`);
+
+        const sortedSiteKeys = Array.from(siteGroupMap.keys()).sort();
+        for (const sKey of sortedSiteKeys) {
+            const sDevs = siteGroupMap.get(sKey)!;
+            let verified = 0;
+            let sshErrors = 0;
+            let timeouts = 0;
+            let unverifiedBoundary = 0;
+
+            const devDetails = sDevs.map(d => {
+                const status = (d.status || "").toUpperCase();
+                const reason = d.failure_reason || d.error || "";
+                if (status === "REACHABLE") {
+                    verified++;
+                } else if (status === "UNVERIFIED") {
+                    unverifiedBoundary++;
+                } else if (status === "TIMEOUT" || reason.toLowerCase().includes("timeout")) {
+                    timeouts++;
+                } else {
+                    sshErrors++;
+                }
+
+                return {
+                    hostname: d.hostname || d.ip_address || "unknown",
+                    ip: d.ip_address || "",
+                    status,
+                    failureReason: reason || undefined
+                };
+            });
+
+            sites.push({
+                site: sKey,
+                total: sDevs.length,
+                verified,
+                sshErrors,
+                timeouts,
+                unverifiedBoundary,
+                devices: devDetails
+            });
+
+            const summaryBadges: string[] = [];
+            if (verified > 0) summaryBadges.push(`${verified} verified`);
+            if (sshErrors > 0) summaryBadges.push(`${sshErrors} SSH error(s)`);
+            if (timeouts > 0) summaryBadges.push(`${timeouts} timeout(s)`);
+            if (unverifiedBoundary > 0) summaryBadges.push(`${unverifiedBoundary} unverified (hop limit)`);
+
+            textLines.push(`  • Site ${sKey}: ${sDevs.length} device(s) [${summaryBadges.join(", ")}]`);
+            for (const d of devDetails) {
+                let statusDetail = d.status;
+                if (d.status === "UNVERIFIED") statusDetail = "UNVERIFIED (Hop limit reached)";
+                else if (d.failureReason) statusDetail = `${d.status} (${d.failureReason})`;
+                textLines.push(`    - ${d.hostname} (${d.ip}): ${statusDetail}`);
+            }
+        }
+
+        breakdown.push({
+            hop,
+            label: hopLabel,
+            totalDevices: devs.length,
+            sites
+        });
+    }
+
+    textLines.push("============================================================\n");
+    return { breakdown, textSummary: textLines };
+}
+
 async function persistLatestSnapshot(
     crawlerDir: string,
     seeds: string[],
@@ -160,6 +286,13 @@ async function persistLatestSnapshot(
         }
     });
 
+    // Load overrides so device records and hop breakdown reflect authoritative site overrides
+    const overrides = await prisma.crawlerDeviceOverride.findMany().catch(() => []);
+    const overrideMap = new Map<string, any>();
+    for (const ov of overrides) {
+        if (ov.hostname) overrideMap.set(ov.hostname.toLowerCase(), ov);
+    }
+
     for (const dev of rawDevices) {
         const shortHost = dev.hostname ? dev.hostname.split(".")[0].trim() : "";
         const fallbackSite = shortHost.length >= 3 ? shortHost.slice(0, 3).toUpperCase() : null;
@@ -171,6 +304,13 @@ async function persistLatestSnapshot(
             }
         }
 
+        const canon = (dev.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
+        const ov = overrideMap.get(canon) || (dev.ip_address ? overrideMap.get(dev.ip_address.toLowerCase()) : null);
+
+        const resolvedSite = ov?.siteOverride ? String(ov.siteOverride).toUpperCase() : (dev.site_info?.site ? dev.site_info.site.toUpperCase() : fallbackSite);
+        const resolvedIdf = ov?.idfOverride ? String(ov.idfOverride).toUpperCase() : (dev.site_info?.idf ? dev.site_info.idf.toUpperCase() : fallbackIdf);
+        const resolvedRole = ov?.roleOverride || dev.role;
+
         await prisma.crawlDevice.create({
             data: {
                 snapshotId: newSnapshot.id,
@@ -179,7 +319,7 @@ async function persistLatestSnapshot(
                 platform: dev.platform,
                 osVersion: dev.os_version,
                 serialNumber: dev.serial_number,
-                role: dev.role,
+                role: resolvedRole,
                 status: dev.status,
                 failureReason: dev.failure_reason,
                 discoveredVia: dev.discovered_via,
@@ -188,8 +328,8 @@ async function persistLatestSnapshot(
                 hopDistance: dev.hop_distance ?? 0,
                 isReseedFrontier: Boolean(dev.is_reseed_frontier),
                 boundaryNeighbors: dev.boundary_neighbors || [],
-                site: dev.site_info?.site ? dev.site_info.site.toUpperCase() : fallbackSite,
-                idf: dev.site_info?.idf ? dev.site_info.idf.toUpperCase() : fallbackIdf,
+                site: resolvedSite,
+                idf: resolvedIdf,
                 roleCode: dev.site_info?.role_code || null,
                 iterator: dev.site_info?.iterator || null,
                 interfaces: dev.interfaces || {},
@@ -232,7 +372,13 @@ async function persistLatestSnapshot(
         console.error("[CRAWLER] Failed auto-registering discovered sites in Site Directory:", siteErr);
     }
 
-    return newSnapshot;
+    const { breakdown: hopBreakdown, textSummary: hopTextSummary } = buildHopBreakdown(rawDevices, overrideMap);
+
+    return {
+        snapshot: newSnapshot,
+        hopBreakdown,
+        hopTextSummary
+    };
 }
 
 export async function POST(request: NextRequest) {
@@ -409,7 +555,7 @@ export async function POST(request: NextRequest) {
 
                     try {
                         sendEvent({ type: "status", message: `[DB] Parsing crawler snapshot and persisting to PostgreSQL...` });
-                        const newSnapshot = await persistLatestSnapshot(
+                        const { snapshot: newSnapshot, hopBreakdown, hopTextSummary } = await persistLatestSnapshot(
                             crawlerDir,
                             seeds,
                             profile,
@@ -418,6 +564,12 @@ export async function POST(request: NextRequest) {
                             useMock,
                             session
                         );
+
+                        // Stream structured hop breakdown lines into console and run audit log
+                        for (const line of hopTextSummary) {
+                            runLogLines.push(line);
+                            sendEvent({ type: "log", line });
+                        }
 
                         // Save run log file named after snapshot for easy retrieval
                         const snapLogFile = path.join(runsDir, `crawl_snapshot_${newSnapshot.id}.log`);
@@ -430,7 +582,8 @@ export async function POST(request: NextRequest) {
                             totalDiscovered: newSnapshot.totalDiscovered,
                             totalReachable: newSnapshot.totalReachable,
                             totalUnreachable: newSnapshot.totalUnreachable,
-                            logFile: `crawl_snapshot_${newSnapshot.id}.log`
+                            logFile: `crawl_snapshot_${newSnapshot.id}.log`,
+                            hopBreakdown
                         });
                     } catch (persistErr: any) {
                         const saveErrMsg = `Failed saving snapshot to database: ${persistErr.message}`;

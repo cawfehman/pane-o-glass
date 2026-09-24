@@ -583,6 +583,9 @@ export default function AdminCrawlerPage() {
                                 setReseedDevice(d);
                                 setIsCrawlModalOpen(true);
                             }}
+                            onRefreshSnapshot={() => {
+                                if (selectedSnapshotId) fetchSnapshotDetails(selectedSnapshotId);
+                            }}
                             className="relative w-full flex-1 h-full min-h-[660px]"
                         />
                     </div>
@@ -637,6 +640,9 @@ export default function AdminCrawlerPage() {
                                     setReseedDevice(d);
                                     setIsCrawlModalOpen(true);
                                 }}
+                                onRefreshSnapshot={() => {
+                                    if (selectedSnapshotId) fetchSnapshotDetails(selectedSnapshotId);
+                                }}
                                 className="relative w-full h-[620px] min-h-[500px]"
                             />
                         </div>
@@ -676,6 +682,11 @@ export default function AdminCrawlerPage() {
                 onReseed={(dev) => {
                     setReseedDevice(dev);
                     setIsCrawlModalOpen(true);
+                }}
+                onRefresh={() => {
+                    if (selectedSnapshotId) {
+                        fetchSnapshotDetails(selectedSnapshotId);
+                    }
                 }}
             />
 

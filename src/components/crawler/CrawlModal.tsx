@@ -28,7 +28,9 @@ import {
     Trash2,
     Plus,
     Info,
-    Download
+    Download,
+    Building,
+    ArrowRight
 } from "lucide-react";
 
 export interface CredentialItem {
@@ -68,6 +70,9 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
     const [error, setError] = useState<string | null>(null);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
     const [logs, setLogs] = useState<string[]>([]);
+    const [hopBreakdown, setHopBreakdown] = useState<any[]>([]);
+    const [terminalTab, setTerminalTab] = useState<"logs" | "breakdown">("logs");
+    const [completedSnapshot, setCompletedSnapshot] = useState<{ id: string; num: any } | null>(null);
     const [abortController, setAbortController] = useState<AbortController | null>(null);
     const [showConfigDuringExecution, setShowConfigDuringExecution] = useState(false);
     const terminalRef = useRef<HTMLDivElement>(null);
@@ -131,6 +136,18 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
     };
 
     const getLogLineStyle = (line: string) => {
+        if (line.includes("POST-CRAWL DISCOVERY BREAKDOWN") || line.startsWith("========")) {
+            return "text-purple-300 font-bold";
+        }
+        if (line.startsWith("[Hop ") || line.includes("Hop 0") || line.includes("Hop 1") || line.includes("Hop 2") || line.includes("Hop 3")) {
+            return "text-cyan-300 font-bold";
+        }
+        if (line.includes("• Site ")) {
+            return "text-amber-300 font-semibold";
+        }
+        if (line.includes("UNVERIFIED (Hop limit")) {
+            return "text-purple-300 font-mono";
+        }
         if (line.startsWith("[ERROR]") || line.includes("failed") || line.includes("Failed") || line.includes("AuthenticationException")) {
             return "text-red-400";
         }
@@ -166,6 +183,9 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
         setError(null);
         setStatusMessage(null);
         setLogs([]);
+        setHopBreakdown([]);
+        setTerminalTab("logs");
+        setCompletedSnapshot(null);
         setShowConfigDuringExecution(false);
         setLoading(true);
 
@@ -257,10 +277,11 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                         } else if (evt.type === "done") {
                             setStatusMessage(`Crawl completed! Snapshot #${evt.snapshotNumber} saved (${evt.totalDiscovered} devices).`);
                             setLogs(prev => [...prev, `[SUCCESS] Snapshot #${evt.snapshotNumber} saved to database.`]);
-                            setTimeout(() => {
-                                onSuccess(evt.snapshotId);
-                                onClose();
-                            }, 1800);
+                            if (Array.isArray(evt.hopBreakdown) && evt.hopBreakdown.length > 0) {
+                                setHopBreakdown(evt.hopBreakdown);
+                                setTerminalTab("breakdown");
+                            }
+                            setCompletedSnapshot({ id: evt.snapshotId, num: evt.snapshotNumber });
                         }
                     } catch (e) {
                         console.error("SSE parse error:", e);
@@ -274,8 +295,13 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                     const evt = JSON.parse(buffer.trim().slice(6));
                     if (evt.type === "error") setError(evt.error);
                     if (evt.type === "done") {
-                        onSuccess(evt.snapshotId);
-                        onClose();
+                        setStatusMessage(`Crawl completed! Snapshot #${evt.snapshotNumber} saved (${evt.totalDiscovered} devices).`);
+                        setLogs(prev => [...prev, `[SUCCESS] Snapshot #${evt.snapshotNumber} saved to database.`]);
+                        if (Array.isArray(evt.hopBreakdown) && evt.hopBreakdown.length > 0) {
+                            setHopBreakdown(evt.hopBreakdown);
+                            setTerminalTab("breakdown");
+                        }
+                        setCompletedSnapshot({ id: evt.snapshotId, num: evt.snapshotNumber });
                     }
                 } catch {}
             }
@@ -792,13 +818,47 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                     </div>
                 )}
 
-                {/* Live Execution Console Terminal (Full Width) */}
+                {/* Live Execution Console & Hop Breakdown (Full Width) */}
                 {isExecuting && (
                     <div className="space-y-2 flex-1 min-h-0 flex flex-col pt-1">
                         <div className="flex items-center justify-between shrink-0">
-                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
-                                <Terminal className="w-3.5 h-3.5 text-blue-400" />
-                                <span>Live Execution Console</span>
+                            <div className="flex items-center gap-2">
+                                <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => setTerminalTab("logs")}
+                                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                                            terminalTab === "logs"
+                                                ? "bg-slate-800 text-white shadow-sm"
+                                                : "text-slate-400 hover:text-slate-200"
+                                        }`}
+                                    >
+                                        <Terminal className="w-3.5 h-3.5 text-blue-400" />
+                                        <span>Terminal Logs</span>
+                                        <span className="text-[10px] font-mono text-slate-500">
+                                            ({logs.length})
+                                        </span>
+                                    </button>
+
+                                    {hopBreakdown && hopBreakdown.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setTerminalTab("breakdown")}
+                                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                                                terminalTab === "breakdown"
+                                                    ? "bg-blue-600/30 text-blue-300 border border-blue-500/40 shadow-sm"
+                                                    : "text-slate-400 hover:text-slate-200"
+                                            }`}
+                                        >
+                                            <Layers className="w-3.5 h-3.5 text-amber-400" />
+                                            <span>Discovery by Hop &amp; Site</span>
+                                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                                {hopBreakdown.length} Hops
+                                            </span>
+                                        </button>
+                                    )}
+                                </div>
+
                                 {loading && (
                                     <span className="flex items-center gap-1.5 text-[10px] text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full font-mono">
                                         <span className="relative flex h-2 w-2">
@@ -808,12 +868,10 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                         STREAMING
                                     </span>
                                 )}
-                                <span className="text-[10px] font-mono text-slate-500">
-                                    ({logs.length} lines)
-                                </span>
                             </div>
+
                             <div className="flex items-center gap-2">
-                                {logs.length > 0 && (
+                                {terminalTab === "logs" && logs.length > 0 && (
                                     <>
                                         <button
                                             type="button"
@@ -839,17 +897,119 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                 )}
                             </div>
                         </div>
-                        <div 
-                            ref={terminalRef} 
-                            className="bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] leading-relaxed flex-1 min-h-0 overflow-y-auto overscroll-contain shadow-inner space-y-1 select-text"
-                        >
-                            {logs.map((logLine, idx) => (
-                                <div key={idx} className={`font-mono break-all ${getLogLineStyle(logLine)}`}>
-                                    <span className="text-slate-600 select-none mr-2">{String(idx + 1).padStart(2, "0")}</span>
-                                    {logLine}
+
+                        {terminalTab === "logs" ? (
+                            <div 
+                                ref={terminalRef} 
+                                className="bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] leading-relaxed flex-1 min-h-0 overflow-y-auto overscroll-contain shadow-inner space-y-1 select-text"
+                            >
+                                {logs.map((logLine, idx) => (
+                                    <div key={idx} className={`font-mono break-all ${getLogLineStyle(logLine)}`}>
+                                        <span className="text-slate-600 select-none mr-2">{String(idx + 1).padStart(2, "0")}</span>
+                                        {logLine}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex-1 min-h-0 overflow-y-auto space-y-4 shadow-inner">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 text-xs">
+                                    <div className="flex items-center gap-2 text-slate-300 font-semibold">
+                                        <Layers className="w-4 h-4 text-amber-400" />
+                                        <span>Multi-Hop Traversal Summary</span>
+                                    </div>
+                                    <span className="text-[11px] text-slate-500 font-mono">
+                                        Total Hops: {hopBreakdown.length}
+                                    </span>
                                 </div>
-                            ))}
-                        </div>
+
+                                <div className="space-y-3">
+                                    {hopBreakdown.map((hb: any) => (
+                                        <div key={hb.hop} className="border border-slate-800 rounded-xl bg-slate-900/60 overflow-hidden">
+                                            <div className="bg-slate-900 px-3.5 py-2 border-b border-slate-800 flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 font-mono text-xs font-bold border border-blue-500/20">
+                                                        Hop {hb.hop}
+                                                    </span>
+                                                    <span className="text-xs font-semibold text-white">{hb.label}</span>
+                                                </div>
+                                                <span className="text-[11px] font-mono text-slate-400">
+                                                    {hb.totalDevices} {hb.totalDevices === 1 ? "device" : "devices"}
+                                                </span>
+                                            </div>
+
+                                            <div className="p-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                {hb.sites.map((st: any) => (
+                                                    <div key={st.site} className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <Building className="w-3.5 h-3.5 text-blue-400" />
+                                                                <span className="text-xs font-bold text-white tracking-wide font-mono">
+                                                                    {st.site}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-[10px] font-mono text-slate-500">
+                                                                {st.total} {st.total === 1 ? "device" : "devices"}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Status badges */}
+                                                        <div className="flex flex-wrap gap-1.5 text-[10px] font-mono">
+                                                            {st.verified > 0 && (
+                                                                <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                                                                    <CheckCircle2 className="w-2.5 h-2.5" />
+                                                                    {st.verified} verified
+                                                                </span>
+                                                            )}
+                                                            {st.sshErrors > 0 && (
+                                                                <span className="px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/30 flex items-center gap-1">
+                                                                    <AlertCircle className="w-2.5 h-2.5" />
+                                                                    {st.sshErrors} SSH error
+                                                                </span>
+                                                            )}
+                                                            {st.timeouts > 0 && (
+                                                                <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                                                    <Clock className="w-2.5 h-2.5" />
+                                                                    {st.timeouts} timeout
+                                                                </span>
+                                                            )}
+                                                            {st.unverifiedBoundary > 0 && (
+                                                                <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1" title="Unverified CDP neighbor boundary (hop limit reached or unreachable)">
+                                                                    <ShieldAlert className="w-2.5 h-2.5" />
+                                                                    {st.unverifiedBoundary} hop limit / boundary
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Device details */}
+                                                        <div className="space-y-1 pt-1 border-t border-slate-900">
+                                                            {st.devices.map((dev: any) => (
+                                                                <div key={dev.hostname} className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                                                                    <span className="text-slate-300 truncate max-w-[180px]" title={dev.hostname}>
+                                                                        {dev.hostname}
+                                                                    </span>
+                                                                    <div className="flex items-center gap-1.5 text-[10px]">
+                                                                        <span className="text-slate-500">{dev.ip}</span>
+                                                                        {dev.status === "REACHABLE" ? (
+                                                                            <span className="text-emerald-400">OK</span>
+                                                                        ) : dev.status === "UNVERIFIED" ? (
+                                                                            <span className="text-blue-400">BOUNDARY</span>
+                                                                        ) : (
+                                                                            <span className="text-rose-400" title={dev.failureReason || dev.status}>
+                                                                                {dev.failureReason ? dev.failureReason.slice(0, 15) : dev.status}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -900,6 +1060,21 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                 Close
                             </button>
                         )}
+
+                        {completedSnapshot && !loading && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    onSuccess(completedSnapshot.id);
+                                    onClose();
+                                }}
+                                className="px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 transition cursor-pointer animate-in fade-in"
+                            >
+                                <span>Open Topology #{completedSnapshot.num}</span>
+                                <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                        )}
+
                         <button
                             type="button"
                             onClick={handleRunCrawl}
