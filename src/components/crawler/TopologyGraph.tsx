@@ -164,6 +164,212 @@ export function getDeviceLayer(dev: any): { layer: "L3" | "L2"; label: string } 
     return { layer: "L2", label: "L2 Switch" };
 }
 
+export type DeviceArchetype = "ROUTER" | "L3_CORE" | "L2_ACCESS" | "WLC" | "FIREWALL" | "VENDOR";
+
+export interface ArchetypeDetails {
+    archetype: DeviceArchetype;
+    label: string;
+    shape: "cylinder" | "chamfer" | "chassis" | "controller" | "shield";
+    primaryColor: string;
+    accentColor: string;
+    glowColor: string;
+    bgGradient: string;
+}
+
+export function getDeviceArchetype(dev: any): ArchetypeDetails {
+    if (dev.isVendorManaged) {
+        return {
+            archetype: "VENDOR",
+            label: "VND",
+            shape: "chassis",
+            primaryColor: "#a855f7",
+            accentColor: "#d8b4fe",
+            glowColor: "rgba(168, 85, 247, 0.4)",
+            bgGradient: "rgba(28, 14, 46, 0.95)"
+        };
+    }
+
+    const host = (dev.canonicalHostname || dev.hostname || "").toUpperCase();
+    const role = (dev.role || "").toLowerCase();
+    const platform = (dev.platform || "").toUpperCase();
+
+    // 1. WLC (Wireless LAN Controller)
+    if (
+        role.includes("wlc") ||
+        role.includes("wireless") ||
+        host.includes("WLC") ||
+        host.includes("AIR-") ||
+        platform.includes("9800") ||
+        platform.includes("5520") ||
+        platform.includes("3504") ||
+        platform.includes("2504") ||
+        platform.includes("WIRELESS")
+    ) {
+        return {
+            archetype: "WLC",
+            label: "WLC",
+            shape: "controller",
+            primaryColor: "#c084fc",
+            accentColor: "#f472b6",
+            glowColor: "rgba(192, 132, 252, 0.4)",
+            bgGradient: "rgba(35, 14, 45, 0.95)"
+        };
+    }
+
+    // 2. Firewall / Security Appliance
+    if (
+        role.includes("firewall") ||
+        role.includes("fw") ||
+        role.includes("security") ||
+        host.startsWith("FW-") ||
+        host.includes("-FW") ||
+        platform.includes("ASA") ||
+        platform.includes("FIREPOWER") ||
+        platform.includes("PALO") ||
+        platform.includes("FORTI")
+    ) {
+        return {
+            archetype: "FIREWALL",
+            label: "FW",
+            shape: "shield",
+            primaryColor: "#f43f5e",
+            accentColor: "#fb7185",
+            glowColor: "rgba(244, 63, 94, 0.4)",
+            bgGradient: "rgba(45, 12, 20, 0.95)"
+        };
+    }
+
+    // 3. Router (WAN Gateway / Core Router)
+    const routes = Array.isArray(dev.routes) ? dev.routes : [];
+    if (
+        role.includes("router") ||
+        role === "rtr" ||
+        host.startsWith("RTR") ||
+        host.includes("-RT-") ||
+        host.includes("-RT1") ||
+        host.includes("-RT2") ||
+        host.includes("WAN-") ||
+        platform.includes("ISR") ||
+        platform.includes("ASR") ||
+        platform.includes("CSR") ||
+        platform.includes("C8000") ||
+        platform.includes("ROUTER")
+    ) {
+        return {
+            archetype: "ROUTER",
+            label: "RTR",
+            shape: "cylinder",
+            primaryColor: "#38bdf8",
+            accentColor: "#60a5fa",
+            glowColor: "rgba(56, 189, 248, 0.4)",
+            bgGradient: "rgba(10, 28, 54, 0.95)"
+        };
+    }
+
+    // 4. L3 Core / Distribution Multilayer Switch
+    if (
+        role.includes("core") ||
+        role.includes("dist") ||
+        role.includes("l3") ||
+        routes.length > 2 ||
+        platform.includes("9500") ||
+        platform.includes("9600") ||
+        platform.includes("NEXUS") ||
+        platform.includes("6500")
+    ) {
+        return {
+            archetype: "L3_CORE",
+            label: "L3",
+            shape: "chamfer",
+            primaryColor: "#06b6d4",
+            accentColor: "#22d3ee",
+            glowColor: "rgba(6, 182, 212, 0.4)",
+            bgGradient: "rgba(8, 36, 52, 0.95)"
+        };
+    }
+
+    // 5. L2 Access Switch / Edge Switch
+    return {
+        archetype: "L2_ACCESS",
+        label: "L2",
+        shape: "chassis",
+        primaryColor: "#10b981",
+        accentColor: "#34d399",
+        glowColor: "rgba(16, 185, 129, 0.4)",
+        bgGradient: "rgba(6, 40, 30, 0.95)"
+    };
+}
+
+/** Renders the iconic Cisco standard router 4-way arrow emblem */
+function RouterGlyph({ x, y, size = 18, color = "#38bdf8" }: { x: number; y: number; size?: number; color?: string }) {
+    const r = size / 2;
+    return (
+        <g transform={`translate(${x}, ${y})`}>
+            <circle cx={0} cy={0} r={r} fill="rgba(56, 189, 248, 0.18)" stroke={color} strokeWidth={1.2} />
+            {/* Vertical arrows */}
+            <path d={`M 0 ${-r + 3} L 0 ${r - 3}`} stroke={color} strokeWidth={1.1} strokeLinecap="round" />
+            <path d={`M -2 ${-r + 5.5} L 0 ${-r + 3} L 2 ${-r + 5.5}`} fill="none" stroke={color} strokeWidth={1.1} strokeLinecap="round" strokeLinejoin="round" />
+            <path d={`M -2 ${r - 5.5} L 0 ${r - 3} L 2 ${r - 5.5}`} fill="none" stroke={color} strokeWidth={1.1} strokeLinecap="round" strokeLinejoin="round" />
+            {/* Horizontal arrows */}
+            <path d={`M ${-r + 3} 0 L ${r - 3} 0`} stroke={color} strokeWidth={1.1} strokeLinecap="round" />
+            <path d={`M ${-1.5} -2 L 0 0 L -1.5 2`} fill="none" stroke={color} strokeWidth={1.1} strokeLinecap="round" strokeLinejoin="round" />
+            <path d={`M 1.5 -2 L 0 0 L 1.5 2`} fill="none" stroke={color} strokeWidth={1.1} strokeLinecap="round" strokeLinejoin="round" />
+        </g>
+    );
+}
+
+/** Renders the iconic Cisco multilayer / L3 switch cross-arrows emblem */
+function MultilayerGlyph({ x, y, size = 18, color = "#06b6d4" }: { x: number; y: number; size?: number; color?: string }) {
+    const half = size / 2;
+    return (
+        <g transform={`translate(${x}, ${y})`}>
+            <rect x={-half} y={-half} width={size} height={size} rx={3} fill="rgba(6, 182, 212, 0.18)" stroke={color} strokeWidth={1.2} />
+            <path d={`M ${-half + 3.5} ${-half + 3.5} L ${half - 3.5} ${half - 3.5}`} stroke={color} strokeWidth={1.1} strokeLinecap="round" />
+            <path d={`M ${half - 3.5} ${-half + 3.5} L ${-half + 3.5} ${half - 3.5}`} stroke={color} strokeWidth={1.1} strokeLinecap="round" />
+            <path d={`M ${half - 6} ${half - 3.5} L ${half - 3.5} ${half - 3.5} L ${half - 3.5} ${half - 6}`} fill="none" stroke={color} strokeWidth={1.1} strokeLinecap="round" strokeLinejoin="round" />
+            <path d={`M ${-half + 6} ${-half + 3.5} L ${-half + 3.5} ${-half + 3.5} L ${-half + 3.5} ${-half + 6}`} fill="none" stroke={color} strokeWidth={1.1} strokeLinecap="round" strokeLinejoin="round" />
+        </g>
+    );
+}
+
+/** Renders the Wireless Controller (WLC) antenna waves emblem */
+function WlcGlyph({ x, y, size = 18, color = "#c084fc" }: { x: number; y: number; size?: number; color?: string }) {
+    return (
+        <g transform={`translate(${x}, ${y})`}>
+            <circle cx={0} cy={1} r={2} fill={color} />
+            <path d="M 0 1 L 0 5 M -3 5 L 3 5" stroke={color} strokeWidth={1.1} strokeLinecap="round" />
+            <path d="M -4 -2 A 4 4 0 0 0 -4 4" fill="none" stroke={color} strokeWidth={1.1} strokeLinecap="round" />
+            <path d="M -7 -4 A 7 7 0 0 0 -7 6" fill="none" stroke={color} strokeWidth={1.1} strokeLinecap="round" opacity={0.7} />
+            <path d="M 4 -2 A 4 4 0 0 1 4 4" fill="none" stroke={color} strokeWidth={1.1} strokeLinecap="round" />
+            <path d="M 7 -4 A 7 7 0 0 1 7 6" fill="none" stroke={color} strokeWidth={1.1} strokeLinecap="round" opacity={0.7} />
+        </g>
+    );
+}
+
+/** Renders Firewall security shield emblem */
+function FirewallGlyph({ x, y, size = 18, color = "#f43f5e" }: { x: number; y: number; size?: number; color?: string }) {
+    const half = size / 2;
+    return (
+        <g transform={`translate(${x}, ${y})`}>
+            <path d={`M 0 ${-half + 1} L ${half - 1} ${-half + 3} L ${half - 1} 1 C ${half - 1} 5.5, 0 ${half}, 0 ${half} C 0 ${half}, ${-half + 1} 5.5, ${-half + 1} 1 L ${-half + 1} ${-half + 3} Z`} fill="rgba(244, 63, 94, 0.18)" stroke={color} strokeWidth={1.2} strokeLinejoin="round" />
+            <path d="M 0 -3.5 L 0 3.5 M -2.5 0 L 2.5 0" stroke={color} strokeWidth={1.1} strokeLinecap="round" />
+        </g>
+    );
+}
+
+/** Renders Access Switch port faceplate emblem */
+function SwitchGlyph({ x, y, size = 18, color = "#10b981" }: { x: number; y: number; size?: number; color?: string }) {
+    const half = size / 2;
+    return (
+        <g transform={`translate(${x}, ${y})`}>
+            <rect x={-half} y={-half + 3} width={size} height={size - 6} rx={2} fill="rgba(16, 185, 129, 0.18)" stroke={color} strokeWidth={1.2} />
+            <rect x={-half + 2.5} y={-half + 5.5} width={3} height={3} rx={0.5} fill={color} />
+            <rect x={-half + 6.8} y={-half + 5.5} width={3} height={3} rx={0.5} fill={color} />
+            <rect x={-half + 11.2} y={-half + 5.5} width={3} height={3} rx={0.5} fill={color} />
+        </g>
+    );
+}
+
 interface SiteContainerBox {
     siteCode: string;
     siteName: string | null;
@@ -262,6 +468,7 @@ export default function TopologyGraph({
     const [showVendorManaged, setShowVendorManaged] = useState(false); // Vendor Managed devices excluded from topology by default
     const [showUncrawledSites, setShowUncrawledSites] = useState(false); // Uncrawled Directory sites hidden by default
     const [siteClusterMode, setSiteClusterMode] = useState<"topological" | "grid">("topological"); // Topological Connected Clusters vs Linear Grid
+    const [nodeDensity, setNodeDensity] = useState<"standard" | "compact">("standard"); // Standard Detailed Cards vs Compact Shapes
 
     // Bulk Node Governance Overrides
     const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
@@ -970,10 +1177,10 @@ export default function TopologyGraph({
             }
         }[idfSpacing];
 
-        const CARD_WIDTH = 172;
-        const CARD_HEIGHT = 74;
-        const CARD_GAP_X = spacingConfig.cardGapX;
-        const CARD_GAP_Y = spacingConfig.cardGapY;
+        const CARD_WIDTH = nodeDensity === "compact" ? 138 : 172;
+        const CARD_HEIGHT = nodeDensity === "compact" ? 50 : 74;
+        const CARD_GAP_X = nodeDensity === "compact" ? Math.max(spacingConfig.cardGapX - 14, 18) : spacingConfig.cardGapX;
+        const CARD_GAP_Y = nodeDensity === "compact" ? Math.max(spacingConfig.cardGapY - 14, 22) : spacingConfig.cardGapY;
         const IDF_PAD_X = spacingConfig.idfPadX;
         const IDF_PAD_TOP = spacingConfig.idfPadTop;
         const IDF_PAD_BOTTOM = spacingConfig.idfPadBottom;
@@ -1893,7 +2100,7 @@ export default function TopologyGraph({
             canvasSize: { width: totalWidth, height: totalHeight },
             layoutDevices: layoutDevs
         };
-    }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing, showUncrawledSites, uncrawledSiteCodes, siteFilter, siteClusterMode, unifiedLinks, deviceLocationMap]);
+    }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing, showUncrawledSites, uncrawledSiteCodes, siteFilter, siteClusterMode, unifiedLinks, deviceLocationMap, nodeDensity]);
 
     // Multi-neighbor trunk & MPLS convergence model
     // Converges multiple links that share the same physical trunk/interface into a single stem before connecting to the switch/site
@@ -2291,6 +2498,36 @@ export default function TopologyGraph({
                             >
                                 <LayoutGrid className="w-3 h-3" />
                                 Linear Grid
+                            </button>
+                        </div>
+
+                        {/* Node Sizing & Role Silhouette Toggle */}
+                        <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+                            <button
+                                type="button"
+                                onClick={() => setNodeDensity("standard")}
+                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
+                                    nodeDensity === "standard"
+                                        ? "bg-indigo-600 text-white shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                                title="Detailed Rack Cards (Full telemetry, StackWise 3D layers, LED port strips)"
+                            >
+                                <Server className="w-3 h-3" />
+                                Detailed Cards
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setNodeDensity("compact")}
+                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
+                                    nodeDensity === "compact"
+                                        ? "bg-indigo-600 text-white shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                                title="Compact Shapes (High-density footprint with Cisco role silhouettes)"
+                            >
+                                <Box className="w-3 h-3" />
+                                Compact Shapes
                             </button>
                         </div>
 
@@ -3965,11 +4202,15 @@ export default function TopologyGraph({
                             const isUnreachable = dev.status !== "REACHABLE" && !isUnverified;
                             const { layer, label: layerLabel } = getDeviceLayer(dev);
                             const stackInfo = detectSwitchStack(dev);
+                            const archetype = getDeviceArchetype(dev);
 
-                            // Node Color scheme based on L3 vs L2 vs Unverified vs Multi-Closet Conflict
-                            let borderColor = isSelected ? "#38bdf8" : isHop ? "#fbbf24" : "rgba(255,255,255,0.18)";
+                            const CARD_W = nodeDensity === "compact" ? 138 : 172;
+                            const CARD_H = nodeDensity === "compact" ? 50 : 74;
+
+                            // Node Color scheme based on Archetype vs Unverified vs Unreachable vs Multi-Closet Conflict
+                            let borderColor = isSelected ? "#ffffff" : isHop ? "#fbbf24" : archetype.primaryColor;
                             let borderDash: string | undefined = undefined;
-                            let cardBg = "#0f172a";
+                            let cardBg = archetype.bgGradient;
 
                             if (dev.isVendorManaged) {
                                 borderColor = isSelected ? "#ffffff" : "#a855f7";
@@ -3985,17 +4226,9 @@ export default function TopologyGraph({
                             } else if (isUnreachable) {
                                 borderColor = "#ef4444";
                                 cardBg = "rgba(45, 10, 10, 0.95)";
-                            } else if (layer === "L3") {
-                                borderColor = isSelected ? "#ffffff" : "rgba(56, 189, 248, 0.5)";
-                                cardBg = "rgba(12, 35, 64, 0.95)";
-                            } else {
-                                borderColor = isSelected ? "#ffffff" : "rgba(16, 185, 129, 0.4)";
-                                cardBg = "rgba(6, 44, 34, 0.95)";
                             }
 
                             const isFaded = fadedNodes.has(canonHost) || fadedNodes.has(dev.hostname);
-                            const CARD_W = 172;
-                            const CARD_H = 74;
 
                             return (
                                 <g
@@ -4008,7 +4241,8 @@ export default function TopologyGraph({
                                         : "cursor-pointer group"
                                     }
                                 >
-                                    <title>{`${canonHost}${dev.platform ? ` [${dev.platform}]` : ""}${isMultiConflict ? " • Multi-Closet Conflict (Flagged for Investigation)" : ""}${dev.isVendorManaged ? " • Vendor Managed" : ""}`}</title>
+                                    <title>{`${canonHost}${dev.platform ? ` [${dev.platform}]` : ""} • ${archetype.label} (${archetype.archetype})${isMultiConflict ? " • Multi-Closet Conflict" : ""}${dev.isVendorManaged ? " • Vendor Managed" : ""}`}</title>
+                                    
                                     {/* 3D Stack Chassis Under-Layers (StackWise Visualization) */}
                                     {stackInfo.isStack && (
                                         <g opacity={isFaded ? 0.3 : 0.85}>
@@ -4017,7 +4251,7 @@ export default function TopologyGraph({
                                                 y={-CARD_H / 2 - 4}
                                                 width={CARD_W - 8}
                                                 height={CARD_H}
-                                                rx={7}
+                                                rx={archetype.shape === "cylinder" ? (nodeDensity === "compact" ? 12 : 15) : 6}
                                                 fill="#091426"
                                                 stroke="rgba(168, 85, 247, 0.45)"
                                                 strokeWidth={1}
@@ -4028,7 +4262,7 @@ export default function TopologyGraph({
                                                     y={-CARD_H / 2 - 8}
                                                     width={CARD_W - 16}
                                                     height={CARD_H}
-                                                    rx={6}
+                                                    rx={archetype.shape === "cylinder" ? (nodeDensity === "compact" ? 10 : 13) : 5}
                                                     fill="#050b14"
                                                     stroke="rgba(168, 85, 247, 0.3)"
                                                     strokeWidth={0.8}
@@ -4037,14 +4271,14 @@ export default function TopologyGraph({
                                         </g>
                                     )}
 
-                                    {/* Selection or Traced Hop Highlight Ring */}
+                                    {/* Selection or Traced Hop Highlight Halo */}
                                     {(isSelected || isHop) && (
                                         <rect
                                             x={-CARD_W / 2 - 4}
                                             y={-CARD_H / 2 - 4}
                                             width={CARD_W + 8}
                                             height={CARD_H + 8}
-                                            rx={12}
+                                            rx={archetype.shape === "cylinder" ? (nodeDensity === "compact" ? 18 : 22) : 10}
                                             fill="none"
                                             stroke={isHop ? "#f59e0b" : "#38bdf8"}
                                             strokeWidth={2.5}
@@ -4054,160 +4288,351 @@ export default function TopologyGraph({
                                         />
                                     )}
 
-                                    {/* Device Card Body */}
-                                    <rect
-                                        x={-CARD_W / 2}
-                                        y={-CARD_H / 2}
-                                        width={CARD_W}
-                                        height={CARD_H}
-                                        rx={8}
-                                        fill={cardBg}
-                                        stroke={borderColor}
-                                        strokeWidth={isSelected || isHop ? 2 : 1.2}
-                                        strokeDasharray={borderDash}
-                                        className="transition-all duration-150 group-hover:stroke-blue-400 group-hover:brightness-125"
-                                        filter="drop-shadow(0 4px 10px rgba(0,0,0,0.6))"
-                                    />
+                                    {/* Dynamic Archetype Chassis Body Silhouette */}
+                                    {archetype.shape === "cylinder" ? (
+                                        /* 1. ROUTER: Cisco Cylindrical Pill Profile */
+                                        <rect
+                                            x={-CARD_W / 2}
+                                            y={-CARD_H / 2}
+                                            width={CARD_W}
+                                            height={CARD_H}
+                                            rx={nodeDensity === "compact" ? 14 : 18}
+                                            fill={cardBg}
+                                            stroke={borderColor}
+                                            strokeWidth={isSelected || isHop ? 2 : 1.3}
+                                            strokeDasharray={borderDash}
+                                            className="transition-all duration-150 group-hover:brightness-125"
+                                            filter="drop-shadow(0 4px 10px rgba(0,0,0,0.6))"
+                                        />
+                                    ) : archetype.shape === "chamfer" ? (
+                                        /* 2. L3 CORE: Industrial Chamfered Octagonal Chassis */
+                                        <path
+                                            d={`M ${-CARD_W / 2 + 10} ${-CARD_H / 2} 
+                                               L ${CARD_W / 2 - 10} ${-CARD_H / 2} 
+                                               L ${CARD_W / 2} ${-CARD_H / 2 + 10} 
+                                               L ${CARD_W / 2} ${CARD_H / 2 - 10} 
+                                               L ${CARD_W / 2 - 10} ${CARD_H / 2} 
+                                               L ${-CARD_W / 2 + 10} ${CARD_H / 2} 
+                                               L ${-CARD_W / 2} ${CARD_H / 2 - 10} 
+                                               L ${-CARD_W / 2} ${-CARD_H / 2 + 10} Z`}
+                                            fill={cardBg}
+                                            stroke={borderColor}
+                                            strokeWidth={isSelected || isHop ? 2 : 1.3}
+                                            strokeDasharray={borderDash}
+                                            className="transition-all duration-150 group-hover:brightness-125"
+                                            filter="drop-shadow(0 4px 10px rgba(0,0,0,0.6))"
+                                        />
+                                    ) : archetype.shape === "controller" ? (
+                                        /* 3. WLC: Antenna Apex Chassis Profile */
+                                        <path
+                                            d={`M ${-CARD_W / 2 + 8} ${-CARD_H / 2}
+                                               L ${-14} ${-CARD_H / 2}
+                                               A 14 14 0 0 1 14 ${-CARD_H / 2}
+                                               L ${CARD_W / 2 - 8} ${-CARD_H / 2}
+                                               A 8 8 0 0 1 ${CARD_W / 2} ${-CARD_H / 2 + 8}
+                                               L ${CARD_W / 2} ${CARD_H / 2 - 8}
+                                               A 8 8 0 0 1 ${CARD_W / 2 - 8} ${CARD_H / 2}
+                                               L ${-CARD_W / 2 + 8} ${CARD_H / 2}
+                                               A 8 8 0 0 1 ${-CARD_W / 2} ${CARD_H / 2 - 8}
+                                               L ${-CARD_W / 2} ${-CARD_H / 2 + 8}
+                                               A 8 8 0 0 1 ${-CARD_W / 2 + 8} ${-CARD_H / 2} Z`}
+                                            fill={cardBg}
+                                            stroke={borderColor}
+                                            strokeWidth={isSelected || isHop ? 2 : 1.3}
+                                            strokeDasharray={borderDash}
+                                            className="transition-all duration-150 group-hover:brightness-125"
+                                            filter="drop-shadow(0 4px 10px rgba(0,0,0,0.6))"
+                                        />
+                                    ) : archetype.shape === "shield" ? (
+                                        /* 4. FIREWALL: Security Shield Perimeter Profile */
+                                        <path
+                                            d={`M ${-CARD_W / 2 + 8} ${-CARD_H / 2}
+                                               L ${CARD_W / 2 - 8} ${-CARD_H / 2}
+                                               A 8 8 0 0 1 ${CARD_W / 2} ${-CARD_H / 2 + 8}
+                                               L ${CARD_W / 2} ${CARD_H / 2 - 12}
+                                               L ${CARD_W / 2 - 12} ${CARD_H / 2}
+                                               L ${-CARD_W / 2 + 12} ${CARD_H / 2}
+                                               L ${-CARD_W / 2} ${CARD_H / 2 - 12}
+                                               L ${-CARD_W / 2} ${-CARD_H / 2 + 8}
+                                               A 8 8 0 0 1 ${-CARD_W / 2 + 8} ${-CARD_H / 2} Z`}
+                                            fill={cardBg}
+                                            stroke={borderColor}
+                                            strokeWidth={isSelected || isHop ? 2 : 1.3}
+                                            strokeDasharray={borderDash}
+                                            className="transition-all duration-150 group-hover:brightness-125"
+                                            filter="drop-shadow(0 4px 10px rgba(0,0,0,0.6))"
+                                        />
+                                    ) : (
+                                        /* 5. ACCESS SWITCH: Rack-Mount Faceplate with Ear Screws */
+                                        <g>
+                                            <rect
+                                                x={-CARD_W / 2}
+                                                y={-CARD_H / 2}
+                                                width={CARD_W}
+                                                height={CARD_H}
+                                                rx={6}
+                                                fill={cardBg}
+                                                stroke={borderColor}
+                                                strokeWidth={isSelected || isHop ? 2 : 1.2}
+                                                strokeDasharray={borderDash}
+                                                className="transition-all duration-150 group-hover:brightness-125"
+                                                filter="drop-shadow(0 4px 10px rgba(0,0,0,0.6))"
+                                            />
+                                            {/* Rack mounting ear screws */}
+                                            <circle cx={-CARD_W / 2 + 4} cy={-CARD_H / 2 + 8} r={1.2} fill="#475569" />
+                                            <circle cx={-CARD_W / 2 + 4} cy={CARD_H / 2 - 8} r={1.2} fill="#475569" />
+                                            <circle cx={CARD_W / 2 - 4} cy={-CARD_H / 2 + 8} r={1.2} fill="#475569" />
+                                            <circle cx={CARD_W / 2 - 4} cy={CARD_H / 2 - 8} r={1.2} fill="#475569" />
+                                        </g>
+                                    )}
 
-                                    {/* Left Accent Strip (L3 Cyan, L2 Green, Unverified Amber, Unreachable Red) */}
-                                    <path
-                                        d={`M ${-CARD_W / 2} ${-CARD_H / 2 + 8} A 8 8 0 0 1 ${-CARD_W / 2 + 8} ${-CARD_H / 2} L ${-CARD_W / 2 + 4} ${-CARD_H / 2} L ${-CARD_W / 2 + 4} ${CARD_H / 2} L ${-CARD_W / 2 + 8} ${CARD_H / 2} A 8 8 0 0 1 ${-CARD_W / 2} ${CARD_H / 2 - 8} Z`}
-                                        fill={dev.isVendorManaged ? "#a855f7" : isMultiConflict ? "#f59e0b" : isUnverified ? "#f59e0b" : isUnreachable ? "#ef4444" : layer === "L3" ? "#0284c7" : "#10b981"}
-                                    />
+                                    {/* Cisco Standard Archetype Emblem Glyph */}
+                                    {nodeDensity === "compact" ? (
+                                        archetype.archetype === "ROUTER" ? (
+                                            <RouterGlyph x={-CARD_W / 2 + 16} y={0} size={18} color={isUnreachable ? "#ef4444" : archetype.primaryColor} />
+                                        ) : archetype.archetype === "L3_CORE" ? (
+                                            <MultilayerGlyph x={-CARD_W / 2 + 16} y={0} size={17} color={isUnreachable ? "#ef4444" : archetype.primaryColor} />
+                                        ) : archetype.archetype === "WLC" ? (
+                                            <WlcGlyph x={-CARD_W / 2 + 16} y={0} size={18} color={isUnreachable ? "#ef4444" : archetype.primaryColor} />
+                                        ) : archetype.archetype === "FIREWALL" ? (
+                                            <FirewallGlyph x={-CARD_W / 2 + 16} y={0} size={18} color={isUnreachable ? "#ef4444" : archetype.primaryColor} />
+                                        ) : (
+                                            <SwitchGlyph x={-CARD_W / 2 + 16} y={0} size={17} color={isUnreachable ? "#ef4444" : archetype.primaryColor} />
+                                        )
+                                    ) : (
+                                        archetype.archetype === "ROUTER" ? (
+                                            <RouterGlyph x={-CARD_W / 2 + 18} y={-CARD_H / 2 + 20} size={20} color={isUnreachable ? "#ef4444" : archetype.primaryColor} />
+                                        ) : archetype.archetype === "L3_CORE" ? (
+                                            <MultilayerGlyph x={-CARD_W / 2 + 18} y={-CARD_H / 2 + 20} size={19} color={isUnreachable ? "#ef4444" : archetype.primaryColor} />
+                                        ) : archetype.archetype === "WLC" ? (
+                                            <WlcGlyph x={-CARD_W / 2 + 18} y={-CARD_H / 2 + 20} size={20} color={isUnreachable ? "#ef4444" : archetype.primaryColor} />
+                                        ) : archetype.archetype === "FIREWALL" ? (
+                                            <FirewallGlyph x={-CARD_W / 2 + 18} y={-CARD_H / 2 + 20} size={20} color={isUnreachable ? "#ef4444" : archetype.primaryColor} />
+                                        ) : (
+                                            <SwitchGlyph x={-CARD_W / 2 + 18} y={-CARD_H / 2 + 20} size={19} color={isUnreachable ? "#ef4444" : archetype.primaryColor} />
+                                        )
+                                    )}
 
-                                    {/* L3 vs L2 & Switch Stack Badge Chips (Top-Right) */}
-                                    <g transform={`translate(${CARD_W / 2 - (stackInfo.isStack ? (isMultiConflict ? 74 : 58) : (isMultiConflict ? 44 : 28))}, ${-CARD_H / 2 + 7})`}>
-                                        {stackInfo.isStack && (
-                                            <g transform="translate(0, 0)">
+                                    {/* COMPACT DENSITY MODE LAYOUT */}
+                                    {nodeDensity === "compact" ? (
+                                        <>
+                                            {/* Hostname */}
+                                            <text
+                                                x={-CARD_W / 2 + 30}
+                                                y={-CARD_H / 2 + 16}
+                                                fill="#ffffff"
+                                                fontSize={10}
+                                                fontWeight="bold"
+                                                fontFamily="monospace"
+                                            >
+                                                {canonHost.length > 12 ? canonHost.slice(0, 11) + "…" : canonHost}
+                                            </text>
+
+                                            {/* IP Address */}
+                                            <text
+                                                x={-CARD_W / 2 + 30}
+                                                y={-CARD_H / 2 + 29}
+                                                fill="#94a3b8"
+                                                fontSize={8.5}
+                                                fontFamily="monospace"
+                                            >
+                                                {dev.ipAddress || dev.ip_address || "No IP"}
+                                            </text>
+
+                                            {/* Sub-label: IDF & Stack Info */}
+                                            <text
+                                                x={-CARD_W / 2 + 30}
+                                                y={-CARD_H / 2 + 41}
+                                                fill="#64748b"
+                                                fontSize={7.5}
+                                                fontFamily="monospace"
+                                            >
+                                                {site} • {idf} {stackInfo.isStack ? `• ${stackInfo.stackSize}x` : ""}
+                                            </text>
+
+                                            {/* Archetype / Status Mini Badge (Top-Right) */}
+                                            <g transform={`translate(${CARD_W / 2 - 32}, ${-CARD_H / 2 + 6})`}>
                                                 <rect
                                                     x={0}
                                                     y={0}
-                                                    width={28}
-                                                    height={13}
+                                                    width={24}
+                                                    height={12}
                                                     rx={3}
-                                                    fill="rgba(168, 85, 247, 0.2)"
-                                                    stroke="#a855f7"
+                                                    fill={isUnverified ? "rgba(245, 158, 11, 0.2)" : `${archetype.primaryColor}25`}
+                                                    stroke={isUnverified ? "#f59e0b" : archetype.primaryColor}
                                                     strokeWidth={0.8}
                                                 />
                                                 <text
-                                                    x={14}
-                                                    y={9.5}
-                                                    fill="#d8b4fe"
-                                                    fontSize={7.5}
+                                                    x={12}
+                                                    y={8.5}
+                                                    fill={isUnverified ? "#fbbf24" : archetype.accentColor}
+                                                    fontSize={7}
                                                     fontWeight="bold"
                                                     fontFamily="monospace"
                                                     textAnchor="middle"
                                                 >
-                                                    {`${stackInfo.stackSize}x STK`}
+                                                    {isUnverified ? "BND" : archetype.label}
                                                 </text>
                                             </g>
-                                        )}
-                                        <g transform={`translate(${stackInfo.isStack ? 30 : 0}, 0)`}>
-                                            <rect
-                                                x={0}
-                                                y={0}
-                                                width={isMultiConflict ? 40 : 22}
-                                                height={13}
-                                                rx={3}
-                                                fill={dev.isVendorManaged ? "rgba(168, 85, 247, 0.2)" : isMultiConflict ? "rgba(245, 158, 11, 0.25)" : isUnverified ? "rgba(245, 158, 11, 0.2)" : layer === "L3" ? "rgba(56, 189, 248, 0.2)" : "rgba(16, 185, 129, 0.2)"}
-                                                stroke={dev.isVendorManaged ? "#a855f7" : isMultiConflict ? "#f59e0b" : isUnverified ? "#f59e0b" : layer === "L3" ? "#38bdf8" : "#10b981"}
-                                                strokeWidth={0.8}
-                                            />
+                                        </>
+                                    ) : (
+                                        /* STANDARD DETAILED MODE LAYOUT */
+                                        <>
+                                            {/* Top-Right Badges: Stack Size & Archetype Chip */}
+                                            <g transform={`translate(${CARD_W / 2 - (stackInfo.isStack ? (isMultiConflict ? 74 : 58) : (isMultiConflict ? 44 : 28))}, ${-CARD_H / 2 + 7})`}>
+                                                {stackInfo.isStack && (
+                                                    <g transform="translate(0, 0)">
+                                                        <rect
+                                                            x={0}
+                                                            y={0}
+                                                            width={28}
+                                                            height={13}
+                                                            rx={3}
+                                                            fill="rgba(168, 85, 247, 0.2)"
+                                                            stroke="#a855f7"
+                                                            strokeWidth={0.8}
+                                                        />
+                                                        <text
+                                                            x={14}
+                                                            y={9.5}
+                                                            fill="#d8b4fe"
+                                                            fontSize={7.5}
+                                                            fontWeight="bold"
+                                                            fontFamily="monospace"
+                                                            textAnchor="middle"
+                                                        >
+                                                            {`${stackInfo.stackSize}x STK`}
+                                                        </text>
+                                                    </g>
+                                                )}
+                                                <g transform={`translate(${stackInfo.isStack ? 30 : 0}, 0)`}>
+                                                    <rect
+                                                        x={0}
+                                                        y={0}
+                                                        width={isMultiConflict ? 40 : 22}
+                                                        height={13}
+                                                        rx={3}
+                                                        fill={dev.isVendorManaged ? "rgba(168, 85, 247, 0.2)" : isMultiConflict ? "rgba(245, 158, 11, 0.25)" : isUnverified ? "rgba(245, 158, 11, 0.2)" : `${archetype.primaryColor}25`}
+                                                        stroke={dev.isVendorManaged ? "#a855f7" : isMultiConflict ? "#f59e0b" : isUnverified ? "#f59e0b" : archetype.primaryColor}
+                                                        strokeWidth={0.8}
+                                                    />
+                                                    <text
+                                                        x={isMultiConflict ? 20 : 11}
+                                                        y={9.5}
+                                                        fill={dev.isVendorManaged ? "#d8b4fe" : isMultiConflict ? "#fbbf24" : isUnverified ? "#fbbf24" : archetype.accentColor}
+                                                        fontSize={isMultiConflict ? 6.8 : 8}
+                                                        fontWeight="bold"
+                                                        fontFamily="monospace"
+                                                        textAnchor="middle"
+                                                    >
+                                                        {dev.isVendorManaged ? "VND" : isMultiConflict ? "CONFLICT" : isUnverified ? "BND" : archetype.label}
+                                                    </text>
+                                                </g>
+                                            </g>
+
+                                            {/* Device Hostname */}
                                             <text
-                                                x={isMultiConflict ? 20 : 11}
-                                                y={9.5}
-                                                fill={dev.isVendorManaged ? "#d8b4fe" : isMultiConflict ? "#fbbf24" : isUnverified ? "#fbbf24" : layer === "L3" ? "#7dd3fc" : "#6ee7b7"}
-                                                fontSize={isMultiConflict ? 6.8 : 8}
+                                                x={-CARD_W / 2 + 34}
+                                                y={-CARD_H / 2 + 18}
+                                                fill="#ffffff"
+                                                fontSize={11.5}
                                                 fontWeight="bold"
                                                 fontFamily="monospace"
-                                                textAnchor="middle"
                                             >
-                                                {dev.isVendorManaged ? "VND" : isMultiConflict ? "CONFLICT" : isUnverified ? "BND" : layer}
+                                                {canonHost.length > 13 ? canonHost.slice(0, 12) + "…" : canonHost}
                                             </text>
-                                        </g>
-                                    </g>
 
-                                    {/* Device Hostname */}
-                                    <text
-                                        x={-CARD_W / 2 + 14}
-                                        y={-CARD_H / 2 + 18}
-                                        fill="#ffffff"
-                                        fontSize={11.5}
-                                        fontWeight="bold"
-                                        fontFamily="monospace"
-                                    >
-                                        {canonHost.length > 15 ? canonHost.slice(0, 14) + "…" : canonHost}
-                                    </text>
-
-                                    {/* Device IP Address & Multi-IP Indicator */}
-                                    <text
-                                        x={-CARD_W / 2 + 14}
-                                        y={-CARD_H / 2 + 33}
-                                        fill="#94a3b8"
-                                        fontSize={9.5}
-                                        fontFamily="monospace"
-                                    >
-                                        {dev.ipAddress || dev.ip_address || "No IP"}
-                                        {dev.allIps && dev.allIps.length > 1 ? ` (+${dev.allIps.length - 1} IPs)` : ""}
-                                    </text>
-
-                                    {/* Sub-label: Site/IDF & Status Pill */}
-                                    <g transform={`translate(${-CARD_W / 2 + 14}, ${-CARD_H / 2 + 42})`}>
-                                        {dev.isVendorManaged ? (
-                                            <g>
-                                                <rect x={0} y={0} width={80} height={12} rx={3} fill="rgba(168, 85, 247, 0.25)" stroke="#a855f7" strokeWidth={0.6} />
-                                                <text x={4} y={9} fill="#d8b4fe" fontSize={7.5} fontWeight="bold" fontFamily="monospace">
-                                                    VENDOR MGD
-                                                </text>
-                                            </g>
-                                        ) : isMultiConflict ? (
-                                            <g>
-                                                <rect x={0} y={0} width={128} height={12} rx={3} fill="rgba(245, 158, 11, 0.25)" stroke="#f59e0b" strokeWidth={0.6} />
-                                                <text x={4} y={9} fill="#fbbf24" fontSize={7.2} fontWeight="bold" fontFamily="monospace">
-                                                    ⚠️ MULTI-CLOSET ({dev.discoveredClosets?.length || 2} IDFs)
-                                                </text>
-                                            </g>
-                                        ) : isUnverified ? (
-                                            <g>
-                                                <rect x={0} y={0} width={105} height={12} rx={3} fill="rgba(245, 158, 11, 0.2)" stroke="#f59e0b" strokeWidth={0.5} />
-                                                <text x={4} y={9} fill="#f59e0b" fontSize={7.5} fontWeight="bold" fontFamily="monospace">
-                                                    UNVERIFIED (HOP LIMIT)
-                                                </text>
-                                            </g>
-                                        ) : isUnreachable ? (
-                                            <g>
-                                                <rect x={0} y={0} width={75} height={12} rx={3} fill="rgba(239, 68, 68, 0.2)" stroke="#ef4444" strokeWidth={0.5} />
-                                                <text x={4} y={9} fill="#f87171" fontSize={7.5} fontWeight="bold" fontFamily="monospace">
-                                                    FAILED SSH
-                                                </text>
-                                            </g>
-                                        ) : (
-                                            <text x={0} y={9} fill="#64748b" fontSize={8.5} fontFamily="monospace">
-                                                {site} • {idf} {stackInfo.isStack ? `• ${stackInfo.portCount}p` : dev.hopDistance !== undefined ? `• H${dev.hopDistance}` : ""}
+                                            {/* Device IP Address */}
+                                            <text
+                                                x={-CARD_W / 2 + 34}
+                                                y={-CARD_H / 2 + 32}
+                                                fill="#94a3b8"
+                                                fontSize={9.5}
+                                                fontFamily="monospace"
+                                            >
+                                                {dev.ipAddress || dev.ip_address || "No IP"}
+                                                {dev.allIps && dev.allIps.length > 1 ? ` (+${dev.allIps.length - 1})` : ""}
                                             </text>
-                                        )}
-                                    </g>
 
-                                    {/* Last Verified Date Sub-label */}
-                                    <g transform={`translate(${-CARD_W / 2 + 14}, ${-CARD_H / 2 + 63})`}>
-                                        <circle 
-                                            cx={3} 
-                                            cy={-2.5} 
-                                            r={2} 
-                                            fill={dev.lastVerifiedAt ? (isUnverified ? "#f59e0b" : isUnreachable ? "#f87171" : "#10b981") : "#64748b"} 
-                                        />
-                                        <text 
-                                            x={9} 
-                                            y={0} 
-                                            fill={dev.lastVerifiedAt ? "#94a3b8" : "#64748b"} 
-                                            fontSize={7.5} 
-                                            fontFamily="monospace"
-                                        >
-                                            {dev.lastVerifiedAt 
-                                                ? `Verified: ${formatLastVerified(dev.lastVerifiedAt)}` 
-                                                : "Never verified"}
-                                        </text>
-                                    </g>
+                                            {/* Sub-label: Site/IDF & Status Pill */}
+                                            <g transform={`translate(${-CARD_W / 2 + 14}, ${-CARD_H / 2 + 42})`}>
+                                                {dev.isVendorManaged ? (
+                                                    <g>
+                                                        <rect x={0} y={0} width={80} height={12} rx={3} fill="rgba(168, 85, 247, 0.25)" stroke="#a855f7" strokeWidth={0.6} />
+                                                        <text x={4} y={9} fill="#d8b4fe" fontSize={7.5} fontWeight="bold" fontFamily="monospace">
+                                                            VENDOR MGD
+                                                        </text>
+                                                    </g>
+                                                ) : isMultiConflict ? (
+                                                    <g>
+                                                        <rect x={0} y={0} width={128} height={12} rx={3} fill="rgba(245, 158, 11, 0.25)" stroke="#f59e0b" strokeWidth={0.6} />
+                                                        <text x={4} y={9} fill="#fbbf24" fontSize={7.2} fontWeight="bold" fontFamily="monospace">
+                                                            ⚠️ MULTI-CLOSET ({dev.discoveredClosets?.length || 2} IDFs)
+                                                        </text>
+                                                    </g>
+                                                ) : isUnverified ? (
+                                                    <g>
+                                                        <rect x={0} y={0} width={105} height={12} rx={3} fill="rgba(245, 158, 11, 0.2)" stroke="#f59e0b" strokeWidth={0.5} />
+                                                        <text x={4} y={9} fill="#f59e0b" fontSize={7.5} fontWeight="bold" fontFamily="monospace">
+                                                            UNVERIFIED (HOP LIMIT)
+                                                        </text>
+                                                    </g>
+                                                ) : isUnreachable ? (
+                                                    <g>
+                                                        <rect x={0} y={0} width={75} height={12} rx={3} fill="rgba(239, 68, 68, 0.2)" stroke="#ef4444" strokeWidth={0.5} />
+                                                        <text x={4} y={9} fill="#f87171" fontSize={7.5} fontWeight="bold" fontFamily="monospace">
+                                                            FAILED SSH
+                                                        </text>
+                                                    </g>
+                                                ) : (
+                                                    <text x={0} y={9} fill="#64748b" fontSize={8.5} fontFamily="monospace">
+                                                        {site} • {idf} {stackInfo.isStack ? `• ${stackInfo.portCount}p` : dev.hopDistance !== undefined ? `• H${dev.hopDistance}` : ""}
+                                                    </text>
+                                                )}
+                                            </g>
+
+                                            {/* Front-Panel LED Activity Strip (Hardware rack simulation) */}
+                                            {!isUnreachable && (
+                                                <g transform={`translate(${-CARD_W / 2 + 14}, ${CARD_H / 2 - 19})`} opacity={0.85}>
+                                                    {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+                                                        const isUplinkLed = i >= 6;
+                                                        const ledColor = isUplinkLed ? "#38bdf8" : "#10b981";
+                                                        return (
+                                                            <circle
+                                                                key={i}
+                                                                cx={i * 5}
+                                                                cy={0}
+                                                                r={1.2}
+                                                                fill={ledColor}
+                                                                className={i % 3 === 0 ? "animate-pulse" : ""}
+                                                            />
+                                                        );
+                                                    })}
+                                                </g>
+                                            )}
+
+                                            {/* Last Verified Date Sub-label */}
+                                            <g transform={`translate(${-CARD_W / 2 + 14}, ${CARD_H / 2 - 8})`}>
+                                                <circle 
+                                                    cx={3} 
+                                                    cy={-2.5} 
+                                                    r={2} 
+                                                    fill={dev.lastVerifiedAt ? (isUnverified ? "#f59e0b" : isUnreachable ? "#f87171" : "#10b981") : "#64748b"} 
+                                                />
+                                                <text 
+                                                    x={9} 
+                                                    y={0} 
+                                                    fill={dev.lastVerifiedAt ? "#94a3b8" : "#64748b"} 
+                                                    fontSize={7.5} 
+                                                    fontFamily="monospace"
+                                                >
+                                                    {dev.lastVerifiedAt 
+                                                        ? `Verified: ${formatLastVerified(dev.lastVerifiedAt)}` 
+                                                        : "Never verified"}
+                                                </text>
+                                            </g>
+                                        </>
+                                    )}
 
                                     {/* Quick Crawl Initiation button on card */}
                                     {onReseedDevice && !isUnreachable && (
@@ -4217,23 +4642,23 @@ export default function TopologyGraph({
                                                 onReseedDevice(dev);
                                             }}
                                             className="cursor-pointer hover:opacity-100 transition opacity-75 hover:scale-110"
-                                            transform={`translate(${CARD_W / 2 - 38}, ${CARD_H / 2 - 20})`}
+                                            transform={`translate(${CARD_W / 2 - (nodeDensity === "compact" ? 34 : 38)}, ${CARD_H / 2 - (nodeDensity === "compact" ? 17 : 20)})`}
                                         >
                                             <title>{`Initiate crawl seeding from ${canonHost} (${dev.ipAddress || dev.ip_address || "Mgmt IP"})`}</title>
                                             <rect 
                                                 x={0} 
                                                 y={0} 
-                                                width={15} 
-                                                height={15} 
-                                                rx={3.5} 
+                                                width={nodeDensity === "compact" ? 13 : 15} 
+                                                height={nodeDensity === "compact" ? 13 : 15} 
+                                                rx={3} 
                                                 fill={isUnverified ? "rgba(245, 158, 11, 0.2)" : "rgba(14, 165, 233, 0.2)"} 
                                                 stroke={isUnverified ? "#f59e0b" : "#38bdf8"} 
                                                 strokeWidth={0.8} 
                                             />
                                             <CrawlIcon 
-                                                x={1.5} 
-                                                y={1.5} 
-                                                size={12} 
+                                                x={nodeDensity === "compact" ? 1 : 1.5} 
+                                                y={nodeDensity === "compact" ? 1 : 1.5} 
+                                                size={nodeDensity === "compact" ? 11 : 12} 
                                                 color={isUnverified ? "#fbbf24" : "#38bdf8"} 
                                             />
                                         </g>
@@ -4246,15 +4671,24 @@ export default function TopologyGraph({
                                             toggleFadeNode(dev.hostname);
                                         }}
                                         className="cursor-pointer hover:opacity-100 transition opacity-50 hover:scale-110"
-                                        transform={`translate(${CARD_W / 2 - 20}, ${CARD_H / 2 - 20})`}
+                                        transform={`translate(${CARD_W / 2 - (nodeDensity === "compact" ? 18 : 20)}, ${CARD_H / 2 - (nodeDensity === "compact" ? 17 : 20)})`}
                                     >
-                                        <rect x={0} y={0} width={15} height={15} rx={3.5} fill="rgba(15, 23, 42, 0.9)" stroke={isFaded ? "#f59e0b" : "rgba(148, 163, 184, 0.4)"} strokeWidth={0.8} />
+                                        <rect 
+                                            x={0} 
+                                            y={0} 
+                                            width={nodeDensity === "compact" ? 13 : 15} 
+                                            height={nodeDensity === "compact" ? 13 : 15} 
+                                            rx={3} 
+                                            fill="rgba(15, 23, 42, 0.9)" 
+                                            stroke={isFaded ? "#f59e0b" : "rgba(148, 163, 184, 0.4)"} 
+                                            strokeWidth={0.8} 
+                                        />
                                         {isFaded ? (
-                                            <g transform="translate(2, 2)">
+                                            <g transform={nodeDensity === "compact" ? "translate(1.5, 1.5) scale(0.85)" : "translate(2, 2)"}>
                                                 <path d="M1 1l9 9M4.5 4.5a2 2 0 0 0 2.8 2.8M1 5.5a5.5 5.5 0 0 1 9.5-2.8M10.5 5.5a5.5 5.5 0 0 1-9.5 2.8" stroke="#f59e0b" strokeWidth="1" fill="none" strokeLinecap="round" strokeLinejoin="round" />
                                             </g>
                                         ) : (
-                                            <g transform="translate(2, 2)">
+                                            <g transform={nodeDensity === "compact" ? "translate(1.5, 1.5) scale(0.85)" : "translate(2, 2)"}>
                                                 <path d="M1 5.5s2-3.5 4.5-3.5 4.5 3.5 4.5 3.5-2 3.5-4.5 3.5-4.5-3.5-4.5-3.5z" stroke="#94a3b8" strokeWidth="1" fill="none" strokeLinecap="round" strokeLinejoin="round" />
                                                 <circle cx="5.5" cy="5.5" r="1.3" stroke="#94a3b8" strokeWidth="1" fill="none" />
                                             </g>
