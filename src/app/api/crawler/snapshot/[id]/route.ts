@@ -14,23 +14,132 @@ export async function GET(
 
         const { id } = await context.params;
         const cleanId = (id || "").trim();
-        const isNumeric = /^\d+$/.test(cleanId);
-        const numId = isNumeric ? parseInt(cleanId, 10) : NaN;
+        const isMaster = cleanId.toLowerCase() === "master";
 
-        const snapshot = await prisma.crawlSnapshot.findFirst({
-            where: isNumeric ? { OR: [{ id: cleanId }, { snapshotNumber: numId }] } : { id: cleanId },
-            include: {
-                devices: true,
-                links: true
+        let snapshot: any = null;
+        let devices: any[] = [];
+        let links: any[] = [];
+        const masterVerifiedMap = new Map<string, string>();
+
+        if (isMaster) {
+            const latestSnapshot = await prisma.crawlSnapshot.findFirst({
+                orderBy: { snapshotNumber: "desc" }
+            });
+
+            if (!latestSnapshot) {
+                return NextResponse.json({ error: "No snapshots available to construct Master Topology" }, { status: 404 });
             }
-        });
 
-        if (!snapshot) {
-            return NextResponse.json({ error: `Snapshot '${cleanId}' not found` }, { status: 404 });
+            // Fetch all devices across snapshots, newest first
+            const allDevices = await prisma.crawlDevice.findMany({
+                include: {
+                    snapshot: {
+                        select: {
+                            id: true,
+                            snapshotNumber: true,
+                            timestamp: true
+                        }
+                    }
+                },
+                orderBy: [
+                    { snapshot: { snapshotNumber: "desc" } },
+                    { createdAt: "desc" }
+                ]
+            });
+
+            const deviceMap = new Map<string, any>();
+            for (const dev of allDevices) {
+                const canon = (dev.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
+                const key = canon || (dev.ipAddress || "").trim();
+                if (!key) continue;
+
+                // Track latest verified reachable timestamp for lastVerifiedAt
+                if (dev.status === "REACHABLE" && !masterVerifiedMap.has(dev.hostname)) {
+                    const ts = dev.snapshot?.timestamp || dev.createdAt;
+                    masterVerifiedMap.set(dev.hostname, ts ? new Date(ts).toISOString() : new Date().toISOString());
+                }
+
+                // First encounter across newest snapshots is the device's authoritative state
+                if (!deviceMap.has(key)) {
+                    deviceMap.set(key, dev);
+                }
+            }
+
+            devices = Array.from(deviceMap.values());
+
+            // Fetch all links across snapshots, newest first
+            const allLinks = await prisma.crawlLink.findMany({
+                include: {
+                    snapshot: {
+                        select: {
+                            id: true,
+                            snapshotNumber: true,
+                            timestamp: true
+                        }
+                    }
+                },
+                orderBy: [
+                    { snapshot: { snapshotNumber: "desc" } },
+                    { createdAt: "desc" }
+                ]
+            });
+
+            const linkMap = new Map<string, any>();
+            for (const link of allLinks) {
+                const srcCanon = (link.sourceDevice || "").split(".")[0].split("(")[0].trim().toLowerCase();
+                const dstCanon = (link.targetDevice || "").split(".")[0].split("(")[0].trim().toLowerCase();
+
+                if (!deviceMap.has(srcCanon) && !deviceMap.has(dstCanon)) {
+                    continue;
+                }
+
+                const pairKey = [
+                    `${srcCanon}:${(link.sourceInterface || "").toLowerCase()}`,
+                    `${dstCanon}:${(link.targetInterface || "").toLowerCase()}`
+                ].sort().join(" <-> ");
+
+                if (!linkMap.has(pairKey)) {
+                    linkMap.set(pairKey, link);
+                }
+            }
+
+            links = Array.from(linkMap.values());
+
+            snapshot = {
+                id: "master",
+                snapshotNumber: "Master",
+                timestamp: latestSnapshot.timestamp,
+                crawlProfile: "MASTER",
+                maxHops: null,
+                seedDevices: ["Master Cumulative"],
+                totalDiscovered: devices.length,
+                totalReachable: devices.filter(d => d.status === "REACHABLE").length,
+                totalUnreachable: devices.filter(d => d.status !== "REACHABLE").length,
+                durationSeconds: 0,
+                reseedFrontier: latestSnapshot.reseedFrontier || [],
+                isMaster: true
+            };
+        } else {
+            const isNumeric = /^\d+$/.test(cleanId);
+            const numId = isNumeric ? parseInt(cleanId, 10) : NaN;
+
+            snapshot = await prisma.crawlSnapshot.findFirst({
+                where: isNumeric ? { OR: [{ id: cleanId }, { snapshotNumber: numId }] } : { id: cleanId },
+                include: {
+                    devices: true,
+                    links: true
+                }
+            });
+
+            if (!snapshot) {
+                return NextResponse.json({ error: `Snapshot '${cleanId}' not found` }, { status: 404 });
+            }
+
+            devices = snapshot.devices;
+            links = snapshot.links;
         }
 
         // Calculate summary counters
-        const devices = snapshot.devices;
         const routers = devices.filter(d => d.role === "Router").length;
         const l3Switches = devices.filter(d => d.role === "L3 Switch").length;
         const l2Switches = devices.filter(d => d.role === "L2 Switch").length;
@@ -176,17 +285,21 @@ export async function GET(
         }
 
         const latestVerifiedMap = new Map<string, string>();
-        for (const record of historicalSuccesses) {
-            if (record?.hostname && !latestVerifiedMap.has(record.hostname)) {
-                const ts = record.snapshot?.timestamp || record.createdAt;
-                latestVerifiedMap.set(record.hostname, ts ? ts.toISOString() : record.createdAt.toISOString());
+        if (isMaster) {
+            masterVerifiedMap.forEach((v, k) => latestVerifiedMap.set(k, v));
+        } else {
+            for (const record of historicalSuccesses) {
+                if (record?.hostname && !latestVerifiedMap.has(record.hostname)) {
+                    const ts = record.snapshot?.timestamp || record.createdAt;
+                    latestVerifiedMap.set(record.hostname, ts ? ts.toISOString() : record.createdAt.toISOString());
+                }
             }
         }
 
         const enrichedDevices = devices.map(d => {
             let lastVerifiedAt: string | null = null;
             if (d.status === "REACHABLE") {
-                const ts = snapshot.timestamp || d.createdAt;
+                const ts = isMaster ? (d.snapshot?.timestamp || d.createdAt) : (snapshot.timestamp || d.createdAt);
                 lastVerifiedAt = ts ? new Date(ts).toISOString() : new Date().toISOString();
             } else if (latestVerifiedMap.has(d.hostname)) {
                 lastVerifiedAt = latestVerifiedMap.get(d.hostname)!;

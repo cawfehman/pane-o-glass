@@ -54,6 +54,7 @@
     --color-sky-400: oklch(74.6% 0.16 232.661);
     --color-sky-500: oklch(68.5% 0.169 237.323);
     --color-blue-100: oklch(93.2% 0.032 255.585);
+    --color-blue-200: oklch(88.2% 0.059 254.128);
     --color-blue-300: oklch(80.9% 0.105 251.813);
     --color-blue-400: oklch(70.7% 0.165 254.624);
     --color-blue-500: oklch(62.3% 0.214 259.815);
@@ -1773,6 +1774,12 @@
   .border-emerald-800 {
     border-color: var(--color-emerald-800);
   }
+  .border-emerald-800\/80 {
+    border-color: color-mix(in srgb, oklch(43.2% 0.095 166.913) 80%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-emerald-800) 80%, transparent);
+    }
+  }
   .border-gray-500\/30 {
     border-color: color-mix(in srgb, oklch(55.1% 0.027 264.364) 30%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -2577,6 +2584,12 @@
   .bg-emerald-950 {
     background-color: var(--color-emerald-950);
   }
+  .bg-emerald-950\/50 {
+    background-color: color-mix(in srgb, oklch(26.2% 0.051 172.552) 50%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-emerald-950) 50%, transparent);
+    }
+  }
   .bg-emerald-950\/60 {
     background-color: color-mix(in srgb, oklch(26.2% 0.051 172.552) 60%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -3080,6 +3093,13 @@
     --tw-gradient-from: var(--color-bg-surface);
     --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
   }
+  .from-blue-500\/20 {
+    --tw-gradient-from: color-mix(in srgb, oklch(62.3% 0.214 259.815) 20%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      --tw-gradient-from: color-mix(in oklab, var(--color-blue-500) 20%, transparent);
+    }
+    --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
+  }
   .from-white\/\[0\.03\] {
     --tw-gradient-from: color-mix(in srgb, #fff 3%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -3108,6 +3128,13 @@
     --tw-gradient-to: var(--color-accent-primary);
     @supports (color: color-mix(in lab, red, red)) {
       --tw-gradient-to: color-mix(in oklab, var(--color-accent-primary) 10%, transparent);
+    }
+    --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
+  }
+  .to-indigo-500\/20 {
+    --tw-gradient-to: color-mix(in srgb, oklch(58.5% 0.233 277.117) 20%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      --tw-gradient-to: color-mix(in oklab, var(--color-indigo-500) 20%, transparent);
     }
     --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
   }
@@ -3637,6 +3664,9 @@
   .text-black {
     color: var(--color-black);
   }
+  .text-blue-200 {
+    color: var(--color-blue-200);
+  }
   .text-blue-300 {
     color: var(--color-blue-300);
   }
@@ -4134,6 +4164,12 @@
     --tw-shadow-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 10%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       --tw-shadow-color: color-mix(in oklab, color-mix(in oklab, var(--color-emerald-500) 10%, transparent) var(--tw-shadow-alpha), transparent);
+    }
+  }
+  .shadow-emerald-950\/30 {
+    --tw-shadow-color: color-mix(in srgb, oklch(26.2% 0.051 172.552) 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      --tw-shadow-color: color-mix(in oklab, color-mix(in oklab, var(--color-emerald-950) 30%, transparent) var(--tw-shadow-alpha), transparent);
     }
   }
   .shadow-red-500\/20 {
@@ -4693,6 +4729,14 @@
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:bg-emerald-500\/25:hover {
         background-color: color-mix(in oklab, var(--color-emerald-500) 25%, transparent);
+      }
+    }
+    .hover\:bg-emerald-500\/30:hover {
+      background-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 30%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-emerald-500\/30:hover {
+        background-color: color-mix(in oklab, var(--color-emerald-500) 30%, transparent);
       }
     }
     .hover\:bg-emerald-600\/20:hover {

@@ -18,26 +18,62 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Missing sourceIp or destIp parameter" }, { status: 400 });
         }
 
-        // Find snapshot (either specified ID or latest snapshot)
-        let snapshot;
-        if (snapshotId) {
+        // Find snapshot (either master, specified ID, or latest snapshot)
+        const isMaster = Boolean(snapshotId && String(snapshotId).toLowerCase() === "master");
+        let snapshot: any;
+        let devices: any[] = [];
+
+        if (isMaster) {
+            const allDevices = await prisma.crawlDevice.findMany({
+                include: {
+                    snapshot: {
+                        select: {
+                            id: true,
+                            snapshotNumber: true,
+                            timestamp: true
+                        }
+                    }
+                },
+                orderBy: [
+                    { snapshot: { snapshotNumber: "desc" } },
+                    { createdAt: "desc" }
+                ]
+            });
+
+            if (allDevices.length === 0) {
+                return NextResponse.json({ error: "No devices available in Master Topology to trace path" }, { status: 404 });
+            }
+
+            const deviceMap = new Map<string, any>();
+            for (const dev of allDevices) {
+                const canon = (dev.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
+                const key = canon || (dev.ipAddress || "").trim();
+                if (key && !deviceMap.has(key)) {
+                    deviceMap.set(key, dev);
+                }
+            }
+            devices = Array.from(deviceMap.values());
+            snapshot = { id: "master", snapshotNumber: "Master" };
+        } else if (snapshotId) {
             const numId = parseInt(snapshotId, 10);
             snapshot = await prisma.crawlSnapshot.findFirst({
                 where: isNaN(numId) ? { id: snapshotId } : { OR: [{ id: snapshotId }, { snapshotNumber: numId }] },
                 include: { devices: true }
             });
+            if (snapshot) devices = snapshot.devices;
         } else {
             snapshot = await prisma.crawlSnapshot.findFirst({
                 orderBy: { snapshotNumber: "desc" },
                 include: { devices: true }
             });
+            if (snapshot) devices = snapshot.devices;
         }
 
-        if (!snapshot) {
+        if (!snapshot || devices.length === 0) {
             return NextResponse.json({ error: "No snapshots available to trace path" }, { status: 404 });
         }
 
-        const tracer = new NativePathTracer(snapshot.devices);
+        const tracer = new NativePathTracer(devices);
         const result = tracer.trace(snapshot.id, sourceIp, destIp);
 
         // Audit Log

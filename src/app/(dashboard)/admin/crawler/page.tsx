@@ -42,11 +42,12 @@ export default function AdminCrawlerPage() {
 
     // Snapshots list & current snapshot
     const [snapshots, setSnapshots] = useState<any[]>([]);
-    const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>("");
+    const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>("master");
     const [currentSnapshotData, setCurrentSnapshotData] = useState<any | null>(null);
     const [loadingSnapshots, setLoadingSnapshots] = useState(true);
     const [loadingDetails, setLoadingDetails] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [lastCrawlNotification, setLastCrawlNotification] = useState<{ snapshotId: string; snapshotNumber?: number } | null>(null);
 
     // Active sub-view tab
     const [activeTab, setActiveTab] = useState<"topology" | "tracer" | "failures">("topology");
@@ -96,8 +97,10 @@ export default function AdminCrawlerPage() {
             const data = await res.json();
             setSnapshots(data);
 
-            if (data.length > 0) {
-                const targetId = preferredId || (data.some((s: any) => s.id === selectedSnapshotId) ? selectedSnapshotId : data[0].id);
+            const targetId = preferredId || (selectedSnapshotId === "master" || data.some((s: any) => s.id === selectedSnapshotId) ? selectedSnapshotId : "master");
+            if (targetId === selectedSnapshotId) {
+                fetchSnapshotDetails(targetId);
+            } else {
                 setSelectedSnapshotId(targetId);
             }
         } catch (err: any) {
@@ -152,7 +155,17 @@ export default function AdminCrawlerPage() {
         return devices.filter(d => Boolean(d.isReseedFrontier) || (Array.isArray(d.boundaryNeighbors) && d.boundaryNeighbors.length > 0));
     }, [devices]);
 
-    const activeSnapshot = snapshots.find(s => s.id === selectedSnapshotId);
+    const isMasterView = selectedSnapshotId === "master";
+    const activeSnapshot = isMasterView
+        ? {
+            id: "master",
+            snapshotNumber: "Master",
+            crawlProfile: "MASTER",
+            timestamp: currentSnapshotData?.metadata?.timestamp || new Date(),
+            maxHops: null,
+            totalDiscovered: devices.length
+        }
+        : snapshots.find(s => s.id === selectedSnapshotId);
 
     // Path Discovered callback from PathTracerPanel
     const handlePathDiscovered = (result: any) => {
@@ -181,7 +194,8 @@ export default function AdminCrawlerPage() {
     };
 
     const handleOpenLogViewer = async (snapshotId: string) => {
-        if (!snapshotId) return;
+        const targetId = snapshotId === "master" ? snapshots[0]?.id : snapshotId;
+        if (!targetId) return;
         setIsLogModalOpen(true);
         setLoadingLog(true);
         setLogModalError(null);
@@ -189,7 +203,7 @@ export default function AdminCrawlerPage() {
         setCopiedLog(false);
 
         try {
-            const res = await fetch(`/api/crawler/logs?snapshotId=${snapshotId}`);
+            const res = await fetch(`/api/crawler/logs?snapshotId=${targetId}`);
             const data = await res.json();
             if (!res.ok) {
                 throw new Error(data.error || "Failed to load log file.");
@@ -203,7 +217,9 @@ export default function AdminCrawlerPage() {
     };
 
     const handleDownloadLogFile = (snapshotId: string) => {
-        window.open(`/api/crawler/logs?snapshotId=${snapshotId}&download=1`, "_blank");
+        const targetId = snapshotId === "master" ? snapshots[0]?.id : snapshotId;
+        if (!targetId) return;
+        window.open(`/api/crawler/logs?snapshotId=${targetId}&download=1`, "_blank");
     };
 
     const handleCopyLog = () => {
@@ -239,19 +255,26 @@ export default function AdminCrawlerPage() {
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-amber-500/10 text-amber-400 border border-amber-500/30">
                                     Admin Only
                                 </span>
-                                {activeSnapshot && (
+                                {isMasterView ? (
+                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase bg-gradient-to-r from-blue-500/20 to-indigo-500/20 text-blue-300 border border-blue-500/40 shadow-sm flex items-center gap-1.5">
+                                        <Layers className="w-3 h-3 text-blue-400" />
+                                        Master View (Live Merged)
+                                    </span>
+                                ) : activeSnapshot ? (
                                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase border ${
                                         activeSnapshot.crawlProfile === "DISCOVERY" ? "bg-amber-500/10 text-amber-300 border-amber-500/40" :
                                         activeSnapshot.crawlProfile === "MAPPING" ? "bg-cyan-500/10 text-cyan-300 border-cyan-500/40" :
                                         "bg-blue-500/10 text-blue-300 border-blue-500/40"
                                     }`}>
-                                        {activeSnapshot.crawlProfile || "INTENSIVE"}
+                                        Snapshot #{activeSnapshot.snapshotNumber} • {activeSnapshot.crawlProfile || "INTENSIVE"}
                                         {activeSnapshot.maxHops ? ` • ${activeSnapshot.maxHops}H` : " • FULL"}
                                     </span>
-                                )}
+                                ) : null}
                             </div>
                             <p className="text-xs text-slate-400">
-                                Automated CDP/LLDP spidering, multi-profile audits, and IPv4 Longest Prefix Match (LPM) path simulation.
+                                {isMasterView 
+                                    ? "Cumulative enterprise topology aggregating the latest verified device states, interfaces, and CDP neighbor links."
+                                    : "Point-in-time crawl snapshot showing isolated discovery results for this crawl execution."}
                             </p>
                         </div>
                     </div>
@@ -264,15 +287,21 @@ export default function AdminCrawlerPage() {
                         <select
                             value={selectedSnapshotId}
                             onChange={(e) => setSelectedSnapshotId(e.target.value)}
-                            disabled={loadingSnapshots || snapshots.length === 0}
+                            disabled={loadingSnapshots}
                             className="appearance-none bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-200 pl-3 pr-8 py-2 rounded-xl focus:outline-none focus:border-blue-500 transition cursor-pointer"
                         >
-                            {snapshots.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                    Snapshot #{s.snapshotNumber} [{s.crawlProfile || 'INTENSIVE'}{s.maxHops ? ` • ${s.maxHops}h` : ''}] ({s._count?.devices || s.totalDiscovered || 0} devs) • {new Date(s.timestamp).toLocaleDateString()}
-                                </option>
-                            ))}
-                            {snapshots.length === 0 && <option value="">No snapshots found</option>}
+                            <option value="master">
+                                🌟 Master Topology (Cumulative Map)
+                            </option>
+                            {snapshots.length > 0 && (
+                                <optgroup label="Point-in-Time Crawl Runs">
+                                    {snapshots.map((s) => (
+                                        <option key={s.id} value={s.id}>
+                                            Snapshot #{s.snapshotNumber} [{s.crawlProfile || 'INTENSIVE'}{s.maxHops ? ` • ${s.maxHops}h` : ''}] ({s._count?.devices || s.totalDiscovered || 0} devs) • {new Date(s.timestamp).toLocaleDateString()}
+                                        </option>
+                                    ))}
+                                </optgroup>
+                            )}
                         </select>
                         <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-3 pointer-events-none" />
                     </div>
@@ -335,7 +364,9 @@ export default function AdminCrawlerPage() {
                             <Server className="w-5 h-5" />
                         </div>
                         <div>
-                            <span className="text-[11px] text-slate-400 font-medium block">Monitored Devices</span>
+                            <span className="text-[11px] text-slate-400 font-medium block">
+                                {isMasterView ? "Master Monitored Devices" : "Monitored Devices"}
+                            </span>
                             <span className="text-lg font-bold text-white font-mono">{devices.length}</span>
                         </div>
                     </div>
@@ -345,7 +376,9 @@ export default function AdminCrawlerPage() {
                             <Activity className="w-5 h-5" />
                         </div>
                         <div>
-                            <span className="text-[11px] text-slate-400 font-medium block">Inter-Switch Links</span>
+                            <span className="text-[11px] text-slate-400 font-medium block">
+                                {isMasterView ? "Master Inter-Switch Links" : "Inter-Switch Links"}
+                            </span>
                             <span className="text-lg font-bold text-white font-mono">{links.length}</span>
                         </div>
                     </div>
@@ -355,7 +388,9 @@ export default function AdminCrawlerPage() {
                             <ShieldAlert className="w-5 h-5" />
                         </div>
                         <div>
-                            <span className="text-[11px] text-slate-400 font-medium block">Unreachable Nodes</span>
+                            <span className="text-[11px] text-slate-400 font-medium block">
+                                {isMasterView ? "Unreachable (Latest State)" : "Unreachable Nodes"}
+                            </span>
                             <div className="flex items-center gap-2">
                                 <span className={`text-lg font-bold font-mono ${unreachableDevices.length > 0 ? "text-red-400" : "text-emerald-400"}`}>
                                     {unreachableDevices.length}
@@ -377,12 +412,65 @@ export default function AdminCrawlerPage() {
                             <Clock className="w-5 h-5" />
                         </div>
                         <div>
-                            <span className="text-[11px] text-slate-400 font-medium block">Snapshot Timestamp</span>
+                            <span className="text-[11px] text-slate-400 font-medium block">
+                                {isMasterView ? "Master Network Synced" : "Snapshot Timestamp"}
+                            </span>
                             <span className="text-xs font-semibold text-slate-200 truncate block">
-                                {activeSnapshot ? new Date(activeSnapshot.timestamp).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
+                                {activeSnapshot?.timestamp ? new Date(activeSnapshot.timestamp).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
                             </span>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Post-Crawl Status Notification Banner */}
+            {lastCrawlNotification && (
+                <div className="p-3.5 bg-emerald-950/50 border border-emerald-800/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-emerald-200 shrink-0 shadow-lg shadow-emerald-950/30">
+                    <div className="flex items-center gap-2.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>
+                            Crawl completed successfully! Newly discovered & refreshed switches have been integrated into the <strong>Master Topology</strong>.
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            onClick={() => {
+                                setSelectedSnapshotId(lastCrawlNotification.snapshotId);
+                                setLastCrawlNotification(null);
+                            }}
+                            className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-lg font-semibold transition cursor-pointer text-[11px]"
+                        >
+                            View Isolated Crawl Run
+                        </button>
+                        <button
+                            onClick={() => setLastCrawlNotification(null)}
+                            className="text-slate-400 hover:text-slate-200 p-1 rounded hover:bg-slate-800 transition cursor-pointer"
+                            title="Dismiss"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Isolated Snapshot Mode Notice with 1-click Return to Master */}
+            {!isMasterView && activeSnapshot && (
+                <div className="p-3 bg-blue-950/40 border border-blue-800/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-blue-200 shrink-0">
+                    <div className="flex items-center gap-2.5">
+                        <Compass className="w-4 h-4 text-blue-400 shrink-0" />
+                        <div>
+                            <span>
+                                Viewing isolated crawl <strong>Snapshot #{activeSnapshot.snapshotNumber}</strong> ({devices.length} device{devices.length === 1 ? '' : 's'}). The rest of the network is hidden in this run.
+                            </span>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setSelectedSnapshotId("master")}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg transition shadow flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    >
+                        <Layers className="w-3.5 h-3.5" />
+                        Switch to Master Topology
+                    </button>
                 </div>
             )}
 
@@ -601,7 +689,8 @@ export default function AdminCrawlerPage() {
                 onSuccess={(newId) => {
                     setIsCrawlModalOpen(false);
                     setReseedDevice(null);
-                    fetchSnapshots(newId);
+                    setLastCrawlNotification({ snapshotId: newId });
+                    fetchSnapshots(selectedSnapshotId === "master" ? "master" : newId);
                 }}
                 initialSeed={reseedDevice?.ipAddress || reseedDevice?.ip_address || (Array.isArray(reseedDevice?.interfaces) ? reseedDevice?.interfaces.find((i: any) => i.ip_address)?.ip_address : undefined)}
                 initialMaxHops={1}
