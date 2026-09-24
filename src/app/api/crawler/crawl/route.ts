@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
+import { ensureSitesExistFromDevices } from "@/lib/sites";
 import { spawn, execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
@@ -223,6 +224,13 @@ async function persistLatestSnapshot(
         (session?.user as any)?.id,
         (session?.user as any)?.ipAddress
     );
+
+    // Auto-register any new sites discovered from fully verified reachable devices into the authoritative Site Directory
+    try {
+        await ensureSitesExistFromDevices(rawDevices, session?.user as any);
+    } catch (siteErr) {
+        console.error("[CRAWLER] Failed auto-registering discovered sites in Site Directory:", siteErr);
+    }
 
     return newSnapshot;
 }

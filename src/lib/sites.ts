@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { logAudit } from './audit';
 
 export interface SiteMetadata {
     code: string;
@@ -162,3 +163,99 @@ export async function getSiteVersionContent(id: string) {
         select: { content: true, filename: true }
     });
 }
+
+/**
+ * Ensures that sites discovered by the crawler for fully reachable/verified devices
+ * exist in the authoritative Site Directory (SiteMapVersion).
+ *
+ * If a verified reachable device reports a site code not currently present in the Site Directory,
+ * this function automatically registers the site with status 'Active', marks it with provenance notes,
+ * saves a new SiteMapVersion snapshot, and records a SITE_CREATED_BY_CRAWLER audit log entry.
+ */
+export async function ensureSitesExistFromDevices(
+    devices: any[],
+    sessionUser?: { id?: string; username?: string; email?: string; ipAddress?: string }
+): Promise<{ createdCount: number; newSites: SiteMetadata[]; siteMap: Map<string, SiteMetadata> }> {
+    const siteMap = await getCurrentSiteMap();
+    if (!Array.isArray(devices) || devices.length === 0) {
+        return { createdCount: 0, newSites: [], siteMap };
+    }
+
+    // Only process fully reachable / verified devices
+    const reachableDevices = devices.filter(d => d.status === "REACHABLE");
+    if (reachableDevices.length === 0) {
+        return { createdCount: 0, newSites: [], siteMap };
+    }
+
+    const missingSites = new Map<string, any>();
+
+    for (const dev of reachableDevices) {
+        let siteCode = dev.site ? String(dev.site).trim().toUpperCase() : "";
+        if (!siteCode && dev.site_info?.site) {
+            siteCode = String(dev.site_info.site).trim().toUpperCase();
+        }
+        if (!siteCode && dev.hostname) {
+            const shortHost = String(dev.hostname).split(".")[0].trim();
+            if (shortHost.length >= 3) {
+                siteCode = shortHost.slice(0, 3).toUpperCase();
+            }
+        }
+
+        // Ignore invalid or placeholder site codes
+        if (!siteCode || siteCode.length < 2 || ["UNKNOWN", "UNK", "NONE", "NULL"].includes(siteCode)) {
+            continue;
+        }
+
+        // Case-insensitive lookup in current site map
+        const existingCode = Array.from(siteMap.keys()).find(k => k.toUpperCase() === siteCode);
+        if (!existingCode && !missingSites.has(siteCode)) {
+            missingSites.set(siteCode, dev);
+        }
+    }
+
+    if (missingSites.size === 0) {
+        return { createdCount: 0, newSites: [], siteMap };
+    }
+
+    const todayStr = new Date().toISOString().split("T")[0];
+    const newSitesToCreate: SiteMetadata[] = [];
+
+    for (const [code, dev] of missingSites.entries()) {
+        const hostStr = dev.hostname ? String(dev.hostname).split(".")[0].trim() : (dev.ipAddress || dev.ip_address || "unknown");
+        const ipStr = dev.ipAddress || dev.ip_address || "N/A";
+        const note = `Created by Crawler on ${todayStr} via verified switch ${hostStr} (${ipStr}). Flagged for administrative verification.`;
+
+        const newSite: SiteMetadata = {
+            code,
+            name: `Site ${code}`,
+            address: "",
+            status: "Active",
+            notes: note
+        };
+
+        newSitesToCreate.push(newSite);
+        siteMap.set(code, newSite);
+    }
+
+    // Generate updated CSV and save as a new version
+    const allSites = Array.from(siteMap.values());
+    const csvContent = stringifySiteCsv(allSites);
+    const creator = sessionUser?.username || sessionUser?.email || "crawler-system";
+
+    await saveSiteMap(csvContent, "crawler_auto_registered.csv", creator);
+
+    const siteCodesList = newSitesToCreate.map(s => s.code).join(", ");
+    await logAudit(
+        "SITE_CREATED_BY_CRAWLER",
+        `Crawler auto-registered ${newSitesToCreate.length} new site(s) in authoritative Site Directory: ${siteCodesList}. Source: Fully verified reachable switch telemetry.`,
+        sessionUser?.id,
+        sessionUser?.ipAddress
+    );
+
+    return {
+        createdCount: newSitesToCreate.length,
+        newSites: newSitesToCreate,
+        siteMap
+    };
+}
+

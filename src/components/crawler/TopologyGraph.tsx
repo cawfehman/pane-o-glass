@@ -51,6 +51,8 @@ export function getBasePhysicalInterface(intf?: string | null): string {
 export interface SiteMetadataLookup {
     name: string;
     address?: string;
+    status?: string;
+    notes?: string;
 }
 
 interface TopologyGraphProps {
@@ -162,6 +164,10 @@ export function getDeviceLayer(dev: any): { layer: "L3" | "L2"; label: string } 
 interface SiteContainerBox {
     siteCode: string;
     siteName: string | null;
+    siteAddress?: string | null;
+    siteStatus?: string | null;
+    siteNotes?: string | null;
+    isUncrawled?: boolean;
     x: number;
     y: number;
     width: number;
@@ -219,6 +225,7 @@ export default function TopologyGraph({
     const [visibleUplinkIdfs, setVisibleUplinkIdfs] = useState<Set<string>>(new Set());
     const [convergeTrunks, setConvergeTrunks] = useState(true); // Converge multi-neighbor trunks and MPLS into single physical links
     const [showVendorManaged, setShowVendorManaged] = useState(false); // Vendor Managed devices excluded from topology by default
+    const [showUncrawledSites, setShowUncrawledSites] = useState(false); // Uncrawled Directory sites hidden by default
 
     const svgContainerRef = useRef<HTMLDivElement>(null);
     const viewportRef = useRef<SVGGElement>(null);
@@ -438,6 +445,16 @@ export default function TopologyGraph({
         return Array.from(sites).sort();
     }, [unifiedDevices]);
 
+    // Sites present in the authoritative Site Directory but with 0 crawled devices
+    const uncrawledSiteCodes = useMemo(() => {
+        if (!siteDirectory) return [];
+        const crawledSet = new Set(uniqueSites.map(s => s.toUpperCase()));
+        return Object.keys(siteDirectory)
+            .map(c => c.toUpperCase())
+            .filter(code => !crawledSet.has(code) && code !== "UNKNOWN" && code !== "UNK" && code !== "NONE")
+            .sort();
+    }, [siteDirectory, uniqueSites]);
+
     const [hasInitializedSiteMap, setHasInitializedSiteMap] = useState(false);
 
     // Default to Site Map View: all sites start collapsed so the user gets an executive site overview
@@ -464,6 +481,7 @@ export default function TopologyGraph({
         const tree: Array<{
             siteCode: string;
             siteName: string | null;
+            isUncrawled?: boolean;
             switches: any[];
             floors: Array<{
                 idfCode: string;
@@ -527,8 +545,21 @@ export default function TopologyGraph({
             });
         }
 
+        if (showUncrawledSites) {
+            for (const uCode of uncrawledSiteCodes) {
+                const siteLookup = siteDirectory[uCode];
+                tree.push({
+                    siteCode: uCode,
+                    siteName: siteLookup?.name || null,
+                    isUncrawled: true,
+                    switches: [],
+                    floors: []
+                });
+            }
+        }
+
         return tree;
-    }, [unifiedDevices, siteDirectory]);
+    }, [unifiedDevices, siteDirectory, showUncrawledSites, uncrawledSiteCodes]);
 
     // Selection helpers for Site Manager
     const toggleSwitchVisibility = (canonicalHost: string) => {
@@ -1244,6 +1275,45 @@ export default function TopologyGraph({
             }
         }
 
+        // Layout uncrawled directory sites if toggled ON
+        if (showUncrawledSites) {
+            const visibleUncrawled = uncrawledSiteCodes.filter(c => siteFilter === "ALL" || siteFilter === c);
+            for (const siteCode of visibleUncrawled) {
+                const siteLookup = siteDirectory[siteCode];
+                const siteWidth = 300;
+                const siteHeight = 74;
+
+                // Wrap to next row if needed
+                if (currentSiteX > 40 && (currentSiteX + siteWidth > MAX_ROW_WIDTH)) {
+                    currentSiteX = 40;
+                    currentSiteY += maxRowHeight + ROW_GAP;
+                    maxRowHeight = 0;
+                }
+
+                siteContainers.push({
+                    siteCode,
+                    siteName: siteLookup?.name || null,
+                    siteAddress: siteLookup?.address || null,
+                    siteStatus: siteLookup?.status || "Active",
+                    siteNotes: siteLookup?.notes || null,
+                    isUncrawled: true,
+                    x: currentSiteX,
+                    y: currentSiteY,
+                    width: siteWidth,
+                    height: siteHeight,
+                    deviceCount: 0,
+                    l3Count: 0,
+                    l2Count: 0,
+                    isCollapsed: true,
+                    idfs: []
+                });
+
+                if (siteHeight > maxRowHeight) maxRowHeight = siteHeight;
+                currentSiteX += siteWidth + SITE_GAP;
+                if (currentSiteX > maxCanvasWidth) maxCanvasWidth = currentSiteX;
+            }
+        }
+
         const totalWidth = Math.max(maxCanvasWidth + 60, 1400);
         const totalHeight = Math.max(currentSiteY + maxRowHeight + 100, 750);
 
@@ -1254,7 +1324,7 @@ export default function TopologyGraph({
             canvasSize: { width: totalWidth, height: totalHeight },
             layoutDevices: layoutDevs
         };
-    }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing]);
+    }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing, showUncrawledSites, uncrawledSiteCodes, siteFilter]);
 
     // Multi-neighbor trunk & MPLS convergence model
     // Converges multiple links that share the same physical trunk/interface into a single stem before connecting to the switch/site
@@ -1547,6 +1617,17 @@ export default function TopologyGraph({
                                 <option key={s} value={s}>{label} [{count}]</option>
                             );
                         })}
+                        {showUncrawledSites && uncrawledSiteCodes.length > 0 && (
+                            <optgroup label="Uncrawled Directory Sites">
+                                {uncrawledSiteCodes.map(s => {
+                                    const siteMeta = siteDirectory[s];
+                                    const label = siteMeta?.name ? `Site ${s} (${siteMeta.name})` : `Site ${s}`;
+                                    return (
+                                        <option key={s} value={s}>{label} [0 - Uncrawled]</option>
+                                    );
+                                })}
+                            </optgroup>
+                        )}
                     </select>
                 </div>
 
@@ -1766,6 +1847,28 @@ export default function TopologyGraph({
                     {vendorManagedCount > 0 && (
                         <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30">
                             {vendorManagedCount}
+                        </span>
+                    )}
+                </button>
+
+                {/* Uncrawled Directory Sites Filter Toggle */}
+                <button
+                    type="button"
+                    onClick={() => setShowUncrawledSites(prev => !prev)}
+                    className={`px-2 py-1 rounded-lg border text-[11px] font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                        showUncrawledSites
+                            ? "bg-amber-950/70 border-amber-500/60 text-amber-200 shadow-sm"
+                            : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
+                    }`}
+                    title={showUncrawledSites 
+                        ? "Uncrawled directory sites are currently visible in the topology. Click to hide them." 
+                        : "Uncrawled directory sites are currently hidden. Click to show them."}
+                >
+                    <Building className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Uncrawled Sites: <strong className={showUncrawledSites ? "text-amber-300" : "text-slate-400"}>{showUncrawledSites ? "SHOWN" : "HIDDEN"}</strong></span>
+                    {uncrawledSiteCodes.length > 0 && (
+                        <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            {uncrawledSiteCodes.length}
                         </span>
                     )}
                 </button>
@@ -2077,6 +2180,35 @@ export default function TopologyGraph({
                                 site.siteCode.toLowerCase().includes(searchLower) ||
                                 (site.siteName && site.siteName.toLowerCase().includes(searchLower));
 
+                            if (site.isUncrawled) {
+                                if (!siteMatchesSearch) return null;
+                                return (
+                                    <div key={site.siteCode} className="rounded-xl border border-amber-800/40 bg-amber-950/20 overflow-hidden p-2 flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                            <Building className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                            <span className="font-bold text-amber-200 font-mono text-[11px] truncate">
+                                                {site.siteCode} {site.siteName ? `• ${site.siteName}` : ""}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0 ml-1">
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                                Uncrawled
+                                            </span>
+                                            {onReseedDevice && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onReseedDevice({ hostname: `Seed ${site.siteCode}`, site: site.siteCode, ipAddress: "" })}
+                                                    className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 transition cursor-pointer"
+                                                    title="Seed crawl for this site"
+                                                >
+                                                    Crawl
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            }
+
                             return (
                                 <div key={site.siteCode} className="rounded-xl border border-slate-800/60 bg-slate-950/30 overflow-hidden">
                                     {/* Site Header Row */}
@@ -2324,6 +2456,73 @@ export default function TopologyGraph({
 
                     <g ref={viewportRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
                         {layoutMode === "container" && siteBoxes.map((site) => {
+                            if (site.isUncrawled) {
+                                return (
+                                    <g
+                                        key={`site-${site.siteCode}`}
+                                        className="group cursor-pointer"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (onReseedDevice) {
+                                                onReseedDevice({ hostname: `Seed ${site.siteCode}`, site: site.siteCode, ipAddress: "" });
+                                            }
+                                        }}
+                                    >
+                                        <rect
+                                            x={site.x}
+                                            y={site.y}
+                                            width={site.width}
+                                            height={site.height}
+                                            rx={10}
+                                            fill="rgba(30, 22, 12, 0.95)"
+                                            stroke="#f59e0b"
+                                            strokeWidth={1.5}
+                                            strokeDasharray="5,3"
+                                            filter="drop-shadow(0 4px 12px rgba(0,0,0,0.6))"
+                                            className="group-hover:stroke-amber-300 group-hover:brightness-125 transition"
+                                        />
+                                        {/* Accent Strip */}
+                                        <path
+                                            d={`M ${site.x} ${site.y + 8} A 8 8 0 0 1 ${site.x + 8} ${site.y} L ${site.x + 4} ${site.y} L ${site.x + 4} ${site.y + site.height} L ${site.x + 8} ${site.y + site.height} A 8 8 0 0 1 ${site.x} ${site.y + site.height - 8} Z`}
+                                            fill="#f59e0b"
+                                        />
+                                        <title>{`Uncrawled Site: ${site.siteCode}${site.siteName ? ` — ${site.siteName}` : ""}${site.siteAddress ? `\nAddress: ${site.siteAddress}` : ""}\nStatus: ${site.siteStatus || "Active"}\nNo switches discovered yet.${onReseedDevice ? " Click to initiate crawl." : ""}`}</title>
+
+                                        {/* Site Code */}
+                                        <text x={site.x + 14} y={site.y + 22} fill="#fbbf24" fontSize={13} fontWeight="bold" fontFamily="monospace">
+                                            {site.siteCode}
+                                        </text>
+
+                                        {/* Uncrawled Badge on the right */}
+                                        <g transform={`translate(${site.x + site.width - 124}, ${site.y + 11})`}>
+                                            <rect x={0} y={0} width={112} height={18} rx={4} fill="rgba(245, 158, 11, 0.2)" stroke="#f59e0b" strokeWidth={0.8} />
+                                            <text x={56} y={12.5} fill="#fcd34d" fontSize={8} fontWeight="bold" textAnchor="middle" letterSpacing="0.4">
+                                                UNCRAWLED / NO DATA
+                                            </text>
+                                        </g>
+
+                                        {/* Site Name */}
+                                        {site.siteName && (
+                                            <text 
+                                                x={site.x + 14} 
+                                                y={site.y + 37} 
+                                                fill="#fed7aa" 
+                                                fontSize={9.5} 
+                                                fontWeight="500" 
+                                                fontFamily="sans-serif"
+                                            >
+                                                {site.siteName.length > 28 ? site.siteName.slice(0, 26) + "…" : site.siteName}
+                                            </text>
+                                        )}
+
+                                        {/* Facility Address or Status */}
+                                        <text x={site.x + 14} y={site.y + (site.siteName ? 57 : 46)} fill="#fde68a" fontSize={9} fontFamily="monospace">
+                                            0 Discovered Devices • {site.siteAddress ? (site.siteAddress.length > 24 ? site.siteAddress.slice(0, 22) + "…" : site.siteAddress) : "Pending Discovery"}
+                                        </text>
+                                    </g>
+                                );
+                            }
+
                             if (site.isCollapsed) {
                                 return (
                                     <g

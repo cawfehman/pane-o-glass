@@ -148,13 +148,18 @@ export async function GET(
         const reachable = devices.filter(d => d.status === "REACHABLE").length;
         const unreachable = devices.filter(d => d.status !== "REACHABLE").length;
 
-        // Load site directory to enrich site containers with facility names
-        let siteDirectory: Record<string, { name: string; address?: string }> = {};
+        // Load site directory to enrich site containers with facility names and reconcile verified devices
+        let siteDirectory: Record<string, { name: string; address?: string; status?: string; notes?: string }> = {};
         try {
-            const { getCurrentSiteMap } = await import("@/lib/sites");
-            const siteMap = await getCurrentSiteMap();
+            const { ensureSitesExistFromDevices } = await import("@/lib/sites");
+            const { siteMap } = await ensureSitesExistFromDevices(devices, session?.user as any);
             siteMap.forEach((meta, code) => {
-                siteDirectory[code.toUpperCase()] = { name: meta.name, address: meta.address };
+                siteDirectory[code.toUpperCase()] = {
+                    name: meta.name,
+                    address: meta.address,
+                    status: meta.status,
+                    notes: meta.notes
+                };
             });
         } catch (e) {
             console.warn("Failed to load site directory for crawler:", e);
