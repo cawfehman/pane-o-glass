@@ -117,7 +117,9 @@ export async function GET(
                 totalUnreachable: devices.filter(d => d.status !== "REACHABLE").length,
                 durationSeconds: 0,
                 reseedFrontier: latestSnapshot.reseedFrontier || [],
-                isMaster: true
+                isMaster: true,
+                devices,
+                links
             };
         } else {
             const isNumeric = /^\d+$/.test(cleanId);
@@ -348,14 +350,14 @@ export async function GET(
                 routers,
                 l3Switches,
                 l2Switches,
-                totalLinks: snapshot.links.length,
+                totalLinks: (links || snapshot.links || []).length,
                 siteCount: sites.size,
                 sites: Array.from(sites).sort(),
                 subnetCount: subnets.size
             },
             siteDirectory,
             devices: enrichedDevices,
-            links: snapshot.links
+            links: links || snapshot.links || []
         });
     } catch (error: any) {
         console.error("Failed to fetch snapshot details:", error);
