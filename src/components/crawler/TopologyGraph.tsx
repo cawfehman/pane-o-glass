@@ -38,7 +38,8 @@ import {
     GitMerge,
     X,
     Edit3,
-    LayoutGrid
+    LayoutGrid,
+    Star
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 
@@ -389,6 +390,9 @@ interface SiteContainerBox {
     connectedSites?: string[];
     clusterId?: string;
     isClusterHub?: boolean;
+    isDesignatedHub?: boolean;
+    satellites?: string[];
+    parentHub?: string;
 }
 
 export interface SiteClusterGroup {
@@ -469,6 +473,60 @@ export default function TopologyGraph({
     const [showUncrawledSites, setShowUncrawledSites] = useState(false); // Uncrawled Directory sites hidden by default
     const [siteClusterMode, setSiteClusterMode] = useState<"topological" | "grid">("topological"); // Topological Connected Clusters vs Linear Grid
     const [nodeDensity, setNodeDensity] = useState<"standard" | "compact">("standard"); // Standard Detailed Cards vs Compact Shapes
+
+    // Enterprise Hub & Drill-Down State (KEL is the core central hub)
+    const DEFAULT_HUBS = useMemo(() => ["KEL", "CRM", "WDC", "RDG", "VMM"], []);
+    const [designatedHubs, setDesignatedHubs] = useState<Set<string>>(() => {
+        if (typeof window !== "undefined") {
+            try {
+                const saved = localStorage.getItem("pane_topology_designated_hubs");
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        return new Set(parsed);
+                    }
+                }
+            } catch {}
+        }
+        return new Set(["KEL", "CRM", "WDC", "RDG", "VMM"]);
+    });
+
+    const [activeDrillHub, setActiveDrillHub] = useState<string | null>(null);
+
+    const toggleDesignatedHub = (siteCode: string) => {
+        setDesignatedHubs(prev => {
+            const next = new Set(prev);
+            if (next.has(siteCode)) {
+                next.delete(siteCode);
+            } else {
+                next.add(siteCode);
+            }
+            if (typeof window !== "undefined") {
+                try {
+                    localStorage.setItem("pane_topology_designated_hubs", JSON.stringify(Array.from(next)));
+                } catch {}
+            }
+            return next;
+        });
+    };
+
+    const handleFocusHub = (hubCode: string) => {
+        setActiveDrillHub(hubCode);
+        setCollapsedSites(prev => {
+            const next = new Set(prev);
+            next.delete(hubCode); // Expand the focused hub!
+            return next;
+        });
+        setPan({ x: 0, y: 0 });
+        setZoom(1);
+    };
+
+    const handleResetOverview = () => {
+        setActiveDrillHub(null);
+        setCollapsedSites(new Set(uniqueSites));
+        setPan({ x: 0, y: 0 });
+        setZoom(1);
+    };
 
     // Bulk Node Governance Overrides
     const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
@@ -716,11 +774,12 @@ export default function TopologyGraph({
     useEffect(() => {
         if (!hasInitializedSiteMap && uniqueSites.length > 0) {
             setCollapsedSites(new Set(uniqueSites));
+            setActiveDrillHub(null);
             setHasInitializedSiteMap(true);
         }
     }, [uniqueSites, hasInitializedSiteMap]);
 
-    // If user selects a specific site from the dropdown, automatically expand that site
+    // If user selects a specific site from the dropdown, automatically expand that site and set active drill hub
     useEffect(() => {
         if (siteFilter !== "ALL") {
             setCollapsedSites(prev => {
@@ -728,8 +787,13 @@ export default function TopologyGraph({
                 next.delete(siteFilter);
                 return next;
             });
+            if (designatedHubs.has(siteFilter)) {
+                setActiveDrillHub(siteFilter);
+            } else if (siteFilter === "PAV" || siteFilter === "DOR") {
+                setActiveDrillHub("KEL");
+            }
         }
-    }, [siteFilter]);
+    }, [siteFilter, designatedHubs]);
 
     // 4. Hierarchical tree data for Site & Floor Manager Sidebar
     const managerTree = useMemo(() => {
@@ -1296,8 +1360,11 @@ export default function TopologyGraph({
 
         for (const [siteCode, idfMap] of siteGroups.entries()) {
             const siteLookup = siteDirectory[siteCode];
-            const siteName = siteLookup?.name || null;
-            const isCollapsed = collapsedSites.has(siteCode);
+            // In topological mode: Overview mode (activeDrillHub === null) keeps all sites collapsed.
+            // Drill-down mode expands activeDrillHub and allows satellites to be toggled, keeping peer hubs collapsed.
+            const isCollapsed = siteClusterMode === "topological"
+                ? (activeDrillHub ? (siteCode !== activeDrillHub && collapsedSites.has(siteCode)) : true)
+                : collapsedSites.has(siteCode);
 
             let totalDevsInSite = 0;
             let l3Count = 0;
@@ -1614,213 +1681,99 @@ export default function TopologyGraph({
         let maxCanvasHeight = 0;
 
         if (siteClusterMode === "topological") {
-            // Topological Site Clustering: Form distinct clusters for connected campuses
-            const visited = new Set<string>();
-            const sitePlacementsInCluster = new Map<string, { x: number; y: number }>();
+            // Hub-Centric Drill-Down & Constellation Placement Engine
+            // KEL is the most central primary core location of the enterprise backbone.
+            // 5 Main Hubs: KEL (core center), CRM (North-West), WDC (North-East), RDG (South-East), VMM (West).
+            // Satellites: PAV and DOR are major sub-hubs/facilities within KEL.
 
-            // Prioritize starting from Core / Seed Hub sites
-            const siteCodesSorted = Array.from(siteTemplates.keys()).sort((a, b) => {
-                const tA = siteTemplates.get(a)!;
-                const tB = siteTemplates.get(b)!;
-                const degA = interSiteAdj.get(a)?.size || 0;
-                const degB = interSiteAdj.get(b)?.size || 0;
-                const scoreA = degA * 20 + (tA.isSeedSite ? 50 : 0) + (tA.hasRouter ? 20 : 0) + tA.totalDevsInSite;
-                const scoreB = degB * 20 + (tB.isSeedSite ? 50 : 0) + (tB.hasRouter ? 20 : 0) + tB.totalDevsInSite;
-                return scoreB - scoreA;
-            });
+            const hubSatellitesMap = new Map<string, string[]>();
+            for (const hub of designatedHubs) {
+                hubSatellitesMap.set(hub, []);
+            }
 
-            for (const sCode of siteCodesSorted) {
-                if (visited.has(sCode)) continue;
-                const component: string[] = [];
-                const queue = [sCode];
-                visited.add(sCode);
+            const parentHubOfSite = new Map<string, string>();
+            for (const sCode of siteTemplates.keys()) {
+                if (designatedHubs.has(sCode)) continue;
 
-                while (queue.length > 0) {
-                    const curr = queue.shift()!;
-                    component.push(curr);
-                    const neighbors = interSiteAdj.get(curr);
+                // Identify parent hub:
+                // User requirement: PAV and DOR should be big hubs within KEL
+                let pHub: string | null = null;
+                if ((sCode === "PAV" || sCode === "DOR") && designatedHubs.has("KEL")) {
+                    pHub = "KEL";
+                }
+                if (!pHub) {
+                    const neighbors = interSiteAdj.get(sCode);
                     if (neighbors) {
                         for (const n of neighbors) {
-                            if (!visited.has(n)) {
-                                visited.add(n);
-                                queue.push(n);
+                            if (designatedHubs.has(n)) {
+                                pHub = n;
+                                break;
                             }
                         }
                     }
                 }
-
-                // Identify the most authoritative Hub of this component
-                let bestHub = component[0];
-                let bestScore = -1;
-                for (const c of component) {
-                    const t = siteTemplates.get(c)!;
-                    const deg = interSiteAdj.get(c)?.size || 0;
-                    const score = deg * 20 + (t.isSeedSite ? 50 : 0) + (t.hasRouter ? 20 : 0) + t.totalDevsInSite;
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestHub = c;
-                    }
-                }
-
-                const isSingle = component.length === 1;
-                const hubTemplate = siteTemplates.get(bestHub)!;
-                const hubName = hubTemplate.siteName || bestHub;
-                const label = isSingle
-                    ? `${bestHub} (${hubName})`
-                    : `Campus Cluster: ${bestHub} (${component.length} Connected Sites)`;
-                const titleWidth = Math.min(Math.max(label.length * 8 + 36, 170), 400);
-
-                if (isSingle) {
-                    sitePlacementsInCluster.set(bestHub, { x: 0, y: 0 });
-                    clusters.push({
-                        id: `cluster-${bestHub}`,
-                        label,
-                        hubSiteCode: bestHub,
-                        siteCodes: component,
-                        x: 0,
-                        y: 0,
-                        width: hubTemplate.width,
-                        height: hubTemplate.height,
-                        titleWidth,
-                        isSingle: true
-                    });
-                } else if (component.length === 2) {
-                    // 2-site pair (Hub <-> Satellite)
-                    const otherSite = component.find(c => c !== bestHub)!;
-                    const otherT = siteTemplates.get(otherSite)!;
-                    const CORRIDOR_X = 140;
-                    const maxH = Math.max(hubTemplate.height, otherT.height);
-
-                    sitePlacementsInCluster.set(bestHub, {
-                        x: 0,
-                        y: (maxH - hubTemplate.height) / 2
-                    });
-                    sitePlacementsInCluster.set(otherSite, {
-                        x: hubTemplate.width + CORRIDOR_X,
-                        y: (maxH - otherT.height) / 2
-                    });
-
-                    clusters.push({
-                        id: `cluster-${bestHub}`,
-                        label,
-                        hubSiteCode: bestHub,
-                        siteCodes: component,
-                        x: 0,
-                        y: 0,
-                        width: hubTemplate.width + CORRIDOR_X + otherT.width,
-                        height: maxH,
-                        titleWidth,
-                        isSingle: false
-                    });
-                } else {
-                    // 3+ sites: Hub sits prominently at top center; satellites branch gracefully in tier below
-                    const hubChildren = component.filter(c => c !== bestHub);
-                    hubChildren.sort((a, b) => {
-                        const aDirect = interSiteAdj.get(bestHub)?.has(a) ? 1 : 0;
-                        const bDirect = interSiteAdj.get(bestHub)?.has(b) ? 1 : 0;
-                        return bDirect - aDirect;
-                    });
-
-                    const SPOKE_GAP_X = 56;
-                    const CORRIDOR_Y = 130;
-
-                    let totalSpokesWidth = 0;
-                    let maxSpokeHeight = 0;
-                    for (let i = 0; i < hubChildren.length; i++) {
-                        const spT = siteTemplates.get(hubChildren[i])!;
-                        totalSpokesWidth += spT.width;
-                        if (i < hubChildren.length - 1) totalSpokesWidth += SPOKE_GAP_X;
-                        if (spT.height > maxSpokeHeight) maxSpokeHeight = spT.height;
-                    }
-
-                    const clusterW = Math.max(hubTemplate.width, totalSpokesWidth);
-                    const hubX = (clusterW - hubTemplate.width) / 2;
-                    sitePlacementsInCluster.set(bestHub, { x: hubX, y: 0 });
-
-                    let curSpokeX = (clusterW - totalSpokesWidth) / 2;
-                    const spokeY = hubTemplate.height + CORRIDOR_Y;
-
-                    for (const spCode of hubChildren) {
-                        const spT = siteTemplates.get(spCode)!;
-                        sitePlacementsInCluster.set(spCode, { x: curSpokeX, y: spokeY });
-                        curSpokeX += spT.width + SPOKE_GAP_X;
-                    }
-
-                    clusters.push({
-                        id: `cluster-${bestHub}`,
-                        label,
-                        hubSiteCode: bestHub,
-                        siteCodes: component,
-                        x: 0,
-                        y: 0,
-                        width: clusterW,
-                        height: hubTemplate.height + CORRIDOR_Y + maxSpokeHeight,
-                        titleWidth,
-                        isSingle: false
-                    });
+                if (pHub) {
+                    parentHubOfSite.set(sCode, pHub);
+                    if (!hubSatellitesMap.has(pHub)) hubSatellitesMap.set(pHub, []);
+                    hubSatellitesMap.get(pHub)!.push(sCode);
                 }
             }
 
-            // Canvas placement: arrange multi-site clusters first, then standalone / isolated sites
-            const MAX_CANVAS_WIDTH = 3400;
-            const CLUSTER_GAP_X = 90;
-            const CLUSTER_GAP_Y = 110;
+            if (!activeDrillHub) {
+                // =========================================================================
+                // MODE A: ENTERPRISE BACKBONE OVERVIEW
+                // Zero sprawl: Only designated HUBs are placed in a high-level constellation,
+                // centered strictly around KEL. Fits immediately on screen (~1250x700px).
+                // =========================================================================
+                const PRESET_HUB_POSITIONS: Record<string, { x: number; y: number }> = {
+                    KEL: { x: 500, y: 260 },
+                    CRM: { x: 180, y: 80 },
+                    WDC: { x: 880, y: 120 },
+                    RDG: { x: 840, y: 440 },
+                    VMM: { x: 60, y: 320 }
+                };
 
-            const multiClusters = clusters.filter(c => !c.isSingle);
-            const singleClusters = clusters.filter(c => c.isSingle);
+                const placedHubCodes = new Set<string>();
+                const extraHubs: string[] = [];
 
-            let curClustX = 60;
-            let curClustY = 60;
-            let maxRowH = 0;
-
-            for (const cl of multiClusters) {
-                if (curClustX > 60 && curClustX + cl.width > MAX_CANVAS_WIDTH) {
-                    curClustX = 60;
-                    curClustY += maxRowH + CLUSTER_GAP_Y;
-                    maxRowH = 0;
+                for (const hCode of designatedHubs) {
+                    if (siteTemplates.has(hCode)) {
+                        if (PRESET_HUB_POSITIONS[hCode]) {
+                            placedHubCodes.add(hCode);
+                        } else {
+                            extraHubs.push(hCode);
+                        }
+                    }
                 }
 
-                cl.x = curClustX;
-                cl.y = curClustY;
-
-                for (const sCode of cl.siteCodes) {
-                    const p = sitePlacementsInCluster.get(sCode)!;
-                    const sT = siteTemplates.get(sCode)!;
-                    const absX = cl.x + p.x;
-                    const absY = cl.y + p.y;
+                // Place standard hubs
+                for (const hCode of placedHubCodes) {
+                    const sT = siteTemplates.get(hCode)!;
+                    const pos = PRESET_HUB_POSITIONS[hCode];
+                    const sats = hubSatellitesMap.get(hCode) || [];
 
                     siteContainers.push({
-                        siteCode: sCode,
+                        siteCode: hCode,
                         siteName: sT.siteName,
-                        x: absX,
-                        y: absY,
+                        x: pos.x,
+                        y: pos.y,
                         width: sT.width,
-                        height: sT.height,
+                        height: sats.length > 0 ? 84 : sT.height,
                         deviceCount: sT.totalDevsInSite,
                         l3Count: sT.l3Count,
                         l2Count: sT.l2Count,
-                        isCollapsed: sT.isCollapsed,
-                        idfs: sT.idfs.map(idf => ({
-                            ...idf,
-                            x: absX + idf.relX,
-                            y: absY + idf.relY
-                        })),
-                        connectedSites: Array.from(interSiteAdj.get(sCode) || []),
-                        clusterId: cl.id,
-                        isClusterHub: sCode === cl.hubSiteCode
+                        isCollapsed: true,
+                        idfs: [],
+                        connectedSites: Array.from(interSiteAdj.get(hCode) || []),
+                        clusterId: `hub-${hCode}`,
+                        isClusterHub: true,
+                        isDesignatedHub: true,
+                        satellites: sats
                     });
 
-                    for (const idf of sT.idfs) {
-                        idfContainers.push({
-                            ...idf,
-                            x: absX + idf.relX,
-                            y: absY + idf.relY
-                        });
-                    }
-
                     for (const d of sT.devOffsets) {
-                        const nX = absX + d.relX;
-                        const nY = absY + d.relY;
+                        const nX = pos.x + d.relX;
+                        const nY = pos.y + d.relY;
                         positions.set(d.nodeKey, { x: nX, y: nY });
                         if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
                             positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
@@ -1829,63 +1782,173 @@ export default function TopologyGraph({
                     }
                 }
 
-                if (cl.height > maxRowH) maxRowH = cl.height;
-                curClustX += cl.width + CLUSTER_GAP_X;
-                if (curClustX > maxCanvasWidth) maxCanvasWidth = curClustX;
-            }
+                // Place any extra custom hubs radially around KEL
+                const kelPos = PRESET_HUB_POSITIONS.KEL || { x: 500, y: 260 };
+                extraHubs.forEach((hCode, idx) => {
+                    const sT = siteTemplates.get(hCode)!;
+                    const angle = ((idx + 0.5) / Math.max(extraHubs.length, 1)) * 2 * Math.PI;
+                    const radX = 420;
+                    const radY = 280;
+                    const posX = Math.max(kelPos.x + Math.cos(angle) * radX, 40);
+                    const posY = Math.max(kelPos.y + Math.sin(angle) * radY, 60);
+                    const sats = hubSatellitesMap.get(hCode) || [];
 
-            // Standalone single sites placed on shelf below
-            let curSingleX = 60;
-            let curSingleY = multiClusters.length > 0 ? (curClustY + maxRowH + 100) : 60;
-            let maxSingleH = 0;
+                    siteContainers.push({
+                        siteCode: hCode,
+                        siteName: sT.siteName,
+                        x: posX,
+                        y: posY,
+                        width: sT.width,
+                        height: sats.length > 0 ? 84 : sT.height,
+                        deviceCount: sT.totalDevsInSite,
+                        l3Count: sT.l3Count,
+                        l2Count: sT.l2Count,
+                        isCollapsed: true,
+                        idfs: [],
+                        connectedSites: Array.from(interSiteAdj.get(hCode) || []),
+                        clusterId: `hub-${hCode}`,
+                        isClusterHub: true,
+                        isDesignatedHub: true,
+                        satellites: sats
+                    });
 
-            for (const cl of singleClusters) {
-                const sCode = cl.hubSiteCode;
-                const sT = siteTemplates.get(sCode)!;
-
-                if (curSingleX > 60 && curSingleX + sT.width > MAX_CANVAS_WIDTH) {
-                    curSingleX = 60;
-                    curSingleY += maxSingleH + 60;
-                    maxSingleH = 0;
-                }
-
-                cl.x = curSingleX;
-                cl.y = curSingleY;
-                const absX = cl.x;
-                const absY = cl.y;
-
-                siteContainers.push({
-                    siteCode: sCode,
-                    siteName: sT.siteName,
-                    x: absX,
-                    y: absY,
-                    width: sT.width,
-                    height: sT.height,
-                    deviceCount: sT.totalDevsInSite,
-                    l3Count: sT.l3Count,
-                    l2Count: sT.l2Count,
-                    isCollapsed: sT.isCollapsed,
-                    idfs: sT.idfs.map(idf => ({
-                        ...idf,
-                        x: absX + idf.relX,
-                        y: absY + idf.relY
-                    })),
-                    connectedSites: [],
-                    clusterId: cl.id,
-                    isClusterHub: true
+                    for (const d of sT.devOffsets) {
+                        const nX = posX + d.relX;
+                        const nY = posY + d.relY;
+                        positions.set(d.nodeKey, { x: nX, y: nY });
+                        if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                            positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                        }
+                        layoutDevs.push(d.dev);
+                    }
                 });
 
-                for (const idf of sT.idfs) {
+                // Populate coordinates for satellite devices so device search/filtering functions
+                for (const [satCode, pHub] of parentHubOfSite.entries()) {
+                    const satT = siteTemplates.get(satCode);
+                    const pContainer = siteContainers.find(c => c.siteCode === pHub);
+                    if (satT && pContainer) {
+                        for (const d of satT.devOffsets) {
+                            const nX = pContainer.x + pContainer.width / 2;
+                            const nY = pContainer.y + pContainer.height / 2;
+                            positions.set(d.nodeKey, { x: nX, y: nY });
+                            if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                                positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                            }
+                            layoutDevs.push(d.dev);
+                        }
+                    }
+                }
+
+                // Place standalone non-hub, non-satellite sites on a neat shelf at the bottom
+                const standaloneSites = Array.from(siteTemplates.keys()).filter(
+                    s => !designatedHubs.has(s) && !parentHubOfSite.has(s)
+                );
+
+                let shelfX = 60;
+                const shelfY = 620;
+                for (const sCode of standaloneSites) {
+                    const sT = siteTemplates.get(sCode)!;
+                    siteContainers.push({
+                        siteCode: sCode,
+                        siteName: sT.siteName,
+                        x: shelfX,
+                        y: shelfY,
+                        width: sT.width,
+                        height: sT.height,
+                        deviceCount: sT.totalDevsInSite,
+                        l3Count: sT.l3Count,
+                        l2Count: sT.l2Count,
+                        isCollapsed: true,
+                        idfs: [],
+                        connectedSites: Array.from(interSiteAdj.get(sCode) || []),
+                        clusterId: `standalone-${sCode}`,
+                        isClusterHub: false,
+                        isDesignatedHub: false,
+                        satellites: []
+                    });
+
+                    for (const d of sT.devOffsets) {
+                        const nX = shelfX + d.relX;
+                        const nY = shelfY + d.relY;
+                        positions.set(d.nodeKey, { x: nX, y: nY });
+                        if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                            positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                        }
+                        layoutDevs.push(d.dev);
+                    }
+                    shelfX += sT.width + 40;
+                }
+
+                maxCanvasWidth = Math.max(1260, shelfX + 80);
+                maxCanvasHeight = standaloneSites.length > 0 ? 760 : 660;
+
+                // Backbone Constellation Enclosure
+                clusters.push({
+                    id: "backbone-constellation",
+                    label: "Enterprise WAN Backbone Constellation (Core Hub Tier)",
+                    hubSiteCode: "KEL",
+                    siteCodes: Array.from(designatedHubs),
+                    x: 20,
+                    y: 40,
+                    width: 1220,
+                    height: 540,
+                    titleWidth: 380,
+                    isSingle: false
+                });
+
+            } else {
+                // =========================================================================
+                // MODE B: HUB DRILL-DOWN (activeDrillHub, e.g. "KEL")
+                // Focal Hub takes center stage (expanded).
+                // Satellites (PAV, DOR) branch directly below it.
+                // Peer Hubs (CRM, WDC, RDG, VMM) remain visible in summary cards along perimeter.
+                // =========================================================================
+                const focalHub = activeDrillHub;
+                const focalT = siteTemplates.get(focalHub) || siteTemplates.values().next().value;
+                const satellites = hubSatellitesMap.get(focalHub) || [];
+                const peerHubs = Array.from(designatedHubs).filter(h => h !== focalHub && siteTemplates.has(h));
+
+                const focalX = 360;
+                const focalY = 120;
+                const focalW = focalT.width;
+                const focalH = focalT.height;
+
+                // 1. Place Focal Hub
+                siteContainers.push({
+                    siteCode: focalHub,
+                    siteName: focalT.siteName,
+                    x: focalX,
+                    y: focalY,
+                    width: focalW,
+                    height: focalH,
+                    deviceCount: focalT.totalDevsInSite,
+                    l3Count: focalT.l3Count,
+                    l2Count: focalT.l2Count,
+                    isCollapsed: focalT.isCollapsed,
+                    idfs: focalT.idfs.map(idf => ({
+                        ...idf,
+                        x: focalX + idf.relX,
+                        y: focalY + idf.relY
+                    })),
+                    connectedSites: Array.from(interSiteAdj.get(focalHub) || []),
+                    clusterId: `cluster-${focalHub}`,
+                    isClusterHub: true,
+                    isDesignatedHub: true,
+                    satellites: satellites
+                });
+
+                for (const idf of focalT.idfs) {
                     idfContainers.push({
                         ...idf,
-                        x: absX + idf.relX,
-                        y: absY + idf.relY
+                        x: focalX + idf.relX,
+                        y: focalY + idf.relY
                     });
                 }
 
-                for (const d of sT.devOffsets) {
-                    const nX = absX + d.relX;
-                    const nY = absY + d.relY;
+                for (const d of focalT.devOffsets) {
+                    const nX = focalX + d.relX;
+                    const nY = focalY + d.relY;
                     positions.set(d.nodeKey, { x: nX, y: nY });
                     if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
                         positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
@@ -1893,13 +1956,140 @@ export default function TopologyGraph({
                     layoutDevs.push(d.dev);
                 }
 
-                if (sT.height > maxSingleH) maxSingleH = sT.height;
-                curSingleX += sT.width + 48;
-                if (curSingleX > maxCanvasWidth) maxCanvasWidth = curSingleX;
+                // 2. Place Satellites (e.g. PAV, DOR under KEL)
+                const spokeY = focalY + focalH + 110;
+                const SAT_GAP_X = 54;
+                let totalSatsW = 0;
+                let maxSatH = 0;
+
+                satellites.forEach((sCode, idx) => {
+                    const sT = siteTemplates.get(sCode)!;
+                    totalSatsW += sT.width;
+                    if (idx < satellites.length - 1) totalSatsW += SAT_GAP_X;
+                    if (sT.height > maxSatH) maxSatH = sT.height;
+                });
+
+                let curSatX = Math.max(focalX + (focalW - totalSatsW) / 2, 80);
+
+                for (const satCode of satellites) {
+                    const sT = siteTemplates.get(satCode)!;
+                    const satX = curSatX;
+                    const satY = spokeY;
+
+                    siteContainers.push({
+                        siteCode: satCode,
+                        siteName: sT.siteName,
+                        x: satX,
+                        y: satY,
+                        width: sT.width,
+                        height: sT.height,
+                        deviceCount: sT.totalDevsInSite,
+                        l3Count: sT.l3Count,
+                        l2Count: sT.l2Count,
+                        isCollapsed: sT.isCollapsed,
+                        idfs: sT.idfs.map(idf => ({
+                            ...idf,
+                            x: satX + idf.relX,
+                            y: satY + idf.relY
+                        })),
+                        connectedSites: Array.from(interSiteAdj.get(satCode) || []),
+                        clusterId: `cluster-${focalHub}`,
+                        isClusterHub: false,
+                        isDesignatedHub: false,
+                        parentHub: focalHub
+                    });
+
+                    for (const idf of sT.idfs) {
+                        idfContainers.push({
+                            ...idf,
+                            x: satX + idf.relX,
+                            y: satY + idf.relY
+                        });
+                    }
+
+                    for (const d of sT.devOffsets) {
+                        const nX = satX + d.relX;
+                        const nY = satY + d.relY;
+                        positions.set(d.nodeKey, { x: nX, y: nY });
+                        if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                            positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                        }
+                        layoutDevs.push(d.dev);
+                    }
+
+                    curSatX += sT.width + SAT_GAP_X;
+                }
+
+                // 3. Perimeter Placement for Peer Hubs (compact summary cards)
+                const rightX = Math.max(focalX + focalW + 80, curSatX + 60, 1140);
+                const peerPositions: Array<{ x: number; y: number }> = [
+                    { x: 30, y: 60 },                         // Top-Left (e.g. CRM)
+                    { x: 30, y: 280 },                        // Mid-Left (e.g. VMM)
+                    { x: 30, y: 500 },                        // Lower-Left
+                    { x: rightX, y: 60 },                     // Top-Right (e.g. WDC)
+                    { x: rightX, y: 280 },                    // Mid-Right (e.g. RDG)
+                    { x: rightX, y: 500 }                     // Lower-Right
+                ];
+
+                peerHubs.forEach((pCode, idx) => {
+                    const pT = siteTemplates.get(pCode)!;
+                    const pPos = peerPositions[idx] || { x: rightX, y: 60 + idx * 120 };
+                    const pSats = hubSatellitesMap.get(pCode) || [];
+
+                    siteContainers.push({
+                        siteCode: pCode,
+                        siteName: pT.siteName,
+                        x: pPos.x,
+                        y: pPos.y,
+                        width: pT.width,
+                        height: pSats.length > 0 ? 84 : pT.height,
+                        deviceCount: pT.totalDevsInSite,
+                        l3Count: pT.l3Count,
+                        l2Count: pT.l2Count,
+                        isCollapsed: true,
+                        idfs: [],
+                        connectedSites: Array.from(interSiteAdj.get(pCode) || []),
+                        clusterId: `peer-${pCode}`,
+                        isClusterHub: true,
+                        isDesignatedHub: true,
+                        satellites: pSats
+                    });
+
+                    for (const d of pT.devOffsets) {
+                        const nX = pPos.x + d.relX;
+                        const nY = pPos.y + d.relY;
+                        positions.set(d.nodeKey, { x: nX, y: nY });
+                        if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                            positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                        }
+                        layoutDevs.push(d.dev);
+                    }
+                });
+
+                // Cluster Enclosure for the Active Campus (Focal Hub + its Satellites)
+                if (satellites.length > 0) {
+                    const minCampX = Math.min(focalX, focalX + (focalW - totalSatsW) / 2) - 30;
+                    const maxCampX = Math.max(focalX + focalW, curSatX) + 30;
+                    const campW = maxCampX - minCampX;
+                    const campH = (spokeY + maxSatH) - (focalY - 20) + 30;
+
+                    clusters.push({
+                        id: `campus-${focalHub}`,
+                        label: `Campus Cluster: Hub ${focalHub} (${satellites.length + 1} Connected Sites)`,
+                        hubSiteCode: focalHub,
+                        siteCodes: [focalHub, ...satellites],
+                        x: minCampX,
+                        y: focalY - 20,
+                        width: campW,
+                        height: campH,
+                        titleWidth: 360,
+                        isSingle: false
+                    });
+                }
+
+                maxCanvasWidth = rightX + 340;
+                maxCanvasHeight = Math.max(spokeY + maxSatH + 120, 780);
             }
-
-            maxCanvasHeight = (singleClusters.length > 0 ? (curSingleY + maxSingleH) : (curClustY + maxRowH));
-
         } else {
             // Classic Linear Grid Mode
             const MAX_ROW_WIDTH = 2500;
@@ -2100,7 +2290,7 @@ export default function TopologyGraph({
             canvasSize: { width: totalWidth, height: totalHeight },
             layoutDevices: layoutDevs
         };
-    }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing, showUncrawledSites, uncrawledSiteCodes, siteFilter, siteClusterMode, unifiedLinks, deviceLocationMap, nodeDensity]);
+    }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing, showUncrawledSites, uncrawledSiteCodes, siteFilter, siteClusterMode, unifiedLinks, deviceLocationMap, nodeDensity, designatedHubs, activeDrillHub]);
 
     // Multi-neighbor trunk & MPLS convergence model
     // Converges multiple links that share the same physical trunk/interface into a single stem before connecting to the switch/site
@@ -3034,10 +3224,23 @@ export default function TopologyGraph({
                                 return (
                                     <div key={site.siteCode} className="rounded-xl border border-amber-800/40 bg-amber-950/20 overflow-hidden p-2 flex items-center justify-between">
                                         <div className="flex items-center gap-1.5 min-w-0">
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleDesignatedHub(site.siteCode)}
+                                                className="p-0.5 rounded hover:bg-amber-800/40 transition cursor-pointer shrink-0"
+                                                title={designatedHubs.has(site.siteCode) ? "Enterprise Hub (Click to remove)" : "Click to mark as Enterprise Hub"}
+                                            >
+                                                <Star className={`w-3.5 h-3.5 ${designatedHubs.has(site.siteCode) ? "text-amber-400 fill-amber-400" : "text-slate-600 hover:text-amber-400"}`} />
+                                            </button>
                                             <Building className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                                             <span className="font-bold text-amber-200 font-mono text-[11px] truncate">
                                                 {site.siteCode} {site.siteName ? `• ${site.siteName}` : ""}
                                             </span>
+                                            {designatedHubs.has(site.siteCode) && (
+                                                <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                                                    HUB
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="flex items-center gap-1 shrink-0 ml-1">
                                             <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -3085,9 +3288,22 @@ export default function TopologyGraph({
                                                     </div>
                                                 )}
                                             </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => toggleDesignatedHub(site.siteCode)}
+                                                className="p-0.5 rounded hover:bg-slate-800 transition cursor-pointer shrink-0"
+                                                title={designatedHubs.has(site.siteCode) ? "Enterprise Hub (Click to remove hub status)" : "Click to mark as Enterprise Hub"}
+                                            >
+                                                <Star className={`w-3.5 h-3.5 ${designatedHubs.has(site.siteCode) ? "text-amber-400 fill-amber-400" : "text-slate-600 hover:text-amber-400"}`} />
+                                            </button>
                                             <span className="font-bold text-white font-mono text-[11px] truncate">
                                                 {site.siteCode} {site.siteName ? `• ${site.siteName}` : ""}
                                             </span>
+                                            {designatedHubs.has(site.siteCode) && (
+                                                <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                                                    HUB
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="flex items-center gap-1 shrink-0 ml-1">
                                             <span className="text-[10px] font-mono text-slate-400">
@@ -3276,12 +3492,82 @@ export default function TopologyGraph({
             {/* Interactive SVG Canvas */}
             <div
                 ref={svgContainerRef}
-                className="w-full h-full cursor-grab active:cursor-grabbing touch-none select-none"
+                className="relative w-full h-full cursor-grab active:cursor-grabbing touch-none select-none"
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onPointerCancel={handlePointerUp}
             >
+                {/* Floating Hub Breadcrumb & Constellation Navigator */}
+                {layoutMode === "container" && siteClusterMode === "topological" && (
+                    <div className="absolute top-3 left-4 z-20 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 shadow-2xl rounded-xl px-3 py-1.5 pointer-events-auto">
+                        <button
+                            type="button"
+                            onClick={handleResetOverview}
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                                !activeDrillHub
+                                    ? "bg-blue-600 text-white shadow-sm"
+                                    : "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                            }`}
+                            title="Enterprise Backbone Overview (KEL Core Center, CRM, WDC, RDG, VMM)"
+                        >
+                            <Network className="w-3.5 h-3.5 text-blue-300" />
+                            <span>Enterprise Backbone</span>
+                        </button>
+
+                        {activeDrillHub && (
+                            <>
+                                <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-950/60 border border-cyan-500/40 text-cyan-300 text-xs font-bold font-mono">
+                                    <Building2 className="w-3.5 h-3.5 text-cyan-400" />
+                                    <span>{activeDrillHub} Campus</span>
+                                </div>
+                            </>
+                        )}
+
+                        <div className="h-4 w-[1px] bg-slate-700 mx-1"></div>
+
+                        {/* Hub Quick-Jump Pills */}
+                        <div className="flex items-center gap-1">
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mr-0.5">Hubs:</span>
+                            {Array.from(designatedHubs).map(hubCode => {
+                                const isFocused = activeDrillHub === hubCode;
+                                const isKelCore = hubCode === "KEL";
+                                return (
+                                    <button
+                                        key={hubCode}
+                                        type="button"
+                                        onClick={() => handleFocusHub(hubCode)}
+                                        className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold transition cursor-pointer flex items-center gap-1 ${
+                                            isFocused
+                                                ? "bg-amber-500 text-slate-950 shadow-sm ring-1 ring-amber-300"
+                                                : isKelCore
+                                                ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30"
+                                                : "bg-slate-800/80 text-slate-300 hover:bg-slate-700 border border-slate-700/50"
+                                        }`}
+                                        title={`Drill into ${hubCode}${isKelCore ? " (Primary Core)" : ""}`}
+                                    >
+                                        <Star className={`w-3 h-3 ${isFocused ? "text-slate-950 fill-slate-950" : "text-amber-400 fill-amber-400"}`} />
+                                        <span>{hubCode}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {activeDrillHub && (
+                            <button
+                                type="button"
+                                onClick={handleResetOverview}
+                                className="ml-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer flex items-center gap-1 border border-slate-700"
+                                title="Return to Enterprise Backbone Overview"
+                            >
+                                <RotateCcw className="w-3 h-3 text-cyan-400" />
+                                <span>Overview</span>
+                            </button>
+                        )}
+                    </div>
+                )}
+
                 <svg
                     width="100%"
                     height="100%"
@@ -3518,17 +3804,29 @@ export default function TopologyGraph({
                             }
 
                             if (site.isCollapsed) {
+                                const isHub = designatedHubs.has(site.siteCode);
+                                const isKelCore = site.siteCode === "KEL";
+                                const hasSatellites = site.satellites && site.satellites.length > 0;
+
                                 return (
                                     <g
                                         key={`site-${site.siteCode}`}
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             if (!hasDraggedRef.current) {
-                                                toggleCollapseSite(site.siteCode);
+                                                if (siteClusterMode === "topological" && (isHub || hasSatellites)) {
+                                                    handleFocusHub(site.siteCode);
+                                                } else {
+                                                    toggleCollapseSite(site.siteCode);
+                                                }
                                             }
                                         }}
                                         className="cursor-pointer group"
-                                        title={`Click to expand site ${site.siteCode}${site.siteName ? ` (${site.siteName})` : ""}`}
+                                        title={
+                                            siteClusterMode === "topological" && (isHub || hasSatellites)
+                                                ? `Click to drill down into ${site.siteCode}${site.siteName ? ` (${site.siteName})` : ""}`
+                                                : `Click to expand site ${site.siteCode}${site.siteName ? ` (${site.siteName})` : ""}`
+                                        }
                                     >
                                         <rect
                                             x={site.x}
@@ -3537,24 +3835,58 @@ export default function TopologyGraph({
                                             height={site.height}
                                             rx={10}
                                             fill="rgba(15, 23, 42, 0.95)"
-                                            stroke="#3b82f6"
-                                            strokeWidth={1.5}
+                                            stroke={isKelCore ? "#f59e0b" : isHub ? "#eab308" : "#3b82f6"}
+                                            strokeWidth={isKelCore ? 2 : 1.5}
                                             filter="drop-shadow(0 4px 12px rgba(0,0,0,0.6))"
                                             className="group-hover:stroke-cyan-300 group-hover:brightness-125 transition"
                                         />
                                         {/* Accent Strip */}
                                         <path
                                             d={`M ${site.x} ${site.y + 8} A 8 8 0 0 1 ${site.x + 8} ${site.y} L ${site.x + 4} ${site.y} L ${site.x + 4} ${site.y + site.height} L ${site.x + 8} ${site.y + site.height} A 8 8 0 0 1 ${site.x} ${site.y + site.height - 8} Z`}
-                                            fill="#3b82f6"
+                                            fill={isKelCore ? "#f59e0b" : isHub ? "#eab308" : "#3b82f6"}
                                         />
                                         <title>{`${site.siteCode}${site.siteName ? ` — ${site.siteName}` : ""} (${site.deviceCount} Switches)`}</title>
+                                        
                                         {/* Site Code (Prominent emphasis, no 'SITE:' prefix) */}
                                         <text x={site.x + 14} y={site.y + 22} fill="#ffffff" fontSize={13} fontWeight="bold" fontFamily="monospace">
                                             {site.siteCode}
-                                            {site.isClusterHub && (
-                                                <tspan fill="#f59e0b" fontSize={10} fontWeight="bold"> ★ HUB</tspan>
+                                            {isKelCore && (
+                                                <tspan fill="#38bdf8" fontSize={9} fontWeight="bold"> (CORE)</tspan>
                                             )}
                                         </text>
+
+                                        {/* Hub Designation Badge / Toggle */}
+                                        <g
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleDesignatedHub(site.siteCode);
+                                            }}
+                                            className="cursor-pointer hover:opacity-80 transition"
+                                            transform={`translate(${site.x + (isKelCore ? 82 : 58)}, ${site.y + 8})`}
+                                            title={isHub ? "Enterprise Hub (Click to remove)" : "Click to mark as Enterprise Hub"}
+                                        >
+                                            <rect
+                                                x={0}
+                                                y={0}
+                                                width={isHub ? 52 : 62}
+                                                height={17}
+                                                rx={4}
+                                                fill={isHub ? "rgba(245, 158, 11, 0.25)" : "rgba(148, 163, 184, 0.12)"}
+                                                stroke={isHub ? "#f59e0b" : "rgba(148, 163, 184, 0.3)"}
+                                                strokeWidth={0.8}
+                                            />
+                                            <text
+                                                x={isHub ? 26 : 31}
+                                                y={12}
+                                                fill={isHub ? "#f59e0b" : "#94a3b8"}
+                                                fontSize={8.5}
+                                                fontWeight="bold"
+                                                textAnchor="middle"
+                                                fontFamily="sans-serif"
+                                            >
+                                                {isHub ? "★ HUB" : "+ Make Hub"}
+                                            </text>
+                                        </g>
 
                                         {/* Site Name (Appears below Site Code with smaller styling) */}
                                         {site.siteName && (
@@ -3569,6 +3901,41 @@ export default function TopologyGraph({
                                                 {site.siteName.length > 32 ? site.siteName.slice(0, 30) + "…" : site.siteName}
                                             </text>
                                         )}
+
+                                        {/* Satellite Pill on Hub Card */}
+                                        {hasSatellites && (
+                                            <g
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleFocusHub(site.siteCode);
+                                                }}
+                                                className="cursor-pointer hover:opacity-90 transition"
+                                                transform={`translate(${site.x + 14}, ${site.y + (site.siteName ? 45 : 36)})`}
+                                                title={`Drill into ${site.siteCode} to view satellites: ${site.satellites?.join(", ")}`}
+                                            >
+                                                <rect
+                                                    x={0}
+                                                    y={0}
+                                                    width={Math.min(site.width - 28, 272)}
+                                                    height={16}
+                                                    rx={4}
+                                                    fill="rgba(56, 189, 248, 0.18)"
+                                                    stroke="#38bdf8"
+                                                    strokeWidth={0.8}
+                                                />
+                                                <text
+                                                    x={6}
+                                                    y={11.5}
+                                                    fill="#38bdf8"
+                                                    fontSize={8.5}
+                                                    fontWeight="bold"
+                                                    fontFamily="sans-serif"
+                                                >
+                                                    🌐 Satellites ({site.satellites?.length}): {site.satellites?.join(", ")} ➔ Drill In
+                                                </text>
+                                            </g>
+                                        )}
+
                                         {/* Uplinks Toggle Button on Collapsed Site */}
                                         <g
                                             onClick={(e) => {
@@ -3608,14 +3975,23 @@ export default function TopologyGraph({
                                                 ▾
                                             </text>
                                         </g>
+
                                         {/* Switch Census */}
-                                        <text x={site.x + 14} y={site.y + (site.siteName ? 57 : 46)} fill="#94a3b8" fontSize={9} fontFamily="monospace">
+                                        <text
+                                            x={site.x + 14}
+                                            y={site.y + (hasSatellites ? 73 : (site.siteName ? 57 : 46))}
+                                            fill="#94a3b8"
+                                            fontSize={8.5}
+                                            fontFamily="monospace"
+                                        >
                                             {site.deviceCount} Switches ({site.l3Count} Core/L3 • {site.l2Count} Access/L2)
-                                            {site.connectedSites && site.connectedSites.length > 0 && ` • ⇄ Peers: ${site.connectedSites.join(", ")}`}
+                                            {site.connectedSites && site.connectedSites.length > 0 && !hasSatellites && ` • ⇄ Peers: ${site.connectedSites.join(", ")}`}
                                         </text>
                                     </g>
                                 );
                             }
+
+                            const isHub = designatedHubs.has(site.siteCode);
 
                             return (
                                 <g key={`site-${site.siteCode}`} className="transition-opacity duration-300">
@@ -3627,8 +4003,8 @@ export default function TopologyGraph({
                                         height={site.height}
                                         rx={14}
                                         fill="rgba(15, 23, 42, 0.55)"
-                                        stroke="rgba(71, 85, 105, 0.5)"
-                                        strokeWidth={1.5}
+                                        stroke={isHub ? "rgba(245, 158, 11, 0.6)" : "rgba(71, 85, 105, 0.5)"}
+                                        strokeWidth={isHub ? 2 : 1.5}
                                         strokeDasharray="6,4"
                                     />
 
@@ -3641,15 +4017,48 @@ export default function TopologyGraph({
 
                                         <text x={36} y={12} fill="#ffffff" fontSize={12} fontWeight="bold" fontFamily="monospace">
                                             {site.siteCode}
-                                            {site.isClusterHub && (
-                                                <tspan fill="#f59e0b" fontWeight="bold"> ★ HUB</tspan>
+                                            {site.siteCode === "KEL" && (
+                                                <tspan fill="#38bdf8" fontSize={10} fontWeight="bold"> (CORE)</tspan>
                                             )}
                                             {site.siteName && (
                                                 <tspan fill="#7dd3fc" fontWeight="normal" fontFamily="sans-serif"> — {site.siteName}</tspan>
                                             )}
                                         </text>
 
-                                        <text x={site.width - 128} y={12} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
+                                        {/* Hub Toggle on Expanded Header */}
+                                        <g
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleDesignatedHub(site.siteCode);
+                                            }}
+                                            className="cursor-pointer hover:opacity-80 transition"
+                                            transform={`translate(${Math.min(site.width - 290, 260)}, -2)`}
+                                            title={isHub ? "Enterprise Hub (Click to remove)" : "Click to mark as Enterprise Hub"}
+                                        >
+                                            <rect
+                                                x={0}
+                                                y={0}
+                                                width={isHub ? 52 : 62}
+                                                height={18}
+                                                rx={4}
+                                                fill={isHub ? "rgba(245, 158, 11, 0.25)" : "rgba(148, 163, 184, 0.12)"}
+                                                stroke={isHub ? "#f59e0b" : "rgba(148, 163, 184, 0.3)"}
+                                                strokeWidth={0.8}
+                                            />
+                                            <text
+                                                x={isHub ? 26 : 31}
+                                                y={12.5}
+                                                fill={isHub ? "#f59e0b" : "#94a3b8"}
+                                                fontSize={8.5}
+                                                fontWeight="bold"
+                                                textAnchor="middle"
+                                                fontFamily="sans-serif"
+                                            >
+                                                {isHub ? "★ HUB" : "+ Make Hub"}
+                                            </text>
+                                        </g>
+
+                                        <text x={site.width - 190} y={12} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
                                             {site.connectedSites && site.connectedSites.length > 0 && (
                                                 <tspan fill="#38bdf8" fontWeight="bold">⇄ {site.connectedSites.join(", ")} • </tspan>
                                             )}
@@ -3663,7 +4072,7 @@ export default function TopologyGraph({
                                                 toggleSiteUplinks(site.siteCode);
                                             }}
                                             className="cursor-pointer hover:opacity-95 transition"
-                                            transform={`translate(${site.width - 120}, -3)`}
+                                            transform={`translate(${site.width - 180}, -3)`}
                                             title={`Toggle all directly connected uplinks for site ${site.siteCode}`}
                                         >
                                             <rect
@@ -3688,14 +4097,36 @@ export default function TopologyGraph({
                                             </text>
                                         </g>
 
+                                        {/* Quick Return to Overview Button (if in drill-down) */}
+                                        {activeDrillHub === site.siteCode && (
+                                            <g
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleResetOverview();
+                                                }}
+                                                className="cursor-pointer hover:opacity-90 transition"
+                                                transform={`translate(${site.width - 108}, -3)`}
+                                                title="Return to Enterprise Backbone Overview"
+                                            >
+                                                <rect x={0} y={0} width={62} height={20} rx={5} fill="rgba(56, 189, 248, 0.2)" stroke="#38bdf8" strokeWidth={0.8} />
+                                                <text x={31} y={13.5} fill="#38bdf8" fontSize={9} fontWeight="bold" textAnchor="middle">
+                                                    ⤺ Overview
+                                                </text>
+                                            </g>
+                                        )}
+
                                         {/* Collapse Site Button */}
                                         <g
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                toggleCollapseSite(site.siteCode);
+                                                if (activeDrillHub === site.siteCode) {
+                                                    handleResetOverview();
+                                                } else {
+                                                    toggleCollapseSite(site.siteCode);
+                                                }
                                             }}
                                             className="cursor-pointer hover:opacity-80 transition"
-                                            transform={`translate(${site.width - 46}, -3)`}
+                                            transform={`translate(${site.width - 40}, -3)`}
                                             title={`Collapse site ${site.siteCode}`}
                                         >
                                             <rect x={0} y={0} width={20} height={20} rx={5} fill="rgba(148, 163, 184, 0.12)" stroke="rgba(148, 163, 184, 0.3)" strokeWidth={0.8} />

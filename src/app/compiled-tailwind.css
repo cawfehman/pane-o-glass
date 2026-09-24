@@ -332,6 +332,9 @@
   }
 }
 @layer utilities {
+  .pointer-events-auto {
+    pointer-events: auto;
+  }
   .pointer-events-none {
     pointer-events: none;
   }
@@ -2027,6 +2030,12 @@
   .border-slate-700 {
     border-color: var(--color-slate-700);
   }
+  .border-slate-700\/50 {
+    border-color: color-mix(in srgb, oklch(37.2% 0.044 257.287) 50%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-slate-700) 50%, transparent);
+    }
+  }
   .border-slate-700\/80 {
     border-color: color-mix(in srgb, oklch(37.2% 0.044 257.287) 80%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -2963,6 +2972,9 @@
   .bg-slate-600 {
     background-color: var(--color-slate-600);
   }
+  .bg-slate-700 {
+    background-color: var(--color-slate-700);
+  }
   .bg-slate-700\/60 {
     background-color: color-mix(in srgb, oklch(37.2% 0.044 257.287) 60%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -3212,6 +3224,9 @@
   .bg-\[length\:200\%_100\%\] {
     background-size: 200% 100%;
   }
+  .fill-amber-400 {
+    fill: var(--color-amber-400);
+  }
   .fill-current {
     fill: currentcolor;
   }
@@ -3220,6 +3235,9 @@
     @supports (color: color-mix(in lab, red, red)) {
       fill: color-mix(in oklab, var(--color-rose-500) 20%, transparent);
     }
+  }
+  .fill-slate-950 {
+    fill: var(--color-slate-950);
   }
   .p-0 {
     padding: 0px;
@@ -4284,6 +4302,9 @@
       --tw-ring-color: color-mix(in oklab, var(--color-accent-primary) 60%, transparent);
     }
   }
+  .ring-amber-300 {
+    --tw-ring-color: var(--color-amber-300);
+  }
   .ring-amber-400 {
     --tw-ring-color: var(--color-amber-400);
   }
@@ -4738,6 +4759,14 @@
         background-color: color-mix(in oklab, var(--color-amber-600) 50%, transparent);
       }
     }
+    .hover\:bg-amber-800\/40:hover {
+      background-color: color-mix(in srgb, oklch(47.3% 0.137 46.201) 40%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-amber-800\/40:hover {
+        background-color: color-mix(in oklab, var(--color-amber-800) 40%, transparent);
+      }
+    }
     .hover\:bg-bg-dark:hover {
       background-color: var(--color-bg-dark);
     }
@@ -5125,6 +5154,9 @@
     }
     .hover\:text-amber-300:hover {
       color: var(--color-amber-300);
+    }
+    .hover\:text-amber-400:hover {
+      color: var(--color-amber-400);
     }
     .hover\:text-blue-300:hover {
       color: var(--color-blue-300);
