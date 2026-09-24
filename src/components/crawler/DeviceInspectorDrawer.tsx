@@ -158,7 +158,7 @@ export default function DeviceInspectorDrawer({
                             <span>•</span>
                             <span className="text-slate-400 font-medium">{device.role || "Unknown Role"}</span>
                             <span>•</span>
-                            <span className="px-1.5 py-0.2 bg-slate-800 text-slate-300 rounded font-semibold">Site: {siteCode}</span>
+                            <span className="px-1.5 py-0.2 bg-slate-800 text-slate-300 rounded font-semibold">{siteCode}</span>
                             <span>•</span>
                             <span className="px-1.5 py-0.2 bg-slate-800 text-slate-300 rounded font-semibold">IDF: {idfCode}</span>
                             <span>•</span>

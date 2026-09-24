@@ -945,8 +945,8 @@ export default function TopologyGraph({
             }
 
             if (isCollapsed) {
-                const siteWidth = 280;
-                const siteHeight = 64;
+                const siteWidth = 300;
+                const siteHeight = 74;
 
                 // Wrap to next row if needed
                 if (currentSiteX > 40 && (currentSiteX + siteWidth > MAX_ROW_WIDTH)) {
@@ -2354,10 +2354,25 @@ export default function TopologyGraph({
                                             d={`M ${site.x} ${site.y + 8} A 8 8 0 0 1 ${site.x + 8} ${site.y} L ${site.x + 4} ${site.y} L ${site.x + 4} ${site.y + site.height} L ${site.x + 8} ${site.y + site.height} A 8 8 0 0 1 ${site.x} ${site.y + site.height - 8} Z`}
                                             fill="#3b82f6"
                                         />
-                                        {/* Site Code & Name */}
-                                        <text x={site.x + 14} y={site.y + 24} fill="#ffffff" fontSize={11.5} fontWeight="bold" fontFamily="monospace">
-                                            SITE: {site.siteCode} {site.siteName ? `• ${site.siteName}` : ""}
+                                        <title>{`${site.siteCode}${site.siteName ? ` — ${site.siteName}` : ""} (${site.deviceCount} Switches)`}</title>
+                                        {/* Site Code (Prominent emphasis, no 'SITE:' prefix) */}
+                                        <text x={site.x + 14} y={site.y + 22} fill="#ffffff" fontSize={13} fontWeight="bold" fontFamily="monospace">
+                                            {site.siteCode}
                                         </text>
+
+                                        {/* Site Name (Appears below Site Code with smaller styling) */}
+                                        {site.siteName && (
+                                            <text 
+                                                x={site.x + 14} 
+                                                y={site.y + 37} 
+                                                fill="#7dd3fc" 
+                                                fontSize={9.5} 
+                                                fontWeight="500" 
+                                                fontFamily="sans-serif"
+                                            >
+                                                {site.siteName.length > 32 ? site.siteName.slice(0, 30) + "…" : site.siteName}
+                                            </text>
+                                        )}
                                         {/* Uplinks Toggle Button on Collapsed Site */}
                                         <g
                                             onClick={(e) => {
@@ -2398,7 +2413,7 @@ export default function TopologyGraph({
                                             </text>
                                         </g>
                                         {/* Switch Census */}
-                                        <text x={site.x + 14} y={site.y + 46} fill="#94a3b8" fontSize={9.5} fontFamily="monospace">
+                                        <text x={site.x + 14} y={site.y + (site.siteName ? 57 : 46)} fill="#94a3b8" fontSize={9} fontFamily="monospace">
                                             {site.deviceCount} Switches ({site.l3Count} Core/L3 • {site.l2Count} Access/L2)
                                         </text>
                                     </g>
@@ -2422,15 +2437,15 @@ export default function TopologyGraph({
 
                                     {/* Site Header Bar */}
                                     <g transform={`translate(${site.x + 14}, ${site.y + 16})`}>
-                                        <rect x={0} y={-2} width={26} height={20} rx={6} fill="rgba(59, 130, 246, 0.2)" />
-                                        <text x={13} y={12} fill="#60a5fa" fontSize={11} fontWeight="bold" textAnchor="middle">
+                                        <rect x={0} y={-2} width={28} height={20} rx={5} fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth={0.8} />
+                                        <text x={14} y={12} fill="#60a5fa" fontSize={11} fontWeight="bold" textAnchor="middle" fontFamily="monospace">
                                             {site.siteCode}
                                         </text>
 
-                                        <text x={34} y={12} fill="#ffffff" fontSize={12} fontWeight="bold">
-                                            SITE: {site.siteCode}
+                                        <text x={36} y={12} fill="#ffffff" fontSize={12} fontWeight="bold" fontFamily="monospace">
+                                            {site.siteCode}
                                             {site.siteName && (
-                                                <tspan fill="#94a3b8" fontWeight="normal"> — {site.siteName}</tspan>
+                                                <tspan fill="#7dd3fc" fontWeight="normal" fontFamily="sans-serif"> — {site.siteName}</tspan>
                                             )}
                                         </text>
 
