@@ -37,7 +37,8 @@ import {
     Zap,
     GitMerge,
     X,
-    Edit3
+    Edit3,
+    LayoutGrid
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 
@@ -179,6 +180,37 @@ interface SiteContainerBox {
     l2Count: number;
     isCollapsed: boolean;
     idfs: IdfContainerBox[];
+    connectedSites?: string[];
+    clusterId?: string;
+    isClusterHub?: boolean;
+}
+
+export interface SiteClusterGroup {
+    id: string;
+    label: string;
+    hubSiteCode: string;
+    siteCodes: string[];
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    titleWidth: number;
+    isSingle?: boolean;
+}
+
+export interface InterSiteBridge {
+    id: string;
+    sourceSite: string;
+    targetSite: string;
+    path: string;
+    midX: number;
+    midY: number;
+    linkCount: number;
+    isRouted: boolean;
+    label: string;
+    status: string;
+    speed?: string;
+    links: any[];
 }
 
 interface IdfContainerBox {
@@ -229,6 +261,7 @@ export default function TopologyGraph({
     const [convergeTrunks, setConvergeTrunks] = useState(true); // Converge multi-neighbor trunks and MPLS into single physical links
     const [showVendorManaged, setShowVendorManaged] = useState(false); // Vendor Managed devices excluded from topology by default
     const [showUncrawledSites, setShowUncrawledSites] = useState(false); // Uncrawled Directory sites hidden by default
+    const [siteClusterMode, setSiteClusterMode] = useState<"topological" | "grid">("topological"); // Topological Connected Clusters vs Linear Grid
 
     // Bulk Node Governance Overrides
     const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
@@ -908,7 +941,7 @@ export default function TopologyGraph({
     }, [unifiedLinks, deviceLocationMap, collapsedSites, convergeTrunks]);
 
     // Dynamic layout positioning: Container Hierarchy (Site -> Floor/IDF -> Devices) or Hierarchical Flow
-    const { nodePositions, siteBoxes, idfBoxes, canvasSize, layoutDevices } = useMemo(() => {
+    const { nodePositions, siteBoxes, idfBoxes, siteClusters, interSiteBridges, canvasSize, layoutDevices } = useMemo(() => {
         const positions = new Map<string, { x: number; y: number }>();
         const siteContainers: SiteContainerBox[] = [];
         const idfContainers: IdfContainerBox[] = [];
@@ -977,6 +1010,8 @@ export default function TopologyGraph({
                 nodePositions: positions, 
                 siteBoxes: [], 
                 idfBoxes: [], 
+                siteClusters: [],
+                interSiteBridges: [],
                 canvasSize: { width, height },
                 layoutDevices: filteredDevices
             };
@@ -1018,80 +1053,92 @@ export default function TopologyGraph({
             }
         }
 
-        const MAX_ROW_WIDTH = 2500;
-        const SITE_GAP = 48;
-        const ROW_GAP = 54;
-        let currentSiteX = 40;
-        let currentSiteY = 40;
-        let maxRowHeight = 0;
-        let maxCanvasWidth = 0;
+        // 2. Pre-measure each Site's internal geometry and relative device coordinates
+        interface SiteTemplate {
+            siteCode: string;
+            siteName: string | null;
+            isCollapsed: boolean;
+            width: number;
+            height: number;
+            totalDevsInSite: number;
+            l3Count: number;
+            l2Count: number;
+            hasRouter: boolean;
+            isSeedSite: boolean;
+            idfs: Array<{
+                siteCode: string;
+                idfCode: string;
+                floorNum: number;
+                floorLabel: string;
+                relX: number;
+                relY: number;
+                width: number;
+                height: number;
+                deviceCount: number;
+                isCollapsed: boolean;
+            }>;
+            devOffsets: Array<{
+                dev: any;
+                nodeKey: string;
+                relX: number;
+                relY: number;
+            }>;
+        }
+
+        const siteTemplates = new Map<string, SiteTemplate>();
 
         for (const [siteCode, idfMap] of siteGroups.entries()) {
             const siteLookup = siteDirectory[siteCode];
             const siteName = siteLookup?.name || null;
             const isCollapsed = collapsedSites.has(siteCode);
 
-            // Tally devices, L3 vs L2 counts
             let totalDevsInSite = 0;
             let l3Count = 0;
             let l2Count = 0;
+            let hasRouter = false;
+            let isSeedSite = false;
             const allSiteDevs: any[] = [];
+
             for (const devs of idfMap.values()) {
                 totalDevsInSite += devs.length;
                 allSiteDevs.push(...devs);
                 for (const d of devs) {
                     if (getDeviceLayer(d).layer === "L3") l3Count++;
                     else l2Count++;
+                    if (d.role === "Router" || (d.role || "").toLowerCase().includes("router")) hasRouter = true;
+                    if (d.hopDistance === 0 || d.hop_distance === 0) isSeedSite = true;
                 }
             }
 
             if (isCollapsed) {
                 const siteWidth = 300;
                 const siteHeight = 74;
+                const devOffsets = allSiteDevs.map(d => ({
+                    dev: d,
+                    nodeKey: d._instanceNodeKey || d.canonicalHostname || d.hostname,
+                    relX: siteWidth / 2,
+                    relY: siteHeight / 2
+                }));
 
-                // Wrap to next row if needed
-                if (currentSiteX > 40 && (currentSiteX + siteWidth > MAX_ROW_WIDTH)) {
-                    currentSiteX = 40;
-                    currentSiteY += maxRowHeight + ROW_GAP;
-                    maxRowHeight = 0;
-                }
-
-                // Map all devices inside this collapsed site to its center
-                const centerX = currentSiteX + siteWidth / 2;
-                const centerY = currentSiteY + siteHeight / 2;
-                for (const d of allSiteDevs) {
-                    const nodeKey = d._instanceNodeKey || d.canonicalHostname || d.hostname;
-                    positions.set(nodeKey, { x: centerX, y: centerY });
-                    if (!positions.has(d.canonicalHostname || d.hostname)) {
-                        positions.set(d.canonicalHostname || d.hostname, { x: centerX, y: centerY });
-                    }
-                    layoutDevs.push(d);
-                }
-
-                siteContainers.push({
+                siteTemplates.set(siteCode, {
                     siteCode,
                     siteName,
-                    x: currentSiteX,
-                    y: currentSiteY,
+                    isCollapsed: true,
                     width: siteWidth,
                     height: siteHeight,
-                    deviceCount: totalDevsInSite,
+                    totalDevsInSite,
                     l3Count,
                     l2Count,
-                    isCollapsed: true,
-                    idfs: []
+                    hasRouter,
+                    isSeedSite,
+                    idfs: [],
+                    devOffsets
                 });
-
-                if (siteHeight > maxRowHeight) maxRowHeight = siteHeight;
-                currentSiteX += siteWidth + SITE_GAP;
-                if (currentSiteX > maxCanvasWidth) maxCanvasWidth = currentSiteX;
                 continue;
             }
 
-            // Expanded site layout
+            // Expanded site layout calculation
             if (stackingMode === "building") {
-                // --- VERTICAL BUILDING FLOOR STACKING (Building Cross-Section View) ---
-                // Sort IDFs by floor descending (Floor 3 -> Floor 2 -> Ground / MDF -> Basement)
                 const sortedFloors = Array.from(idfMap.keys()).map(idfCode => {
                     const { floorNum, floorLabel } = parseFloorFromIdf(idfCode);
                     const devs = idfMap.get(idfCode)!;
@@ -1101,7 +1148,6 @@ export default function TopologyGraph({
                     return a.idfCode.localeCompare(b.idfCode);
                 });
 
-                // Determine required building width based on the widest floor
                 let maxFloorDevs = 1;
                 for (const f of sortedFloors) {
                     if (f.devs.length > maxFloorDevs) maxFloorDevs = f.devs.length;
@@ -1111,21 +1157,13 @@ export default function TopologyGraph({
                 const siteWidth = Math.max(buildingInnerWidth + SITE_PAD_X * 2, 360);
                 const floorSlabWidth = siteWidth - SITE_PAD_X * 2;
 
-                // Wrap to next row if needed
-                if (currentSiteX > 40 && (currentSiteX + siteWidth > MAX_ROW_WIDTH)) {
-                    currentSiteX = 40;
-                    currentSiteY += maxRowHeight + ROW_GAP;
-                    maxRowHeight = 0;
-                }
-
                 const FLOOR_GAP = 18;
-                let currentFloorY = currentSiteY + SITE_PAD_TOP;
-                const siteIdfBoxes: IdfContainerBox[] = [];
+                let currentFloorRelY = SITE_PAD_TOP;
+                const siteIdfBoxes: any[] = [];
+                const devOffsets: any[] = [];
 
                 for (const { idfCode, floorNum, floorLabel, devs } of sortedFloors) {
                     const isIdfCollapsed = collapsedIdfs.has(`${siteCode}::${idfCode}`);
-
-                    // Sort devices: L3 routers/switches first, then L2 access
                     devs.sort((a, b) => {
                         const lA = getDeviceLayer(a).layer;
                         const lB = getDeviceLayer(b).layer;
@@ -1140,80 +1178,66 @@ export default function TopologyGraph({
                         ? 44 
                         : floorRows * CARD_HEIGHT + (floorRows - 1) * CARD_GAP_Y + IDF_PAD_TOP + IDF_PAD_BOTTOM;
 
-                    const idfBox: IdfContainerBox = {
+                    const idfBox = {
                         siteCode,
                         idfCode,
                         floorNum,
                         floorLabel,
-                        x: currentSiteX + SITE_PAD_X,
-                        y: currentFloorY,
+                        relX: SITE_PAD_X,
+                        relY: currentFloorRelY,
                         width: floorSlabWidth,
                         height: floorHeight,
                         deviceCount: devs.length,
                         isCollapsed: isIdfCollapsed
                     };
                     siteIdfBoxes.push(idfBox);
-                    idfContainers.push(idfBox);
 
                     if (isIdfCollapsed) {
-                        const centerX = idfBox.x + idfBox.width / 2;
-                        const centerY = idfBox.y + idfBox.height / 2;
+                        const centerX = idfBox.relX + idfBox.width / 2;
+                        const centerY = idfBox.relY + idfBox.height / 2;
                         for (const dev of devs) {
-                            const nodeKey = dev._instanceNodeKey || dev.canonicalHostname || dev.hostname;
-                            positions.set(nodeKey, {
-                                x: centerX,
-                                y: centerY
+                            devOffsets.push({
+                                dev,
+                                nodeKey: dev._instanceNodeKey || dev.canonicalHostname || dev.hostname,
+                                relX: centerX,
+                                relY: centerY
                             });
-                            if (!positions.has(dev.canonicalHostname || dev.hostname)) {
-                                positions.set(dev.canonicalHostname || dev.hostname, { x: centerX, y: centerY });
-                            }
-                            layoutDevs.push(dev);
                         }
                     } else {
                         devs.forEach((dev, idx) => {
                             const col = idx % floorCols;
                             const row = Math.floor(idx / floorCols);
-
-                            const nodeCenterX = idfBox.x + IDF_PAD_X + col * (CARD_WIDTH + CARD_GAP_X) + CARD_WIDTH / 2;
-                            const nodeCenterY = idfBox.y + IDF_PAD_TOP + row * (CARD_HEIGHT + CARD_GAP_Y) + CARD_HEIGHT / 2;
-
-                            const nodeKey = dev._instanceNodeKey || dev.canonicalHostname || dev.hostname;
-                            positions.set(nodeKey, {
-                                x: nodeCenterX,
-                                y: nodeCenterY
+                            const nodeCenterX = idfBox.relX + IDF_PAD_X + col * (CARD_WIDTH + CARD_GAP_X) + CARD_WIDTH / 2;
+                            const nodeCenterY = idfBox.relY + IDF_PAD_TOP + row * (CARD_HEIGHT + CARD_GAP_Y) + CARD_HEIGHT / 2;
+                            devOffsets.push({
+                                dev,
+                                nodeKey: dev._instanceNodeKey || dev.canonicalHostname || dev.hostname,
+                                relX: nodeCenterX,
+                                relY: nodeCenterY
                             });
-                            if (!positions.has(dev.canonicalHostname || dev.hostname)) {
-                                positions.set(dev.canonicalHostname || dev.hostname, { x: nodeCenterX, y: nodeCenterY });
-                            }
-                            layoutDevs.push(dev);
                         });
                     }
 
-                    currentFloorY += floorHeight + FLOOR_GAP;
+                    currentFloorRelY += floorHeight + FLOOR_GAP;
                 }
 
-                const siteHeight = currentFloorY - currentSiteY - FLOOR_GAP + SITE_PAD_BOTTOM;
-
-                siteContainers.push({
+                const siteHeight = currentFloorRelY - FLOOR_GAP + SITE_PAD_BOTTOM;
+                siteTemplates.set(siteCode, {
                     siteCode,
                     siteName,
-                    x: currentSiteX,
-                    y: currentSiteY,
+                    isCollapsed: false,
                     width: siteWidth,
                     height: siteHeight,
-                    deviceCount: totalDevsInSite,
+                    totalDevsInSite,
                     l3Count,
                     l2Count,
-                    isCollapsed: false,
-                    idfs: siteIdfBoxes
+                    hasRouter,
+                    isSeedSite,
+                    idfs: siteIdfBoxes,
+                    devOffsets
                 });
-
-                if (siteHeight > maxRowHeight) maxRowHeight = siteHeight;
-                currentSiteX += siteWidth + SITE_GAP;
-                if (currentSiteX > maxCanvasWidth) maxCanvasWidth = currentSiteX;
-
             } else {
-                // --- HORIZONTAL CLOSETS VIEW ---
+                // Horizontal Closets
                 const sortedIdfs = Array.from(idfMap.keys()).sort((a, b) => {
                     if (a === "MDF") return -1;
                     if (b === "MDF") return 1;
@@ -1222,7 +1246,7 @@ export default function TopologyGraph({
 
                 let preliminarySiteWidth = SITE_PAD_X;
                 let maxIdfHeightInSite = 0;
-                const computedIdfDims: Array<{ idfCode: string; floorNum: number; floorLabel: string; devs: any[]; width: number; height: number; cols: number; rows: number; isCollapsed: boolean }> = [];
+                const computedIdfDims: any[] = [];
 
                 for (const idfCode of sortedIdfs) {
                     const devs = idfMap.get(idfCode)!;
@@ -1261,102 +1285,495 @@ export default function TopologyGraph({
 
                 const siteWidth = Math.max(preliminarySiteWidth - 24 + SITE_PAD_X, 260);
                 const siteHeight = maxIdfHeightInSite + SITE_PAD_TOP + SITE_PAD_BOTTOM;
-
-                // Wrap to next row if needed
-                if (currentSiteX > 40 && (currentSiteX + siteWidth > MAX_ROW_WIDTH)) {
-                    currentSiteX = 40;
-                    currentSiteY += maxRowHeight + ROW_GAP;
-                    maxRowHeight = 0;
-                }
-
-                let currentIdfX = currentSiteX + SITE_PAD_X;
-                const siteIdfBoxes: IdfContainerBox[] = [];
+                let currentIdfRelX = SITE_PAD_X;
+                const siteIdfBoxes: any[] = [];
+                const devOffsets: any[] = [];
 
                 for (const { idfCode, floorNum, floorLabel, devs, width: idfWidth, cols, isCollapsed: isIdfCollapsed } of computedIdfDims) {
-                    const idfBox: IdfContainerBox = {
+                    const idfBox = {
                         siteCode,
                         idfCode,
                         floorNum,
                         floorLabel,
-                        x: currentIdfX,
-                        y: currentSiteY + SITE_PAD_TOP,
+                        relX: currentIdfRelX,
+                        relY: SITE_PAD_TOP,
                         width: idfWidth,
                         height: isIdfCollapsed ? 52 : maxIdfHeightInSite,
                         deviceCount: devs.length,
                         isCollapsed: isIdfCollapsed
                     };
                     siteIdfBoxes.push(idfBox);
-                    idfContainers.push(idfBox);
 
                     if (isIdfCollapsed) {
-                        const centerX = idfBox.x + idfBox.width / 2;
-                        const centerY = idfBox.y + idfBox.height / 2;
+                        const centerX = idfBox.relX + idfBox.width / 2;
+                        const centerY = idfBox.relY + idfBox.height / 2;
                         for (const dev of devs) {
-                            const nodeKey = dev._instanceNodeKey || dev.canonicalHostname || dev.hostname;
-                            positions.set(nodeKey, {
-                                x: centerX,
-                                y: centerY
+                            devOffsets.push({
+                                dev,
+                                nodeKey: dev._instanceNodeKey || dev.canonicalHostname || dev.hostname,
+                                relX: centerX,
+                                relY: centerY
                             });
-                            if (!positions.has(dev.canonicalHostname || dev.hostname)) {
-                                positions.set(dev.canonicalHostname || dev.hostname, { x: centerX, y: centerY });
-                            }
-                            layoutDevs.push(dev);
                         }
                     } else {
                         devs.forEach((dev, idx) => {
                             const col = idx % cols;
                             const row = Math.floor(idx / cols);
-
-                            const nodeCenterX = idfBox.x + IDF_PAD_X + col * (CARD_WIDTH + CARD_GAP_X) + CARD_WIDTH / 2;
-                            const nodeCenterY = idfBox.y + IDF_PAD_TOP + row * (CARD_HEIGHT + CARD_GAP_Y) + CARD_HEIGHT / 2;
-
-                            const nodeKey = dev._instanceNodeKey || dev.canonicalHostname || dev.hostname;
-                            positions.set(nodeKey, {
-                                x: nodeCenterX,
-                                y: nodeCenterY
+                            const nodeCenterX = idfBox.relX + IDF_PAD_X + col * (CARD_WIDTH + CARD_GAP_X) + CARD_WIDTH / 2;
+                            const nodeCenterY = idfBox.relY + IDF_PAD_TOP + row * (CARD_HEIGHT + CARD_GAP_Y) + CARD_HEIGHT / 2;
+                            devOffsets.push({
+                                dev,
+                                nodeKey: dev._instanceNodeKey || dev.canonicalHostname || dev.hostname,
+                                relX: nodeCenterX,
+                                relY: nodeCenterY
                             });
-                            if (!positions.has(dev.canonicalHostname || dev.hostname)) {
-                                positions.set(dev.canonicalHostname || dev.hostname, { x: nodeCenterX, y: nodeCenterY });
-                            }
-                            layoutDevs.push(dev);
                         });
                     }
 
-                    currentIdfX += idfWidth + 24;
+                    currentIdfRelX += idfWidth + 24;
                 }
 
-                siteContainers.push({
+                siteTemplates.set(siteCode, {
                     siteCode,
                     siteName,
-                    x: currentSiteX,
-                    y: currentSiteY,
+                    isCollapsed: false,
                     width: siteWidth,
                     height: siteHeight,
-                    deviceCount: totalDevsInSite,
+                    totalDevsInSite,
                     l3Count,
                     l2Count,
-                    isCollapsed: false,
-                    idfs: siteIdfBoxes
+                    hasRouter,
+                    isSeedSite,
+                    idfs: siteIdfBoxes,
+                    devOffsets
                 });
-
-                if (siteHeight > maxRowHeight) maxRowHeight = siteHeight;
-                currentSiteX += siteWidth + SITE_GAP;
-                if (currentSiteX > maxCanvasWidth) maxCanvasWidth = currentSiteX;
             }
         }
 
-        // Layout uncrawled directory sites if toggled ON
+        // 3. Build Inter-Site Connectivity Adjacency & Edges
+        const interSiteAdj = new Map<string, Set<string>>();
+        const interSiteEdges = new Map<string, {
+            id: string;
+            siteA: string;
+            siteB: string;
+            links: any[];
+            isRouted: boolean;
+            speed?: string;
+            status: string;
+        }>();
+
+        for (const link of unifiedLinks) {
+            const srcLoc = deviceLocationMap.get(link.sourceDevice);
+            const tgtLoc = deviceLocationMap.get(link.targetDevice);
+            if (
+                srcLoc && tgtLoc &&
+                srcLoc.site && tgtLoc.site &&
+                srcLoc.site !== tgtLoc.site &&
+                siteTemplates.has(srcLoc.site) &&
+                siteTemplates.has(tgtLoc.site)
+            ) {
+                const sA = srcLoc.site;
+                const sB = tgtLoc.site;
+                if (!interSiteAdj.has(sA)) interSiteAdj.set(sA, new Set());
+                if (!interSiteAdj.has(sB)) interSiteAdj.set(sB, new Set());
+                interSiteAdj.get(sA)!.add(sB);
+                interSiteAdj.get(sB)!.add(sA);
+
+                const edgeKey = [sA, sB].sort().join(" <--> ");
+                const isRouted = link.linkType === "L3_ROUTED" || Boolean(link.isRouted);
+                if (!interSiteEdges.has(edgeKey)) {
+                    interSiteEdges.set(edgeKey, {
+                        id: `inter-site-${edgeKey}`,
+                        siteA: sA,
+                        siteB: sB,
+                        links: [link],
+                        isRouted,
+                        speed: link.speed,
+                        status: link.status || "UP"
+                    });
+                } else {
+                    const ed = interSiteEdges.get(edgeKey)!;
+                    ed.links.push(link);
+                    if (isRouted) ed.isRouted = true;
+                    if (link.status === "DOWN") ed.status = "DOWN";
+                    else if (link.status === "UNVERIFIED" && ed.status !== "DOWN") ed.status = "UNVERIFIED";
+                }
+            }
+        }
+
+        // 4. Cluster Formation & Canvas Placement
+        const clusters: SiteClusterGroup[] = [];
+        let maxCanvasWidth = 0;
+        let maxCanvasHeight = 0;
+
+        if (siteClusterMode === "topological") {
+            // Topological Site Clustering: Form distinct clusters for connected campuses
+            const visited = new Set<string>();
+            const sitePlacementsInCluster = new Map<string, { x: number; y: number }>();
+
+            // Prioritize starting from Core / Seed Hub sites
+            const siteCodesSorted = Array.from(siteTemplates.keys()).sort((a, b) => {
+                const tA = siteTemplates.get(a)!;
+                const tB = siteTemplates.get(b)!;
+                const degA = interSiteAdj.get(a)?.size || 0;
+                const degB = interSiteAdj.get(b)?.size || 0;
+                const scoreA = degA * 20 + (tA.isSeedSite ? 50 : 0) + (tA.hasRouter ? 20 : 0) + tA.totalDevsInSite;
+                const scoreB = degB * 20 + (tB.isSeedSite ? 50 : 0) + (tB.hasRouter ? 20 : 0) + tB.totalDevsInSite;
+                return scoreB - scoreA;
+            });
+
+            for (const sCode of siteCodesSorted) {
+                if (visited.has(sCode)) continue;
+                const component: string[] = [];
+                const queue = [sCode];
+                visited.add(sCode);
+
+                while (queue.length > 0) {
+                    const curr = queue.shift()!;
+                    component.push(curr);
+                    const neighbors = interSiteAdj.get(curr);
+                    if (neighbors) {
+                        for (const n of neighbors) {
+                            if (!visited.has(n)) {
+                                visited.add(n);
+                                queue.push(n);
+                            }
+                        }
+                    }
+                }
+
+                // Identify the most authoritative Hub of this component
+                let bestHub = component[0];
+                let bestScore = -1;
+                for (const c of component) {
+                    const t = siteTemplates.get(c)!;
+                    const deg = interSiteAdj.get(c)?.size || 0;
+                    const score = deg * 20 + (t.isSeedSite ? 50 : 0) + (t.hasRouter ? 20 : 0) + t.totalDevsInSite;
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestHub = c;
+                    }
+                }
+
+                const isSingle = component.length === 1;
+                const hubTemplate = siteTemplates.get(bestHub)!;
+                const hubName = hubTemplate.siteName || bestHub;
+                const label = isSingle
+                    ? `${bestHub} (${hubName})`
+                    : `Campus Cluster: ${bestHub} (${component.length} Connected Sites)`;
+                const titleWidth = Math.min(Math.max(label.length * 8 + 36, 170), 400);
+
+                if (isSingle) {
+                    sitePlacementsInCluster.set(bestHub, { x: 0, y: 0 });
+                    clusters.push({
+                        id: `cluster-${bestHub}`,
+                        label,
+                        hubSiteCode: bestHub,
+                        siteCodes: component,
+                        x: 0,
+                        y: 0,
+                        width: hubTemplate.width,
+                        height: hubTemplate.height,
+                        titleWidth,
+                        isSingle: true
+                    });
+                } else if (component.length === 2) {
+                    // 2-site pair (Hub <-> Satellite)
+                    const otherSite = component.find(c => c !== bestHub)!;
+                    const otherT = siteTemplates.get(otherSite)!;
+                    const CORRIDOR_X = 140;
+                    const maxH = Math.max(hubTemplate.height, otherT.height);
+
+                    sitePlacementsInCluster.set(bestHub, {
+                        x: 0,
+                        y: (maxH - hubTemplate.height) / 2
+                    });
+                    sitePlacementsInCluster.set(otherSite, {
+                        x: hubTemplate.width + CORRIDOR_X,
+                        y: (maxH - otherT.height) / 2
+                    });
+
+                    clusters.push({
+                        id: `cluster-${bestHub}`,
+                        label,
+                        hubSiteCode: bestHub,
+                        siteCodes: component,
+                        x: 0,
+                        y: 0,
+                        width: hubTemplate.width + CORRIDOR_X + otherT.width,
+                        height: maxH,
+                        titleWidth,
+                        isSingle: false
+                    });
+                } else {
+                    // 3+ sites: Hub sits prominently at top center; satellites branch gracefully in tier below
+                    const hubChildren = component.filter(c => c !== bestHub);
+                    hubChildren.sort((a, b) => {
+                        const aDirect = interSiteAdj.get(bestHub)?.has(a) ? 1 : 0;
+                        const bDirect = interSiteAdj.get(bestHub)?.has(b) ? 1 : 0;
+                        return bDirect - aDirect;
+                    });
+
+                    const SPOKE_GAP_X = 56;
+                    const CORRIDOR_Y = 130;
+
+                    let totalSpokesWidth = 0;
+                    let maxSpokeHeight = 0;
+                    for (let i = 0; i < hubChildren.length; i++) {
+                        const spT = siteTemplates.get(hubChildren[i])!;
+                        totalSpokesWidth += spT.width;
+                        if (i < hubChildren.length - 1) totalSpokesWidth += SPOKE_GAP_X;
+                        if (spT.height > maxSpokeHeight) maxSpokeHeight = spT.height;
+                    }
+
+                    const clusterW = Math.max(hubTemplate.width, totalSpokesWidth);
+                    const hubX = (clusterW - hubTemplate.width) / 2;
+                    sitePlacementsInCluster.set(bestHub, { x: hubX, y: 0 });
+
+                    let curSpokeX = (clusterW - totalSpokesWidth) / 2;
+                    const spokeY = hubTemplate.height + CORRIDOR_Y;
+
+                    for (const spCode of hubChildren) {
+                        const spT = siteTemplates.get(spCode)!;
+                        sitePlacementsInCluster.set(spCode, { x: curSpokeX, y: spokeY });
+                        curSpokeX += spT.width + SPOKE_GAP_X;
+                    }
+
+                    clusters.push({
+                        id: `cluster-${bestHub}`,
+                        label,
+                        hubSiteCode: bestHub,
+                        siteCodes: component,
+                        x: 0,
+                        y: 0,
+                        width: clusterW,
+                        height: hubTemplate.height + CORRIDOR_Y + maxSpokeHeight,
+                        titleWidth,
+                        isSingle: false
+                    });
+                }
+            }
+
+            // Canvas placement: arrange multi-site clusters first, then standalone / isolated sites
+            const MAX_CANVAS_WIDTH = 3400;
+            const CLUSTER_GAP_X = 90;
+            const CLUSTER_GAP_Y = 110;
+
+            const multiClusters = clusters.filter(c => !c.isSingle);
+            const singleClusters = clusters.filter(c => c.isSingle);
+
+            let curClustX = 60;
+            let curClustY = 60;
+            let maxRowH = 0;
+
+            for (const cl of multiClusters) {
+                if (curClustX > 60 && curClustX + cl.width > MAX_CANVAS_WIDTH) {
+                    curClustX = 60;
+                    curClustY += maxRowH + CLUSTER_GAP_Y;
+                    maxRowH = 0;
+                }
+
+                cl.x = curClustX;
+                cl.y = curClustY;
+
+                for (const sCode of cl.siteCodes) {
+                    const p = sitePlacementsInCluster.get(sCode)!;
+                    const sT = siteTemplates.get(sCode)!;
+                    const absX = cl.x + p.x;
+                    const absY = cl.y + p.y;
+
+                    siteContainers.push({
+                        siteCode: sCode,
+                        siteName: sT.siteName,
+                        x: absX,
+                        y: absY,
+                        width: sT.width,
+                        height: sT.height,
+                        deviceCount: sT.totalDevsInSite,
+                        l3Count: sT.l3Count,
+                        l2Count: sT.l2Count,
+                        isCollapsed: sT.isCollapsed,
+                        idfs: sT.idfs.map(idf => ({
+                            ...idf,
+                            x: absX + idf.relX,
+                            y: absY + idf.relY
+                        })),
+                        connectedSites: Array.from(interSiteAdj.get(sCode) || []),
+                        clusterId: cl.id,
+                        isClusterHub: sCode === cl.hubSiteCode
+                    });
+
+                    for (const idf of sT.idfs) {
+                        idfContainers.push({
+                            ...idf,
+                            x: absX + idf.relX,
+                            y: absY + idf.relY
+                        });
+                    }
+
+                    for (const d of sT.devOffsets) {
+                        const nX = absX + d.relX;
+                        const nY = absY + d.relY;
+                        positions.set(d.nodeKey, { x: nX, y: nY });
+                        if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                            positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                        }
+                        layoutDevs.push(d.dev);
+                    }
+                }
+
+                if (cl.height > maxRowH) maxRowH = cl.height;
+                curClustX += cl.width + CLUSTER_GAP_X;
+                if (curClustX > maxCanvasWidth) maxCanvasWidth = curClustX;
+            }
+
+            // Standalone single sites placed on shelf below
+            let curSingleX = 60;
+            let curSingleY = multiClusters.length > 0 ? (curClustY + maxRowH + 100) : 60;
+            let maxSingleH = 0;
+
+            for (const cl of singleClusters) {
+                const sCode = cl.hubSiteCode;
+                const sT = siteTemplates.get(sCode)!;
+
+                if (curSingleX > 60 && curSingleX + sT.width > MAX_CANVAS_WIDTH) {
+                    curSingleX = 60;
+                    curSingleY += maxSingleH + 60;
+                    maxSingleH = 0;
+                }
+
+                cl.x = curSingleX;
+                cl.y = curSingleY;
+                const absX = cl.x;
+                const absY = cl.y;
+
+                siteContainers.push({
+                    siteCode: sCode,
+                    siteName: sT.siteName,
+                    x: absX,
+                    y: absY,
+                    width: sT.width,
+                    height: sT.height,
+                    deviceCount: sT.totalDevsInSite,
+                    l3Count: sT.l3Count,
+                    l2Count: sT.l2Count,
+                    isCollapsed: sT.isCollapsed,
+                    idfs: sT.idfs.map(idf => ({
+                        ...idf,
+                        x: absX + idf.relX,
+                        y: absY + idf.relY
+                    })),
+                    connectedSites: [],
+                    clusterId: cl.id,
+                    isClusterHub: true
+                });
+
+                for (const idf of sT.idfs) {
+                    idfContainers.push({
+                        ...idf,
+                        x: absX + idf.relX,
+                        y: absY + idf.relY
+                    });
+                }
+
+                for (const d of sT.devOffsets) {
+                    const nX = absX + d.relX;
+                    const nY = absY + d.relY;
+                    positions.set(d.nodeKey, { x: nX, y: nY });
+                    if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                        positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                    }
+                    layoutDevs.push(d.dev);
+                }
+
+                if (sT.height > maxSingleH) maxSingleH = sT.height;
+                curSingleX += sT.width + 48;
+                if (curSingleX > maxCanvasWidth) maxCanvasWidth = curSingleX;
+            }
+
+            maxCanvasHeight = (singleClusters.length > 0 ? (curSingleY + maxSingleH) : (curClustY + maxRowH));
+
+        } else {
+            // Classic Linear Grid Mode
+            const MAX_ROW_WIDTH = 2500;
+            const SITE_GAP = 48;
+            const ROW_GAP = 54;
+            let currentSiteX = 40;
+            let currentSiteY = 40;
+            let maxRowHeight = 0;
+
+            for (const [siteCode, sT] of siteTemplates.entries()) {
+                if (currentSiteX > 40 && (currentSiteX + sT.width > MAX_ROW_WIDTH)) {
+                    currentSiteX = 40;
+                    currentSiteY += maxRowHeight + ROW_GAP;
+                    maxRowHeight = 0;
+                }
+
+                const absX = currentSiteX;
+                const absY = currentSiteY;
+
+                siteContainers.push({
+                    siteCode,
+                    siteName: sT.siteName,
+                    x: absX,
+                    y: absY,
+                    width: sT.width,
+                    height: sT.height,
+                    deviceCount: sT.totalDevsInSite,
+                    l3Count: sT.l3Count,
+                    l2Count: sT.l2Count,
+                    isCollapsed: sT.isCollapsed,
+                    idfs: sT.idfs.map(idf => ({
+                        ...idf,
+                        x: absX + idf.relX,
+                        y: absY + idf.relY
+                    })),
+                    connectedSites: Array.from(interSiteAdj.get(siteCode) || []),
+                    clusterId: `grid-${siteCode}`,
+                    isClusterHub: false
+                });
+
+                for (const idf of sT.idfs) {
+                    idfContainers.push({
+                        ...idf,
+                        x: absX + idf.relX,
+                        y: absY + idf.relY
+                    });
+                }
+
+                for (const d of sT.devOffsets) {
+                    const nX = absX + d.relX;
+                    const nY = absY + d.relY;
+                    positions.set(d.nodeKey, { x: nX, y: nY });
+                    if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                        positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                    }
+                    layoutDevs.push(d.dev);
+                }
+
+                if (sT.height > maxRowHeight) maxRowHeight = sT.height;
+                currentSiteX += sT.width + SITE_GAP;
+                if (currentSiteX > maxCanvasWidth) maxCanvasWidth = currentSiteX;
+            }
+            maxCanvasHeight = currentSiteY + maxRowHeight;
+        }
+
+        // 5. Layout uncrawled directory sites if toggled ON
         if (showUncrawledSites) {
             const visibleUncrawled = uncrawledSiteCodes.filter(c => siteFilter === "ALL" || siteFilter === c);
+            const MAX_ROW_WIDTH = 3200;
+            let currentSiteX = 60;
+            let currentSiteY = maxCanvasHeight + 90;
+            let maxRowHeight = 0;
+
             for (const siteCode of visibleUncrawled) {
                 const siteLookup = siteDirectory[siteCode];
                 const siteWidth = 300;
                 const siteHeight = 74;
 
-                // Wrap to next row if needed
-                if (currentSiteX > 40 && (currentSiteX + siteWidth > MAX_ROW_WIDTH)) {
-                    currentSiteX = 40;
-                    currentSiteY += maxRowHeight + ROW_GAP;
+                if (currentSiteX > 60 && (currentSiteX + siteWidth > MAX_ROW_WIDTH)) {
+                    currentSiteX = 60;
+                    currentSiteY += maxRowHeight + 50;
                     maxRowHeight = 0;
                 }
 
@@ -1379,22 +1796,104 @@ export default function TopologyGraph({
                 });
 
                 if (siteHeight > maxRowHeight) maxRowHeight = siteHeight;
-                currentSiteX += siteWidth + SITE_GAP;
+                currentSiteX += siteWidth + 40;
                 if (currentSiteX > maxCanvasWidth) maxCanvasWidth = currentSiteX;
             }
+            maxCanvasHeight = currentSiteY + maxRowHeight;
         }
 
-        const totalWidth = Math.max(maxCanvasWidth + 60, 1400);
-        const totalHeight = Math.max(currentSiteY + maxRowHeight + 100, 750);
+        // 6. Generate Inter-Site Highway Bridges between connected sites
+        const bridges: InterSiteBridge[] = [];
+        const siteBoxMap = new Map<string, SiteContainerBox>();
+        for (const sb of siteContainers) {
+            siteBoxMap.set(sb.siteCode, sb);
+        }
+
+        for (const edge of interSiteEdges.values()) {
+            const boxA = siteBoxMap.get(edge.siteA);
+            const boxB = siteBoxMap.get(edge.siteB);
+            if (!boxA || !boxB) continue;
+
+            let p1: { x: number; y: number };
+            let p2: { x: number; y: number };
+            let pathD: string;
+
+            const cAx = boxA.x + boxA.width / 2;
+            const cAy = boxA.y + boxA.height / 2;
+            const cBx = boxB.x + boxB.width / 2;
+            const cBy = boxB.y + boxB.height / 2;
+
+            const dx = Math.abs(cAx - cBx);
+            const dy = Math.abs(cAy - cBy);
+
+            if (dy >= dx * 0.7) {
+                // Vertical connection between site containers
+                if (cAy < cBy) {
+                    p1 = { x: cAx, y: boxA.y + boxA.height };
+                    p2 = { x: cBx, y: boxB.y };
+                } else {
+                    p1 = { x: cAx, y: boxA.y };
+                    p2 = { x: cBx, y: boxB.y + boxB.height };
+                }
+                const midY = (p1.y + p2.y) / 2;
+                pathD = `M ${p1.x} ${p1.y} C ${p1.x} ${midY}, ${p2.x} ${midY}, ${p2.x} ${p2.y}`;
+            } else {
+                // Horizontal connection between site containers
+                if (cAx < cBx) {
+                    p1 = { x: boxA.x + boxA.width, y: cAy };
+                    p2 = { x: boxB.x, y: cBy };
+                } else {
+                    p1 = { x: boxA.x, y: cAy };
+                    p2 = { x: boxB.x + boxB.width, y: cBy };
+                }
+                const midX = (p1.x + p2.x) / 2;
+                pathD = `M ${p1.x} ${p1.y} C ${midX} ${p1.y}, ${midX} ${p2.y}, ${p2.x} ${p2.y}`;
+            }
+
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            const label = edge.isRouted
+                ? "WAN (L3 Routed)"
+                : edge.links.length > 1
+                ? `Trunk (${edge.links.length} Links)`
+                : "Site Trunk";
+
+            bridges.push({
+                id: edge.id,
+                sourceSite: edge.siteA,
+                targetSite: edge.siteB,
+                path: pathD,
+                midX,
+                midY,
+                linkCount: edge.links.length,
+                isRouted: edge.isRouted,
+                label,
+                status: edge.status,
+                speed: edge.speed,
+                links: edge.links
+            });
+        }
+
+        let maxX = maxCanvasWidth + 100;
+        let maxY = maxCanvasHeight + 120;
+        for (const sb of siteContainers) {
+            if (sb.x + sb.width + 100 > maxX) maxX = sb.x + sb.width + 100;
+            if (sb.y + sb.height + 120 > maxY) maxY = sb.y + sb.height + 120;
+        }
+
+        const totalWidth = Math.max(maxX, 1600);
+        const totalHeight = Math.max(maxY, 850);
 
         return {
             nodePositions: positions,
             siteBoxes: siteContainers,
             idfBoxes: idfContainers,
+            siteClusters: clusters,
+            interSiteBridges: bridges,
             canvasSize: { width: totalWidth, height: totalHeight },
             layoutDevices: layoutDevs
         };
-    }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing, showUncrawledSites, uncrawledSiteCodes, siteFilter]);
+    }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing, showUncrawledSites, uncrawledSiteCodes, siteFilter, siteClusterMode, unifiedLinks, deviceLocationMap]);
 
     // Multi-neighbor trunk & MPLS convergence model
     // Converges multiple links that share the same physical trunk/interface into a single stem before connecting to the switch/site
@@ -1762,6 +2261,36 @@ export default function TopologyGraph({
                             >
                                 <Box className="w-3 h-3" />
                                 Closets
+                            </button>
+                        </div>
+
+                        {/* Cluster Formation Toggle: Connected Clusters vs Linear Grid */}
+                        <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+                            <button
+                                type="button"
+                                onClick={() => setSiteClusterMode("topological")}
+                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
+                                    siteClusterMode === "topological"
+                                        ? "bg-sky-600 text-white shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                                title="Connected Clusters (Topology-driven constellation grouping hub sites and connected satellite campuses)"
+                            >
+                                <Network className="w-3 h-3" />
+                                Connected Clusters
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSiteClusterMode("grid")}
+                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
+                                    siteClusterMode === "grid"
+                                        ? "bg-sky-600 text-white shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                                title="Linear Grid (Sites arranged sequentially in row-wrapped grid)"
+                            >
+                                <LayoutGrid className="w-3 h-3" />
+                                Linear Grid
                             </button>
                         </div>
 
@@ -2538,6 +3067,151 @@ export default function TopologyGraph({
                     <rect width="100%" height="100%" fill="url(#grid-pattern)" />
 
                     <g ref={viewportRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+                        {/* 1A. RENDER MULTI-SITE CLUSTER ENCLOSURES (Campus / Hub Constellations) */}
+                        {layoutMode === "container" && siteClusterMode === "topological" && siteClusters.filter(c => !c.isSingle).map((cluster) => {
+                            return (
+                                <g key={`cluster-${cluster.id}`} className="transition-opacity duration-300 pointer-events-none">
+                                    {/* Soft ambient glassmorphism enclosure rect */}
+                                    <rect
+                                        x={cluster.x}
+                                        y={cluster.y}
+                                        width={cluster.width}
+                                        height={cluster.height}
+                                        rx={24}
+                                        fill="rgba(30, 41, 59, 0.22)"
+                                        stroke="rgba(56, 189, 248, 0.28)"
+                                        strokeWidth={1.5}
+                                        strokeDasharray="8,6"
+                                    />
+                                    {/* Cluster Header Pill Badge */}
+                                    <g transform={`translate(${cluster.x + 20}, ${cluster.y - 14})`}>
+                                        <rect
+                                            x={0}
+                                            y={0}
+                                            width={cluster.titleWidth}
+                                            height={26}
+                                            rx={7}
+                                            fill="rgba(15, 23, 42, 0.95)"
+                                            stroke="#38bdf8"
+                                            strokeWidth={1}
+                                            filter="drop-shadow(0 2px 8px rgba(0,0,0,0.5))"
+                                        />
+                                        <text
+                                            x={14}
+                                            y={17}
+                                            fill="#38bdf8"
+                                            fontSize={11}
+                                            fontWeight="bold"
+                                            fontFamily="sans-serif"
+                                            letterSpacing="0.3"
+                                        >
+                                            🌐 Campus Cluster: Hub {cluster.hubSiteCode} ({cluster.siteCodes.length} Sites)
+                                        </text>
+                                    </g>
+                                </g>
+                            );
+                        })}
+
+                        {/* 1B. RENDER INTER-SITE BRIDGES (Highways Connecting Adjacent Sites) */}
+                        {layoutMode === "container" && interSiteBridges.map((bridge) => {
+                            const isSelected = selectedDevice && (
+                                deviceLocationMap.get(selectedDevice.canonicalHostname || getCanonicalHostname(selectedDevice.hostname))?.site === bridge.sourceSite ||
+                                deviceLocationMap.get(selectedDevice.canonicalHostname || getCanonicalHostname(selectedDevice.hostname))?.site === bridge.targetSite
+                            );
+                            const isDown = bridge.status === "DOWN";
+                            const isUnverified = bridge.status === "UNVERIFIED";
+                            const strokeColor = isDown 
+                                ? "#ef4444" 
+                                : isUnverified 
+                                ? "#f59e0b" 
+                                : bridge.isRouted 
+                                ? "#06b6d4" 
+                                : "#10b981";
+
+                            const badgeFill = bridge.isRouted ? "rgba(6, 182, 212, 0.2)" : "rgba(16, 185, 129, 0.2)";
+                            const badgeBorder = bridge.isRouted ? "#06b6d4" : "#10b981";
+                            const badgeTextColor = bridge.isRouted ? "#67e8f9" : "#6ee7b7";
+
+                            return (
+                                <g
+                                    key={bridge.id}
+                                    className="cursor-pointer group"
+                                    onMouseEnter={() => setHoveredLink({
+                                        id: bridge.id,
+                                        isPortChannel: bridge.links.length > 1,
+                                        channelName: `${bridge.sourceSite} ⇄ ${bridge.targetSite} Inter-Site Highway (${bridge.label})`,
+                                        links: bridge.links,
+                                        status: bridge.status
+                                    })}
+                                    onMouseLeave={() => setHoveredLink(null)}
+                                >
+                                    {/* Wider invisible hover target */}
+                                    <path
+                                        d={bridge.path}
+                                        fill="none"
+                                        stroke="transparent"
+                                        strokeWidth={24}
+                                    />
+                                    {/* Ambient Glow */}
+                                    <path
+                                        d={bridge.path}
+                                        fill="none"
+                                        stroke={strokeColor}
+                                        strokeWidth={6}
+                                        opacity={0.3}
+                                        className="group-hover:opacity-60 transition"
+                                    />
+                                    {/* Primary Bridge Highway Line */}
+                                    <path
+                                        d={bridge.path}
+                                        fill="none"
+                                        stroke={strokeColor}
+                                        strokeWidth={bridge.isRouted ? 3 : 3.5}
+                                        strokeDasharray={bridge.isRouted ? "6,4" : undefined}
+                                        className={isSelected ? "animate-pulse" : ""}
+                                    />
+
+                                    {/* Midpoint Badge Pill */}
+                                    <g transform={`translate(${bridge.midX}, ${bridge.midY})`}>
+                                        <g transform="translate(-55, -11)">
+                                            <rect
+                                                x={0}
+                                                y={0}
+                                                width={110}
+                                                height={22}
+                                                rx={6}
+                                                fill="rgba(15, 23, 42, 0.95)"
+                                                stroke={badgeBorder}
+                                                strokeWidth={1}
+                                                filter="drop-shadow(0 2px 6px rgba(0,0,0,0.6))"
+                                                className="group-hover:scale-105 transition-transform"
+                                            />
+                                            <rect
+                                                x={2}
+                                                y={2}
+                                                width={106}
+                                                height={18}
+                                                rx={4}
+                                                fill={badgeFill}
+                                            />
+                                            <text
+                                                x={55}
+                                                y={14}
+                                                fill={badgeTextColor}
+                                                fontSize={9}
+                                                fontWeight="bold"
+                                                fontFamily="monospace"
+                                                textAnchor="middle"
+                                                letterSpacing="0.2"
+                                            >
+                                                {bridge.label}
+                                            </text>
+                                        </g>
+                                    </g>
+                                </g>
+                            );
+                        })}
+
                         {layoutMode === "container" && siteBoxes.map((site) => {
                             if (site.isUncrawled) {
                                 return (
@@ -2640,6 +3314,9 @@ export default function TopologyGraph({
                                         {/* Site Code (Prominent emphasis, no 'SITE:' prefix) */}
                                         <text x={site.x + 14} y={site.y + 22} fill="#ffffff" fontSize={13} fontWeight="bold" fontFamily="monospace">
                                             {site.siteCode}
+                                            {site.isClusterHub && (
+                                                <tspan fill="#f59e0b" fontSize={10} fontWeight="bold"> ★ HUB</tspan>
+                                            )}
                                         </text>
 
                                         {/* Site Name (Appears below Site Code with smaller styling) */}
@@ -2697,6 +3374,7 @@ export default function TopologyGraph({
                                         {/* Switch Census */}
                                         <text x={site.x + 14} y={site.y + (site.siteName ? 57 : 46)} fill="#94a3b8" fontSize={9} fontFamily="monospace">
                                             {site.deviceCount} Switches ({site.l3Count} Core/L3 • {site.l2Count} Access/L2)
+                                            {site.connectedSites && site.connectedSites.length > 0 && ` • ⇄ Peers: ${site.connectedSites.join(", ")}`}
                                         </text>
                                     </g>
                                 );
@@ -2726,12 +3404,18 @@ export default function TopologyGraph({
 
                                         <text x={36} y={12} fill="#ffffff" fontSize={12} fontWeight="bold" fontFamily="monospace">
                                             {site.siteCode}
+                                            {site.isClusterHub && (
+                                                <tspan fill="#f59e0b" fontWeight="bold"> ★ HUB</tspan>
+                                            )}
                                             {site.siteName && (
                                                 <tspan fill="#7dd3fc" fontWeight="normal" fontFamily="sans-serif"> — {site.siteName}</tspan>
                                             )}
                                         </text>
 
                                         <text x={site.width - 128} y={12} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
+                                            {site.connectedSites && site.connectedSites.length > 0 && (
+                                                <tspan fill="#38bdf8" fontWeight="bold">⇄ {site.connectedSites.join(", ")} • </tspan>
+                                            )}
                                             {site.deviceCount} {site.deviceCount === 1 ? "device" : "devices"} • {site.idfs.length} {site.idfs.length === 1 ? "IDF" : "IDFs"}
                                         </text>
 

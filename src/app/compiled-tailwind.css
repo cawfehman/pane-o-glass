@@ -53,6 +53,7 @@
     --color-sky-300: oklch(82.8% 0.111 230.318);
     --color-sky-400: oklch(74.6% 0.16 232.661);
     --color-sky-500: oklch(68.5% 0.169 237.323);
+    --color-sky-600: oklch(58.8% 0.158 241.966);
     --color-blue-100: oklch(93.2% 0.032 255.585);
     --color-blue-200: oklch(88.2% 0.059 254.128);
     --color-blue-300: oklch(80.9% 0.105 251.813);
@@ -2956,6 +2957,9 @@
       background-color: color-mix(in oklab, var(--color-sky-500) 20%, transparent);
     }
   }
+  .bg-sky-600 {
+    background-color: var(--color-sky-600);
+  }
   .bg-slate-600 {
     background-color: var(--color-slate-600);
   }
@@ -4415,6 +4419,12 @@
       --tw-translate-x: var(--spacing);
       translate: var(--tw-translate-x) var(--tw-translate-y);
     }
+    .group-hover\:scale-105:is(:where(.group):hover *) {
+      --tw-scale-x: 105%;
+      --tw-scale-y: 105%;
+      --tw-scale-z: 105%;
+      scale: var(--tw-scale-x) var(--tw-scale-y);
+    }
     .group-hover\:scale-125:is(:where(.group):hover *) {
       --tw-scale-x: 125%;
       --tw-scale-y: 125%;
@@ -4481,6 +4491,9 @@
     }
     .group-hover\:underline:is(:where(.group):hover *) {
       text-decoration-line: underline;
+    }
+    .group-hover\:opacity-60:is(:where(.group):hover *) {
+      opacity: 60%;
     }
     .group-hover\:opacity-100:is(:where(.group):hover *) {
       opacity: 100%;
