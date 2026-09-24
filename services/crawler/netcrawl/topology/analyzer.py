@@ -156,6 +156,90 @@ class TopologyAnalyzer:
                     status=status,
                 )
 
+        # 2b. Correlate EIGRP L3 neighbors into routed links
+        for dev in self.devices:
+            if dev.status != DeviceStatus.REACHABLE:
+                continue
+
+            for eigrp in getattr(dev, "eigrp_neighbors", []):
+                peer_ip = eigrp.peer_ip
+                if not peer_ip:
+                    continue
+
+                remote_dev = self.device_by_ip.get(peer_ip)
+                if not remote_dev:
+                    for d in self.devices:
+                        if peer_ip in getattr(d, "alias_ips", []):
+                            remote_dev = d
+                            break
+
+                if not remote_dev:
+                    continue
+
+                remote_host = self._normalize_host(remote_dev.hostname)
+                local_intf = eigrp.local_interface
+
+                # Match remote interface with this peer_ip
+                remote_intf = "unknown"
+                for r_name, r_intf in remote_dev.interfaces.items():
+                    if r_intf.ip_address == peer_ip:
+                        remote_intf = r_name
+                        break
+
+                canonical_key = tuple(sorted([
+                    (dev.hostname, local_intf),
+                    (remote_host, remote_intf),
+                ]))
+
+                if canonical_key in seen_pairs:
+                    continue
+                seen_pairs.add(canonical_key)
+
+                src_intf = dev.interfaces.get(local_intf)
+                dst_intf = remote_dev.interfaces.get(remote_intf) if remote_intf != "unknown" else None
+
+                status = "UP"
+                if remote_dev.status == DeviceStatus.UNVERIFIED:
+                    status = "UNVERIFIED"
+                elif remote_dev.status != DeviceStatus.REACHABLE:
+                    status = "DOWN"
+
+                speed = src_intf.speed if src_intf else (dst_intf.speed if dst_intf else None)
+                duplex = src_intf.duplex if src_intf else (dst_intf.duplex if dst_intf else None)
+
+                link = TopologyLink(
+                    source_device=dev.hostname,
+                    source_interface=local_intf,
+                    source_ip=src_intf.ip_address if src_intf else dev.ip_address,
+                    target_device=remote_host,
+                    target_interface=remote_intf,
+                    target_ip=peer_ip,
+                    link_type="L3_ROUTED",
+                    speed=speed,
+                    duplex=duplex,
+                    status=status,
+                )
+                self.links.append(link)
+
+                self.graph.add_edge(
+                    dev.hostname,
+                    remote_host,
+                    local_intf=local_intf,
+                    remote_intf=remote_intf,
+                    link_type="L3_ROUTED",
+                    speed=speed,
+                    status=status,
+                )
+                self.graph.add_edge(
+                    remote_host,
+                    dev.hostname,
+                    local_intf=remote_intf,
+                    remote_intf=local_intf,
+                    link_type="L3_ROUTED",
+                    speed=speed,
+                    status=status,
+                )
+
         # 3. Anomaly check: Unreachable devices
         for dev in self.devices:
             if dev.status != DeviceStatus.REACHABLE:

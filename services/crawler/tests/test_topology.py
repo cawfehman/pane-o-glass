@@ -111,3 +111,41 @@ def test_hop_depth_limit_and_reseed_frontier():
     boundary_hosts = [b["destination_host"] for b in swds.boundary_neighbors]
     assert "101-id1-swas-1" in boundary_hosts
     assert "101-id2-swas-1" in boundary_hosts
+
+
+def test_eigrp_discovery_and_antibacktracking():
+    """Verify that EIGRP neighbors are parsed, routed links traversed, and no loop-back occurs."""
+    crawler = NetworkCrawler(
+        seed_devices=["10.100.1.1"],
+        use_mock=True,
+        max_hops=2,
+        enable_eigrp=True,
+    )
+    reachable, unreachable = crawler.crawl()
+
+    # Verify both routers collected EIGRP neighbors
+    cr101 = next(d for d in reachable if d.hostname == "101-mdf-cr01-1")
+    cr202 = next((d for d in reachable if d.hostname == "202-mdf-cr01-1"), None)
+    assert cr202 is not None
+
+    assert len(cr101.eigrp_neighbors) >= 1
+    assert cr101.eigrp_neighbors[0].peer_ip == "10.254.1.2"
+
+    assert len(cr202.eigrp_neighbors) >= 1
+    assert cr202.eigrp_neighbors[0].peer_ip == "10.254.1.1"
+
+    # Anti-backtracking assertion: 101-mdf-cr01-1 must NOT be crawled twice or duplicated
+    cr101_occurrences = [d for d in reachable if d.hostname == "101-mdf-cr01-1"]
+    assert len(cr101_occurrences) == 1
+
+    # Topology link correlation check
+    analyzer = TopologyAnalyzer(reachable)
+    routed_links = [l for l in analyzer.links if l.link_type == "L3_ROUTED"]
+    assert len(routed_links) > 0
+    # There should be an L3 link between 101-mdf-cr01-1 and 202-mdf-cr01-1
+    assert any(
+        (l.source_device == "101-mdf-cr01-1" and l.target_device == "202-mdf-cr01-1")
+        or (l.source_device == "202-mdf-cr01-1" and l.target_device == "101-mdf-cr01-1")
+        for l in routed_links
+    )
+

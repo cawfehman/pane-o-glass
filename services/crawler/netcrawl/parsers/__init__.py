@@ -8,6 +8,7 @@ from netcrawl.parsers.ios_parsers import (
     parse_routes,
     parse_vlans,
     parse_cdp_neighbors_detail,
+    parse_eigrp_neighbors,
     parse_arp_table,
 )
 
@@ -21,5 +22,6 @@ __all__ = [
     "parse_routes",
     "parse_vlans",
     "parse_cdp_neighbors_detail",
+    "parse_eigrp_neighbors",
     "parse_arp_table",
 ]

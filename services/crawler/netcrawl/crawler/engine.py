@@ -19,6 +19,7 @@ from netcrawl.models import (
 from netcrawl.parsers.ios_parsers import (
     parse_arp_table,
     parse_cdp_neighbors_detail,
+    parse_eigrp_neighbors,
     parse_interfaces_description,
     parse_interfaces_detail,
     parse_ip_interface_brief,
@@ -52,6 +53,7 @@ class NetworkCrawler:
         max_hops: Optional[int] = None,
         enable_lldp: bool = False,
         lldp_fallback_on_cdp_fail: bool = True,
+        enable_eigrp: bool = True,
         hostname_regex: Optional[str] = None,
         excluded_platform_patterns: Optional[List[str]] = None,
         excluded_role_patterns: Optional[List[str]] = None,
@@ -75,6 +77,7 @@ class NetworkCrawler:
             self.max_hops = 1
         self.enable_lldp = enable_lldp
         self.lldp_fallback_on_cdp_fail = lldp_fallback_on_cdp_fail
+        self.enable_eigrp = enable_eigrp
         self.hostname_regex = hostname_regex
         self.excluded_platform_patterns = excluded_platform_patterns
         self.excluded_role_patterns = excluded_role_patterns
@@ -291,6 +294,16 @@ class NetworkCrawler:
                 out_routes = client.send_command("show ip route")
                 out_arp = client.send_command("show ip arp")
 
+            # 6. EIGRP neighbor discovery (for Layer 3 routed inter-site boundary traversal)
+            out_eigrp = ""
+            if self.enable_eigrp:
+                try:
+                    out_eigrp = client.send_command("show ip eigrp neighbors")
+                    if not out_eigrp or "%" in out_eigrp:
+                        out_eigrp = client.send_command("show ip eigrp vrf * neighbors")
+                except Exception:
+                    pass
+
         finally:
             client.disconnect()
 
@@ -313,6 +326,7 @@ class NetworkCrawler:
             ("show_ip_route", out_routes),
             ("show_vlan", out_vlans),
             ("show_ip_arp", out_arp),
+            ("show_ip_eigrp_neighbors", out_eigrp),
         ]:
             if raw_text:
                 audit.archive_command_response(
@@ -346,6 +360,7 @@ class NetworkCrawler:
             excluded_role_patterns=self.excluded_role_patterns,
         ) if out_lldp else []
 
+        eigrp_neighbors = parse_eigrp_neighbors(out_eigrp) if out_eigrp else []
         arp_table = parse_arp_table(out_arp) if out_arp else []
 
         role = self._determine_role(hostname, routes, interfaces, vlans, site_info)
@@ -367,6 +382,7 @@ class NetworkCrawler:
                 "vlans_count": len(vlans),
                 "cdp_count": len(cdp_neighbors),
                 "lldp_count": len(lldp_neighbors),
+                "eigrp_count": len(eigrp_neighbors),
             },
         )
 
@@ -388,6 +404,7 @@ class NetworkCrawler:
             vlans=vlans,
             cdp_neighbors=cdp_neighbors,
             lldp_neighbors=lldp_neighbors,
+            eigrp_neighbors=eigrp_neighbors,
             arp_table=arp_table,
         )
 
@@ -494,7 +511,8 @@ class NetworkCrawler:
                             "success",
                             f"Discovered {device.hostname} ({device.ip_address}) [Hop {current_hop}, {device.role.value}] - "
                             f"{len(device.interfaces)} intfs, {len(device.routes)} routes, "
-                            f"{len(device.cdp_neighbors)} CDP, {len(getattr(device, 'lldp_neighbors', []))} LLDP"
+                            f"{len(device.cdp_neighbors)} CDP, {len(getattr(device, 'lldp_neighbors', []))} LLDP, "
+                            f"{len(getattr(device, 'eigrp_neighbors', []))} EIGRP"
                         )
 
                         # Process neighbors (CDP + LLDP if fallback discovered any)
@@ -519,6 +537,30 @@ class NetworkCrawler:
                                         "remote_interface": neighbor.remote_interface,
                                         "platform": neighbor.platform,
                                     })
+
+                            # Also inspect EIGRP neighbors at boundary if enabled
+                            if self.enable_eigrp:
+                                for eigrp in getattr(device, "eigrp_neighbors", []):
+                                    peer_ip = eigrp.peer_ip
+                                    if not peer_ip:
+                                        continue
+                                    if (
+                                        peer_ip not in self.visited_ips
+                                        and peer_ip not in self.queued_targets
+                                        and not any(
+                                            peer_ip == rd.ip_address
+                                            or peer_ip in rd.alias_ips
+                                            or any(i.ip_address == peer_ip for i in rd.interfaces.values())
+                                            for rd in reachable_devices
+                                        )
+                                    ):
+                                        unvisited_boundary.append({
+                                            "destination_host": f"EIGRP-Peer-{peer_ip}",
+                                            "management_ip": peer_ip,
+                                            "local_interface": eigrp.local_interface,
+                                            "remote_interface": "unknown",
+                                            "platform": "Cisco IOS (EIGRP)",
+                                        })
 
                             if unvisited_boundary:
                                 device.is_reseed_frontier = True
@@ -635,6 +677,64 @@ class NetworkCrawler:
                                     self._notify(
                                         "spider",
                                         f"Queued neighbor {neighbor_host} ({neighbor_ip}) at Hop {current_hop + 1} via {device.hostname}"
+                                    )
+
+                            # EIGRP L3 neighbor traversal with anti-backtracking safeguards
+                            if self.enable_eigrp:
+                                for eigrp in getattr(device, "eigrp_neighbors", []):
+                                    peer_ip = eigrp.peer_ip
+                                    if not peer_ip:
+                                        continue
+
+                                    # Tier 1 Anti-Backtracking: Check visited_ips and queued_targets
+                                    if peer_ip in self.visited_ips or peer_ip in self.queued_targets:
+                                        self._notify(
+                                            "debug",
+                                            f"Skipping EIGRP neighbor {peer_ip} on {device.hostname}:{eigrp.local_interface} (already visited/queued)"
+                                        )
+                                        continue
+
+                                    # Tier 2 Anti-Backtracking: Check if peer_ip matches any interface/alias of any discovered device
+                                    is_known_device_ip = any(
+                                        peer_ip == rd.ip_address
+                                        or peer_ip in rd.alias_ips
+                                        or any(i.ip_address == peer_ip for i in rd.interfaces.values())
+                                        for rd in reachable_devices
+                                    )
+                                    if is_known_device_ip:
+                                        self.visited_ips.add(peer_ip)
+                                        self._notify(
+                                            "debug",
+                                            f"Skipping EIGRP neighbor {peer_ip} on {device.hostname}:{eigrp.local_interface} (matches reachable device interface)"
+                                        )
+                                        continue
+
+                                    self.queued_targets.add(peer_ip)
+                                    local_intf_obj = device.interfaces.get(eigrp.local_interface)
+                                    peer_desc = local_intf_obj.description if local_intf_obj else None
+                                    desc_suffix = f" [{peer_desc}]" if peer_desc else ""
+
+                                    self.discovered_via_map[peer_ip] = (
+                                        f"{device.hostname} (EIGRP AS {eigrp.as_number} on {eigrp.local_interface}){desc_suffix}"
+                                    )
+                                    self.known_hostname_map[peer_ip] = f"EIGRP-Peer-{peer_ip}"
+                                    pending_targets.append((peer_ip, current_hop + 1))
+                                    self._notify(
+                                        "spider",
+                                        f"Queued EIGRP L3 neighbor {peer_ip} (AS {eigrp.as_number}) at Hop {current_hop + 1} via {device.hostname}:{eigrp.local_interface}"
+                                    )
+                                    audit.log(
+                                        event_type="EIGRP_NEIGHBOR_QUEUED",
+                                        severity="INFO",
+                                        device_ip=peer_ip,
+                                        hostname=device.hostname,
+                                        details={
+                                            "discovered_from": device.hostname,
+                                            "local_interface": eigrp.local_interface,
+                                            "as_number": eigrp.as_number,
+                                            "vrf": eigrp.vrf,
+                                            "hop": current_hop + 1,
+                                        },
                                     )
                     else:
                         unreachable_devices.append(device)

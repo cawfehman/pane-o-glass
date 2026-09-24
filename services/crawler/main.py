@@ -133,6 +133,7 @@ def cmd_crawl(args, cfg: dict):
         max_hops=getattr(args, "max_hops", 1),
         enable_lldp=getattr(args, "enable_lldp", False),
         lldp_fallback_on_cdp_fail=not getattr(args, "no_lldp_fallback", False),
+        enable_eigrp=getattr(args, "enable_eigrp", True),
         hostname_regex=cfg.get("crawler", {}).get("hostname_regex"),
         excluded_platform_patterns=cfg.get("crawler", {}).get("filters", {}).get("excluded_platform_patterns"),
         excluded_role_patterns=cfg.get("crawler", {}).get("filters", {}).get("excluded_role_patterns"),
@@ -387,6 +388,8 @@ def main():
     p_crawl.add_argument("--max-hops", type=int, default=1, help="Max distance in hops from seed devices (default: 1, max: 10)")
     p_crawl.add_argument("--enable-lldp", action="store_true", help="Always query LLDP neighbors in addition to CDP")
     p_crawl.add_argument("--no-lldp-fallback", action="store_true", help="Disable LLDP fallback when CDP yields no neighbors")
+    p_crawl.add_argument("--enable-eigrp", dest="enable_eigrp", action="store_true", default=True, help="Enable EIGRP L3 neighbor discovery (default: True)")
+    p_crawl.add_argument("--no-eigrp", dest="enable_eigrp", action="store_false", help="Disable EIGRP L3 neighbor discovery")
 
     # map
     p_map = subparsers.add_parser("map", help="Generate network topology map")

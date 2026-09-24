@@ -34,9 +34,19 @@ function normalizeHost(host: string): string {
 
 function correlateLinks(devices: any[]): any[] {
     const deviceMap = new Map<string, any>();
+    const deviceByIp = new Map<string, any>();
     for (const d of devices) {
         deviceMap.set(d.hostname, d);
         deviceMap.set(d.hostname.toLowerCase(), d);
+        if (d.ip_address) deviceByIp.set(d.ip_address, d);
+        if (Array.isArray(d.alias_ips)) {
+            for (const a of d.alias_ips) deviceByIp.set(a, d);
+        }
+        if (d.interfaces) {
+            for (const intf of Object.values(d.interfaces)) {
+                if ((intf as any)?.ip_address) deviceByIp.set((intf as any).ip_address, d);
+            }
+        }
     }
 
     const seenPairs = new Set<string>();
@@ -92,6 +102,56 @@ function correlateLinks(devices: any[]): any[] {
                 targetInterface: remoteIntf,
                 targetIp: dstIntf?.ip_address || null,
                 linkType,
+                status
+            });
+        }
+
+        // Correlate EIGRP L3 routed links across WAN/boundaries
+        for (const eigrp of (dev.eigrp_neighbors || [])) {
+            const peerIp = eigrp.peer_ip;
+            if (!peerIp) continue;
+            const remoteDev = deviceByIp.get(peerIp);
+            if (!remoteDev) continue;
+
+            const remoteHost = normalizeHost(remoteDev.hostname);
+            const localIntf = eigrp.local_interface;
+            let remoteIntf = "unknown";
+            if (remoteDev.interfaces) {
+                for (const [rName, rIntf] of Object.entries(remoteDev.interfaces)) {
+                    if ((rIntf as any)?.ip_address === peerIp) {
+                        remoteIntf = rName;
+                        break;
+                    }
+                }
+            }
+
+            const pairItems = [
+                `${dev.hostname}:${localIntf}`,
+                `${remoteHost}:${remoteIntf}`
+            ].sort();
+            const pairKey = pairItems.join(" <-> ");
+
+            if (seenPairs.has(pairKey)) continue;
+            seenPairs.add(pairKey);
+
+            const srcIntf = dev.interfaces?.[localIntf];
+            const dstIntf = remoteDev.interfaces?.[remoteIntf];
+
+            let status = "UP";
+            if (remoteDev.status === "UNVERIFIED") {
+                status = "UNVERIFIED";
+            } else if (remoteDev.status !== "REACHABLE") {
+                status = "DOWN";
+            }
+
+            links.push({
+                sourceDevice: dev.hostname,
+                sourceInterface: localIntf,
+                sourceIp: srcIntf?.ip_address || dev.ip_address,
+                targetDevice: remoteHost,
+                targetInterface: remoteIntf,
+                targetIp: dstIntf?.ip_address || peerIp,
+                linkType: "L3_ROUTED",
                 status
             });
         }
@@ -396,6 +456,7 @@ export async function POST(request: NextRequest) {
         const rawHops = body.maxHops !== undefined && body.maxHops !== null ? Number(body.maxHops) : 1;
         const maxHops = Math.min(Math.max(isNaN(rawHops) ? 1 : rawHops, 1), 10);
         const enableLldp = Boolean(body.enableLldp);
+        const enableEigrp = body.enableEigrp !== false;
 
         const crawlerDir = path.join(process.cwd(), "services", "crawler");
         const pythonBin = await resolvePythonCommand();
@@ -411,6 +472,9 @@ export async function POST(request: NextRequest) {
         args.push("--max-hops", String(maxHops));
         if (enableLldp) {
             args.push("--enable-lldp");
+        }
+        if (!enableEigrp) {
+            args.push("--no-eigrp");
         }
 
         const customEnv: Record<string, string> = {

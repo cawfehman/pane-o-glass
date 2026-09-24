@@ -59,6 +59,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
     const [seeds, setSeeds] = useState<string>(initialSeed || "10.10.1.1, 10.20.1.1");
     const [maxHops, setMaxHops] = useState<number>(initialMaxHops ?? 1);
     const [enableLldp, setEnableLldp] = useState<boolean>(false);
+    const [enableEigrp, setEnableEigrp] = useState<boolean>(true);
 
     // Ephemeral credentials for live crawl (supports Primary + sequential Fallbacks)
     const [authMode, setAuthMode] = useState<"server" | "custom">("server");
@@ -205,6 +206,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                 profile,
                 maxHops: Math.min(Math.max(maxHops, 1), 10),
                 enableLldp,
+                enableEigrp,
                 seeds: mode === "live" ? seeds.split(",").map(s => s.trim()).filter(Boolean) : undefined,
             };
 
@@ -578,6 +580,20 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                         type="checkbox"
                                         checked={enableLldp}
                                         onChange={(e) => setEnableLldp(e.target.checked)}
+                                        className="accent-blue-500 rounded cursor-pointer h-4 w-4"
+                                    />
+                                </label>
+
+                                {/* EIGRP L3 Discovery Checkbox */}
+                                <label className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-slate-700 transition cursor-pointer">
+                                    <div>
+                                        <span className="text-xs font-semibold text-slate-200 block">EIGRP L3 Discovery</span>
+                                        <span className="text-[10px] text-slate-500">Traverse routed links across WAN/sites via &apos;show ip eigrp neighbors&apos;</span>
+                                    </div>
+                                    <input
+                                        type="checkbox"
+                                        checked={enableEigrp}
+                                        onChange={(e) => setEnableEigrp(e.target.checked)}
                                         className="accent-blue-500 rounded cursor-pointer h-4 w-4"
                                     />
                                 </label>

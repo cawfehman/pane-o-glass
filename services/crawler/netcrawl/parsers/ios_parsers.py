@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from netcrawl.models import (
     ARPEntry,
     CDPNeighbor,
+    EIGRPNeighbor,
     Interface,
     Route,
     SiteInfo,
@@ -695,6 +696,83 @@ def parse_lldp_neighbors_detail(
             platform=platform,
             capabilities=capabilities,
             is_ap=is_ap,
+        ))
+
+    return neighbors
+
+
+def parse_eigrp_neighbors(raw_output: str) -> List[EIGRPNeighbor]:
+    """
+    Parse 'show ip eigrp neighbors' (and 'show ip eigrp vrf * neighbors') output into EIGRPNeighbor objects.
+    Robustly handles AS headers, VRF headers, and tabular neighbor rows.
+    """
+    if not raw_output or "% EIGRP" in raw_output or "% Invalid" in raw_output:
+        return []
+
+    neighbors: List[EIGRPNeighbor] = []
+    current_as: Optional[int] = None
+    current_vrf: Optional[str] = None
+
+    for line in raw_output.splitlines():
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+
+        # Check VRF header: EIGRP-IPv4 VRF(xyz) Neighbors for AS(100)
+        vrf_match = re.search(r"VRF\(([^)]+)\)", line_clean, re.IGNORECASE)
+        if vrf_match:
+            current_vrf = vrf_match.group(1).strip()
+
+        # Check AS header: EIGRP-IPv4 Neighbors for AS(100) or IP-EIGRP neighbors for process 100
+        as_match = re.search(r"(?:AS\(|process\s+)(\d+)", line_clean, re.IGNORECASE)
+        if as_match:
+            try:
+                current_as = int(as_match.group(1))
+            except ValueError:
+                pass
+
+        # Check if line is a table header or separator
+        if any(h in line_clean.lower() for h in ["address", "interface", "hold", "uptime", "srtt", "rto", "neighbors for"]):
+            continue
+
+        # Table Row match:
+        # H   Address                 Interface              Hold Uptime   SRTT   RTO  Q   Seq
+        # 0   10.100.1.2              Gi0/0/1                  12 00:12:34   12   200  0   45
+        row_match = re.match(
+            r"^\s*(\d+)\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\s+([A-Za-z0-9\/\.\:]+)\s+(\d+)\s+([0-9\:\-\.a-zA-Z]+)(?:\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+))?",
+            line
+        )
+        if not row_match:
+            continue
+
+        peer_ip = row_match.group(2).strip()
+        raw_intf = row_match.group(3).strip()
+        hold_time_str = row_match.group(4)
+        uptime_str = row_match.group(5)
+        srtt_str = row_match.group(6)
+        rto_str = row_match.group(7)
+        q_cnt_str = row_match.group(8)
+        seq_num_str = row_match.group(9)
+
+        # Validate IP
+        try:
+            ipaddress.IPv4Address(peer_ip)
+        except ValueError:
+            continue
+
+        local_intf = normalize_interface(raw_intf)
+
+        neighbors.append(EIGRPNeighbor(
+            peer_ip=peer_ip,
+            local_interface=local_intf,
+            as_number=current_as,
+            vrf=current_vrf,
+            hold_time_sec=int(hold_time_str) if hold_time_str else None,
+            uptime=uptime_str,
+            srtt_ms=int(srtt_str) if srtt_str else None,
+            rto=int(rto_str) if rto_str else None,
+            q_cnt=int(q_cnt_str) if q_cnt_str else None,
+            seq_num=int(seq_num_str) if seq_num_str else None,
         ))
 
     return neighbors

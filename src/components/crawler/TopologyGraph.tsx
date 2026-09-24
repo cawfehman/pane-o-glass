@@ -1682,7 +1682,7 @@ export default function TopologyGraph({
                         {uniqueSites.map(s => {
                             const count = unifiedDevices.filter(d => parseDeviceSiteAndIdf(d.hostname, d.site, d.idf).site === s).length;
                             const siteMeta = siteDirectory[s];
-                            const label = siteMeta?.name ? `Site ${s} (${siteMeta.name})` : `Site ${s}`;
+                            const label = siteMeta?.name ? `${s} (${siteMeta.name})` : s;
                             return (
                                 <option key={s} value={s}>{label} [{count}]</option>
                             );
@@ -1691,7 +1691,7 @@ export default function TopologyGraph({
                             <optgroup label="Uncrawled Directory Sites">
                                 {uncrawledSiteCodes.map(s => {
                                     const siteMeta = siteDirectory[s];
-                                    const label = siteMeta?.name ? `Site ${s} (${siteMeta.name})` : `Site ${s}`;
+                                    const label = siteMeta?.name ? `${s} (${siteMeta.name})` : s;
                                     return (
                                         <option key={s} value={s}>{label} [0 - Uncrawled]</option>
                                     );

@@ -83,6 +83,12 @@ Interface: GigabitEthernet0/0/1,  Port ID (outgoing port): GigabitEthernet0/0/1
 """,
             "show vlan": "",
             "show interfaces switchport": "",
+            "show ip eigrp neighbors": """
+EIGRP-IPv4 Neighbors for AS(100)
+H   Address                 Interface              Hold Uptime   SRTT   RTO  Q  Seq
+                                                   (sec)         (ms)       Cnt Num
+0   10.254.1.2              Gi0/0/1                  12 00:15:32   15   200  0  45
+""",
             "show ip arp": """
 Protocol  Address          Age (min)  Hardware Addr   Type   Interface
 Internet  10.100.1.2             12   00a1.2b3c.0102  ARPA   GigabitEthernet0/0/0
@@ -409,6 +415,12 @@ Interface: GigabitEthernet0/0/2,  Port ID (outgoing port): GigabitEthernet1/0/1
 """,
             "show vlan": "",
             "show interfaces switchport": "",
+            "show ip eigrp neighbors": """
+EIGRP-IPv4 Neighbors for AS(100)
+H   Address                 Interface              Hold Uptime   SRTT   RTO  Q  Seq
+                                                   (sec)         (ms)       Cnt Num
+0   10.254.1.1              Gi0/0/1                  11 00:15:33   14   200  0  42
+""",
             "show ip arp": """
 Protocol  Address          Age (min)  Hardware Addr   Type   Interface
 Internet  10.254.1.1              5   00a1.2b3c.0102  ARPA   GigabitEthernet0/0/1

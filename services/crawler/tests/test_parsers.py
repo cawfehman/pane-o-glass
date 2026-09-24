@@ -5,6 +5,7 @@ from netcrawl.crawler.ssh_client import ConfigModeForbiddenError, validate_reado
 from netcrawl.parsers.ios_parsers import (
     normalize_interface,
     parse_cdp_neighbors_detail,
+    parse_eigrp_neighbors,
     parse_ip_interface_brief,
     parse_routes,
     parse_site_info,
@@ -230,4 +231,41 @@ Name: Ethernet1/1
     intfs = parse_switchport_or_trunk(nexus_switchport_output, intfs)
     assert intfs["Ethernet1/1"].is_trunk is True
     assert intfs["Ethernet1/1"].allowed_vlans == "1-1000"
+
+
+def test_parse_eigrp_neighbors():
+    """Verify EIGRP neighbor discovery parser with standard AS and VRF outputs."""
+    raw_eigrp = """
+EIGRP-IPv4 Neighbors for AS(100)
+H   Address                 Interface              Hold Uptime   SRTT   RTO  Q   Seq
+                                                   (sec)         (ms)       Cnt  Num
+0   10.100.1.2              Gi0/0/1                  12 00:12:34   12   200  0   45
+1   172.16.20.2             Te1/0/1                  14 01:23:45    5   100  0   12
+EIGRP-IPv4 VRF(CORP) Neighbors for AS(100)
+H   Address                 Interface              Hold Uptime   SRTT   RTO  Q   Seq
+                                                   (sec)         (ms)       Cnt  Num
+0   10.200.1.2              Gi0/0/2                  10 02:30:10    8   200  0   99
+"""
+    neighbors = parse_eigrp_neighbors(raw_eigrp)
+    assert len(neighbors) == 3
+
+    # Neighbor 0 (Global AS 100)
+    assert neighbors[0].peer_ip == "10.100.1.2"
+    assert neighbors[0].local_interface == "GigabitEthernet0/0/1"
+    assert neighbors[0].as_number == 100
+    assert neighbors[0].vrf is None
+    assert neighbors[0].hold_time_sec == 12
+    assert neighbors[0].uptime == "00:12:34"
+
+    # Neighbor 1 (Global AS 100)
+    assert neighbors[1].peer_ip == "172.16.20.2"
+    assert neighbors[1].local_interface == "TenGigabitEthernet1/0/1"
+    assert neighbors[1].as_number == 100
+
+    # Neighbor 2 (VRF CORP AS 100)
+    assert neighbors[2].peer_ip == "10.200.1.2"
+    assert neighbors[2].local_interface == "GigabitEthernet0/0/2"
+    assert neighbors[2].as_number == 100
+    assert neighbors[2].vrf == "CORP"
+
 

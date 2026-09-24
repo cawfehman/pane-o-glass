@@ -88,6 +88,19 @@ class ARPEntry(BaseModel):
     age: Optional[str] = None
 
 
+class EIGRPNeighbor(BaseModel):
+    peer_ip: str
+    local_interface: str
+    as_number: Optional[int] = None
+    vrf: Optional[str] = None
+    hold_time_sec: Optional[int] = None
+    uptime: Optional[str] = None
+    srtt_ms: Optional[int] = None
+    rto: Optional[int] = None
+    q_cnt: Optional[int] = None
+    seq_num: Optional[int] = None
+
+
 class Device(BaseModel):
     hostname: str
     ip_address: str
@@ -109,6 +122,7 @@ class Device(BaseModel):
     vlans: List[VLAN] = Field(default_factory=list)
     cdp_neighbors: List[CDPNeighbor] = Field(default_factory=list)
     lldp_neighbors: List[CDPNeighbor] = Field(default_factory=list)
+    eigrp_neighbors: List[EIGRPNeighbor] = Field(default_factory=list)
     arp_table: List[ARPEntry] = Field(default_factory=list)
     alias_ips: List[str] = Field(default_factory=list)
 
