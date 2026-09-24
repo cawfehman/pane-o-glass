@@ -22,6 +22,7 @@ import {
     Clock,
     Tag
 } from "lucide-react";
+import { CrawlIcon } from "./CrawlIcon";
 import { detectSwitchStack, parseFloorFromIdf } from "./TopologyGraph";
 
 export function formatFullVerifiedDate(ts?: string | null): string {
@@ -209,11 +210,21 @@ export default function DeviceInspectorDrawer({
                 </button>
             </div>
 
-            {/* Quick Actions (Set as Source / Dest) */}
+            {/* Quick Actions (Set as Source / Dest / Initiate Crawl) */}
             {primaryIp && (
                 <div className="px-6 py-2.5 bg-slate-800/40 border-b border-slate-800 flex items-center justify-between">
-                    <span className="text-xs text-slate-400 font-medium">Quick Tracer Actions:</span>
+                    <span className="text-xs text-slate-400 font-medium">Quick Actions:</span>
                     <div className="flex items-center gap-2">
+                        {onReseed && isReachable && (
+                            <button
+                                onClick={() => onReseed(device)}
+                                className="px-2.5 py-1 text-xs font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 border border-blue-500/30 hover:border-blue-400/60 rounded-lg transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                                title={`Initiate crawl seeding from ${device.hostname} (${primaryIp})`}
+                            >
+                                <CrawlIcon size={14} className="text-blue-400" />
+                                Initiate Crawl
+                            </button>
+                        )}
                         {onSetAsSource && (
                             <button
                                 onClick={() => onSetAsSource(primaryIp)}
@@ -255,7 +266,7 @@ export default function DeviceInspectorDrawer({
                             onClick={() => onReseed(device)}
                             className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition shadow flex items-center gap-1.5 shrink-0 cursor-pointer"
                         >
-                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <CrawlIcon size={14} className="text-slate-950" />
                             Reseed from this Switch
                         </button>
                     )}
@@ -283,7 +294,7 @@ export default function DeviceInspectorDrawer({
                             onClick={() => onReseed(device)}
                             className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition shadow flex items-center gap-1.5 shrink-0 cursor-pointer"
                         >
-                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <CrawlIcon size={14} className="text-slate-950" />
                             Reseed from this Switch
                         </button>
                     )}
@@ -335,6 +346,35 @@ export default function DeviceInspectorDrawer({
 
                 {activeTab === "overview" && (
                     <div className="space-y-6">
+                        {/* Crawl From Device Quick Action Card for fully discovered devices */}
+                        {onReseed && isReachable && !isUnverified && (
+                            <div className="bg-slate-950/80 rounded-xl p-4 border border-blue-500/30 flex items-center justify-between gap-4 shadow-lg shadow-blue-950/20">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
+                                        <CrawlIcon size={20} className="text-blue-400" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                                            Initiate Network Crawl
+                                            <span className="px-1.5 py-0.2 text-[9px] bg-blue-500/20 text-blue-300 rounded font-semibold border border-blue-500/30">
+                                                Seed Switch
+                                            </span>
+                                        </h4>
+                                        <p className="text-[11px] text-slate-400 mt-0.5">
+                                            Launch discovery crawl directly from <strong className="text-slate-200">{device.hostname}</strong> ({primaryIp || "Management IP"}).
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => onReseed(device)}
+                                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition shadow-lg shadow-blue-600/30 flex items-center gap-1.5 shrink-0 cursor-pointer"
+                                >
+                                    <CrawlIcon size={14} className="text-white" />
+                                    Crawl From Switch
+                                </button>
+                            </div>
+                        )}
+
                         {/* Connected Peer Port & Description (Clue on Purpose / Vendor Ownership) */}
                         {(device.peerInterfaceDescription || device.discoveredPort || device.discoveredVia) && (
                             <div className="bg-slate-950/70 rounded-xl p-4 border border-cyan-800/50 space-y-2.5">

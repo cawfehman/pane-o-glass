@@ -38,6 +38,7 @@ import {
     GitMerge,
     X
 } from "lucide-react";
+import { CrawlIcon } from "./CrawlIcon";
 
 export function getBasePhysicalInterface(intf?: string | null): string {
     if (!intf) return "unknown";
@@ -3126,6 +3127,36 @@ export default function TopologyGraph({
                                                 : "Never verified"}
                                         </text>
                                     </g>
+
+                                    {/* Quick Crawl Initiation button on card */}
+                                    {onReseedDevice && !isUnreachable && (
+                                        <g
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onReseedDevice(dev);
+                                            }}
+                                            className="cursor-pointer hover:opacity-100 transition opacity-75 hover:scale-110"
+                                            transform={`translate(${CARD_W / 2 - 38}, ${CARD_H / 2 - 20})`}
+                                        >
+                                            <title>{`Initiate crawl seeding from ${canonHost} (${dev.ipAddress || dev.ip_address || "Mgmt IP"})`}</title>
+                                            <rect 
+                                                x={0} 
+                                                y={0} 
+                                                width={15} 
+                                                height={15} 
+                                                rx={3.5} 
+                                                fill={isUnverified ? "rgba(245, 158, 11, 0.2)" : "rgba(14, 165, 233, 0.2)"} 
+                                                stroke={isUnverified ? "#f59e0b" : "#38bdf8"} 
+                                                strokeWidth={0.8} 
+                                            />
+                                            <CrawlIcon 
+                                                x={1.5} 
+                                                y={1.5} 
+                                                size={12} 
+                                                color={isUnverified ? "#fbbf24" : "#38bdf8"} 
+                                            />
+                                        </g>
+                                    )}
 
                                     {/* Quick Dim / Fade toggle button on card */}
                                     <g

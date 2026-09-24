@@ -30,6 +30,7 @@ import DeviceInspectorDrawer from "@/components/crawler/DeviceInspectorDrawer";
 import PathTracerPanel from "@/components/crawler/PathTracerPanel";
 import FailureInvestigationTable from "@/components/crawler/FailureInvestigationTable";
 import CrawlModal from "@/components/crawler/CrawlModal";
+import { CrawlIcon } from "@/components/crawler/CrawlIcon";
 import { ToolHelp } from "@/components/ToolHelp";
 
 export default function AdminCrawlerPage() {
@@ -315,7 +316,7 @@ export default function AdminCrawlerPage() {
                         }}
                         className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl shadow-lg shadow-blue-500/20 flex items-center gap-1.5 transition cursor-pointer"
                     >
-                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <CrawlIcon size={14} className="text-white" />
                         Run Crawl
                     </button>
 
@@ -419,7 +420,7 @@ export default function AdminCrawlerPage() {
                                 }}
                                 className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition shadow flex items-center gap-1.5 cursor-pointer"
                             >
-                                <Play className="w-3.5 h-3.5 fill-current" />
+                                <CrawlIcon size={14} className="text-slate-950" />
                                 Reseed from {fd.hostname}
                             </button>
                         ))}
@@ -602,7 +603,7 @@ export default function AdminCrawlerPage() {
                     setReseedDevice(null);
                     fetchSnapshots(newId);
                 }}
-                initialSeed={reseedDevice?.ipAddress}
+                initialSeed={reseedDevice?.ipAddress || reseedDevice?.ip_address || (Array.isArray(reseedDevice?.interfaces) ? reseedDevice?.interfaces.find((i: any) => i.ip_address)?.ip_address : undefined)}
                 initialMaxHops={1}
             />
 

@@ -4118,6 +4118,18 @@
       --tw-shadow-color: color-mix(in oklab, color-mix(in oklab, var(--color-blue-500) 20%, transparent) var(--tw-shadow-alpha), transparent);
     }
   }
+  .shadow-blue-600\/30 {
+    --tw-shadow-color: color-mix(in srgb, oklch(54.6% 0.245 262.881) 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      --tw-shadow-color: color-mix(in oklab, color-mix(in oklab, var(--color-blue-600) 30%, transparent) var(--tw-shadow-alpha), transparent);
+    }
+  }
+  .shadow-blue-950\/20 {
+    --tw-shadow-color: color-mix(in srgb, oklch(28.2% 0.091 267.935) 20%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      --tw-shadow-color: color-mix(in oklab, color-mix(in oklab, var(--color-blue-950) 20%, transparent) var(--tw-shadow-alpha), transparent);
+    }
+  }
   .shadow-emerald-500\/10 {
     --tw-shadow-color: color-mix(in srgb, oklch(69.6% 0.17 162.48) 10%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -4451,6 +4463,14 @@
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:border-accent-primary\/50:hover {
         border-color: color-mix(in oklab, var(--color-accent-primary) 50%, transparent);
+      }
+    }
+    .hover\:border-blue-400\/60:hover {
+      border-color: color-mix(in srgb, oklch(70.7% 0.165 254.624) 60%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:border-blue-400\/60:hover {
+        border-color: color-mix(in oklab, var(--color-blue-400) 60%, transparent);
       }
     }
     .hover\:border-blue-500\/60:hover {
