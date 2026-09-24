@@ -807,7 +807,7 @@ export default function TopologyGraph({
     }, [unifiedLinks, deviceLocationMap, collapsedSites, convergeTrunks]);
 
     // Dynamic layout positioning: Container Hierarchy (Site -> Floor/IDF -> Devices) or Hierarchical Flow
-    const { nodePositions, siteBoxes, idfBoxes, canvasSize } = useMemo(() => {
+    const { nodePositions, siteBoxes, idfBoxes, canvasSize, layoutDevices } = useMemo(() => {
         const positions = new Map<string, { x: number; y: number }>();
         const siteContainers: SiteContainerBox[] = [];
         const idfContainers: IdfContainerBox[] = [];
