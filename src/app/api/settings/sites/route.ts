@@ -149,7 +149,11 @@ export async function PATCH(req: Request) {
                 name: site.name || site.code.toUpperCase(),
                 address: site.address || "",
                 status: site.status || "Active",
-                notes: site.notes || ""
+                notes: site.notes || "",
+                locationType: site.locationType || undefined,
+                city: site.city || undefined,
+                folderPath: site.folderPath || undefined,
+                isHub: site.isHub !== undefined ? Boolean(site.isHub) : undefined
             });
         } else if (action === 'update') {
             if (siteIndex === -1) {
@@ -161,7 +165,11 @@ export async function PATCH(req: Request) {
                 name: site.name || sites[siteIndex].name,
                 address: site.address ?? sites[siteIndex].address,
                 status: site.status || sites[siteIndex].status,
-                notes: site.notes ?? sites[siteIndex].notes
+                notes: site.notes ?? sites[siteIndex].notes,
+                locationType: site.locationType !== undefined ? site.locationType : sites[siteIndex].locationType,
+                city: site.city !== undefined ? site.city : sites[siteIndex].city,
+                folderPath: site.folderPath !== undefined ? site.folderPath : sites[siteIndex].folderPath,
+                isHub: site.isHub !== undefined ? Boolean(site.isHub) : sites[siteIndex].isHub
             };
         } else if (action === 'delete') {
             if (siteIndex === -1) {

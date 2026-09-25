@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 
 import TopologyGraph from "@/components/crawler/TopologyGraph";
+import SiteManagerSidebar from "@/components/crawler/SiteManagerSidebar";
+import { SiteModal } from "@/components/sites/SiteModal";
 import DeviceInspectorDrawer from "@/components/crawler/DeviceInspectorDrawer";
 import PathTracerPanel from "@/components/crawler/PathTracerPanel";
 import FailureInvestigationTable from "@/components/crawler/FailureInvestigationTable";
@@ -72,6 +74,25 @@ export default function AdminCrawlerPage() {
     const [loadingLog, setLoadingLog] = useState(false);
     const [logModalError, setLogModalError] = useState<string | null>(null);
     const [copiedLog, setCopiedLog] = useState(false);
+
+    // Site Manager Sidebar & In-Topology Editing
+    const [isSiteSidebarOpen, setIsSiteSidebarOpen] = useState(true);
+    const [locateSiteCode, setLocateSiteCode] = useState<string | null>(null);
+    const [highlightedSiteCode, setHighlightedSiteCode] = useState<string | null>(null);
+    const [isSiteModalOpen, setIsSiteModalOpen] = useState(false);
+    const [siteModalMode, setSiteModalMode] = useState<'add' | 'edit'>('edit');
+    const [selectedSiteForEdit, setSelectedSiteForEdit] = useState<any>({
+        code: "",
+        name: "",
+        address: "",
+        status: "Active",
+        notes: "",
+        locationType: "Ambulatory",
+        city: "",
+        folderPath: "",
+        isHub: false
+    });
+    const [siteActionLoading, setSiteActionLoading] = useState(false);
 
     // Protect route for ADMIN role
     useEffect(() => {
@@ -227,6 +248,63 @@ export default function AdminCrawlerPage() {
         navigator.clipboard.writeText(logModalContent);
         setCopiedLog(true);
         setTimeout(() => setCopiedLog(false), 2000);
+    };
+
+    const handleOpenEditSite = async (siteCode: string) => {
+        const directory = currentSnapshotData?.siteDirectory || {};
+        const siteInfo = directory[siteCode.toUpperCase()] || directory[siteCode] || {};
+        setSelectedSiteForEdit({
+            code: siteCode.toUpperCase(),
+            name: siteInfo.name || siteCode.toUpperCase(),
+            address: siteInfo.address || "",
+            status: siteInfo.status || "Active",
+            notes: siteInfo.notes || "",
+            locationType: siteInfo.locationType || "Ambulatory",
+            city: siteInfo.city || "",
+            folderPath: siteInfo.folderPath || "",
+            isHub: Boolean(siteInfo.isHub)
+        });
+        setSiteModalMode('edit');
+        setIsSiteModalOpen(true);
+    };
+
+    const performSiteAction = async (action: 'add' | 'update' | 'delete', siteData: any, addAnother: boolean = false) => {
+        setSiteActionLoading(true);
+        try {
+            const res = await fetch('/api/settings/sites', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, site: siteData })
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+
+            if (action === 'add' && addAnother) {
+                setSelectedSiteForEdit({
+                    code: "",
+                    name: "",
+                    address: "",
+                    status: "Active",
+                    notes: "",
+                    locationType: "Ambulatory",
+                    city: "",
+                    folderPath: "",
+                    isHub: false
+                });
+            } else {
+                setIsSiteModalOpen(false);
+            }
+
+            if (selectedSnapshotId) {
+                fetchSnapshotDetails(selectedSnapshotId);
+            }
+            return true;
+        } catch (e: any) {
+            alert(e.message || "Failed to update site directory");
+            return false;
+        } finally {
+            setSiteActionLoading(false);
+        }
     };
 
     if (status === "loading" || (!isAdmin && status === "authenticated")) {
@@ -570,23 +648,52 @@ export default function AdminCrawlerPage() {
             {/* Tab Contents */}
             <div className="flex-1 min-h-0 flex flex-col">
                 {activeTab === "topology" && (
-                    <div className="flex-1 h-full min-h-0 flex flex-col">
-                        <TopologyGraph
-                            devices={devices}
-                            links={links}
-                            siteDirectory={currentSnapshotData?.siteDirectory}
-                            selectedDevice={selectedDevice}
-                            onSelectDevice={(d) => setSelectedDevice(d)}
-                            activeHopDevices={activeHopDevices}
-                            highlightedLinks={highlightedLinks}
-                            onReseedDevice={(d) => {
-                                setReseedDevice(d);
-                                setIsCrawlModalOpen(true);
+                    <div className="flex-1 h-full min-h-0 flex flex-row overflow-hidden relative rounded-2xl border border-slate-800 bg-slate-950/70 shadow-xl">
+                        <SiteManagerSidebar
+                            isOpen={isSiteSidebarOpen}
+                            onToggle={() => setIsSiteSidebarOpen(!isSiteSidebarOpen)}
+                            onLocateSite={(siteCode) => {
+                                setLocateSiteCode(siteCode);
+                                setHighlightedSiteCode(siteCode);
                             }}
-                            onRefreshSnapshot={() => {
+                            onSitesChanged={() => {
                                 if (selectedSnapshotId) fetchSnapshotDetails(selectedSnapshotId);
                             }}
-                            className="relative w-full flex-1 h-full min-h-[660px]"
+                            highlightedSiteCode={highlightedSiteCode}
+                        />
+
+                        <div className="flex-1 h-full min-h-0 relative overflow-hidden flex flex-col">
+                            <TopologyGraph
+                                devices={devices}
+                                links={links}
+                                siteDirectory={currentSnapshotData?.siteDirectory}
+                                selectedDevice={selectedDevice}
+                                onSelectDevice={(d) => setSelectedDevice(d)}
+                                activeHopDevices={activeHopDevices}
+                                highlightedLinks={highlightedLinks}
+                                onReseedDevice={(d) => {
+                                    setReseedDevice(d);
+                                    setIsCrawlModalOpen(true);
+                                }}
+                                onRefreshSnapshot={() => {
+                                    if (selectedSnapshotId) fetchSnapshotDetails(selectedSnapshotId);
+                                }}
+                                locateSiteCode={locateSiteCode}
+                                snapshotId={selectedSnapshotId}
+                                onEditSite={handleOpenEditSite}
+                                className="relative w-full flex-1 h-full min-h-[660px] border-0 rounded-none bg-transparent"
+                            />
+                        </div>
+
+                        {/* Direct Site Editing Modal from Topology Canvas */}
+                        <SiteModal
+                            isModalOpen={isSiteModalOpen}
+                            setIsModalOpen={setIsSiteModalOpen}
+                            currentSite={selectedSiteForEdit}
+                            setCurrentSite={setSelectedSiteForEdit}
+                            performAction={performSiteAction}
+                            actionLoading={siteActionLoading}
+                            mode={siteModalMode}
                         />
                     </div>
                 )}

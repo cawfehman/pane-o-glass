@@ -9,26 +9,38 @@ export interface SiteMetadata {
     notes?: string;
     locationType?: string; // Campus, Administrative, Ambulatory
     city?: string;
+    folderPath?: string; // e.g. "Campus/Camden/Acute Care"
+    isHub?: boolean;
 }
 
 export function getSiteClassification(
     siteCode?: string | null,
     metadata?: Partial<SiteMetadata> | null
-): { locationType: string; city: string; groupKey: string } {
+): { locationType: string; city: string; folderPath: string; isHub: boolean; groupKey: string } {
     const code = (siteCode || "").toUpperCase().trim();
     let locationType = (metadata?.locationType || "").trim();
     let city = (metadata?.city || "").trim();
+    const folderPath = (metadata?.folderPath || "").trim();
+    const isHub = metadata?.isHub !== undefined ? Boolean(metadata.isHub) : (["KEL", "CRM", "VMM", "RDG", "WDC"].includes(code));
 
     // 1. Resolve Location Type
     if (!locationType) {
-        const campusCodes = new Set(["KEL", "PAV", "DOR", "ENR", "3CP", "CCI", "CRM"]);
-        const adminCodes = new Set(["WDC", "RDG", "L3B", "101"]);
-        if (campusCodes.has(code)) {
-            locationType = "Campus";
-        } else if (adminCodes.has(code)) {
-            locationType = "Administrative";
-        } else {
-            locationType = "Ambulatory";
+        if (folderPath) {
+            const firstSegment = folderPath.split("/")[0].trim();
+            if (/campus/i.test(firstSegment)) locationType = "Campus";
+            else if (/admin/i.test(firstSegment)) locationType = "Administrative";
+            else if (/ambulatory/i.test(firstSegment)) locationType = "Ambulatory";
+        }
+        if (!locationType) {
+            const campusCodes = new Set(["KEL", "PAV", "DOR", "ENR", "3CP", "CCI", "CRM"]);
+            const adminCodes = new Set(["WDC", "RDG", "L3B", "101"]);
+            if (campusCodes.has(code)) {
+                locationType = "Campus";
+            } else if (adminCodes.has(code)) {
+                locationType = "Administrative";
+            } else {
+                locationType = "Ambulatory";
+            }
         }
     } else {
         if (/campus/i.test(locationType)) locationType = "Campus";
@@ -61,10 +73,14 @@ export function getSiteClassification(
         }
     }
 
+    const groupKey = folderPath || `${locationType} - ${city}`;
+
     return {
         locationType,
         city,
-        groupKey: `${locationType} - ${city}`
+        folderPath,
+        isHub,
+        groupKey
     };
 }
 
@@ -101,6 +117,8 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
     const notesIdx = headers.indexOf('notes');
     const locTypeIdx = headers.findIndex(h => h === 'location type' || h === 'locationtype' || h === 'type');
     const cityIdx = headers.indexOf('city');
+    const folderIdx = headers.findIndex(h => h === 'folder path' || h === 'folderpath' || h === 'folder' || h === 'group path' || h === 'group');
+    const isHubIdx = headers.findIndex(h => h === 'is hub' || h === 'ishub' || h === 'hub');
 
     if (codeIdx === -1) return [];
 
@@ -112,6 +130,8 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
             const rawName = nameIdx !== -1 ? parts[nameIdx] || "" : "";
             const locTypeRaw = locTypeIdx !== -1 ? parts[locTypeIdx]?.trim() || undefined : undefined;
             const cityRaw = cityIdx !== -1 ? parts[cityIdx]?.trim() || undefined : undefined;
+            const folderRaw = folderIdx !== -1 ? parts[folderIdx]?.trim() || undefined : undefined;
+            const isHubRaw = isHubIdx !== -1 ? /^(true|yes|1|y)$/i.test(parts[isHubIdx]?.trim() || '') : undefined;
             
             results.push({
                 code,
@@ -120,7 +140,9 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
                 status: statusIdx !== -1 ? parts[statusIdx] || "Active" : "Active",
                 notes: notesIdx !== -1 ? parts[notesIdx] || "" : "",
                 locationType: locTypeRaw,
-                city: cityRaw
+                city: cityRaw,
+                folderPath: folderRaw,
+                isHub: isHubRaw
             });
         }
     }
@@ -129,13 +151,14 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
 }
 
 export function stringifySiteCsv(sites: SiteMetadata[]): string {
-    const headers = ["Code", "Name", "Address", "Location Type", "City", "Status", "Notes"];
+    const headers = ["Code", "Name", "Address", "Folder Path", "Location Type", "City", "Is Hub", "Status", "Notes"];
     const rows = [headers.join(",")];
 
     for (const site of sites) {
         // Wrap fields in quotes if they contain commas, quotes, or newlines
-        const formatField = (field: string | undefined) => {
-            if (!field) return "";
+        const formatField = (field: string | undefined | boolean) => {
+            if (field === undefined || field === null) return "";
+            if (typeof field === "boolean") return field ? "Yes" : "No";
             if (field.includes(",") || field.includes('"') || field.includes("\n") || field.includes("\r")) {
                 return `"${field.replace(/"/g, '""')}"`;
             }
@@ -148,8 +171,10 @@ export function stringifySiteCsv(sites: SiteMetadata[]): string {
             formatField(site.code),
             formatField(site.name),
             formatField(site.address),
+            formatField(site.folderPath || classification.folderPath),
             formatField(site.locationType || classification.locationType),
             formatField(site.city || classification.city),
+            formatField(site.isHub !== undefined ? site.isHub : classification.isHub),
             formatField(site.status),
             formatField(site.notes)
         ];

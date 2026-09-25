@@ -82,6 +82,9 @@ interface TopologyGraphProps {
     highlightedLinks?: Array<{ from: string; to: string }>;
     onReseedDevice?: (dev: any) => void;
     onRefreshSnapshot?: () => void;
+    locateSiteCode?: string | null;
+    snapshotId?: string;
+    onEditSite?: (siteCode: string) => void;
     className?: string;
 }
 
@@ -506,6 +509,9 @@ export default function TopologyGraph({
     highlightedLinks = [],
     onReseedDevice,
     onRefreshSnapshot,
+    locateSiteCode,
+    snapshotId,
+    onEditSite,
     className
 }: TopologyGraphProps) {
     const [zoom, setZoom] = useState(1);
@@ -534,6 +540,16 @@ export default function TopologyGraph({
     const [siteClusterMode, setSiteClusterMode] = useState<"topological" | "grid">("topological"); // Topological Connected Clusters vs Linear Grid
     const [nodeDensity, setNodeDensity] = useState<"standard" | "compact">("standard"); // Standard Detailed Cards vs Compact Shapes
 
+    // Free-flowing draggable nodes & Saved Views
+    const [siteOffsets, setSiteOffsets] = useState<Record<string, { dx: number; dy: number }>>({});
+    const [activeLayoutView, setActiveLayoutView] = useState<string>("auto");
+    const [savedViews, setSavedViews] = useState<any[]>([]);
+    const [isSaveViewModalOpen, setIsSaveViewModalOpen] = useState(false);
+    const [newViewName, setNewViewName] = useState("");
+    const [newViewDescription, setNewViewDescription] = useState("");
+    const [savingView, setSavingView] = useState(false);
+    const draggingSiteRef = useRef<{ siteCode: string; startX: number; startY: number; initialDx: number; initialDy: number } | null>(null);
+
     // Grouped Dropdown Menus for toolbar
     const [activeDropdown, setActiveDropdown] = useState<"layout" | "display" | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -549,6 +565,115 @@ export default function TopologyGraph({
             return () => document.removeEventListener("mousedown", handleOutsideClick);
         }
     }, [activeDropdown]);
+
+    // Load personal layout from localStorage on mount / snapshot change
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            try {
+                const key = `crawler_topology_site_offsets_${snapshotId || "master"}`;
+                const saved = localStorage.getItem(key);
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+                        setSiteOffsets(parsed);
+                        setActiveLayoutView("personal");
+                    }
+                }
+            } catch {}
+        }
+    }, [snapshotId]);
+
+    // Fetch shared saved views from API
+    const fetchSavedViews = async () => {
+        try {
+            const res = await fetch(`/api/crawler/views?snapshotId=${snapshotId || "master"}`);
+            const data = await res.json();
+            if (data.views) {
+                setSavedViews(data.views);
+            }
+        } catch (e) {
+            console.error("Failed to load saved views:", e);
+        }
+    };
+
+    useEffect(() => {
+        fetchSavedViews();
+    }, [snapshotId]);
+
+    const handleSaveView = async () => {
+        if (!newViewName.trim()) return;
+        setSavingView(true);
+        try {
+            const res = await fetch("/api/crawler/views", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: newViewName.trim(),
+                    description: newViewDescription.trim(),
+                    snapshotId: snapshotId || "master",
+                    layoutData: siteOffsets
+                })
+            });
+            const data = await res.json();
+            if (data.view) {
+                await fetchSavedViews();
+                setActiveLayoutView(data.view.id);
+                setIsSaveViewModalOpen(false);
+                setNewViewName("");
+                setNewViewDescription("");
+            }
+        } catch (e) {
+            console.error("Failed to save view:", e);
+        } finally {
+            setSavingView(false);
+        }
+    };
+
+    const handleResetLayout = () => {
+        setSiteOffsets({});
+        setActiveLayoutView("auto");
+        try {
+            const key = `crawler_topology_site_offsets_${snapshotId || "master"}`;
+            localStorage.removeItem(key);
+        } catch {}
+    };
+
+    const handleSelectView = (viewId: string) => {
+        if (viewId === "auto") {
+            setSiteOffsets({});
+            setActiveLayoutView("auto");
+        } else if (viewId === "personal") {
+            try {
+                const key = `crawler_topology_site_offsets_${snapshotId || "master"}`;
+                const saved = localStorage.getItem(key);
+                if (saved) {
+                    setSiteOffsets(JSON.parse(saved));
+                }
+            } catch {}
+            setActiveLayoutView("personal");
+        } else {
+            const found = savedViews.find(v => v.id === viewId);
+            if (found && found.layoutData) {
+                setSiteOffsets(found.layoutData);
+                setActiveLayoutView(viewId);
+            }
+        }
+    };
+
+    const handleStartDragSite = (e: React.PointerEvent, siteCode: string) => {
+        if (e.button !== 0) return;
+        if ((e.target as HTMLElement).closest("button, select, input, a")) return;
+        e.stopPropagation();
+        const current = siteOffsets[siteCode] || { dx: 0, dy: 0 };
+        draggingSiteRef.current = {
+            siteCode,
+            startX: e.clientX,
+            startY: e.clientY,
+            initialDx: current.dx,
+            initialDy: current.dy
+        };
+        hasDraggedRef.current = false;
+    };
 
     const activeFilterCount = useMemo(() => {
         let count = 0;
@@ -2651,6 +2776,51 @@ export default function TopologyGraph({
             maxCanvasHeight = currentSiteY + maxRowHeight;
         }
 
+        // 5B. Apply custom dragged offsets to sites, IDFs, and device nodes
+        if (siteOffsets && Object.keys(siteOffsets).length > 0) {
+            for (const sb of siteContainers) {
+                const off = siteOffsets[sb.siteCode];
+                if (off && (off.dx !== 0 || off.dy !== 0)) {
+                    sb.x += off.dx;
+                    sb.y += off.dy;
+
+                    // Shift IDFs inside this site
+                    for (const ib of idfContainers) {
+                        if (ib.siteCode === sb.siteCode) {
+                            ib.x += off.dx;
+                            ib.y += off.dy;
+                        }
+                    }
+
+                    // Shift node positions inside this site
+                    const siteDevs = siteDeviceMap.get(sb.siteCode) || [];
+                    for (const dev of siteDevs) {
+                        const canon = dev.canonicalHostname || getCanonicalHostname(dev.hostname);
+                        const pos = positions.get(canon);
+                        if (pos) {
+                            pos.x += off.dx;
+                            pos.y += off.dy;
+                        }
+                    }
+                }
+            }
+
+            // Recalculate cluster enclosure bounding boxes around dragged member sites
+            for (const cl of clusters) {
+                const memberBoxes = siteContainers.filter(sb => cl.siteCodes.includes(sb.siteCode));
+                if (memberBoxes.length > 0) {
+                    const minX = Math.min(...memberBoxes.map(b => b.x)) - 24;
+                    const minY = Math.min(...memberBoxes.map(b => b.y)) - 28;
+                    const maxX = Math.max(...memberBoxes.map(b => b.x + b.width)) + 24;
+                    const maxY = Math.max(...memberBoxes.map(b => b.y + b.height)) + 20;
+                    cl.x = minX;
+                    cl.y = minY;
+                    cl.width = Math.max(maxX - minX, 100);
+                    cl.height = Math.max(maxY - minY, 80);
+                }
+            }
+        }
+
         // 6. Generate Inter-Site Highway Bridges between connected sites
         const bridges: InterSiteBridge[] = [];
         const siteBoxMap = new Map<string, SiteContainerBox>();
@@ -2835,7 +3005,7 @@ export default function TopologyGraph({
             canvasSize: { width: totalWidth, height: totalHeight },
             layoutDevices: layoutDevs
         };
-    }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing, showUncrawledSites, uncrawledSiteCodes, siteFilter, siteClusterMode, unifiedLinks, deviceLocationMap, nodeDensity, designatedHubs, activeDrillHub]);
+    }, [filteredDevices, layoutMode, stackingMode, siteDirectory, collapsedSites, collapsedIdfs, idfSpacing, showUncrawledSites, uncrawledSiteCodes, siteFilter, siteClusterMode, unifiedLinks, deviceLocationMap, nodeDensity, designatedHubs, activeDrillHub, siteOffsets]);
 
     // Multi-neighbor trunk & MPLS convergence model
     // Converges multiple links that share the same physical trunk/interface into a single stem before connecting to the switch/site
@@ -3004,6 +3174,22 @@ export default function TopologyGraph({
     };
 
     const handlePointerMove = (e: React.PointerEvent) => {
+        if (draggingSiteRef.current) {
+            const deltaX = (e.clientX - draggingSiteRef.current.startX) / zoom;
+            const deltaY = (e.clientY - draggingSiteRef.current.startY) / zoom;
+            if (Math.hypot(deltaX, deltaY) > 3) {
+                hasDraggedRef.current = true;
+                const sCode = draggingSiteRef.current.siteCode;
+                const newDx = Math.round(draggingSiteRef.current.initialDx + deltaX);
+                const newDy = Math.round(draggingSiteRef.current.initialDy + deltaY);
+                setSiteOffsets(prev => ({
+                    ...prev,
+                    [sCode]: { dx: newDx, dy: newDy }
+                }));
+            }
+            return;
+        }
+
         if (!isDraggingRef.current) return;
         const dist = Math.hypot(e.clientX - startPointerRef.current.x, e.clientY - startPointerRef.current.y);
         if (dist > 5) {
@@ -3058,6 +3244,18 @@ export default function TopologyGraph({
     };
 
     const handlePointerUp = (e: React.PointerEvent) => {
+        if (draggingSiteRef.current) {
+            if (hasDraggedRef.current) {
+                setActiveLayoutView("personal");
+                try {
+                    const key = `crawler_topology_site_offsets_${snapshotId || "master"}`;
+                    localStorage.setItem(key, JSON.stringify(siteOffsets));
+                } catch {}
+            }
+            draggingSiteRef.current = null;
+            return;
+        }
+
         if (!isDraggingRef.current) return;
         isDraggingRef.current = false;
         try {
@@ -4332,6 +4530,48 @@ export default function TopologyGraph({
                     </div>
                 )}
 
+                {/* Floating Layout View & Freeform Drag Bar */}
+                <div className="absolute top-3 right-4 z-20 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 shadow-2xl rounded-xl px-3 py-1.5 pointer-events-auto">
+                    <div className="flex items-center gap-1.5">
+                        <Eye className="w-3.5 h-3.5 text-sky-400" />
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Layout:</span>
+                        <select
+                            value={activeLayoutView}
+                            onChange={(e) => handleSelectView(e.target.value)}
+                            className="bg-black/60 border border-white/10 rounded-lg px-2 py-0.5 text-xs text-white font-semibold focus:outline-none focus:border-sky-400 cursor-pointer"
+                        >
+                            <option value="auto">Auto-Layout</option>
+                            <option value="personal">My Personal View</option>
+                            {savedViews.map((sv) => (
+                                <option key={sv.id} value={sv.id}>
+                                    {sv.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => setIsSaveViewModalOpen(true)}
+                        className="px-2 py-1 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 font-bold text-xs border border-sky-500/40 transition cursor-pointer flex items-center gap-1 shadow-sm"
+                        title="Save current layout as a shared view for anyone to open"
+                    >
+                        <Sparkles className="w-3 h-3 text-sky-300" />
+                        <span>Save View</span>
+                    </button>
+
+                    {activeLayoutView !== "auto" && (
+                        <button
+                            type="button"
+                            onClick={handleResetLayout}
+                            className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition cursor-pointer"
+                            title="Reset to default auto-layout"
+                        >
+                            <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                        </button>
+                    )}
+                </div>
+
                 <svg
                     width="100%"
                     height="100%"
@@ -4485,10 +4725,16 @@ export default function TopologyGraph({
                                 return (
                                     <g
                                         key={`site-${site.siteCode}`}
+                                        onPointerDown={(e) => handleStartDragSite(e, site.siteCode)}
+                                        onDoubleClick={(e) => {
+                                            e.stopPropagation();
+                                            if (onEditSite) onEditSite(site.siteCode);
+                                        }}
                                         className="group cursor-pointer"
+                                        style={{ cursor: "grab" }}
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            if (onReseedDevice) {
+                                            if (!hasDraggedRef.current && onReseedDevice) {
                                                 onReseedDevice({ hostname: `Seed ${site.siteCode}`, site: site.siteCode, ipAddress: "" });
                                             }
                                         }}
@@ -4518,12 +4764,26 @@ export default function TopologyGraph({
                                             {site.siteCode}
                                         </text>
 
-                                        {/* Uncrawled Badge on the right */}
-                                        <g transform={`translate(${site.x + site.width - 124}, ${site.y + 11})`}>
+                                        {/* Uncrawled Badge */}
+                                        <g transform={`translate(${site.x + site.width - 150}, ${site.y + 11})`}>
                                             <rect x={0} y={0} width={112} height={18} rx={4} fill="rgba(245, 158, 11, 0.2)" stroke="#f59e0b" strokeWidth={0.8} />
                                             <text x={56} y={12.5} fill="#fcd34d" fontSize={8} fontWeight="bold" textAnchor="middle" letterSpacing="0.4">
                                                 UNCRAWLED / NO DATA
                                             </text>
+                                        </g>
+
+                                        {/* Edit Site Button */}
+                                        <g
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (onEditSite) onEditSite(site.siteCode);
+                                            }}
+                                            className="cursor-pointer hover:opacity-100 opacity-60 transition"
+                                            transform={`translate(${site.x + site.width - 26}, ${site.y + 10})`}
+                                            title={`Edit ${site.siteCode} properties`}
+                                        >
+                                            <rect x={0} y={0} width={18} height={18} rx={4} fill="rgba(245, 158, 11, 0.15)" stroke="#f59e0b" strokeWidth={0.8} />
+                                            <path d="M 4 14 L 5.5 10.5 L 11 5 L 13 7 L 7.5 12.5 Z" fill="none" stroke="#fbbf24" strokeWidth={1} />
                                         </g>
 
                                         {/* Site Name */}
@@ -4556,6 +4816,11 @@ export default function TopologyGraph({
                                 return (
                                     <g
                                         key={`site-${site.siteCode}`}
+                                        onPointerDown={(e) => handleStartDragSite(e, site.siteCode)}
+                                        onDoubleClick={(e) => {
+                                            e.stopPropagation();
+                                            if (onEditSite) onEditSite(site.siteCode);
+                                        }}
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             if (!hasDraggedRef.current) {
@@ -4567,6 +4832,7 @@ export default function TopologyGraph({
                                             }
                                         }}
                                         className="cursor-pointer group"
+                                        style={{ cursor: "grab" }}
                                         title={
                                             siteClusterMode === "topological" && (isHub || hasSatellites)
                                                 ? `Click to drill down into ${site.siteCode}${site.siteName ? ` (${site.siteName})` : ""}`
@@ -4654,7 +4920,7 @@ export default function TopologyGraph({
                                                 toggleSiteUplinks(site.siteCode);
                                             }}
                                             className="cursor-pointer hover:opacity-95 transition"
-                                            transform={`translate(${site.x + site.width - 92}, ${site.y + (isHub ? 8 : 11)})`}
+                                            transform={`translate(${site.x + site.width - 116}, ${site.y + (isHub ? 8 : 11)})`}
                                             title={`Toggle WAN/core uplinks for site ${site.siteCode}`}
                                         >
                                             <rect
@@ -4677,6 +4943,20 @@ export default function TopologyGraph({
                                             >
                                                 {visibleUplinkSites.has(site.siteCode) ? "✓ Uplinks" : "+ Uplinks"}
                                             </text>
+                                        </g>
+
+                                        {/* Edit Site Button */}
+                                        <g
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (onEditSite) onEditSite(site.siteCode);
+                                            }}
+                                            className="cursor-pointer hover:opacity-100 opacity-60 transition"
+                                            transform={`translate(${site.x + site.width - 48}, ${site.y + (isHub ? 8 : 11)})`}
+                                            title={`Edit ${site.siteCode} (${site.siteName || "Details"})`}
+                                        >
+                                            <rect x={0} y={0} width={18} height={18} rx={4} fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.2)" strokeWidth={0.8} />
+                                            <path d="M 4 14 L 5.5 10.5 L 11 5 L 13 7 L 7.5 12.5 Z" fill="none" stroke="#38bdf8" strokeWidth={1} />
                                         </g>
 
                                         {/* Expand Chevron Icon Badge */}
@@ -4725,10 +5005,20 @@ export default function TopologyGraph({
                                         stroke={isHub ? "rgba(245, 158, 11, 0.6)" : "rgba(71, 85, 105, 0.5)"}
                                         strokeWidth={isHub ? 2 : 1.5}
                                         strokeDasharray="6,4"
+                                        onPointerDown={(e) => handleStartDragSite(e, site.siteCode)}
+                                        style={{ cursor: "grab" }}
                                     />
 
                                     {/* Site Header Bar */}
-                                    <g transform={`translate(${site.x + 14}, ${site.y + 16})`}>
+                                    <g 
+                                        transform={`translate(${site.x + 14}, ${site.y + 16})`}
+                                        onPointerDown={(e) => handleStartDragSite(e, site.siteCode)}
+                                        onDoubleClick={(e) => {
+                                            e.stopPropagation();
+                                            if (onEditSite) onEditSite(site.siteCode);
+                                        }}
+                                        style={{ cursor: "grab" }}
+                                    >
                                         <rect x={0} y={-2} width={28} height={20} rx={5} fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth={0.8} />
                                         <text x={14} y={12} fill="#60a5fa" fontSize={11} fontWeight="bold" textAnchor="middle" fontFamily="monospace">
                                             {site.siteCode}
@@ -4833,6 +5123,20 @@ export default function TopologyGraph({
                                                 </text>
                                             </g>
                                         )}
+
+                                        {/* Edit Site Button on Expanded Header */}
+                                        <g
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (onEditSite) onEditSite(site.siteCode);
+                                            }}
+                                            className="cursor-pointer hover:opacity-100 opacity-70 transition"
+                                            transform={`translate(${site.width - 66}, -3)`}
+                                            title={`Edit ${site.siteCode} (${site.siteName || "Details"})`}
+                                        >
+                                            <rect x={0} y={0} width={20} height={20} rx={5} fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.2)" strokeWidth={0.8} />
+                                            <path d="M 5 15 L 6.5 11.5 L 12 6 L 14 8 L 8.5 13.5 Z" fill="none" stroke="#38bdf8" strokeWidth={1} />
+                                        </g>
 
                                         {/* Collapse Site Button */}
                                         <g
@@ -5822,6 +6126,55 @@ export default function TopologyGraph({
                     </g>
                 </svg>
             </div>
+
+            {/* Save Layout View Modal */}
+            {isSaveViewModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+                    <div className="glass-card w-full max-w-sm border border-white/20 p-5 rounded-2xl shadow-2xl animate-in zoom-in-95 duration-200">
+                        <h3 className="text-sm font-black text-white uppercase tracking-wider mb-2 flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-sky-400" />
+                            Save Layout View
+                        </h3>
+                        <p className="text-xs text-muted mb-4">
+                            Save the current dragged node positions so other team members can load this exact layout.
+                        </p>
+                        <input
+                            type="text"
+                            value={newViewName}
+                            onChange={e => setNewViewName(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleSaveView()}
+                            placeholder="View Name (e.g. Core Backbone Clean)"
+                            autoFocus
+                            className="w-full px-3.5 py-2 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs text-white mb-2"
+                        />
+                        <input
+                            type="text"
+                            value={newViewDescription}
+                            onChange={e => setNewViewDescription(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleSaveView()}
+                            placeholder="Description (optional)"
+                            className="w-full px-3.5 py-2 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs text-white mb-4"
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsSaveViewModalOpen(false)}
+                                className="px-3 py-1.5 text-xs text-muted hover:text-white border border-white/10 rounded-lg hover:bg-white/5 transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleSaveView}
+                                disabled={savingView || !newViewName.trim()}
+                                className="px-3.5 py-1.5 text-xs font-bold bg-accent-primary hover:bg-accent-primary/80 text-black rounded-lg transition-all shadow-md cursor-pointer"
+                            >
+                                {savingView ? "Saving..." : "Save View"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Bulk Node Governance Override Modal */}
             {isBulkEditModalOpen && (
