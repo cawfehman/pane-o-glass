@@ -839,6 +839,9 @@
   .max-h-72 {
     max-height: calc(var(--spacing) * 72);
   }
+  .max-h-\[70vh\] {
+    max-height: 70vh;
+  }
   .max-h-\[75vh\] {
     max-height: 75vh;
   }
@@ -2978,6 +2981,9 @@
       background-color: color-mix(in oklab, var(--color-sky-400) 5%, transparent);
     }
   }
+  .bg-sky-500 {
+    background-color: var(--color-sky-500);
+  }
   .bg-sky-500\/5 {
     background-color: color-mix(in srgb, oklch(68.5% 0.169 237.323) 5%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -4175,6 +4181,9 @@
   .accent-rose-500 {
     accent-color: var(--color-rose-500);
   }
+  .accent-sky-500 {
+    accent-color: var(--color-sky-500);
+  }
   .opacity-0 {
     opacity: 0%;
   }
@@ -5182,6 +5191,9 @@
     }
     .hover\:bg-rose-700:hover {
       background-color: var(--color-rose-700);
+    }
+    .hover\:bg-sky-400:hover {
+      background-color: var(--color-sky-400);
     }
     .hover\:bg-sky-500\/25:hover {
       background-color: color-mix(in srgb, oklch(68.5% 0.169 237.323) 25%, transparent);

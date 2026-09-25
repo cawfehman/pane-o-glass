@@ -54,6 +54,7 @@ import {
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 import { getSiteClassification } from "@/lib/sites";
+import EditIdfModal from "./EditIdfModal";
 
 export function getBasePhysicalInterface(intf?: string | null): string {
     if (!intf) return "unknown";
@@ -553,6 +554,57 @@ export default function TopologyGraph({
     const [newViewDescription, setNewViewDescription] = useState("");
     const [savingView, setSavingView] = useState(false);
     const draggingSiteRef = useRef<{ siteCode: string; startX: number; startY: number; initialDx: number; initialDy: number } | null>(null);
+
+    // IDF Editing & Drag-and-Drop reassignment
+    const [editingIdf, setEditingIdf] = useState<{
+        siteCode: string;
+        idfCode: string;
+        devices: any[];
+    } | null>(null);
+    const [dragOverTargetSite, setDragOverTargetSite] = useState<string | null>(null);
+    const [dragOverTargetIdf, setDragOverTargetIdf] = useState<string | null>(null);
+
+    const handleMoveDeviceToSite = async (hostname: string, targetSite: string, targetIdf?: string) => {
+        try {
+            const canonical = hostname.split(".")[0].split("(")[0].trim().toLowerCase();
+            const res = await fetch("/api/crawler/overrides", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    hostname: canonical,
+                    siteOverride: targetSite.toUpperCase(),
+                    idfOverride: targetIdf ? targetIdf.toUpperCase() : undefined,
+                    reason: `Moved via topology drag to ${targetSite.toUpperCase()}${targetIdf ? ` • IDF ${targetIdf.toUpperCase()}` : ""}`
+                })
+            });
+            if (res.ok && onRefreshSnapshot) {
+                onRefreshSnapshot();
+            }
+        } catch (err) {
+            console.error("Failed to move device:", err);
+        }
+    };
+
+    const handleMoveIdfToSite = async (hostnames: string[], idfCode: string, targetSite: string) => {
+        try {
+            const canonicalHosts = hostnames.map(h => h.split(".")[0].split("(")[0].trim().toLowerCase());
+            const res = await fetch("/api/crawler/overrides", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    hostnames: canonicalHosts,
+                    siteOverride: targetSite.toUpperCase(),
+                    idfOverride: idfCode.toUpperCase(),
+                    reason: `IDF ${idfCode} moved via topology drag to ${targetSite.toUpperCase()}`
+                })
+            });
+            if (res.ok && onRefreshSnapshot) {
+                onRefreshSnapshot();
+            }
+        } catch (err) {
+            console.error("Failed to move IDF:", err);
+        }
+    };
 
     // Grouped Dropdown Menus for toolbar
     const [activeDropdown, setActiveDropdown] = useState<"layout" | "display" | null>(null);
@@ -4945,6 +4997,33 @@ export default function TopologyGraph({
                                             e.stopPropagation();
                                             if (onEditSite) onEditSite(site.siteCode);
                                         }}
+                                        onDragOver={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            e.dataTransfer.dropEffect = "move";
+                                            if (dragOverTargetSite !== site.siteCode) setDragOverTargetSite(site.siteCode);
+                                        }}
+                                        onDragLeave={(e) => {
+                                            e.stopPropagation();
+                                            setDragOverTargetSite(null);
+                                        }}
+                                        onDrop={async (e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setDragOverTargetSite(null);
+                                            try {
+                                                const raw = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain");
+                                                if (!raw) return;
+                                                const data = JSON.parse(raw);
+                                                if (data.type === "device" && data.hostname) {
+                                                    await handleMoveDeviceToSite(data.hostname, site.siteCode);
+                                                } else if (data.type === "idf" && data.hostnames) {
+                                                    await handleMoveIdfToSite(data.hostnames, data.idfCode, site.siteCode);
+                                                }
+                                            } catch (err) {
+                                                console.error("Drop failed:", err);
+                                            }
+                                        }}
                                         className="group cursor-pointer"
                                         style={{ cursor: "grab" }}
                                         onClick={(e) => {
@@ -4960,11 +5039,11 @@ export default function TopologyGraph({
                                             width={site.width}
                                             height={site.height}
                                             rx={10}
-                                            fill="rgba(30, 22, 12, 0.95)"
-                                            stroke="#f59e0b"
-                                            strokeWidth={1.5}
+                                            fill={dragOverTargetSite === site.siteCode ? "rgba(56, 189, 248, 0.15)" : "rgba(30, 22, 12, 0.95)"}
+                                            stroke={dragOverTargetSite === site.siteCode ? "#38bdf8" : "#f59e0b"}
+                                            strokeWidth={dragOverTargetSite === site.siteCode ? 2.5 : 1.5}
                                             strokeDasharray="5,3"
-                                            filter="drop-shadow(0 4px 12px rgba(0,0,0,0.6))"
+                                            filter={dragOverTargetSite === site.siteCode ? "drop-shadow(0 0 12px rgba(56, 189, 248, 0.8))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.6))"}
                                             className="group-hover:stroke-amber-300 group-hover:brightness-125 transition"
                                         />
                                         {/* Accent Strip */}
@@ -5050,6 +5129,33 @@ export default function TopologyGraph({
                                             e.stopPropagation();
                                             if (onEditSite) onEditSite(site.siteCode);
                                         }}
+                                        onDragOver={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            e.dataTransfer.dropEffect = "move";
+                                            if (dragOverTargetSite !== site.siteCode) setDragOverTargetSite(site.siteCode);
+                                        }}
+                                        onDragLeave={(e) => {
+                                            e.stopPropagation();
+                                            setDragOverTargetSite(null);
+                                        }}
+                                        onDrop={async (e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            setDragOverTargetSite(null);
+                                            try {
+                                                const raw = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain");
+                                                if (!raw) return;
+                                                const data = JSON.parse(raw);
+                                                if (data.type === "device" && data.hostname) {
+                                                    await handleMoveDeviceToSite(data.hostname, site.siteCode);
+                                                } else if (data.type === "idf" && data.hostnames) {
+                                                    await handleMoveIdfToSite(data.hostnames, data.idfCode, site.siteCode);
+                                                }
+                                            } catch (err) {
+                                                console.error("Drop failed:", err);
+                                            }
+                                        }}
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             if (!hasDraggedRef.current) {
@@ -5074,10 +5180,10 @@ export default function TopologyGraph({
                                             width={site.width}
                                             height={site.height}
                                             rx={10}
-                                            fill="rgba(15, 23, 42, 0.95)"
-                                            stroke={isKelCore ? "#f59e0b" : isHub ? "#eab308" : "#3b82f6"}
-                                            strokeWidth={isKelCore ? 2 : 1.5}
-                                            filter="drop-shadow(0 4px 12px rgba(0,0,0,0.6))"
+                                            fill={dragOverTargetSite === site.siteCode ? "rgba(56, 189, 248, 0.2)" : "rgba(15, 23, 42, 0.95)"}
+                                            stroke={dragOverTargetSite === site.siteCode ? "#38bdf8" : isKelCore ? "#f59e0b" : isHub ? "#eab308" : "#3b82f6"}
+                                            strokeWidth={dragOverTargetSite === site.siteCode ? 2.8 : isKelCore ? 2 : 1.5}
+                                            filter={dragOverTargetSite === site.siteCode ? "drop-shadow(0 0 14px rgba(56, 189, 248, 0.8))" : "drop-shadow(0 4px 12px rgba(0,0,0,0.6))"}
                                             className="group-hover:stroke-cyan-300 group-hover:brightness-125 transition"
                                         />
                                         {/* Accent Strip */}
@@ -5235,7 +5341,37 @@ export default function TopologyGraph({
                             const isHub = designatedHubs.has(site.siteCode);
 
                             return (
-                                <g key={`site-${site.siteCode}`} className="transition-opacity duration-300">
+                                <g 
+                                    key={`site-${site.siteCode}`} 
+                                    className="transition-opacity duration-300"
+                                    onDragOver={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        e.dataTransfer.dropEffect = "move";
+                                        if (dragOverTargetSite !== site.siteCode) setDragOverTargetSite(site.siteCode);
+                                    }}
+                                    onDragLeave={(e) => {
+                                        e.stopPropagation();
+                                        setDragOverTargetSite(null);
+                                    }}
+                                    onDrop={async (e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        setDragOverTargetSite(null);
+                                        try {
+                                            const raw = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain");
+                                            if (!raw) return;
+                                            const data = JSON.parse(raw);
+                                            if (data.type === "device" && data.hostname) {
+                                                await handleMoveDeviceToSite(data.hostname, site.siteCode);
+                                            } else if (data.type === "idf" && data.hostnames) {
+                                                await handleMoveIdfToSite(data.hostnames, data.idfCode, site.siteCode);
+                                            }
+                                        } catch (err) {
+                                            console.error("Drop failed:", err);
+                                        }
+                                    }}
+                                >
                                     {/* Outer Site Enclosure */}
                                     <rect
                                         x={site.x}
@@ -5243,9 +5379,9 @@ export default function TopologyGraph({
                                         width={site.width}
                                         height={site.height}
                                         rx={14}
-                                        fill="rgba(15, 23, 42, 0.55)"
-                                        stroke={isHub ? "rgba(245, 158, 11, 0.6)" : "rgba(71, 85, 105, 0.5)"}
-                                        strokeWidth={isHub ? 2 : 1.5}
+                                        fill={dragOverTargetSite === site.siteCode ? "rgba(56, 189, 248, 0.15)" : "rgba(15, 23, 42, 0.55)"}
+                                        stroke={dragOverTargetSite === site.siteCode ? "#38bdf8" : isHub ? "rgba(245, 158, 11, 0.6)" : "rgba(71, 85, 105, 0.5)"}
+                                        strokeWidth={dragOverTargetSite === site.siteCode ? 2.5 : isHub ? 2 : 1.5}
                                         strokeDasharray="6,4"
                                         onPointerDown={(e) => handleStartDragSite(e, site.siteCode)}
                                         style={{ cursor: "grab" }}
@@ -5417,12 +5553,40 @@ export default function TopologyGraph({
                                     {/* 2. RENDER NESTED IDF CONTAINERS */}
                                     {site.idfs.map((idf) => {
                                         const isIdfUplinksOn = visibleUplinkIdfs.has(`${site.siteCode}::${idf.idfCode}`);
+                                        const isDropTargetIdf = dragOverTargetIdf === `${site.siteCode}-${idf.idfCode}`;
 
                                         if (idf.isCollapsed) {
                                             return (
                                                 <g
                                                     key={`idf-${site.siteCode}-${idf.idfCode}`}
                                                     onClick={() => toggleCollapseIdf(site.siteCode, idf.idfCode)}
+                                                    onDragOver={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        e.dataTransfer.dropEffect = "move";
+                                                        if (dragOverTargetIdf !== `${site.siteCode}-${idf.idfCode}`) {
+                                                            setDragOverTargetIdf(`${site.siteCode}-${idf.idfCode}`);
+                                                        }
+                                                    }}
+                                                    onDragLeave={(e) => {
+                                                        e.stopPropagation();
+                                                        setDragOverTargetIdf(null);
+                                                    }}
+                                                    onDrop={async (e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        setDragOverTargetIdf(null);
+                                                        try {
+                                                            const raw = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain");
+                                                            if (!raw) return;
+                                                            const data = JSON.parse(raw);
+                                                            if (data.type === "device" && data.hostname) {
+                                                                await handleMoveDeviceToSite(data.hostname, site.siteCode, idf.idfCode);
+                                                            }
+                                                        } catch (err) {
+                                                            console.error("Drop on collapsed IDF failed:", err);
+                                                        }
+                                                    }}
                                                     className="cursor-pointer group"
                                                     title={`IDF ${idf.idfCode} (${idf.deviceCount} ${idf.deviceCount === 1 ? "Switch" : "Switches"}) - Click to expand`}
                                                 >
@@ -5432,9 +5596,9 @@ export default function TopologyGraph({
                                                         width={idf.width}
                                                         height={idf.height}
                                                         rx={8}
-                                                        fill="rgba(30, 41, 59, 0.9)"
-                                                        stroke="#38bdf8"
-                                                        strokeWidth={1.2}
+                                                        fill={isDropTargetIdf ? "rgba(56, 189, 248, 0.25)" : "rgba(30, 41, 59, 0.9)"}
+                                                        stroke={isDropTargetIdf ? "#38bdf8" : "#38bdf8"}
+                                                        strokeWidth={isDropTargetIdf ? 2.5 : 1.2}
                                                         strokeDasharray="4,2"
                                                         className="group-hover:stroke-blue-400 group-hover:fill-slate-800/90 transition"
                                                     />
@@ -5455,20 +5619,81 @@ export default function TopologyGraph({
                                         }
 
                                         return (
-                                            <g key={`idf-${site.siteCode}-${idf.idfCode}`}>
+                                            <g 
+                                                key={`idf-${site.siteCode}-${idf.idfCode}`}
+                                                onDragOver={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    e.dataTransfer.dropEffect = "move";
+                                                    if (dragOverTargetIdf !== `${site.siteCode}-${idf.idfCode}`) {
+                                                        setDragOverTargetIdf(`${site.siteCode}-${idf.idfCode}`);
+                                                    }
+                                                }}
+                                                onDragLeave={(e) => {
+                                                    e.stopPropagation();
+                                                    setDragOverTargetIdf(null);
+                                                }}
+                                                onDrop={async (e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    setDragOverTargetIdf(null);
+                                                    try {
+                                                        const raw = e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain");
+                                                        if (!raw) return;
+                                                        const data = JSON.parse(raw);
+                                                        if (data.type === "device" && data.hostname) {
+                                                            await handleMoveDeviceToSite(data.hostname, site.siteCode, idf.idfCode);
+                                                        }
+                                                    } catch (err) {
+                                                        console.error("Drop on IDF failed:", err);
+                                                    }
+                                                }}
+                                            >
                                                 <rect
                                                     x={idf.x}
                                                     y={idf.y}
                                                     width={idf.width}
                                                     height={idf.height}
                                                     rx={10}
-                                                    fill="rgba(30, 41, 59, 0.45)"
-                                                    stroke="rgba(100, 116, 139, 0.4)"
-                                                    strokeWidth={1}
+                                                    fill={isDropTargetIdf ? "rgba(56, 189, 248, 0.15)" : "rgba(30, 41, 59, 0.45)"}
+                                                    stroke={isDropTargetIdf ? "#38bdf8" : "rgba(100, 116, 139, 0.4)"}
+                                                    strokeWidth={isDropTargetIdf ? 2.5 : 1}
                                                 />
 
                                                 {/* IDF Header */}
-                                                <g transform={`translate(${idf.x + 12}, ${idf.y + 14})`}>
+                                                <g 
+                                                    transform={`translate(${idf.x + 12}, ${idf.y + 14})`}
+                                                    draggable={true}
+                                                    onDragStart={(e) => {
+                                                        e.stopPropagation();
+                                                        const idfDevs = filteredDevices.filter(d => {
+                                                            const loc = deviceLocationMap.get(d.canonicalHostname || getCanonicalHostname(d.hostname));
+                                                            return loc?.site === site.siteCode && loc?.idf === idf.idfCode;
+                                                        });
+                                                        const hosts = idfDevs.map(d => d.canonicalHostname || getCanonicalHostname(d.hostname));
+                                                        e.dataTransfer.setData("application/json", JSON.stringify({
+                                                            type: "idf",
+                                                            siteCode: site.siteCode,
+                                                            idfCode: idf.idfCode,
+                                                            hostnames: hosts
+                                                        }));
+                                                        e.dataTransfer.effectAllowed = "move";
+                                                    }}
+                                                    onDoubleClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const idfDevs = filteredDevices.filter(d => {
+                                                            const loc = deviceLocationMap.get(d.canonicalHostname || getCanonicalHostname(d.hostname));
+                                                            return loc?.site === site.siteCode && loc?.idf === idf.idfCode;
+                                                        });
+                                                        setEditingIdf({
+                                                            siteCode: site.siteCode,
+                                                            idfCode: idf.idfCode,
+                                                            devices: idfDevs
+                                                        });
+                                                    }}
+                                                    className="cursor-grab select-none"
+                                                    title={`IDF ${idf.idfCode} (Double-click or click pencil to edit closet; drag to reassign closet)`}
+                                                >
                                                     <rect x={0} y={-2} width={18} height={16} rx={4} fill="rgba(148, 163, 184, 0.15)" />
                                                     <text x={9} y={10} fill="#cbd5e1" fontSize={9} fontWeight="bold" textAnchor="middle">
                                                         ■
@@ -5476,7 +5701,7 @@ export default function TopologyGraph({
                                                     <text x={24} y={10} fill="#cbd5e1" fontSize={11} fontWeight="bold" fontFamily="monospace">
                                                         {idf.idfCode}
                                                     </text>
-                                                    <text x={idf.width - 128} y={10} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
+                                                    <text x={idf.width - 146} y={10} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
                                                         ({idf.deviceCount})
                                                     </text>
 
@@ -5487,7 +5712,7 @@ export default function TopologyGraph({
                                                             toggleIdfUplinks(site.siteCode, idf.idfCode);
                                                         }}
                                                         className="cursor-pointer hover:opacity-95 transition"
-                                                        transform={`translate(${idf.width - 120}, -3)`}
+                                                        transform={`translate(${idf.width - 138}, -3)`}
                                                         title={`Toggle uplinks for IDF ${idf.idfCode}`}
                                                     >
                                                         <rect
@@ -5512,6 +5737,28 @@ export default function TopologyGraph({
                                                         </text>
                                                     </g>
 
+                                                    {/* Edit IDF Button */}
+                                                    <g
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            const idfDevs = filteredDevices.filter(d => {
+                                                                const loc = deviceLocationMap.get(d.canonicalHostname || getCanonicalHostname(d.hostname));
+                                                                return loc?.site === site.siteCode && loc?.idf === idf.idfCode;
+                                                            });
+                                                            setEditingIdf({
+                                                                siteCode: site.siteCode,
+                                                                idfCode: idf.idfCode,
+                                                                devices: idfDevs
+                                                            });
+                                                        }}
+                                                        className="cursor-pointer hover:opacity-100 opacity-75 transition"
+                                                        transform={`translate(${idf.width - 68}, -3)`}
+                                                        title={`Edit IDF ${idf.idfCode} (rename, reassign to site)`}
+                                                    >
+                                                        <rect x={0} y={0} width={20} height={20} rx={4} fill="rgba(56, 189, 248, 0.15)" stroke="rgba(56, 189, 248, 0.4)" strokeWidth={0.8} />
+                                                        <path d="M 5 15 L 6.5 11.5 L 12 6 L 14 8 L 8.5 13.5 Z" fill="none" stroke="#38bdf8" strokeWidth={1} />
+                                                    </g>
+
                                                     {/* Collapse IDF Button */}
                                                     <g
                                                         onClick={(e) => {
@@ -5519,11 +5766,11 @@ export default function TopologyGraph({
                                                             toggleCollapseIdf(site.siteCode, idf.idfCode);
                                                         }}
                                                         className="cursor-pointer hover:opacity-80 transition"
-                                                        transform={`translate(${idf.width - 44}, -3)`}
+                                                        transform={`translate(${idf.width - 42}, -3)`}
                                                         title={`Collapse IDF ${idf.idfCode}`}
                                                     >
-                                                        <rect x={0} y={0} width={18} height={16} rx={4} fill="rgba(148, 163, 184, 0.12)" stroke="rgba(148, 163, 184, 0.3)" strokeWidth={0.8} />
-                                                        <text x={9} y={11} fill="#94a3b8" fontSize={11} fontWeight="bold" textAnchor="middle">
+                                                        <rect x={0} y={0} width={18} height={20} rx={4} fill="rgba(148, 163, 184, 0.12)" stroke="rgba(148, 163, 184, 0.3)" strokeWidth={0.8} />
+                                                        <text x={9} y={13.5} fill="#94a3b8" fontSize={12} fontWeight="bold" textAnchor="middle">
                                                             −
                                                         </text>
                                                     </g>
@@ -5899,6 +6146,17 @@ export default function TopologyGraph({
                                     key={nodeKey}
                                     transform={`translate(${pos.x}, ${pos.y})`}
                                     onClick={(e) => handleNodeClick(e, dev)}
+                                    draggable={true}
+                                    onDragStart={(e) => {
+                                        e.stopPropagation();
+                                        e.dataTransfer.setData("application/json", JSON.stringify({
+                                            type: "device",
+                                            hostname: canonHost,
+                                            sourceSite: dev.site,
+                                            sourceIdf: dev.idf
+                                        }));
+                                        e.dataTransfer.effectAllowed = "move";
+                                    }}
                                     opacity={isOffTracePath ? 0.12 : isFaded ? 0.22 : 1}
                                     filter={isOnTracePath ? "drop-shadow(0 0 16px rgba(6, 182, 212, 0.95))" : undefined}
                                     className={isFaded || isOffTracePath
@@ -7044,6 +7302,21 @@ export default function TopologyGraph({
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* Edit IDF Modal */}
+            {editingIdf && (
+                <EditIdfModal
+                    siteCode={editingIdf.siteCode}
+                    idfCode={editingIdf.idfCode}
+                    devices={editingIdf.devices}
+                    siteDirectory={siteDirectory}
+                    onClose={() => setEditingIdf(null)}
+                    onSaved={() => {
+                        setEditingIdf(null);
+                        if (onRefreshSnapshot) onRefreshSnapshot();
+                    }}
+                />
             )}
         </div>
     );

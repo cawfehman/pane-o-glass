@@ -500,7 +500,18 @@ export default function SiteInspectorDrawer({
                                         <div 
                                             key={dev.id || dev.hostname}
                                             onClick={() => onSelectDevice && onSelectDevice(dev)}
-                                            className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 hover:border-blue-500/50 hover:bg-slate-800/50 transition cursor-pointer group flex items-center justify-between"
+                                            draggable={true}
+                                            onDragStart={(e) => {
+                                                e.dataTransfer.setData("application/json", JSON.stringify({
+                                                    type: "device",
+                                                    hostname: dev.canonicalHostname || dev.hostname,
+                                                    sourceSite: dev.site,
+                                                    sourceIdf: dev.idf
+                                                }));
+                                                e.dataTransfer.effectAllowed = "move";
+                                            }}
+                                            className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 hover:border-blue-500/50 hover:bg-slate-800/50 transition cursor-grab group flex items-center justify-between"
+                                            title="Click to inspect switch or drag onto topology map/site/IDF to reassign"
                                         >
                                             <div className="flex items-center gap-3 min-w-0 flex-1">
                                                 <div className={`p-2 rounded-lg border shrink-0 ${
