@@ -106,16 +106,46 @@ export function parseDeviceSiteAndIdf(hostname: string, devSite?: string | null,
 
 export function parseFloorFromIdf(idfCode: string): { floorNum: number; floorLabel: string } {
     const clean = (idfCode || "").trim().toUpperCase();
-    if (clean === "MDF" || clean === "DC" || clean === "SERVER") {
+    if (!clean) {
+        return { floorNum: 1, floorLabel: "Ground / MDF" };
+    }
+    if (clean === "MDF" || clean === "DC" || clean === "SERVER" || clean === "CORE") {
         return { floorNum: 1, floorLabel: "Ground / MDF" };
     }
     if (clean === "LL" || clean === "BSMT" || clean === "SUB") {
         return { floorNum: -1, floorLabel: "Basement / LL" };
     }
-    const match = clean.match(/(\d+)/);
-    if (match) {
-        const num = parseInt(match[1], 10);
-        return { floorNum: num, floorLabel: `Floor ${num}` };
+    if (/^(?:B|LL|SUB)[-_]?(\d+)/i.test(clean)) {
+        const m = clean.match(/^(?:B|LL|SUB)[-_]?(\d+)/i);
+        const n = m ? parseInt(m[1], 10) : 1;
+        return { floorNum: -n, floorLabel: `Basement L${n}` };
+    }
+    // Prefixes like IDF1, ID1, FL1, FLOOR2, IDF-101
+    const prefixMatch = clean.match(/^(?:IDF|ID|FL|FLOOR)[-_]?(\d+)/i);
+    if (prefixMatch) {
+        const val = prefixMatch[1];
+        const num = val.length >= 4 
+            ? parseInt(val.slice(0, 2), 10) 
+            : (val.length === 3 ? parseInt(val.charAt(0), 10) : parseInt(val, 10));
+        return { floorNum: num, floorLabel: num === 0 ? "Ground / MDF" : `Floor ${num}` };
+    }
+    // Numbered rooms/closets starting with digit, e.g. 101, 102, 201, 1A, 2B, 2MC
+    const digitMatch = clean.match(/^(\d+)/);
+    if (digitMatch) {
+        const val = digitMatch[1];
+        const num = val.length >= 4 
+            ? parseInt(val.slice(0, 2), 10) 
+            : (val.length === 3 ? parseInt(val.charAt(0), 10) : parseInt(val, 10));
+        return { floorNum: num, floorLabel: num === 0 ? "Ground / MDF" : `Floor ${num}` };
+    }
+    // Any other number inside, e.g. "C101" or "MC-2" or "WEST-1"
+    const anyDigitMatch = clean.match(/(\d+)/);
+    if (anyDigitMatch) {
+        const val = anyDigitMatch[1];
+        const num = val.length >= 4 
+            ? parseInt(val.slice(0, 2), 10) 
+            : (val.length === 3 ? parseInt(val.charAt(0), 10) : parseInt(val, 10));
+        return { floorNum: num, floorLabel: num === 0 ? "Ground / MDF" : `Floor ${num}` };
     }
     return { floorNum: 1, floorLabel: clean };
 }
@@ -589,6 +619,21 @@ export default function TopologyGraph({
             next.delete(hubCode); // Expand the focused hub!
             return next;
         });
+        // Default multi-IDF hub to collapsed IDFs for progressive drill-down
+        const hubIdfs = new Set<string>();
+        for (const d of filteredDevices) {
+            const { site, idf } = parseDeviceSiteAndIdf(d.hostname, d.site, d.idf);
+            if (site === hubCode && idf) hubIdfs.add(idf);
+        }
+        if (hubIdfs.size > 1) {
+            setCollapsedIdfs(cPrev => {
+                const cNext = new Set(cPrev);
+                for (const idf of hubIdfs) {
+                    cNext.add(`${hubCode}::${idf}`);
+                }
+                return cNext;
+            });
+        }
         setPan({ x: 0, y: 0 });
         setZoom(1);
     };
@@ -847,9 +892,27 @@ export default function TopologyGraph({
         if (!hasInitializedSiteMap && uniqueSites.length > 0) {
             setCollapsedSites(new Set(uniqueSites));
             setActiveDrillHub(null);
+            // Default all multi-IDF sites to collapsed IDFs for progressive drill-down
+            const siteIdfMap = new Map<string, Set<string>>();
+            for (const d of filteredDevices) {
+                const { site, idf } = parseDeviceSiteAndIdf(d.hostname, d.site, d.idf);
+                if (site && idf) {
+                    if (!siteIdfMap.has(site)) siteIdfMap.set(site, new Set());
+                    siteIdfMap.get(site)!.add(idf);
+                }
+            }
+            const multiKeys = new Set<string>();
+            for (const [sCode, idfs] of siteIdfMap.entries()) {
+                if (idfs.size > 1) {
+                    for (const idf of idfs) {
+                        multiKeys.add(`${sCode}::${idf}`);
+                    }
+                }
+            }
+            setCollapsedIdfs(multiKeys);
             setHasInitializedSiteMap(true);
         }
-    }, [uniqueSites, hasInitializedSiteMap]);
+    }, [uniqueSites, hasInitializedSiteMap, filteredDevices]);
 
     // If user selects a specific site from the dropdown, automatically expand that site and set active drill hub
     useEffect(() => {
@@ -859,13 +922,28 @@ export default function TopologyGraph({
                 next.delete(siteFilter);
                 return next;
             });
+            // Default multi-IDF site to collapsed IDFs
+            const siteIdfs = new Set<string>();
+            for (const d of filteredDevices) {
+                const { site, idf } = parseDeviceSiteAndIdf(d.hostname, d.site, d.idf);
+                if (site === siteFilter && idf) siteIdfs.add(idf);
+            }
+            if (siteIdfs.size > 1) {
+                setCollapsedIdfs(cPrev => {
+                    const cNext = new Set(cPrev);
+                    for (const idf of siteIdfs) {
+                        cNext.add(`${siteFilter}::${idf}`);
+                    }
+                    return cNext;
+                });
+            }
             if (designatedHubs.has(siteFilter)) {
                 setActiveDrillHub(siteFilter);
             } else if (siteFilter === "PAV" || siteFilter === "DOR") {
                 setActiveDrillHub("KEL");
             }
         }
-    }, [siteFilter, designatedHubs]);
+    }, [siteFilter, designatedHubs, filteredDevices]);
 
     // 4. Hierarchical tree data for Site & Floor Manager Sidebar
     const managerTree = useMemo(() => {
@@ -1309,8 +1387,27 @@ export default function TopologyGraph({
     const toggleCollapseSite = (siteCode: string) => {
         setCollapsedSites(prev => {
             const next = new Set(prev);
-            if (next.has(siteCode)) next.delete(siteCode);
-            else next.add(siteCode);
+            const willExpand = next.has(siteCode);
+            if (willExpand) {
+                next.delete(siteCode);
+                // When opening any site that has > 1 IDF, ensure its IDFs default to collapsed
+                const siteIdfs = new Set<string>();
+                for (const d of filteredDevices) {
+                    const { site, idf } = parseDeviceSiteAndIdf(d.hostname, d.site, d.idf);
+                    if (site === siteCode && idf) siteIdfs.add(idf);
+                }
+                if (siteIdfs.size > 1) {
+                    setCollapsedIdfs(cPrev => {
+                        const cNext = new Set(cPrev);
+                        for (const idf of siteIdfs) {
+                            cNext.add(`${siteCode}::${idf}`);
+                        }
+                        return cNext;
+                    });
+                }
+            } else {
+                next.add(siteCode);
+            }
             return next;
         });
     };
@@ -1321,6 +1418,26 @@ export default function TopologyGraph({
 
     const expandAllSites = () => {
         setCollapsedSites(new Set());
+        // Default all multi-IDF sites to collapsed IDFs for progressive drill-down
+        const siteIdfMap = new Map<string, Set<string>>();
+        for (const d of filteredDevices) {
+            const { site, idf } = parseDeviceSiteAndIdf(d.hostname, d.site, d.idf);
+            if (site && idf) {
+                if (!siteIdfMap.has(site)) siteIdfMap.set(site, new Set());
+                siteIdfMap.get(site)!.add(idf);
+            }
+        }
+        setCollapsedIdfs(prev => {
+            const next = new Set(prev);
+            for (const [sCode, idfs] of siteIdfMap.entries()) {
+                if (idfs.size > 1) {
+                    for (const idf of idfs) {
+                        next.add(`${sCode}::${idf}`);
+                    }
+                }
+            }
+            return next;
+        });
     };
 
     const toggleCollapseIdf = (siteCode: string, idfCode: string) => {
@@ -1641,31 +1758,27 @@ export default function TopologyGraph({
 
             // Expanded site layout calculation
             if (stackingMode === "building") {
-                const sortedFloors = Array.from(idfMap.keys()).map(idfCode => {
+                // Group IDFs by floorNum so IDFs on the same floor sit side-by-side
+                const floorMap = new Map<number, {
+                    floorNum: number;
+                    floorLabel: string;
+                    idfs: Array<{
+                        idfCode: string;
+                        floorNum: number;
+                        floorLabel: string;
+                        devs: any[];
+                        isCollapsed: boolean;
+                        cols: number;
+                        rows: number;
+                        naturalWidth: number;
+                        height: number;
+                    }>;
+                }>();
+
+                for (const [idfCode, devs] of idfMap.entries()) {
                     const { floorNum, floorLabel } = parseFloorFromIdf(idfCode);
-                    const devs = idfMap.get(idfCode)!;
-                    return { idfCode, floorNum, floorLabel, devs };
-                }).sort((a, b) => {
-                    if (b.floorNum !== a.floorNum) return b.floorNum - a.floorNum;
-                    return a.idfCode.localeCompare(b.idfCode);
-                });
-
-                let maxFloorDevs = 1;
-                for (const f of sortedFloors) {
-                    if (f.devs.length > maxFloorDevs) maxFloorDevs = f.devs.length;
-                }
-                const buildingInnerCols = Math.min(Math.max(maxFloorDevs, 1), 4);
-                const buildingInnerWidth = buildingInnerCols * CARD_WIDTH + (buildingInnerCols - 1) * CARD_GAP_X + IDF_PAD_X * 2;
-                const siteWidth = Math.max(buildingInnerWidth + SITE_PAD_X * 2, 360);
-                const floorSlabWidth = siteWidth - SITE_PAD_X * 2;
-
-                const FLOOR_GAP = 18;
-                let currentFloorRelY = SITE_PAD_TOP;
-                const siteIdfBoxes: any[] = [];
-                const devOffsets: any[] = [];
-
-                for (const { idfCode, floorNum, floorLabel, devs } of sortedFloors) {
                     const isIdfCollapsed = collapsedIdfs.has(`${siteCode}::${idfCode}`);
+
                     devs.sort((a, b) => {
                         const lA = getDeviceLayer(a).layer;
                         const lB = getDeviceLayer(b).layer;
@@ -1674,53 +1787,126 @@ export default function TopologyGraph({
                         return a.hostname.localeCompare(b.hostname);
                     });
 
-                    const floorCols = buildingInnerCols;
-                    const floorRows = Math.ceil(devs.length / floorCols);
-                    const floorHeight = isIdfCollapsed 
-                        ? 44 
-                        : floorRows * CARD_HEIGHT + (floorRows - 1) * CARD_GAP_Y + IDF_PAD_TOP + IDF_PAD_BOTTOM;
+                    let idfNaturalWidth: number;
+                    let idfHeight: number;
+                    let cols = 1;
+                    let rows = 1;
 
-                    const idfBox = {
-                        siteCode,
+                    if (isIdfCollapsed) {
+                        idfNaturalWidth = 240;
+                        idfHeight = 44;
+                    } else {
+                        cols = devs.length > 4 ? 3 : (devs.length > 1 ? 2 : 1);
+                        rows = Math.ceil(devs.length / cols);
+                        idfNaturalWidth = Math.max(cols * CARD_WIDTH + (cols - 1) * CARD_GAP_X + IDF_PAD_X * 2, 220);
+                        idfHeight = rows * CARD_HEIGHT + (rows - 1) * CARD_GAP_Y + IDF_PAD_TOP + IDF_PAD_BOTTOM;
+                    }
+
+                    if (!floorMap.has(floorNum)) {
+                        floorMap.set(floorNum, { floorNum, floorLabel, idfs: [] });
+                    }
+                    floorMap.get(floorNum)!.idfs.push({
                         idfCode,
                         floorNum,
                         floorLabel,
-                        relX: SITE_PAD_X,
-                        relY: currentFloorRelY,
-                        width: floorSlabWidth,
-                        height: floorHeight,
-                        deviceCount: devs.length,
-                        isCollapsed: isIdfCollapsed
-                    };
-                    siteIdfBoxes.push(idfBox);
+                        devs,
+                        isCollapsed: isIdfCollapsed,
+                        cols,
+                        rows,
+                        naturalWidth: idfNaturalWidth,
+                        height: idfHeight
+                    });
+                }
 
-                    if (isIdfCollapsed) {
-                        const centerX = idfBox.relX + idfBox.width / 2;
-                        const centerY = idfBox.relY + idfBox.height / 2;
-                        for (const dev of devs) {
-                            devOffsets.push({
-                                dev,
-                                nodeKey: dev._instanceNodeKey || dev.canonicalHostname || dev.hostname,
-                                relX: centerX,
-                                relY: centerY
+                const IDF_GAP_X = 16;
+                const sortedFloorGroups = Array.from(floorMap.values())
+                    .map(fg => {
+                        fg.idfs.sort((a, b) => {
+                            if (a.idfCode === "MDF") return -1;
+                            if (b.idfCode === "MDF") return 1;
+                            return a.idfCode.localeCompare(b.idfCode);
+                        });
+                        const floorNaturalWidth = fg.idfs.reduce((sum, item) => sum + item.naturalWidth, 0) + (fg.idfs.length - 1) * IDF_GAP_X;
+                        const floorHeight = Math.max(...fg.idfs.map(item => item.height), 44);
+                        return {
+                            ...fg,
+                            floorNaturalWidth,
+                            floorHeight
+                        };
+                    })
+                    .sort((a, b) => {
+                        if (b.floorNum !== a.floorNum) return b.floorNum - a.floorNum;
+                        return a.floorLabel.localeCompare(b.floorLabel);
+                    });
+
+                const maxFloorNaturalWidth = Math.max(...sortedFloorGroups.map(f => f.floorNaturalWidth), 360);
+                const siteWidth = Math.max(maxFloorNaturalWidth + SITE_PAD_X * 2, 380);
+                const floorSlabWidth = siteWidth - SITE_PAD_X * 2;
+
+                const FLOOR_GAP = 18;
+                let currentFloorRelY = SITE_PAD_TOP;
+                const siteIdfBoxes: any[] = [];
+                const devOffsets: any[] = [];
+
+                for (const fg of sortedFloorGroups) {
+                    const totalGaps = (fg.idfs.length - 1) * IDF_GAP_X;
+                    const availableWidth = floorSlabWidth - totalGaps;
+                    const totalNatural = fg.idfs.reduce((sum, item) => sum + item.naturalWidth, 0);
+
+                    let currentIdfRelX = SITE_PAD_X;
+
+                    fg.idfs.forEach((item, idx) => {
+                        const allocatedWidth = totalNatural > 0
+                            ? Math.floor((item.naturalWidth / totalNatural) * availableWidth)
+                            : Math.floor(availableWidth / fg.idfs.length);
+                        const actualWidth = idx === fg.idfs.length - 1
+                            ? (SITE_PAD_X + floorSlabWidth - currentIdfRelX)
+                            : allocatedWidth;
+
+                        const idfBox = {
+                            siteCode,
+                            idfCode: item.idfCode,
+                            floorNum: fg.floorNum,
+                            floorLabel: item.floorLabel,
+                            relX: currentIdfRelX,
+                            relY: currentFloorRelY,
+                            width: actualWidth,
+                            height: item.isCollapsed ? 44 : fg.floorHeight,
+                            deviceCount: item.devs.length,
+                            isCollapsed: item.isCollapsed
+                        };
+                        siteIdfBoxes.push(idfBox);
+
+                        if (item.isCollapsed) {
+                            const centerX = idfBox.relX + idfBox.width / 2;
+                            const centerY = idfBox.relY + idfBox.height / 2;
+                            for (const dev of item.devs) {
+                                devOffsets.push({
+                                    dev,
+                                    nodeKey: dev._instanceNodeKey || dev.canonicalHostname || dev.hostname,
+                                    relX: centerX,
+                                    relY: centerY
+                                });
+                            }
+                        } else {
+                            item.devs.forEach((dev, dIdx) => {
+                                const col = dIdx % item.cols;
+                                const row = Math.floor(dIdx / item.cols);
+                                const nodeCenterX = idfBox.relX + IDF_PAD_X + col * (CARD_WIDTH + CARD_GAP_X) + CARD_WIDTH / 2;
+                                const nodeCenterY = idfBox.relY + IDF_PAD_TOP + row * (CARD_HEIGHT + CARD_GAP_Y) + CARD_HEIGHT / 2;
+                                devOffsets.push({
+                                    dev,
+                                    nodeKey: dev._instanceNodeKey || dev.canonicalHostname || dev.hostname,
+                                    relX: nodeCenterX,
+                                    relY: nodeCenterY
+                                });
                             });
                         }
-                    } else {
-                        devs.forEach((dev, idx) => {
-                            const col = idx % floorCols;
-                            const row = Math.floor(idx / floorCols);
-                            const nodeCenterX = idfBox.relX + IDF_PAD_X + col * (CARD_WIDTH + CARD_GAP_X) + CARD_WIDTH / 2;
-                            const nodeCenterY = idfBox.relY + IDF_PAD_TOP + row * (CARD_HEIGHT + CARD_GAP_Y) + CARD_HEIGHT / 2;
-                            devOffsets.push({
-                                dev,
-                                nodeKey: dev._instanceNodeKey || dev.canonicalHostname || dev.hostname,
-                                relX: nodeCenterX,
-                                relY: nodeCenterY
-                            });
-                        });
-                    }
 
-                    currentFloorRelY += floorHeight + FLOOR_GAP;
+                        currentIdfRelX += actualWidth + IDF_GAP_X;
+                    });
+
+                    currentFloorRelY += fg.floorHeight + FLOOR_GAP;
                 }
 
                 const siteHeight = currentFloorRelY - FLOOR_GAP + SITE_PAD_BOTTOM;
@@ -3121,7 +3307,7 @@ export default function TopologyGraph({
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    setCollapsedSites(new Set());
+                                                    expandAllSites();
                                                     setActiveDropdown(null);
                                                 }}
                                                 className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium transition flex items-center gap-1.5 cursor-pointer ${
@@ -4642,9 +4828,9 @@ export default function TopologyGraph({
                                                         className="group-hover:stroke-blue-400 group-hover:fill-slate-800/90 transition"
                                                     />
                                                     <text x={idf.x + 12} y={idf.y + 20} fill="#e2e8f0" fontSize={11} fontWeight="bold" fontFamily="monospace">
-                                                        {idf.floorLabel ? `${idf.floorLabel} • ` : ""}IDF: {idf.idfCode} ({idf.deviceCount} Switches)
+                                                        {idf.width >= 260 && idf.floorLabel ? `${idf.floorLabel} • ` : ""}IDF: {idf.idfCode} ({idf.deviceCount} {idf.deviceCount === 1 ? "Switch" : "Switches"})
                                                     </text>
-                                                    <text x={idf.x + 12} y={idf.y + 36} fill="#38bdf8" fontSize={9} fontWeight="bold">
+                                                    <text x={idf.x + 12} y={idf.y + 35} fill="#38bdf8" fontSize={9} fontWeight="bold">
                                                         CLICK TO EXPAND ▾
                                                     </text>
 
@@ -4655,7 +4841,7 @@ export default function TopologyGraph({
                                                             toggleIdfUplinks(site.siteCode, idf.idfCode);
                                                         }}
                                                         className="cursor-pointer hover:opacity-95 transition"
-                                                        transform={`translate(${idf.x + idf.width - 74}, ${idf.y + 14})`}
+                                                        transform={`translate(${idf.x + idf.width - 74}, ${idf.y + 12})`}
                                                         title={`Toggle uplinks for IDF ${idf.idfCode}`}
                                                     >
                                                         <rect
@@ -4703,7 +4889,7 @@ export default function TopologyGraph({
                                                         ■
                                                     </text>
                                                     <text x={24} y={10} fill="#cbd5e1" fontSize={11} fontWeight="bold" fontFamily="monospace">
-                                                        {idf.floorLabel ? `${idf.floorLabel} • ` : ""}IDF: {idf.idfCode}
+                                                        {idf.width >= 240 && idf.floorLabel ? `${idf.floorLabel} • ` : ""}IDF: {idf.idfCode}
                                                     </text>
                                                     <text x={idf.width - 128} y={10} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
                                                         ({idf.deviceCount})
