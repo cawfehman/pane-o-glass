@@ -84,9 +84,20 @@ export async function POST(request: NextRequest) {
             (session?.user as any)?.ipAddress
         );
 
+        const snapDate = snapshot.timestamp ? new Date(snapshot.timestamp) : new Date();
+        const ageHours = Math.max(0, Math.round((Date.now() - snapDate.getTime()) / (3600 * 1000)));
+        const isStale = ageHours > 24;
+
         return NextResponse.json({
             ...result,
-            snapshotNumber: snapshot.snapshotNumber
+            snapshotNumber: snapshot.snapshotNumber,
+            snapshotTimestamp: snapDate.toISOString(),
+            snapshotAgeHours: ageHours,
+            isStale,
+            routingFreshness: isStale ? "STALE" : "FRESH",
+            freshnessMessage: isStale 
+                ? `Point-in-time routing table is ${ageHours}h old (>24h)` 
+                : `Point-in-time routing table is ${ageHours}h old (fresh, <24h)`
         });
     } catch (error: any) {
         console.error("Failed to run path trace:", error);

@@ -41,7 +41,16 @@ import {
     LayoutGrid,
     Star,
     Check,
-    Settings2
+    Settings2,
+    Play,
+    Pause,
+    SkipBack,
+    SkipForward,
+    Radio,
+    Sparkles,
+    Clock,
+    AlertTriangle,
+    ArrowRight
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 
@@ -505,6 +514,23 @@ export default function TopologyGraph({
         if (clickMode === "fade") count++;
         return count;
     }, [showAllLinks, convergeTrunks, showVendorManaged, showUncrawledSites, nodeDensity, clickMode]);
+
+    // Global Spotlight Search & Endpoint Locator State
+    const [isSpotlightOpen, setIsSpotlightOpen] = useState(false);
+    const [spotlightQuery, setSpotlightQuery] = useState("");
+    const [spotlightLocateResult, setSpotlightLocateResult] = useState<any>(null);
+    const [isLocating, setIsLocating] = useState(false);
+    const [spotlightBeaconDevice, setSpotlightBeaconDevice] = useState<string | null>(null);
+
+    // Visual Path Trace & Step-Through Player State
+    const [isPathTraceOpen, setIsPathTraceOpen] = useState(false);
+    const [traceSource, setTraceSource] = useState("");
+    const [traceDest, setTraceDest] = useState("");
+    const [isTracing, setIsTracing] = useState(false);
+    const [traceResult, setTraceResult] = useState<any>(null);
+    const [activeTraceHopIndex, setActiveTraceHopIndex] = useState<number>(0);
+    const [isAutoPlayingTrace, setIsAutoPlayingTrace] = useState(false);
+    const [traceError, setTraceError] = useState<string | null>(null);
 
     // Enterprise Hub & Drill-Down State (KEL is the core central hub)
     const DEFAULT_HUBS = useMemo(() => ["KEL", "CRM", "WDC", "RDG", "VMM"], []);
@@ -1045,15 +1071,27 @@ export default function TopologyGraph({
         const dev = unifiedDevices.find(d => (d.canonicalHostname || d.hostname) === canon);
         if (dev) {
             const { site } = parseDeviceSiteAndIdf(dev.hostname, dev.site, dev.idf);
-            if (site && collapsedSites.has(site)) {
-                setCollapsedSites(prev => {
-                    const next = new Set(prev);
-                    next.delete(site);
-                    return next;
-                });
+            if (site) {
+                if (collapsedSites.has(site)) {
+                    setCollapsedSites(prev => {
+                        const next = new Set(prev);
+                        next.delete(site);
+                        return next;
+                    });
+                }
+                if (designatedHubs.has(site)) {
+                    setActiveDrillHub(site);
+                } else if (site === "PAV" || site === "DOR") {
+                    setActiveDrillHub("KEL");
+                }
             }
             onSelectDevice(dev);
         }
+
+        setSpotlightBeaconDevice(canon);
+        setTimeout(() => {
+            setSpotlightBeaconDevice(prev => prev === canon ? null : prev);
+        }, 5000);
 
         const pos = nodePositions.get(canon) || nodePositions.get(hostname);
         if (!pos) return;
@@ -1065,6 +1103,149 @@ export default function TopologyGraph({
         setPan(newPan);
         if (viewportRef.current) {
             viewportRef.current.setAttribute("transform", `translate(${targetX}, ${targetY}) scale(${zoom})`);
+        }
+    };
+
+    // Global keyboard shortcuts (Ctrl+K or / for Spotlight Search)
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+                e.preventDefault();
+                setIsSpotlightOpen(prev => !prev);
+                return;
+            }
+            if (e.key === "/" && !["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement)?.tagName)) {
+                e.preventDefault();
+                setIsSpotlightOpen(true);
+                return;
+            }
+            if (e.key === "Escape") {
+                if (isSpotlightOpen) setIsSpotlightOpen(false);
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [isSpotlightOpen]);
+
+    // Path Trace Auto-Play Timer
+    useEffect(() => {
+        if (!isAutoPlayingTrace || !traceResult || !traceResult.hops || traceResult.hops.length <= 1) return;
+        const timer = setInterval(() => {
+            setActiveTraceHopIndex(prev => {
+                if (prev >= traceResult.hops.length - 1) {
+                    setIsAutoPlayingTrace(false);
+                    return prev;
+                }
+                return prev + 1;
+            });
+        }, 2200);
+        return () => clearInterval(timer);
+    }, [isAutoPlayingTrace, traceResult]);
+
+    // Automatically pan to active hop switch
+    useEffect(() => {
+        if (!traceResult || !traceResult.hops || traceResult.hops.length === 0) return;
+        const currentHop = traceResult.hops[activeTraceHopIndex];
+        if (currentHop && currentHop.deviceName) {
+            panToSwitch(currentHop.deviceName);
+        }
+    }, [activeTraceHopIndex, traceResult]);
+
+    // Active path set for canvas highlighting
+    const activePathDeviceSet = useMemo(() => {
+        if (!traceResult || !traceResult.hops) return new Set<string>();
+        const set = new Set<string>();
+        for (const h of traceResult.hops) {
+            if (h.deviceName) {
+                set.add(getCanonicalHostname(h.deviceName));
+            }
+        }
+        return set;
+    }, [traceResult]);
+
+    const activeTraceHopDevice = useMemo(() => {
+        if (!traceResult || !traceResult.hops || traceResult.hops.length === 0) return null;
+        const h = traceResult.hops[activeTraceHopIndex];
+        return h?.deviceName ? getCanonicalHostname(h.deviceName) : null;
+    }, [traceResult, activeTraceHopIndex]);
+
+    const handleLocateEndpoint = async (queryToLocate?: string) => {
+        const q = (queryToLocate || spotlightQuery).trim();
+        if (!q) return;
+        setIsLocating(true);
+        setSpotlightLocateResult(null);
+        try {
+            const res = await fetch("/api/crawler/locate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    query: q,
+                    snapshotId: snapshotNumber ? String(snapshotNumber) : "master"
+                })
+            });
+            const data = await res.json();
+            if (res.ok && !data.error) {
+                setSpotlightLocateResult(data);
+                if (data.focalDevice?.hostname) {
+                    panToSwitch(data.focalDevice.hostname);
+                }
+            } else {
+                setSpotlightLocateResult({ type: "ERROR", message: data.error || "No match found" });
+            }
+        } catch (err: any) {
+            setSpotlightLocateResult({ type: "ERROR", message: err.message || "Search failed" });
+        } finally {
+            setIsLocating(false);
+        }
+    };
+
+    const handleRunPathTrace = async () => {
+        if (!traceSource.trim() || !traceDest.trim()) {
+            setTraceError("Please enter both Source and Destination IPs or Switch names.");
+            return;
+        }
+        setIsTracing(true);
+        setTraceError(null);
+        try {
+            let srcIp = traceSource.trim();
+            let dstIp = traceDest.trim();
+
+            const devSrc = unifiedDevices.find(d => 
+                (d.canonicalHostname || d.hostname).toLowerCase() === srcIp.toLowerCase() ||
+                d.ipAddress === srcIp
+            );
+            if (devSrc) srcIp = devSrc.ipAddress;
+
+            const devDst = unifiedDevices.find(d => 
+                (d.canonicalHostname || d.hostname).toLowerCase() === dstIp.toLowerCase() ||
+                d.ipAddress === dstIp
+            );
+            if (devDst) dstIp = devDst.ipAddress;
+
+            const res = await fetch("/api/crawler/trace", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    sourceIp: srcIp,
+                    destIp: dstIp,
+                    snapshotId: snapshotNumber ? String(snapshotNumber) : "master"
+                })
+            });
+
+            const data = await res.json();
+            if (!res.ok || data.error) {
+                setTraceError(data.error || "Failed to trace path between endpoints.");
+            } else {
+                setTraceResult(data);
+                setActiveTraceHopIndex(0);
+                if (data.hops && data.hops.length > 0) {
+                    panToSwitch(data.hops[0].deviceName);
+                }
+            }
+        } catch (err: any) {
+            setTraceError(err.message || "Failed to run path trace");
+        } finally {
+            setIsTracing(false);
         }
     };
 
@@ -3204,6 +3385,44 @@ export default function TopologyGraph({
                     )}
                 </div>
 
+                {/* Global Spotlight Search Button */}
+                <button
+                    type="button"
+                    onClick={() => setIsSpotlightOpen(true)}
+                    className="px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-sm bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800"
+                    title="Search Hostname, IP, MAC Address, or Closet (Ctrl + K or /)"
+                >
+                    <Search className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Search</span>
+                    <kbd className="hidden sm:inline-block text-[9px] bg-slate-800 px-1 py-0.2 rounded text-slate-400 border border-slate-700 font-mono">⌘K</kbd>
+                </button>
+
+                {/* Visual Path Trace Button */}
+                <button
+                    type="button"
+                    onClick={() => {
+                        setIsPathTraceOpen(prev => !prev);
+                        if (!isPathTraceOpen && selectedDevice) {
+                            if (!traceSource) setTraceSource(selectedDevice.canonicalHostname || selectedDevice.hostname);
+                            else if (!traceDest) setTraceDest(selectedDevice.canonicalHostname || selectedDevice.hostname);
+                        }
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-sm ${
+                        isPathTraceOpen || traceResult
+                            ? "bg-cyan-600 text-white shadow-sm ring-1 ring-cyan-400"
+                            : "bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800"
+                    }`}
+                    title="Simulate Hop-by-Hop L3 Path Trace with Point-in-Time Routing"
+                >
+                    <Zap className={`w-3.5 h-3.5 ${isPathTraceOpen || traceResult ? "text-yellow-300" : "text-cyan-400"}`} />
+                    <span>Path Trace</span>
+                    {traceResult && (
+                        <span className="bg-cyan-950 text-cyan-200 text-[10px] font-mono px-1.5 py-0.2 rounded-full border border-cyan-400/40">
+                            {traceResult.hops.length} Hops
+                        </span>
+                    )}
+                </button>
+
                 {/* Inline Dimmed Alert Pill */}
                 {fadedNodes.size > 0 && (
                     <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg text-[11px] text-amber-300">
@@ -4985,14 +5204,20 @@ export default function TopologyGraph({
                             }
 
                             const isFaded = fadedNodes.has(canonHost) || fadedNodes.has(dev.hostname);
+                            const isOffTracePath = Boolean(traceResult && activePathDeviceSet.size > 0 && !activePathDeviceSet.has(canonHost));
+                            const isOnTracePath = Boolean(traceResult && activePathDeviceSet.size > 0 && activePathDeviceSet.has(canonHost));
+                            if (isOnTracePath) {
+                                borderColor = "#22d3ee";
+                            }
 
                             return (
                                 <g
                                     key={nodeKey}
                                     transform={`translate(${pos.x}, ${pos.y})`}
                                     onClick={(e) => handleNodeClick(e, dev)}
-                                    opacity={isFaded ? 0.22 : 1}
-                                    className={isFaded 
+                                    opacity={isOffTracePath ? 0.12 : isFaded ? 0.22 : 1}
+                                    filter={isOnTracePath ? "drop-shadow(0 0 16px rgba(6, 182, 212, 0.95))" : undefined}
+                                    className={isFaded || isOffTracePath
                                         ? "cursor-pointer hover:opacity-75 transition-opacity" 
                                         : "cursor-pointer group"
                                     }
@@ -5450,6 +5675,22 @@ export default function TopologyGraph({
                                             </g>
                                         )}
                                     </g>
+
+                                    {/* Spotlight Beacon Radar Effect */}
+                                    {spotlightBeaconDevice === canonHost && (
+                                        <g className="pointer-events-none">
+                                            <circle cx={0} cy={0} r={CARD_W / 1.5} fill="none" stroke="#38bdf8" strokeWidth="3" className="animate-ping" opacity="0.8" />
+                                            <circle cx={0} cy={0} r={CARD_W} fill="none" stroke="#0ea5e9" strokeWidth="2" className="animate-pulse" opacity="0.6" />
+                                        </g>
+                                    )}
+
+                                    {/* Active Trace Hop Beacon */}
+                                    {activeTraceHopDevice === canonHost && (
+                                        <g className="pointer-events-none">
+                                            <circle cx={0} cy={0} r={CARD_W / 1.6} fill="rgba(6, 182, 212, 0.25)" stroke="#22d3ee" strokeWidth="3.5" className="animate-pulse" />
+                                            <circle cx={0} cy={0} r={CARD_W / 1.2} fill="none" stroke="#06b6d4" strokeWidth="2.5" strokeDasharray="6 4" className="animate-spin" />
+                                        </g>
+                                    )}
                                 </g>
                             );
                         })}
@@ -5642,6 +5883,433 @@ export default function TopologyGraph({
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Global Spotlight Search & Endpoint Locator Modal */}
+            {isSpotlightOpen && (
+                <div 
+                    className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150"
+                    onClick={() => setIsSpotlightOpen(false)}
+                >
+                    <div 
+                        className="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-150"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Search Input Bar */}
+                        <div className="px-4 py-3.5 border-b border-slate-800 bg-slate-950 flex items-center gap-3">
+                            <Search className="w-5 h-5 text-amber-400 shrink-0" />
+                            <input
+                                type="text"
+                                autoFocus
+                                value={spotlightQuery}
+                                onChange={(e) => {
+                                    setSpotlightQuery(e.target.value);
+                                    setSpotlightLocateResult(null);
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" && spotlightQuery.trim()) {
+                                        handleLocateEndpoint(spotlightQuery);
+                                    }
+                                }}
+                                placeholder="Search hostname, IP, MAC address, serial, or closet (e.g. 10.240.12.55, kel-core-sw1, Te1/1/1)..."
+                                className="w-full bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none"
+                            />
+                            {spotlightQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSpotlightQuery("");
+                                        setSpotlightLocateResult(null);
+                                    }}
+                                    className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-800 transition cursor-pointer"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            )}
+                            <div className="flex items-center gap-1.5 shrink-0 pl-2 border-l border-slate-800">
+                                <kbd className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400 border border-slate-700 font-mono">ESC</kbd>
+                            </div>
+                        </div>
+
+                        {/* Subnet / Endpoint Resolution Banner */}
+                        {(spotlightQuery.trim().includes(".") || spotlightQuery.trim().includes(":") || spotlightQuery.trim().length === 12) && (
+                            <div className="px-4 py-2.5 bg-cyan-950/40 border-b border-cyan-800/40 flex items-center justify-between text-xs text-cyan-200">
+                                <div className="flex items-center gap-2">
+                                    <Radio className="w-4 h-4 text-cyan-400 shrink-0 animate-pulse" />
+                                    <span>IP / MAC pattern detected: Query switch SVIs, ARP tables, and MAC tables.</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled={isLocating}
+                                    onClick={() => handleLocateEndpoint(spotlightQuery)}
+                                    className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-lg font-semibold shadow-sm transition flex items-center gap-1.5 cursor-pointer shrink-0"
+                                >
+                                    {isLocating ? (
+                                        <>
+                                            <span className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin"></span>
+                                            Resolving...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Search className="w-3 h-3" />
+                                            Locate SVI & Port
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Results Container */}
+                        <div className="p-4 space-y-3 overflow-y-auto flex-1 text-xs">
+                            {/* Endpoint Locator Card (if resolved) */}
+                            {spotlightLocateResult && (
+                                <div className="p-3.5 rounded-xl bg-slate-950 border border-cyan-500/40 shadow-lg space-y-2.5">
+                                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                                        <div className="flex items-center gap-2">
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                                                {spotlightLocateResult.type || "LOCATED"}
+                                            </span>
+                                            <span className="text-white font-mono font-semibold">{spotlightLocateResult.query}</span>
+                                        </div>
+                                        {spotlightLocateResult.focalDevice?.hostname && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    panToSwitch(spotlightLocateResult.focalDevice.hostname);
+                                                    setIsSpotlightOpen(false);
+                                                }}
+                                                className="px-2.5 py-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+                                            >
+                                                <Sparkles className="w-3 h-3" />
+                                                <span>Spotlight on Map</span>
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {spotlightLocateResult.gateway && (
+                                        <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
+                                            <div>
+                                                <span className="text-slate-400 block text-[10px] uppercase font-bold">Default Gateway (Actual SVI)</span>
+                                                <span className="text-amber-300 font-mono font-bold">
+                                                    {spotlightLocateResult.gateway.sviIp} {spotlightLocateResult.gateway.cidr}
+                                                </span>
+                                                <span className="text-slate-500 text-[10px] block">({spotlightLocateResult.gateway.sviName})</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 block text-[10px] uppercase font-bold">Gateway Switch</span>
+                                                <span className="text-white font-semibold">{spotlightLocateResult.gateway.hostname}</span>
+                                                <span className="text-slate-400 text-[10px] block">{spotlightLocateResult.gateway.site} / {spotlightLocateResult.gateway.idf || "MDF"}</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {spotlightLocateResult.edgeDevice && (
+                                        <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
+                                            <div>
+                                                <span className="text-slate-400 block text-[10px] uppercase font-bold">Edge Access Switch</span>
+                                                <span className="text-cyan-300 font-semibold">{spotlightLocateResult.edgeDevice.hostname}</span>
+                                                <span className="text-slate-400 text-[10px] block">{spotlightLocateResult.edgeDevice.site} / {spotlightLocateResult.edgeDevice.idf}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 block text-[10px] uppercase font-bold">Access Switchport</span>
+                                                <span className="text-emerald-300 font-mono font-bold">{spotlightLocateResult.edgeDevice.port || "Resolved via ARP"}</span>
+                                                {spotlightLocateResult.macAddress && (
+                                                    <span className="text-slate-400 text-[10px] font-mono block">MAC: {spotlightLocateResult.macAddress}</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <p className="text-[11px] text-slate-300 italic">{spotlightLocateResult.message}</p>
+                                </div>
+                            )}
+
+                            {/* Instant Device Search Results */}
+                            <div className="space-y-1">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                    {spotlightQuery ? "Matching Devices in Topology" : "All Devices (Type to filter)"}
+                                </span>
+                                <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+                                    {unifiedDevices
+                                        .filter(dev => {
+                                            if (!spotlightQuery.trim()) return true;
+                                            const q = spotlightQuery.toLowerCase();
+                                            return (dev.canonicalHostname || dev.hostname || "").toLowerCase().includes(q) ||
+                                                   (dev.ipAddress || "").toLowerCase().includes(q) ||
+                                                   (dev.site || "").toLowerCase().includes(q) ||
+                                                   (dev.idf || "").toLowerCase().includes(q) ||
+                                                   (dev.platform || "").toLowerCase().includes(q) ||
+                                                   (dev.serialNumber || "").toLowerCase().includes(q);
+                                        })
+                                        .slice(0, 15)
+                                        .map(dev => {
+                                            const canon = dev.canonicalHostname || getCanonicalHostname(dev.hostname);
+                                            const archetype = getDeviceArchetype(dev);
+                                            return (
+                                                <div
+                                                    key={canon}
+                                                    onClick={() => {
+                                                        panToSwitch(dev.hostname);
+                                                        setIsSpotlightOpen(false);
+                                                    }}
+                                                    className="p-2.5 rounded-xl bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-blue-500/50 flex items-center justify-between transition cursor-pointer group"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div 
+                                                            className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold font-mono"
+                                                            style={{ backgroundColor: `${archetype.primaryColor}25`, color: archetype.primaryColor, border: `1px solid ${archetype.primaryColor}50` }}
+                                                        >
+                                                            {archetype.label}
+                                                        </div>
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-white font-semibold group-hover:text-blue-300 transition">{canon}</span>
+                                                                <span className="text-slate-500 text-[10px] font-mono">{dev.ipAddress}</span>
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-400 flex items-center gap-2">
+                                                                <span>{dev.site || "UNK"} • {dev.idf || "MDF"}</span>
+                                                                {dev.platform && <span>• {dev.platform}</span>}
+                                                                {dev.serialNumber && <span className="font-mono">• SN: {dev.serialNumber}</span>}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        className="opacity-0 group-hover:opacity-100 text-blue-400 hover:text-white px-2 py-1 rounded bg-blue-600/20 text-[11px] font-medium transition flex items-center gap-1"
+                                                    >
+                                                        <Sparkles className="w-3 h-3" />
+                                                        <span>Spotlight</span>
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Visual Path Trace Floating Drawer & Step-Through Player */}
+            {(isPathTraceOpen || traceResult) && (
+                <div className="absolute top-16 right-4 z-30 w-96 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150 text-slate-200">
+                    {/* Header */}
+                    <div className="px-4 py-3 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <Zap className="w-4 h-4 text-cyan-400" />
+                            <span className="text-xs font-bold text-white uppercase tracking-wider">Point-in-Time Path Trace</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsPathTraceOpen(false);
+                                setTraceResult(null);
+                                setIsAutoPlayingTrace(false);
+                            }}
+                            className="p-1 hover:bg-slate-800 rounded-md text-slate-400 hover:text-white transition cursor-pointer"
+                            title="Close Path Trace"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+
+                    {/* Trace Inputs */}
+                    <div className="p-3.5 space-y-2.5 text-xs">
+                        <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Source Host / IP</label>
+                                {selectedDevice && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setTraceSource(selectedDevice.canonicalHostname || selectedDevice.hostname)}
+                                        className="text-[10px] text-cyan-400 hover:text-white underline cursor-pointer"
+                                    >
+                                        Use Selected
+                                    </button>
+                                )}
+                            </div>
+                            <input
+                                type="text"
+                                value={traceSource}
+                                onChange={(e) => setTraceSource(e.target.value)}
+                                placeholder="e.g. kel-core-sw1 or 10.10.10.1"
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Destination Host / IP</label>
+                                {selectedDevice && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setTraceDest(selectedDevice.canonicalHostname || selectedDevice.hostname)}
+                                        className="text-[10px] text-cyan-400 hover:text-white underline cursor-pointer"
+                                    >
+                                        Use Selected
+                                    </button>
+                                )}
+                            </div>
+                            <input
+                                type="text"
+                                value={traceDest}
+                                onChange={(e) => setTraceDest(e.target.value)}
+                                placeholder="e.g. crm-fl1-idf1-sw1 or 10.240.12.55"
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-mono"
+                            />
+                        </div>
+
+                        {/* Freshness Badge & Trace Trigger */}
+                        <div className="flex items-center justify-between pt-1">
+                            {traceResult ? (
+                                <div className="flex items-center gap-1.5 text-[10px]">
+                                    <Clock className={`w-3.5 h-3.5 ${traceResult.isStale ? "text-amber-400" : "text-emerald-400"}`} />
+                                    <span className={traceResult.isStale ? "text-amber-300 font-medium" : "text-emerald-300 font-medium"}>
+                                        {traceResult.isStale ? `Routes ${traceResult.snapshotAgeHours}h old (>24h)` : `Routes fresh (${traceResult.snapshotAgeHours}h old)`}
+                                    </span>
+                                </div>
+                            ) : (
+                                <span className="text-[10px] text-slate-500">Evaluates actual L3 routing table</span>
+                            )}
+
+                            <button
+                                type="button"
+                                disabled={isTracing || !traceSource.trim() || !traceDest.trim()}
+                                onClick={handleRunPathTrace}
+                                className="px-3.5 py-1.5 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                                {isTracing ? (
+                                    <>
+                                        <span className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin"></span>
+                                        Tracing...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Zap className="w-3 h-3" />
+                                        Run Trace
+                                    </>
+                                )}
+                            </button>
+                        </div>
+
+                        {traceError && (
+                            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                                <span>{traceError}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Step-Through Player (When Path Traced) */}
+                    {traceResult && traceResult.hops && traceResult.hops.length > 0 && (
+                        <div className="p-3.5 border-t border-slate-800 bg-slate-950/60 space-y-3">
+                            {/* Step Player Controls */}
+                            <div className="flex items-center justify-between bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTraceHopIndex(0)}
+                                    disabled={activeTraceHopIndex === 0}
+                                    className="p-1 rounded-lg hover:bg-slate-800 disabled:opacity-30 text-slate-300 hover:text-white transition cursor-pointer"
+                                    title="First Hop"
+                                >
+                                    <SkipBack className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTraceHopIndex(prev => Math.max(0, prev - 1))}
+                                    disabled={activeTraceHopIndex === 0}
+                                    className="px-2 py-0.5 rounded-lg hover:bg-slate-800 disabled:opacity-30 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer"
+                                >
+                                    Prev
+                                </button>
+                                <span className="text-xs font-mono font-bold text-cyan-300">
+                                    Hop {activeTraceHopIndex + 1} of {traceResult.hops.length}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTraceHopIndex(prev => Math.min(traceResult.hops.length - 1, prev + 1))}
+                                    disabled={activeTraceHopIndex === traceResult.hops.length - 1}
+                                    className="px-2 py-0.5 rounded-lg hover:bg-slate-800 disabled:opacity-30 text-slate-300 hover:text-white text-xs font-semibold transition cursor-pointer"
+                                >
+                                    Next
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTraceHopIndex(traceResult.hops.length - 1)}
+                                    disabled={activeTraceHopIndex === traceResult.hops.length - 1}
+                                    className="p-1 rounded-lg hover:bg-slate-800 disabled:opacity-30 text-slate-300 hover:text-white transition cursor-pointer"
+                                    title="Last Hop"
+                                >
+                                    <SkipForward className="w-3.5 h-3.5" />
+                                </button>
+                                <div className="h-4 w-[1px] bg-slate-800 mx-0.5"></div>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAutoPlayingTrace(prev => !prev)}
+                                    className={`p-1 rounded-lg transition cursor-pointer ${
+                                        isAutoPlayingTrace
+                                            ? "bg-cyan-600 text-white shadow-sm"
+                                            : "hover:bg-slate-800 text-slate-300 hover:text-white"
+                                    }`}
+                                    title={isAutoPlayingTrace ? "Pause Auto-Step" : "Auto-Play Step Through"}
+                                >
+                                    {isAutoPlayingTrace ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 text-cyan-400" />}
+                                </button>
+                            </div>
+
+                            {/* Active Hop Details Card */}
+                            {(() => {
+                                const hop = traceResult.hops[activeTraceHopIndex];
+                                if (!hop) return null;
+                                return (
+                                    <div className="p-3 rounded-xl bg-slate-900 border border-slate-700/80 space-y-2 text-xs">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="w-5 h-5 rounded-full bg-cyan-600 text-white flex items-center justify-center font-bold text-[10px]">
+                                                    {hop.hopNumber}
+                                                </span>
+                                                <span className="font-bold text-white font-mono">{hop.deviceName}</span>
+                                            </div>
+                                            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                                                {hop.forwardingType}
+                                            </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-1.5 text-[11px] bg-slate-950 p-2 rounded-lg border border-slate-800/80">
+                                            <div>
+                                                <span className="text-slate-400 block text-[9px] uppercase font-bold">Ingress</span>
+                                                <span className="font-mono text-slate-200">{hop.ingressInterface || "Source Subnet"}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-slate-400 block text-[9px] uppercase font-bold">Egress</span>
+                                                <span className="font-mono text-cyan-300 font-bold">{hop.egressInterface || "Terminal"}</span>
+                                            </div>
+                                            {hop.matchedRoute && (
+                                                <div className="col-span-2 pt-1 border-t border-slate-800">
+                                                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Matched Route</span>
+                                                    <span className="font-mono text-amber-300 font-semibold">{hop.matchedRoute}</span>
+                                                    {hop.routeProtocol && (
+                                                        <span className="text-slate-400 ml-1.5 text-[10px]">
+                                                            ({hop.routeProtocol === "D" ? "EIGRP" : hop.routeProtocol === "O" ? "OSPF" : hop.routeProtocol === "C" ? "Connected" : hop.routeProtocol})
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {hop.nextHopIp && (
+                                                <div className="col-span-2">
+                                                    <span className="text-slate-400 block text-[9px] uppercase font-bold">Next Hop IP</span>
+                                                    <span className="font-mono text-emerald-400 font-bold">{hop.nextHopIp}</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <p className="text-[11px] text-slate-300 italic">{hop.notes}</p>
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    )}
                 </div>
             )}
         </div>

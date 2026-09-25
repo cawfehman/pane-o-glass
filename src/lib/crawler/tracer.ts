@@ -68,7 +68,7 @@ export class NativePathTracer {
         for (const dev of this.devices) {
             if (dev.status !== "REACHABLE") continue;
             const routes = typeof dev.routes === "string" ? JSON.parse(dev.routes) : dev.routes || [];
-            const isL3 = ((dev.role === "Router" || dev.role === "L3 Switch") && routes.length > 1) ? 1 : 0;
+            const isL3 = (dev.role === "Router" || dev.role === "L3 Switch" || dev.roleCode === "RT" || dev.roleCode === "CS" || dev.roleCode === "DS" || routes.length > 0) ? 1 : 0;
             const intfs = typeof dev.interfaces === "string" ? JSON.parse(dev.interfaces) : dev.interfaces || {};
 
             for (const intf of Object.values<any>(intfs)) {
