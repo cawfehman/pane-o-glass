@@ -149,7 +149,7 @@ export default function SiteManagerSidebar({
             }
         });
 
-        return Array.from(set).sort();
+        return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }));
     }, [sites, folders]);
 
     // Build hierarchy tree with both declared folders and member sites
@@ -243,6 +243,17 @@ export default function SiteManagerSidebar({
             setExpandedFolders(initial);
         }
     }, [existingFolderPaths]);
+
+    // Auto-expand all folders when actively filtering/searching
+    useEffect(() => {
+        if (searchQuery.trim()) {
+            const allExpanded: Record<string, boolean> = { "Unassigned": true };
+            existingFolderPaths.forEach(p => {
+                allExpanded[p] = true;
+            });
+            setExpandedFolders(prev => ({ ...prev, ...allExpanded }));
+        }
+    }, [searchQuery, existingFolderPaths]);
 
     const toggleFolder = (folderPath: string) => {
         setExpandedFolders(prev => ({
@@ -564,7 +575,27 @@ export default function SiteManagerSidebar({
     // Render tree recursively
     const renderFolder = (node: TreeNode, depth: number = 0) => {
         const isExpanded = expandedFolders[node.fullPath] !== false;
-        const subFolderKeys = Object.keys(node.subFolders).sort();
+
+        // Logical and alphabetical group sorting:
+        // "Unassigned" always at the very bottom, named groups sorted A-Z (natural numeric)
+        const subFolderKeys = Object.keys(node.subFolders).sort((a, b) => {
+            if (a === "Unassigned") return 1;
+            if (b === "Unassigned") return -1;
+            return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+        });
+
+        // Logical and alphabetical site sorting:
+        // 1. HUB sites prioritized first at the top of their group container
+        // 2. Alphabetical natural sort by site code (e.g. CAM1, CAM2, CAM10)
+        // 3. Alphabetical natural sort by site name
+        const sortedSites = [...node.sites].sort((a, b) => {
+            if (a.isHub && !b.isHub) return -1;
+            if (!a.isHub && b.isHub) return 1;
+            const codeDiff = a.code.localeCompare(b.code, undefined, { sensitivity: 'base', numeric: true });
+            if (codeDiff !== 0) return codeDiff;
+            return (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: 'base', numeric: true });
+        });
+
         const totalSites = countFolderSites(node);
         const isTarget = dragOverFolder === node.fullPath;
         const isUnassigned = node.name === "Unassigned";
@@ -586,8 +617,6 @@ export default function SiteManagerSidebar({
                         onDragLeave={(e) => handleFolderDragLeave(e, node.fullPath)}
                         onDrop={(e) => handleFolderDrop(e, node.fullPath)}
                         className={`group flex items-center justify-between py-1.5 px-2 rounded-lg transition-all cursor-pointer text-xs ${
-                            depth > 0 ? 'ml-3' : ''
-                        } ${
                             isTarget 
                                 ? 'bg-sky-500/20 border-2 border-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.4)]' 
                                 : 'hover:bg-white/[0.06] border border-transparent'
@@ -682,13 +711,14 @@ export default function SiteManagerSidebar({
                     </div>
                 )}
 
-                {/* Sub-items if expanded */}
+                {/* Sub-items if expanded (indented cleanly with hierarchy guide line according to depth) */}
                 {(isExpanded || node.name === "Root") && (
-                    <div className={node.name !== "Root" ? "pl-2 border-l border-white/5 ml-3" : ""}>
+                    <div className={node.name !== "Root" ? "ml-3.5 pl-2.5 border-l border-white/10 space-y-0.5 my-1" : "space-y-0.5"}>
+                        {/* Sub-groups first (alphabetical & logical) */}
                         {subFolderKeys.map(k => renderFolder(node.subFolders[k], depth + 1))}
 
-                        {/* Sites directly in this folder */}
-                        {node.sites.map(site => {
+                        {/* Sites directly in this folder (Hubs first, then alphabetical) */}
+                        {sortedSites.map(site => {
                             const isHighlighted = highlightedSiteCode?.toUpperCase() === site.code.toUpperCase();
                             return (
                                 <div 
@@ -702,12 +732,12 @@ export default function SiteManagerSidebar({
                                         }));
                                         e.dataTransfer.effectAllowed = "copyMove";
                                     }}
-                                    className={`group flex items-center justify-between py-1 px-2 my-0.5 rounded-lg border transition-all text-xs cursor-grab active:cursor-grabbing ${
+                                    className={`group flex items-center justify-between py-1 pl-2 pr-1.5 my-0.5 rounded-lg border transition-all text-xs cursor-grab active:cursor-grabbing ${
                                         isHighlighted 
-                                            ? 'bg-accent-primary/20 border-accent-primary/60 text-white' 
-                                            : 'border-transparent hover:bg-white/[0.04] text-white/80'
+                                            ? 'bg-accent-primary/20 border-accent-primary/60 text-white shadow-sm' 
+                                            : 'border-transparent hover:bg-white/[0.05] text-white/80'
                                     }`}
-                                    title={`${site.code} - ${site.name}\nDrag to folder or canvas`}
+                                    title={`${site.code} - ${site.name}${site.isHub ? ' (HUB)' : ''}\nDrag to folder or canvas`}
                                 >
                                     <div 
                                         className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
@@ -722,7 +752,7 @@ export default function SiteManagerSidebar({
                                             {site.code}
                                         </span>
                                         {site.isHub && (
-                                            <span className="text-[9px] font-black uppercase tracking-wider px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                            <span className="text-[9px] font-black uppercase tracking-wider px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
                                                 HUB
                                             </span>
                                         )}
@@ -753,6 +783,13 @@ export default function SiteManagerSidebar({
                                 </div>
                             );
                         })}
+
+                        {/* Empty group indicator */}
+                        {node.name !== "Root" && subFolderKeys.length === 0 && sortedSites.length === 0 && (
+                            <div className="py-1 px-2 text-[10px] text-muted/50 italic">
+                                Empty group (drag sites here)
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

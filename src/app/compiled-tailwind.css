@@ -659,8 +659,8 @@
   .ml-2\.5 {
     margin-left: calc(var(--spacing) * 2.5);
   }
-  .ml-3 {
-    margin-left: calc(var(--spacing) * 3);
+  .ml-3\.5 {
+    margin-left: calc(var(--spacing) * 3.5);
   }
   .ml-4 {
     margin-left: calc(var(--spacing) * 4);
@@ -3443,6 +3443,9 @@
   .pr-1 {
     padding-right: var(--spacing);
   }
+  .pr-1\.5 {
+    padding-right: calc(var(--spacing) * 1.5);
+  }
   .pr-2 {
     padding-right: calc(var(--spacing) * 2);
   }
@@ -5251,14 +5254,6 @@
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:bg-white\/\[0\.03\]:hover {
         background-color: color-mix(in oklab, var(--color-white) 3%, transparent);
-      }
-    }
-    .hover\:bg-white\/\[0\.04\]:hover {
-      background-color: color-mix(in srgb, #fff 4%, transparent);
-    }
-    @supports (color: color-mix(in lab, red, red)) {
-      .hover\:bg-white\/\[0\.04\]:hover {
-        background-color: color-mix(in oklab, var(--color-white) 4%, transparent);
       }
     }
     .hover\:bg-white\/\[0\.05\]:hover {

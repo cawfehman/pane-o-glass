@@ -2843,7 +2843,12 @@ export default function TopologyGraph({
                 }
             }
 
-            folderMembersMap.forEach((memberCodes, folderPath) => {
+            const sortedFolderPaths = Array.from(folderMembersMap.keys()).sort((a, b) => 
+                a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true })
+            );
+
+            for (const folderPath of sortedFolderPaths) {
+                const memberCodes = folderMembersMap.get(folderPath) || [];
                 const memberBoxes = siteContainers.filter(sb => memberCodes.includes(sb.siteCode));
                 if (memberBoxes.length > 0) {
                     const minX = Math.min(...memberBoxes.map(b => b.x)) - 28;
@@ -2866,7 +2871,7 @@ export default function TopologyGraph({
                         isSingle: false
                     });
                 }
-            });
+            }
         }
 
         // 6. Generate Inter-Site Highway Bridges between connected sites
