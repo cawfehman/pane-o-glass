@@ -74,6 +74,15 @@ def cmd_crawl(args, cfg: dict):
             console.print(f"[yellow]Warning: Failed parsing fallback credentials JSON: {e}[/yellow]")
 
     if not fallback_creds:
+        # Check for single unindexed fallback variables first (NETCRAWL_FALLBACK_USER, NETCRAWL_FALLBACK_PASS, NETCRAWL_FALLBACK_SECRET)
+        fb_single_u = os.getenv("NETCRAWL_FALLBACK_USER")
+        if fb_single_u:
+            fallback_creds.append({
+                "username": fb_single_u.strip(),
+                "password": os.getenv("NETCRAWL_FALLBACK_PASS", ""),
+                "secret": os.getenv("NETCRAWL_FALLBACK_SECRET", "")
+            })
+
         # Check for indexed environment variables (e.g. NETCRAWL_FALLBACK_USER_1, NETCRAWL_FALLBACK_PASS_1, NETCRAWL_FALLBACK_SECRET_1)
         idx = 1
         while True:

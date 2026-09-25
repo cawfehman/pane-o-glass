@@ -293,7 +293,8 @@ async function persistLatestSnapshot(
     maxHops: number,
     label: string,
     useMock: boolean,
-    session: any
+    session: any,
+    clientIp?: string
 ) {
     const snapshotsDir = path.join(crawlerDir, "snapshots");
     const files = fs.readdirSync(snapshotsDir)
@@ -418,11 +419,12 @@ async function persistLatestSnapshot(
         });
     }
 
+    const userName = (session?.user as any)?.name || (session?.user as any)?.username || "Administrator";
     await logAudit(
         'CRAWLER_TRIGGER',
-        `Executed ${useMock ? 'Virtual Mock Lab' : 'Live SSH'} Network Crawl. Created Snapshot #${newSnapshot.snapshotNumber} with ${rawDevices.length} devices.`,
+        `Executed ${useMock ? 'Virtual Mock Lab' : 'Live SSH'} Network Crawl (Triggered by: ${userName}). Seeds: [${seeds.join(', ')}], Profile: ${profile.toUpperCase()}, Max Hops: ${maxHops}. Created Snapshot #${newSnapshot.snapshotNumber} with ${rawDevices.length} devices.`,
         (session?.user as any)?.id,
-        (session?.user as any)?.ipAddress
+        clientIp || "127.0.0.1"
     );
 
     // Auto-register any new sites discovered from fully verified reachable devices into the authoritative Site Directory
@@ -447,6 +449,10 @@ export async function POST(request: NextRequest) {
         if ((session?.user as any)?.role !== 'ADMIN') {
             return NextResponse.json({ error: "Forbidden: Administrator access required." }, { status: 403 });
         }
+
+        const forwardedFor = request.headers.get("x-forwarded-for");
+        const clientIp = forwardedFor ? forwardedFor.split(",")[0].trim() : (request.headers.get("x-real-ip") || "127.0.0.1");
+        const userName = (session?.user as any)?.name || (session?.user as any)?.username || "Administrator";
 
         const body = await request.json().catch(() => ({}));
         const useMock = body.useMock !== false;
@@ -521,6 +527,7 @@ export async function POST(request: NextRequest) {
             `  NETCRAWL EXECUTION AUDIT LOG`,
             `============================================================`,
             `Timestamp:    ${new Date().toISOString()}`,
+            `Triggered By: ${userName} (IP: ${clientIp})`,
             `Seed Devices: ${seeds.join(", ")}`,
             `Profile:      ${profile.toUpperCase()}`,
             `Max Hops:     ${maxHops}`,
@@ -626,7 +633,8 @@ export async function POST(request: NextRequest) {
                             maxHops,
                             body.name || "Crawl Snapshot",
                             useMock,
-                            session
+                            session,
+                            clientIp
                         );
 
                         // Stream structured hop breakdown lines into console and run audit log
