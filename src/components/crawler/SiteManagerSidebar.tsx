@@ -5,6 +5,7 @@ import {
     Folder, 
     FolderPlus, 
     FolderOpen, 
+    FolderTree,
     ChevronRight, 
     ChevronDown, 
     Plus, 
