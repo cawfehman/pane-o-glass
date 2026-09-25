@@ -123,16 +123,45 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
     if (codeIdx === -1) return [];
 
     const results: SiteMetadata[] = [];
+    const declaredFolders = new Set<string>();
+
     for (let i = 1; i < lines.length; i++) {
-        const parts = splitCsvRow(lines[i]);
+        const line = lines[i].trim();
+        if (line.startsWith("#GROUP,") || line.startsWith("#FOLDER,")) {
+            const folderPath = line.substring(line.indexOf(",") + 1).replace(/^"|"$/g, "").trim();
+            if (folderPath) {
+                declaredFolders.add(folderPath);
+                const segments = folderPath.split("/").map(s => s.trim()).filter(Boolean);
+                let acc = "";
+                for (const seg of segments) {
+                    acc = acc ? `${acc}/${seg}` : seg;
+                    declaredFolders.add(acc);
+                }
+            }
+            continue;
+        }
+        if (line.startsWith("#")) continue;
+
+        const parts = splitCsvRow(line);
         if (parts.length >= 1) {
             const code = parts[codeIdx]?.toUpperCase() || "UNK";
+            if (!code || code === "CODE" || code.startsWith("__DIR__")) continue;
             const rawName = nameIdx !== -1 ? parts[nameIdx] || "" : "";
             const locTypeRaw = locTypeIdx !== -1 ? parts[locTypeIdx]?.trim() || undefined : undefined;
             const cityRaw = cityIdx !== -1 ? parts[cityIdx]?.trim() || undefined : undefined;
             const folderRaw = folderIdx !== -1 ? parts[folderIdx]?.trim() || undefined : undefined;
             const isHubRaw = isHubIdx !== -1 ? /^(true|yes|1|y)$/i.test(parts[isHubIdx]?.trim() || '') : undefined;
             
+            if (folderRaw) {
+                declaredFolders.add(folderRaw);
+                const segments = folderRaw.split("/").map(s => s.trim()).filter(Boolean);
+                let acc = "";
+                for (const seg of segments) {
+                    acc = acc ? `${acc}/${seg}` : seg;
+                    declaredFolders.add(acc);
+                }
+            }
+
             results.push({
                 code,
                 name: rawName || code,
@@ -147,12 +176,24 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
         }
     }
 
+    (results as any).folders = Array.from(declaredFolders).sort();
     return results;
 }
 
-export function stringifySiteCsv(sites: SiteMetadata[]): string {
+export function stringifySiteCsv(sites: SiteMetadata[], explicitFolders?: string[]): string {
     const headers = ["Code", "Name", "Address", "Folder Path", "Location Type", "City", "Is Hub", "Status", "Notes"];
     const rows = [headers.join(",")];
+
+    // Persist empty declared folders
+    if (explicitFolders && Array.isArray(explicitFolders)) {
+        const siteAssignedFolders = new Set(sites.map(s => s.folderPath?.trim()).filter(Boolean));
+        for (const f of explicitFolders) {
+            const trimmed = f.trim();
+            if (trimmed && !siteAssignedFolders.has(trimmed)) {
+                rows.push(`#GROUP,"${trimmed}"`);
+            }
+        }
+    }
 
     for (const site of sites) {
         // Wrap fields in quotes if they contain commas, quotes, or newlines
@@ -171,9 +212,9 @@ export function stringifySiteCsv(sites: SiteMetadata[]): string {
             formatField(site.code),
             formatField(site.name),
             formatField(site.address),
-            formatField(site.folderPath || classification.folderPath),
-            formatField(site.locationType || classification.locationType),
-            formatField(site.city || classification.city),
+            formatField(site.folderPath !== undefined ? site.folderPath : classification.folderPath),
+            formatField(site.locationType !== undefined ? site.locationType : classification.locationType),
+            formatField(site.city !== undefined ? site.city : classification.city),
             formatField(site.isHub !== undefined ? site.isHub : classification.isHub),
             formatField(site.status),
             formatField(site.notes)

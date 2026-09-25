@@ -160,7 +160,11 @@ export async function GET(
                     name: meta.name,
                     address: meta.address,
                     status: meta.status,
-                    notes: meta.notes
+                    notes: meta.notes,
+                    locationType: meta.locationType,
+                    city: meta.city,
+                    folderPath: meta.folderPath,
+                    isHub: meta.isHub
                 };
             });
         } catch (e) {

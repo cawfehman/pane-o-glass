@@ -70,6 +70,8 @@ export interface SiteMetadataLookup {
     notes?: string;
     locationType?: string;
     city?: string;
+    folderPath?: string;
+    isHub?: boolean;
 }
 
 interface TopologyGraphProps {
@@ -2829,6 +2831,44 @@ export default function TopologyGraph({
             }
         }
 
+        // 5C. Dynamically generate Group / Folder Containers for sites organized into folders
+        if (siteDirectory) {
+            const folderMembersMap = new Map<string, string[]>();
+            for (const sb of siteContainers) {
+                const sMeta = siteDirectory[sb.siteCode] || siteDirectory[sb.siteCode.toUpperCase()];
+                const fPath = sMeta?.folderPath?.trim();
+                if (fPath) {
+                    if (!folderMembersMap.has(fPath)) folderMembersMap.set(fPath, []);
+                    folderMembersMap.get(fPath)!.push(sb.siteCode);
+                }
+            }
+
+            folderMembersMap.forEach((memberCodes, folderPath) => {
+                const memberBoxes = siteContainers.filter(sb => memberCodes.includes(sb.siteCode));
+                if (memberBoxes.length > 0) {
+                    const minX = Math.min(...memberBoxes.map(b => b.x)) - 28;
+                    const minY = Math.min(...memberBoxes.map(b => b.y)) - 38;
+                    const maxX = Math.max(...memberBoxes.map(b => b.x + b.width)) + 28;
+                    const maxY = Math.max(...memberBoxes.map(b => b.y + b.height)) + 24;
+                    const width = Math.max(maxX - minX, 220);
+                    const height = Math.max(maxY - minY, 110);
+                    const label = `📁 Group: ${folderPath} (${memberBoxes.length} ${memberBoxes.length === 1 ? 'Site' : 'Sites'})`;
+                    clusters.push({
+                        id: `folder-${folderPath}`,
+                        label,
+                        hubSiteCode: memberBoxes[0].siteCode,
+                        siteCodes: memberCodes,
+                        x: minX,
+                        y: minY,
+                        width,
+                        height,
+                        titleWidth: Math.max(label.length * 7.5 + 40, 180),
+                        isSingle: false
+                    });
+                }
+            });
+        }
+
         // 6. Generate Inter-Site Highway Bridges between connected sites
         const bridges: InterSiteBridge[] = [];
         const siteBoxMap = new Map<string, SiteContainerBox>();
@@ -3279,6 +3319,98 @@ export default function TopologyGraph({
         }
         if (hasDraggedRef.current) {
             setPan({ x: currentPanRef.current.x, y: currentPanRef.current.y });
+        }
+    };
+
+    const handleCanvasDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const rawData = e.dataTransfer.getData("application/json");
+        if (!rawData) return;
+
+        const el = svgContainerRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+
+        // Convert cursor screen coordinates to SVG world coordinates
+        const dropWorldX = Math.round((e.clientX - rect.left - currentPanRef.current.x) / zoom);
+        const dropWorldY = Math.round((e.clientY - rect.top - currentPanRef.current.y) / zoom);
+
+        try {
+            const data = JSON.parse(rawData);
+            if (data.type === "site" && data.siteCode) {
+                const code = data.siteCode.toUpperCase();
+                const sb = siteBoxes.find(b => b.siteCode.toUpperCase() === code);
+                const currentOff = siteOffsets[code] || { dx: 0, dy: 0 };
+                const currentX = sb ? sb.x : 200;
+                const currentY = sb ? sb.y : 200;
+                const baseX = currentX - currentOff.dx;
+                const baseY = currentY - currentOff.dy;
+
+                const newDx = Math.round(dropWorldX - baseX);
+                const newDy = Math.round(dropWorldY - baseY);
+
+                setSiteOffsets(prev => {
+                    const next = {
+                        ...prev,
+                        [code]: { dx: newDx, dy: newDy }
+                    };
+                    try {
+                        const key = `crawler_topology_site_offsets_${snapshotId || "master"}`;
+                        localStorage.setItem(key, JSON.stringify(next));
+                    } catch {}
+                    return next;
+                });
+                setActiveLayoutView("personal");
+            } else if (data.type === "folder" && data.folderPath) {
+                const targetFolder = data.folderPath.trim();
+                const memberCodes: string[] = [];
+                if (siteDirectory) {
+                    for (const [code, meta] of Object.entries(siteDirectory)) {
+                        if (meta.folderPath === targetFolder || meta.folderPath?.startsWith(targetFolder + "/")) {
+                            memberCodes.push(code.toUpperCase());
+                        }
+                    }
+                }
+
+                if (memberCodes.length === 0) return;
+
+                const cols = memberCodes.length > 4 ? 3 : 2;
+                const cellW = 360;
+                const cellH = 260;
+
+                setSiteOffsets(prev => {
+                    const next = { ...prev };
+                    memberCodes.forEach((code, idx) => {
+                        const col = idx % cols;
+                        const row = Math.floor(idx / cols);
+                        const targetX = dropWorldX + col * cellW;
+                        const targetY = dropWorldY + row * cellH;
+
+                        const sb = siteBoxes.find(b => b.siteCode.toUpperCase() === code);
+                        const currentOff = prev[code] || { dx: 0, dy: 0 };
+                        const currentX = sb ? sb.x : 200;
+                        const currentY = sb ? sb.y : 200;
+                        const baseX = currentX - currentOff.dx;
+                        const baseY = currentY - currentOff.dy;
+
+                        next[code] = {
+                            dx: Math.round(targetX - baseX),
+                            dy: Math.round(targetY - baseY)
+                        };
+                    });
+
+                    try {
+                        const key = `crawler_topology_site_offsets_${snapshotId || "master"}`;
+                        localStorage.setItem(key, JSON.stringify(next));
+                    } catch {}
+                    return next;
+                });
+                setActiveLayoutView("personal");
+            }
+        } catch (err) {
+            console.error("Failed to handle drop on canvas:", err);
         }
     };
 
@@ -4467,6 +4599,14 @@ export default function TopologyGraph({
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onPointerCancel={handlePointerUp}
+                onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "copy";
+                }}
+                onDragEnter={(e) => {
+                    e.preventDefault();
+                }}
+                onDrop={handleCanvasDrop}
             >
                 {/* Floating Hub Breadcrumb & Constellation Navigator */}
                 {layoutMode === "container" && siteClusterMode === "topological" && (
@@ -4602,13 +4742,14 @@ export default function TopologyGraph({
                     <rect width="100%" height="100%" fill="url(#grid-pattern)" />
 
                     <g ref={viewportRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-                        {/* 1A. RENDER MULTI-SITE CLUSTER ENCLOSURES (Campus / Hub Constellations) */}
-                        {layoutMode === "container" && siteClusterMode === "topological" && siteClusters.filter(c => !c.isSingle).map((cluster) => {
-                            const isCampus = cluster.label.includes("Campus");
+                        {/* 1A. RENDER MULTI-SITE CLUSTER ENCLOSURES (Campus / Hub Constellations & Folder Groups) */}
+                        {layoutMode === "container" && siteClusters.filter(c => !c.isSingle).map((cluster) => {
+                            const isFolder = cluster.id.startsWith("folder-");
+                            const isCampus = cluster.label.includes("Campus") || isFolder;
                             const isAdmin = cluster.label.includes("Administrative");
-                            const strokeColor = isCampus ? "rgba(56, 189, 248, 0.35)" : isAdmin ? "rgba(245, 158, 11, 0.35)" : "rgba(16, 185, 129, 0.35)";
-                            const fillColor = isCampus ? "rgba(30, 41, 59, 0.22)" : isAdmin ? "rgba(45, 35, 20, 0.22)" : "rgba(20, 45, 35, 0.22)";
-                            const badgeColor = isCampus ? "#38bdf8" : isAdmin ? "#f59e0b" : "#34d399";
+                            const strokeColor = isFolder ? "rgba(56, 189, 248, 0.45)" : isCampus ? "rgba(56, 189, 248, 0.35)" : isAdmin ? "rgba(245, 158, 11, 0.35)" : "rgba(16, 185, 129, 0.35)";
+                            const fillColor = isFolder ? "rgba(14, 165, 233, 0.08)" : isCampus ? "rgba(30, 41, 59, 0.22)" : isAdmin ? "rgba(45, 35, 20, 0.22)" : "rgba(20, 45, 35, 0.22)";
+                            const badgeColor = isFolder ? "#38bdf8" : isCampus ? "#38bdf8" : isAdmin ? "#f59e0b" : "#34d399";
                             return (
                                 <g key={`cluster-${cluster.id}`} className="transition-opacity duration-300 pointer-events-none">
                                     {/* Soft ambient glassmorphism enclosure rect */}

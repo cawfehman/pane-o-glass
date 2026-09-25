@@ -22,7 +22,9 @@ import {
     Tag,
     Layers,
     ChevronLeft,
-    RefreshCw
+    RefreshCw,
+    Trash2,
+    GripVertical
 } from "lucide-react";
 
 import { SiteMetadata, parseSiteCsv, stringifySiteCsv } from "@/lib/sites";
@@ -51,11 +53,12 @@ export default function SiteManagerSidebar({
     highlightedSiteCode
 }: SiteManagerSidebarProps) {
     const [sites, setSites] = useState<SiteMetadata[]>([]);
+    const [folders, setFolders] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
 
-    // Modal states
+    // Modal states for Site Add/Edit
     const [isSiteModalOpen, setIsSiteModalOpen] = useState(false);
     const [siteModalMode, setSiteModalMode] = useState<'add' | 'edit'>('add');
     const [selectedSite, setSelectedSite] = useState<any>({
@@ -77,20 +80,38 @@ export default function SiteManagerSidebar({
     const [newFolderName, setNewFolderName] = useState("");
     const [isNewFolderOpen, setIsNewFolderOpen] = useState(false);
 
-    // Fetch sites from API
+    // Rename Folder modal
+    const [folderToRename, setFolderToRename] = useState<{ oldPath: string; newName: string } | null>(null);
+    const [isRenameFolderOpen, setIsRenameFolderOpen] = useState(false);
+
+    // Drag-and-drop state
+    const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+
+    // Fetch sites and folders from API
     const loadSites = useCallback(async () => {
         setLoading(true);
         try {
             const res = await fetch('/api/settings/sites');
             if (!res.ok) return;
             const data = await res.json();
-            if (data.versions && data.versions.length > 0) {
-                const latest = data.versions[0];
-                if (latest.content) {
-                    const parsed = parseSiteCsv(latest.content);
-                    setSites(parsed);
-                }
+            
+            let loadedSites: SiteMetadata[] = [];
+            let loadedFolders: string[] = [];
+
+            if (data.sites && Array.isArray(data.sites)) {
+                loadedSites = data.sites;
+            } else if (data.versions && data.versions.length > 0 && data.versions[0].content) {
+                loadedSites = parseSiteCsv(data.versions[0].content);
             }
+
+            if (data.folders && Array.isArray(data.folders)) {
+                loadedFolders = data.folders;
+            } else if ((loadedSites as any).folders) {
+                loadedFolders = (loadedSites as any).folders;
+            }
+
+            setSites(loadedSites);
+            setFolders(loadedFolders);
         } catch (e: any) {
             console.error("Failed to load sites in sidebar:", e);
         } finally {
@@ -102,9 +123,21 @@ export default function SiteManagerSidebar({
         loadSites();
     }, [loadSites]);
 
-    // Unique existing folder paths
+    // Unique existing folder paths (combining declared folders and assigned folderPaths)
     const existingFolderPaths = useMemo(() => {
         const set = new Set<string>();
+        
+        folders.forEach(f => {
+            if (f) {
+                const parts = f.split("/").map(p => p.trim()).filter(Boolean);
+                let current = "";
+                for (const part of parts) {
+                    current = current ? `${current}/${part}` : part;
+                    set.add(current);
+                }
+            }
+        });
+
         sites.forEach(s => {
             if (s.folderPath) {
                 const parts = s.folderPath.split("/").map(p => p.trim()).filter(Boolean);
@@ -115,10 +148,11 @@ export default function SiteManagerSidebar({
                 }
             }
         });
-        return Array.from(set).sort();
-    }, [sites]);
 
-    // Build hierarchy tree
+        return Array.from(set).sort();
+    }, [sites, folders]);
+
+    // Build hierarchy tree with both declared folders and member sites
     const rootTree = useMemo(() => {
         const root: TreeNode = {
             name: "Root",
@@ -129,6 +163,27 @@ export default function SiteManagerSidebar({
 
         const query = searchQuery.toLowerCase().trim();
 
+        // 1. First ensure all declared/existing folders are represented in the tree
+        existingFolderPaths.forEach(folderPath => {
+            if (!folderPath) return;
+            const parts = folderPath.split("/").map(p => p.trim()).filter(Boolean);
+            let currentLevel = root;
+            let pathAccum = "";
+            parts.forEach(part => {
+                pathAccum = pathAccum ? `${pathAccum}/${part}` : part;
+                if (!currentLevel.subFolders[part]) {
+                    currentLevel.subFolders[part] = {
+                        name: part,
+                        fullPath: pathAccum,
+                        subFolders: {},
+                        sites: []
+                    };
+                }
+                currentLevel = currentLevel.subFolders[part];
+            });
+        });
+
+        // 2. Populate sites into folders (or Unassigned)
         sites.forEach(site => {
             if (query) {
                 const matches = site.code.toLowerCase().includes(query) ||
@@ -141,7 +196,7 @@ export default function SiteManagerSidebar({
 
             const rawPath = site.folderPath?.trim();
             if (!rawPath) {
-                // Put in Unassigned folder
+                // Place in Unassigned group
                 if (!root.subFolders["Unassigned"]) {
                     root.subFolders["Unassigned"] = {
                         name: "Unassigned",
@@ -176,7 +231,7 @@ export default function SiteManagerSidebar({
         });
 
         return root;
-    }, [sites, searchQuery]);
+    }, [sites, existingFolderPaths, searchQuery]);
 
     // Auto-expand root level folders on initial load
     useEffect(() => {
@@ -257,38 +312,245 @@ export default function SiteManagerSidebar({
             notes: "",
             locationType: "Ambulatory",
             city: "",
-            folderPath: defaultFolderPath || "",
+            folderPath: defaultFolderPath === "Unassigned" ? "" : defaultFolderPath || "",
             isHub: false
         });
         setSiteModalMode('add');
         setIsSiteModalOpen(true);
     };
 
-    // Add folder handler
-    const handleCreateFolder = () => {
+    // Standalone Add Folder Handler (Does NOT force site creation)
+    const handleCreateFolder = async () => {
         if (!newFolderName.trim()) return;
         const targetPath = newFolderParent 
             ? `${newFolderParent}/${newFolderName.trim()}` 
             : newFolderName.trim();
         
-        // Auto-expand parent and new folder
-        setExpandedFolders(prev => ({
-            ...prev,
-            [newFolderParent || '']: true,
-            [targetPath]: true
-        }));
+        setActionLoading(true);
+        try {
+            const res = await fetch('/api/settings/sites', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'add_folder', folderPath: targetPath })
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
 
-        setIsNewFolderOpen(false);
-        setNewFolderName("");
-        setNewFolderParent(null);
+            // Auto-expand parent and new folder
+            setExpandedFolders(prev => ({
+                ...prev,
+                [newFolderParent || '']: true,
+                [targetPath]: true
+            }));
 
-        // Open Add Site dialog pre-filled with this folder!
-        handleOpenAdd(targetPath);
+            setFeedbackMsg({ 
+                type: 'success', 
+                text: `Group folder "${targetPath}" created successfully.` 
+            });
+            setTimeout(() => setFeedbackMsg(null), 4000);
+
+            setIsNewFolderOpen(false);
+            setNewFolderName("");
+            setNewFolderParent(null);
+
+            await loadSites();
+            if (onSitesChanged) onSitesChanged(sites);
+        } catch (e: any) {
+            setFeedbackMsg({ type: 'error', text: e.message || 'Failed to create folder' });
+            setTimeout(() => setFeedbackMsg(null), 5000);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // Rename Folder Handler
+    const handleRenameFolder = async () => {
+        if (!folderToRename || !folderToRename.newName.trim()) return;
+        const oldPath = folderToRename.oldPath;
+        const pathSegments = oldPath.split('/');
+        pathSegments[pathSegments.length - 1] = folderToRename.newName.trim();
+        const newPath = pathSegments.join('/');
+
+        if (newPath === oldPath) {
+            setIsRenameFolderOpen(false);
+            return;
+        }
+
+        setActionLoading(true);
+        try {
+            const res = await fetch('/api/settings/sites', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'rename_folder', oldPath, newPath })
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+
+            setFeedbackMsg({ 
+                type: 'success', 
+                text: `Group folder renamed to "${newPath}".` 
+            });
+            setTimeout(() => setFeedbackMsg(null), 4000);
+
+            setIsRenameFolderOpen(false);
+            setFolderToRename(null);
+
+            await loadSites();
+            if (onSitesChanged) onSitesChanged(sites);
+        } catch (e: any) {
+            setFeedbackMsg({ type: 'error', text: e.message || 'Failed to rename folder' });
+            setTimeout(() => setFeedbackMsg(null), 5000);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // Delete Folder Handler
+    const handleDeleteFolder = async (folderPath: string) => {
+        if (!window.confirm(`Delete group "${folderPath}"? Member sites will become unassigned.`)) {
+            return;
+        }
+
+        setActionLoading(true);
+        try {
+            const res = await fetch('/api/settings/sites', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'delete_folder', folderPath })
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+
+            setFeedbackMsg({ 
+                type: 'success', 
+                text: `Group folder "${folderPath}" deleted.` 
+            });
+            setTimeout(() => setFeedbackMsg(null), 4000);
+
+            await loadSites();
+            if (onSitesChanged) onSitesChanged(sites);
+        } catch (e: any) {
+            setFeedbackMsg({ type: 'error', text: e.message || 'Failed to delete folder' });
+            setTimeout(() => setFeedbackMsg(null), 5000);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // Move site into folder via drag-and-drop
+    const handleMoveSite = async (siteCode: string, targetFolder: string) => {
+        const cleanFolder = targetFolder === "Unassigned" ? "" : targetFolder;
+        setActionLoading(true);
+        try {
+            const res = await fetch('/api/settings/sites', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'move_site', siteCode, folderPath: cleanFolder })
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+
+            setFeedbackMsg({ 
+                type: 'success', 
+                text: `Moved ${siteCode} to "${cleanFolder || 'Unassigned'}".` 
+            });
+            setTimeout(() => setFeedbackMsg(null), 4000);
+
+            await loadSites();
+            if (onSitesChanged) onSitesChanged(sites);
+        } catch (e: any) {
+            setFeedbackMsg({ type: 'error', text: e.message || 'Failed to move site' });
+            setTimeout(() => setFeedbackMsg(null), 5000);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // Nest folder into another folder via drag-and-drop
+    const handleNestFolder = async (sourceFolder: string, targetParentFolder: string) => {
+        if (sourceFolder === targetParentFolder || targetParentFolder.startsWith(sourceFolder + '/')) {
+            setFeedbackMsg({ type: 'error', text: 'Cannot move a group into itself or its own subfolder.' });
+            setTimeout(() => setFeedbackMsg(null), 4000);
+            return;
+        }
+
+        const baseName = sourceFolder.split('/').pop() || sourceFolder;
+        const newPath = targetParentFolder === "Unassigned" ? baseName : `${targetParentFolder}/${baseName}`;
+        if (newPath === sourceFolder) return;
+
+        setActionLoading(true);
+        try {
+            const res = await fetch('/api/settings/sites', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'rename_folder', oldPath: sourceFolder, newPath })
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+
+            setFeedbackMsg({ 
+                type: 'success', 
+                text: `Moved group "${baseName}" into "${targetParentFolder}".` 
+            });
+            setTimeout(() => setFeedbackMsg(null), 4000);
+
+            // Auto-expand target folder
+            setExpandedFolders(prev => ({
+                ...prev,
+                [targetParentFolder]: true,
+                [newPath]: true
+            }));
+
+            await loadSites();
+            if (onSitesChanged) onSitesChanged(sites);
+        } catch (e: any) {
+            setFeedbackMsg({ type: 'error', text: e.message || 'Failed to nest folder' });
+            setTimeout(() => setFeedbackMsg(null), 5000);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    // Handle Drag Over / Drop on a Folder
+    const handleFolderDragOver = (e: React.DragEvent, folderPath: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "move";
+        if (dragOverFolder !== folderPath) {
+            setDragOverFolder(folderPath);
+        }
+    };
+
+    const handleFolderDragLeave = (e: React.DragEvent, folderPath: string) => {
+        e.stopPropagation();
+        if (dragOverFolder === folderPath) {
+            setDragOverFolder(null);
+        }
+    };
+
+    const handleFolderDrop = async (e: React.DragEvent, targetFolderPath: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOverFolder(null);
+
+        const rawData = e.dataTransfer.getData("application/json");
+        if (!rawData) return;
+
+        try {
+            const data = JSON.parse(rawData);
+            if (data.type === "site" && data.siteCode) {
+                await handleMoveSite(data.siteCode, targetFolderPath);
+            } else if (data.type === "folder" && data.folderPath) {
+                await handleNestFolder(data.folderPath, targetFolderPath);
+            }
+        } catch (err) {
+            console.error("Drop parsing error:", err);
+        }
     };
 
     // Export CSV
     const handleExportCsv = () => {
-        const csv = stringifySiteCsv(sites);
+        const csv = stringifySiteCsv(sites, existingFolderPaths);
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -304,17 +566,39 @@ export default function SiteManagerSidebar({
         const isExpanded = expandedFolders[node.fullPath] !== false;
         const subFolderKeys = Object.keys(node.subFolders).sort();
         const totalSites = countFolderSites(node);
+        const isTarget = dragOverFolder === node.fullPath;
+        const isUnassigned = node.name === "Unassigned";
 
         return (
             <div key={node.fullPath || "root"} className="select-none">
                 {node.name !== "Root" && (
                     <div 
-                        className={`group flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-white/[0.06] transition-colors cursor-pointer text-xs ${
+                        draggable={!isUnassigned}
+                        onDragStart={(e) => {
+                            e.stopPropagation();
+                            e.dataTransfer.setData("application/json", JSON.stringify({
+                                type: "folder",
+                                folderPath: node.fullPath
+                            }));
+                            e.dataTransfer.effectAllowed = "copyMove";
+                        }}
+                        onDragOver={(e) => handleFolderDragOver(e, node.fullPath)}
+                        onDragLeave={(e) => handleFolderDragLeave(e, node.fullPath)}
+                        onDrop={(e) => handleFolderDrop(e, node.fullPath)}
+                        className={`group flex items-center justify-between py-1.5 px-2 rounded-lg transition-all cursor-pointer text-xs ${
                             depth > 0 ? 'ml-3' : ''
+                        } ${
+                            isTarget 
+                                ? 'bg-sky-500/20 border-2 border-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.4)]' 
+                                : 'hover:bg-white/[0.06] border border-transparent'
                         }`}
                         onClick={() => toggleFolder(node.fullPath)}
+                        title={isUnassigned ? "Unassigned sites without a folder" : `Group: ${node.fullPath}\nDrag to nest, or drag onto canvas to place`}
                     >
                         <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            {!isUnassigned && (
+                                <GripVertical className="w-3 h-3 text-muted/40 group-hover:text-muted cursor-grab shrink-0" />
+                            )}
                             <button 
                                 type="button" 
                                 className="text-muted group-hover:text-white p-0.5 rounded transition-transform"
@@ -330,9 +614,9 @@ export default function SiteManagerSidebar({
                                 )}
                             </button>
                             {isExpanded ? (
-                                <FolderOpen className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                                <FolderOpen className={`w-3.5 h-3.5 shrink-0 ${isUnassigned ? 'text-amber-400/80' : 'text-sky-400'}`} />
                             ) : (
-                                <Folder className="w-3.5 h-3.5 text-sky-400/70 shrink-0" />
+                                <Folder className={`w-3.5 h-3.5 shrink-0 ${isUnassigned ? 'text-amber-400/60' : 'text-sky-400/70'}`} />
                             )}
                             <span className="font-semibold text-white/90 truncate text-[11px]">
                                 {node.name}
@@ -344,18 +628,45 @@ export default function SiteManagerSidebar({
 
                         {/* Folder Quick Actions */}
                         <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-                            <button
-                                type="button"
-                                title="Add Subfolder"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    setNewFolderParent(node.fullPath);
-                                    setIsNewFolderOpen(true);
-                                }}
-                                className="p-1 rounded hover:bg-white/10 text-muted hover:text-sky-300"
-                            >
-                                <FolderPlus className="w-3 h-3" />
-                            </button>
+                            {!isUnassigned && (
+                                <>
+                                    <button
+                                        type="button"
+                                        title="Add Subgroup"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setNewFolderParent(node.fullPath);
+                                            setIsNewFolderOpen(true);
+                                        }}
+                                        className="p-1 rounded hover:bg-white/10 text-muted hover:text-sky-300"
+                                    >
+                                        <FolderPlus className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        title="Rename Group"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setFolderToRename({ oldPath: node.fullPath, newName: node.name });
+                                            setIsRenameFolderOpen(true);
+                                        }}
+                                        className="p-1 rounded hover:bg-white/10 text-muted hover:text-amber-300"
+                                    >
+                                        <Edit2 className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        title="Delete Group"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteFolder(node.fullPath);
+                                        }}
+                                        className="p-1 rounded hover:bg-white/10 text-muted hover:text-rose-400"
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                    </button>
+                                </>
+                            )}
                             <button
                                 type="button"
                                 title="Add Site to Folder"
@@ -382,17 +693,27 @@ export default function SiteManagerSidebar({
                             return (
                                 <div 
                                     key={site.code} 
-                                    className={`group flex items-center justify-between py-1 px-2 my-0.5 rounded-lg border transition-all text-xs ${
+                                    draggable={true}
+                                    onDragStart={(e) => {
+                                        e.dataTransfer.setData("application/json", JSON.stringify({
+                                            type: "site",
+                                            siteCode: site.code,
+                                            folderPath: site.folderPath || ""
+                                        }));
+                                        e.dataTransfer.effectAllowed = "copyMove";
+                                    }}
+                                    className={`group flex items-center justify-between py-1 px-2 my-0.5 rounded-lg border transition-all text-xs cursor-grab active:cursor-grabbing ${
                                         isHighlighted 
                                             ? 'bg-accent-primary/20 border-accent-primary/60 text-white' 
                                             : 'border-transparent hover:bg-white/[0.04] text-white/80'
                                     }`}
+                                    title={`${site.code} - ${site.name}\nDrag to folder or canvas`}
                                 >
                                     <div 
                                         className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
                                         onClick={() => onLocateSite && onLocateSite(site.code)}
-                                        title={`${site.code} - ${site.name}\nClick to locate on canvas`}
                                     >
+                                        <GripVertical className="w-3 h-3 text-muted/30 group-hover:text-muted shrink-0" />
                                         <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                                             site.status === 'Active' ? 'bg-emerald-400' :
                                             site.status === 'Future' ? 'bg-amber-400' : 'bg-rose-400'
@@ -511,10 +832,10 @@ export default function SiteManagerSidebar({
                         setIsNewFolderOpen(true);
                     }}
                     className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-semibold transition-all cursor-pointer"
-                    title="Create Root Group"
+                    title="Create Root Group Folder"
                 >
                     <FolderPlus className="w-3.5 h-3.5 text-sky-400" />
-                    Group
+                    New Group
                 </button>
                 <button
                     type="button"
@@ -576,7 +897,7 @@ export default function SiteManagerSidebar({
             {/* Bottom Footer Info */}
             <div className="p-3 border-t border-white/10 bg-white/[0.02] flex items-center justify-between text-[11px] text-muted">
                 <span>Multi-level folders</span>
-                <span className="font-mono text-[10px] text-accent-primary">Drag or edit nodes</span>
+                <span className="font-mono text-[10px] text-accent-primary">Drag to group or canvas</span>
             </div>
 
             {/* Create Folder Modal */}
@@ -585,17 +906,17 @@ export default function SiteManagerSidebar({
                     <div className="glass-card w-full max-w-sm border border-white/20 p-5 rounded-2xl shadow-2xl animate-in zoom-in-95 duration-200">
                         <h3 className="text-sm font-black text-white uppercase tracking-wider mb-2 flex items-center gap-2">
                             <FolderPlus className="w-4 h-4 text-sky-400" />
-                            {newFolderParent ? `New Subfolder in "${newFolderParent}"` : "Create New Group Folder"}
+                            {newFolderParent ? `New Subgroup in "${newFolderParent}"` : "Create New Group Folder"}
                         </h3>
                         <p className="text-xs text-muted mb-4">
-                            Group sites into this category for organized rendering on the topology canvas.
+                            Group sites into this container category for hierarchical organization on the topology canvas.
                         </p>
                         <input
                             type="text"
                             value={newFolderName}
                             onChange={e => setNewFolderName(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
-                            placeholder="e.g. South Jersey Clinics or Acute Care Hubs"
+                            placeholder="e.g. Campus, Acute Care Hubs, Ambulatory"
                             autoFocus
                             className="w-full px-3.5 py-2 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs text-white mb-4"
                         />
@@ -614,10 +935,53 @@ export default function SiteManagerSidebar({
                             <button
                                 type="button"
                                 onClick={handleCreateFolder}
-                                disabled={!newFolderName.trim()}
-                                className="px-3.5 py-1.5 text-xs font-bold bg-accent-primary hover:bg-accent-primary/80 text-black rounded-lg transition-all shadow-md cursor-pointer"
+                                disabled={!newFolderName.trim() || actionLoading}
+                                className="px-3.5 py-1.5 text-xs font-bold bg-accent-primary hover:bg-accent-primary/80 text-black rounded-lg transition-all shadow-md cursor-pointer disabled:opacity-50"
                             >
-                                Create & Add Site
+                                {actionLoading ? "Creating..." : "Create Group"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Rename Folder Modal */}
+            {isRenameFolderOpen && folderToRename && (
+                <div className="fixed inset-0 z-[100000] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="glass-card w-full max-w-sm border border-white/20 p-5 rounded-2xl shadow-2xl animate-in zoom-in-95 duration-200">
+                        <h3 className="text-sm font-black text-white uppercase tracking-wider mb-2 flex items-center gap-2">
+                            <Edit2 className="w-4 h-4 text-amber-400" />
+                            Rename Group Folder
+                        </h3>
+                        <p className="text-xs text-muted mb-4">
+                            Renaming &quot;{folderToRename.oldPath}&quot; will update all member sites and nested subfolders.
+                        </p>
+                        <input
+                            type="text"
+                            value={folderToRename.newName}
+                            onChange={e => setFolderToRename({ ...folderToRename, newName: e.target.value })}
+                            onKeyDown={e => e.key === 'Enter' && handleRenameFolder()}
+                            autoFocus
+                            className="w-full px-3.5 py-2 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs text-white mb-4"
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsRenameFolderOpen(false);
+                                    setFolderToRename(null);
+                                }}
+                                className="px-3 py-1.5 text-xs text-muted hover:text-white border border-white/10 rounded-lg hover:bg-white/5 transition-all"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleRenameFolder}
+                                disabled={!folderToRename.newName.trim() || actionLoading}
+                                className="px-3.5 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg transition-all shadow-md cursor-pointer disabled:opacity-50"
+                            >
+                                {actionLoading ? "Renaming..." : "Save Rename"}
                             </button>
                         </div>
                     </div>
