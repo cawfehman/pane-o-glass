@@ -1573,6 +1573,7 @@ export default function TopologyGraph({
 
         for (const [siteCode, idfMap] of siteGroups.entries()) {
             const siteLookup = siteDirectory[siteCode];
+            const siteName = siteLookup?.name || null;
             // In topological mode: Overview mode (activeDrillHub === null) keeps all sites collapsed.
             // Drill-down mode expands activeDrillHub and allows satellites to be toggled, keeping peer hubs collapsed.
             const isCollapsed = siteClusterMode === "topological"
@@ -4984,8 +4985,8 @@ export default function TopologyGraph({
                                 }
                                 return nodePositions.get(devName);
                             };
-                            const p1 = bundle.srcPointOverride || getDevPoint(bundle.sourceDevice, bundle.targetDevice);
-                            const p2 = bundle.tgtPointOverride || getDevPoint(bundle.targetDevice, bundle.sourceDevice);
+                            const p1 = (bundle as any).srcPointOverride || getDevPoint(bundle.sourceDevice, bundle.targetDevice);
+                            const p2 = (bundle as any).tgtPointOverride || getDevPoint(bundle.targetDevice, bundle.sourceDevice);
                             if (!p1 || !p2 || (p1.x === p2.x && p1.y === p2.y)) return null;
 
                             const isHighlighted = highlightedLinks.some(
