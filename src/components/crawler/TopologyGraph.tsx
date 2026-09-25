@@ -87,6 +87,7 @@ interface TopologyGraphProps {
     locateSiteCode?: string | null;
     snapshotId?: string;
     onEditSite?: (siteCode: string) => void;
+    onInspectSite?: (siteCode: string) => void;
     className?: string;
 }
 
@@ -514,6 +515,7 @@ export default function TopologyGraph({
     locateSiteCode,
     snapshotId,
     onEditSite,
+    onInspectSite,
     className
 }: TopologyGraphProps) {
     const [zoom, setZoom] = useState(1);
@@ -2381,43 +2383,116 @@ export default function TopologyGraph({
                     }
                 });
 
-                // Populate coordinates for non-hub & satellite devices so device search/filtering functions
+                // Populate coordinates for non-hub & satellite devices
+                // Sites that have explicit placement (dragged onto canvas via siteOffsets) stay on the map!
                 const kelContainer = siteContainers.find(c => c.siteCode === "KEL") || siteContainers[0];
                 const defaultX = kelContainer ? kelContainer.x + kelContainer.width / 2 : 620;
                 const defaultY = kelContainer ? kelContainer.y + kelContainer.height / 2 : 247;
 
                 for (const [sCode, sT] of siteTemplates.entries()) {
                     if (placedHubCodes.has(sCode) || extraHubs.includes(sCode)) continue;
-                    const pHub = parentHubOfSite.get(sCode);
-                    const pContainer = pHub ? siteContainers.find(c => c.siteCode === pHub) : kelContainer;
-                    const baseCenterX = pContainer ? pContainer.x + pContainer.width / 2 : defaultX;
-                    const baseCenterY = pContainer ? pContainer.y + pContainer.height / 2 : defaultY;
+                    
+                    const hasExplicitPlacement = Boolean(siteOffsets[sCode]);
+                    if (hasExplicitPlacement) {
+                        const devCount = sT.totalDevsInSite;
+                        const l3Count = sT.l3Count;
+                        const l2Count = sT.l2Count;
+                        const siteName = getCleanSiteDisplayName(sCode, siteDirectory?.[sCode]?.name || siteDirectory?.[sCode.toUpperCase()]?.name || sT?.siteName);
+                        const posX = 0;
+                        const posY = 0;
 
-                    for (const d of sT.devOffsets) {
-                        positions.set(d.nodeKey, { x: baseCenterX, y: baseCenterY });
-                        if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
-                            positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: baseCenterX, y: baseCenterY });
+                        siteContainers.push({
+                            siteCode: sCode,
+                            siteName,
+                            x: posX,
+                            y: posY,
+                            width: sT.width,
+                            height: sT.height,
+                            deviceCount: devCount,
+                            l3Count,
+                            l2Count,
+                            isCollapsed: sT.isCollapsed,
+                            idfs: sT.idfs.map(idf => ({
+                                ...idf,
+                                x: posX + idf.relX,
+                                y: posY + idf.relY
+                            })),
+                            connectedSites: Array.from(interSiteAdj.get(sCode) || []),
+                            clusterId: `placed-${sCode}`,
+                            isClusterHub: false,
+                            isDesignatedHub: false,
+                            satellites: [],
+                            isPendingCrawl: devCount === 0
+                        });
+
+                        for (const idf of sT.idfs) {
+                            idfContainers.push({
+                                ...idf,
+                                x: posX + idf.relX,
+                                y: posY + idf.relY
+                            });
                         }
-                        layoutDevs.push(d.dev);
+
+                        for (const d of sT.devOffsets) {
+                            const nX = posX + d.relX;
+                            const nY = posY + d.relY;
+                            positions.set(d.nodeKey, { x: nX, y: nY });
+                            if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                                positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                            }
+                            layoutDevs.push(d.dev);
+                        }
+                    } else {
+                        const pHub = parentHubOfSite.get(sCode);
+                        const pContainer = pHub ? siteContainers.find(c => c.siteCode === pHub) : kelContainer;
+                        const baseCenterX = pContainer ? pContainer.x + pContainer.width / 2 : defaultX;
+                        const baseCenterY = pContainer ? pContainer.y + pContainer.height / 2 : defaultY;
+
+                        for (const d of sT.devOffsets) {
+                            positions.set(d.nodeKey, { x: baseCenterX, y: baseCenterY });
+                            if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                                positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: baseCenterX, y: baseCenterY });
+                            }
+                            layoutDevs.push(d.dev);
+                        }
+                    }
+                }
+
+                // Place any uncrawled directory sites that have been dragged onto the map
+                if (siteDirectory) {
+                    for (const [sCode, siteLookup] of Object.entries(siteDirectory)) {
+                        const upper = sCode.toUpperCase();
+                        if (siteContainers.some(sc => sc.siteCode.toUpperCase() === upper)) continue;
+                        if (siteOffsets[upper] || siteOffsets[sCode]) {
+                            const siteWidth = 300;
+                            const siteHeight = 74;
+                            siteContainers.push({
+                                siteCode: upper,
+                                siteName: siteLookup.name || upper,
+                                siteAddress: siteLookup.address || null,
+                                siteStatus: siteLookup.status || "Active",
+                                siteNotes: siteLookup.notes || null,
+                                x: 0,
+                                y: 0,
+                                width: siteWidth,
+                                height: siteHeight,
+                                deviceCount: 0,
+                                l3Count: 0,
+                                l2Count: 0,
+                                isCollapsed: true,
+                                idfs: [],
+                                connectedSites: [],
+                                clusterId: `uncrawled-${upper}`,
+                                isClusterHub: false,
+                                isDesignatedHub: false,
+                                isUncrawledDirectorySite: true
+                            });
+                        }
                     }
                 }
 
                 maxCanvasWidth = 1240;
                 maxCanvasHeight = 500;
-
-                // Backbone Constellation Enclosure (5 Core Hub Tier)
-                clusters.push({
-                    id: "backbone-constellation",
-                    label: "Enterprise WAN Backbone Constellation (5 Core Hub Tier)",
-                    hubSiteCode: "KEL",
-                    siteCodes: Array.from(designatedHubs),
-                    x: 40,
-                    y: 30,
-                    width: 1160,
-                    height: 440,
-                    titleWidth: 380,
-                    isSingle: false
-                });
 
             } else {
                 // =========================================================================
@@ -2782,21 +2857,21 @@ export default function TopologyGraph({
         // 5B. Apply custom dragged offsets to sites, IDFs, and device nodes
         if (siteOffsets && Object.keys(siteOffsets).length > 0) {
             for (const sb of siteContainers) {
-                const off = siteOffsets[sb.siteCode];
+                const off = siteOffsets[sb.siteCode] || siteOffsets[sb.siteCode.toUpperCase()];
                 if (off && (off.dx !== 0 || off.dy !== 0)) {
                     sb.x += off.dx;
                     sb.y += off.dy;
 
                     // Shift IDFs inside this site
                     for (const ib of idfContainers) {
-                        if (ib.siteCode === sb.siteCode) {
+                        if (ib.siteCode === sb.siteCode || ib.siteCode.toUpperCase() === sb.siteCode.toUpperCase()) {
                             ib.x += off.dx;
                             ib.y += off.dy;
                         }
                     }
 
                     // Shift node positions inside this site
-                    const t = siteTemplates.get(sb.siteCode);
+                    const t = siteTemplates.get(sb.siteCode) || siteTemplates.get(sb.siteCode.toUpperCase());
                     if (t && t.devOffsets) {
                         for (const d of t.devOffsets) {
                             const posKey = positions.get(d.nodeKey);
@@ -3347,11 +3422,9 @@ export default function TopologyGraph({
             if (data.type === "site" && data.siteCode) {
                 const code = data.siteCode.toUpperCase();
                 const sb = siteBoxes.find(b => b.siteCode.toUpperCase() === code);
-                const currentOff = siteOffsets[code] || { dx: 0, dy: 0 };
-                const currentX = sb ? sb.x : 200;
-                const currentY = sb ? sb.y : 200;
-                const baseX = currentX - currentOff.dx;
-                const baseY = currentY - currentOff.dy;
+                const currentOff = siteOffsets[code] || siteOffsets[data.siteCode] || { dx: 0, dy: 0 };
+                const baseX = sb ? (sb.x - currentOff.dx) : 0;
+                const baseY = sb ? (sb.y - currentOff.dy) : 0;
 
                 const newDx = Math.round(dropWorldX - baseX);
                 const newDy = Math.round(dropWorldY - baseY);
@@ -3394,11 +3467,9 @@ export default function TopologyGraph({
                         const targetY = dropWorldY + row * cellH;
 
                         const sb = siteBoxes.find(b => b.siteCode.toUpperCase() === code);
-                        const currentOff = prev[code] || { dx: 0, dy: 0 };
-                        const currentX = sb ? sb.x : 200;
-                        const currentY = sb ? sb.y : 200;
-                        const baseX = currentX - currentOff.dx;
-                        const baseY = currentY - currentOff.dy;
+                        const currentOff = prev[code] || prev[code.toLowerCase()] || { dx: 0, dy: 0 };
+                        const baseX = sb ? (sb.x - currentOff.dx) : 0;
+                        const baseY = sb ? (sb.y - currentOff.dy) : 0;
 
                         next[code] = {
                             dx: Math.round(targetX - baseX),
@@ -4919,11 +4990,25 @@ export default function TopologyGraph({
                                         </text>
 
                                         {/* Uncrawled Badge */}
-                                        <g transform={`translate(${site.x + site.width - 150}, ${site.y + 11})`}>
+                                        <g transform={`translate(${site.x + site.width - 170}, ${site.y + 11})`}>
                                             <rect x={0} y={0} width={112} height={18} rx={4} fill="rgba(245, 158, 11, 0.2)" stroke="#f59e0b" strokeWidth={0.8} />
                                             <text x={56} y={12.5} fill="#fcd34d" fontSize={8} fontWeight="bold" textAnchor="middle" letterSpacing="0.4">
                                                 UNCRAWLED / NO DATA
                                             </text>
+                                        </g>
+
+                                        {/* Inspect Site Details Button */}
+                                        <g
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (onInspectSite) onInspectSite(site.siteCode);
+                                            }}
+                                            className="cursor-pointer hover:opacity-100 opacity-70 transition"
+                                            transform={`translate(${site.x + site.width - 50}, ${site.y + 10})`}
+                                            title={`Inspect ${site.siteCode} details`}
+                                        >
+                                            <rect x={0} y={0} width={18} height={18} rx={4} fill="rgba(245, 158, 11, 0.15)" stroke="#f59e0b" strokeWidth={0.8} />
+                                            <text x={9} y={13} fill="#fbbf24" fontSize={11} fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">ℹ</text>
                                         </g>
 
                                         {/* Edit Site Button */}
@@ -5074,7 +5159,7 @@ export default function TopologyGraph({
                                                 toggleSiteUplinks(site.siteCode);
                                             }}
                                             className="cursor-pointer hover:opacity-95 transition"
-                                            transform={`translate(${site.x + site.width - 116}, ${site.y + (isHub ? 8 : 11)})`}
+                                            transform={`translate(${site.x + site.width - 138}, ${site.y + (isHub ? 8 : 11)})`}
                                             title={`Toggle WAN/core uplinks for site ${site.siteCode}`}
                                         >
                                             <rect
@@ -5097,6 +5182,20 @@ export default function TopologyGraph({
                                             >
                                                 {visibleUplinkSites.has(site.siteCode) ? "✓ Uplinks" : "+ Uplinks"}
                                             </text>
+                                        </g>
+
+                                        {/* Inspect Site Details Button */}
+                                        <g
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (onInspectSite) onInspectSite(site.siteCode);
+                                            }}
+                                            className="cursor-pointer hover:opacity-100 opacity-70 transition"
+                                            transform={`translate(${site.x + site.width - 70}, ${site.y + (isHub ? 8 : 11)})`}
+                                            title={`Inspect ${site.siteCode} details & switches`}
+                                        >
+                                            <rect x={0} y={0} width={18} height={18} rx={4} fill="rgba(56, 189, 248, 0.12)" stroke="rgba(56, 189, 248, 0.3)" strokeWidth={0.8} />
+                                            <text x={9} y={13} fill="#38bdf8" fontSize={11} fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">ℹ</text>
                                         </g>
 
                                         {/* Edit Site Button */}
@@ -5221,7 +5320,7 @@ export default function TopologyGraph({
                                             </text>
                                         </g>
 
-                                        <text x={site.width - 190} y={12} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
+                                        <text x={site.width - (activeDrillHub === site.siteCode ? 250 : 180)} y={12} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
                                             {site.connectedSites && site.connectedSites.length > 0 && (
                                                 <tspan fill="#38bdf8" fontWeight="bold">⇄ {site.connectedSites.join(", ")} • </tspan>
                                             )}
@@ -5235,7 +5334,7 @@ export default function TopologyGraph({
                                                 toggleSiteUplinks(site.siteCode);
                                             }}
                                             className="cursor-pointer hover:opacity-95 transition"
-                                            transform={`translate(${site.width - 180}, -3)`}
+                                            transform={`translate(${site.width - (activeDrillHub === site.siteCode ? 240 : 170)}, -3)`}
                                             title={`Toggle all directly connected uplinks for site ${site.siteCode}`}
                                         >
                                             <rect
@@ -5268,7 +5367,7 @@ export default function TopologyGraph({
                                                     handleResetOverview();
                                                 }}
                                                 className="cursor-pointer hover:opacity-90 transition"
-                                                transform={`translate(${site.width - 108}, -3)`}
+                                                transform={`translate(${site.width - 168}, -3)`}
                                                 title="Return to Enterprise Backbone Overview"
                                             >
                                                 <rect x={0} y={0} width={62} height={20} rx={5} fill="rgba(56, 189, 248, 0.2)" stroke="#38bdf8" strokeWidth={0.8} />
@@ -5277,6 +5376,20 @@ export default function TopologyGraph({
                                                 </text>
                                             </g>
                                         )}
+
+                                        {/* Inspect Site Details Button */}
+                                        <g
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (onInspectSite) onInspectSite(site.siteCode);
+                                            }}
+                                            className="cursor-pointer hover:opacity-100 opacity-70 transition"
+                                            transform={`translate(${site.width - 92}, -3)`}
+                                            title={`Inspect ${site.siteCode} (${site.siteName || "Details & Switches"})`}
+                                        >
+                                            <rect x={0} y={0} width={20} height={20} rx={5} fill="rgba(56, 189, 248, 0.15)" stroke="rgba(56, 189, 248, 0.4)" strokeWidth={0.8} />
+                                            <text x={10} y={14} fill="#38bdf8" fontSize={11} fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">ℹ</text>
+                                        </g>
 
                                         {/* Edit Site Button on Expanded Header */}
                                         <g

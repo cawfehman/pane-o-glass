@@ -29,6 +29,7 @@ import TopologyGraph from "@/components/crawler/TopologyGraph";
 import SiteManagerSidebar from "@/components/crawler/SiteManagerSidebar";
 import { SiteModal } from "@/components/sites/SiteModal";
 import DeviceInspectorDrawer from "@/components/crawler/DeviceInspectorDrawer";
+import SiteInspectorDrawer from "@/components/crawler/SiteInspectorDrawer";
 import PathTracerPanel from "@/components/crawler/PathTracerPanel";
 import FailureInvestigationTable from "@/components/crawler/FailureInvestigationTable";
 import CrawlModal from "@/components/crawler/CrawlModal";
@@ -72,6 +73,7 @@ export default function AdminCrawlerPage() {
 
     // Drawer selection
     const [selectedDevice, setSelectedDevice] = useState<any | null>(null);
+    const [inspectedSiteCode, setInspectedSiteCode] = useState<string | null>(null);
 
     // Tracer inputs & highlighted path
     const [tracerSourceIp, setTracerSourceIp] = useState<string>("10.10.10.50");
@@ -678,6 +680,7 @@ export default function AdminCrawlerPage() {
                                 setLocateSiteCode(siteCode);
                                 setHighlightedSiteCode(siteCode);
                             }}
+                            onInspectSite={(siteCode) => setInspectedSiteCode(siteCode)}
                             onSitesChanged={handleSitesChanged}
                             highlightedSiteCode={highlightedSiteCode}
                         />
@@ -689,6 +692,7 @@ export default function AdminCrawlerPage() {
                                 siteDirectory={currentSnapshotData?.siteDirectory}
                                 selectedDevice={selectedDevice}
                                 onSelectDevice={(d) => setSelectedDevice(d)}
+                                onInspectSite={(siteCode) => setInspectedSiteCode(siteCode)}
                                 activeHopDevices={activeHopDevices}
                                 highlightedLinks={highlightedLinks}
                                 onReseedDevice={(d) => {
@@ -761,6 +765,7 @@ export default function AdminCrawlerPage() {
                                 siteDirectory={currentSnapshotData?.siteDirectory}
                                 selectedDevice={selectedDevice}
                                 onSelectDevice={(d) => setSelectedDevice(d)}
+                                onInspectSite={(siteCode) => setInspectedSiteCode(siteCode)}
                                 activeHopDevices={activeHopDevices}
                                 highlightedLinks={highlightedLinks}
                                 onReseedDevice={(d) => {
@@ -814,6 +819,21 @@ export default function AdminCrawlerPage() {
                     if (selectedSnapshotId) {
                         fetchSnapshotDetails(selectedSnapshotId);
                     }
+                }}
+            />
+
+            {/* Site Inspector Drawer */}
+            <SiteInspectorDrawer
+                siteCode={inspectedSiteCode}
+                onClose={() => setInspectedSiteCode(null)}
+                devices={devices}
+                links={links}
+                siteDirectory={currentSnapshotData?.siteDirectory}
+                onSelectDevice={setSelectedDevice}
+                onEditSite={handleOpenEditSite}
+                onLocateSite={(code) => {
+                    setLocateSiteCode(code);
+                    setHighlightedSiteCode(code);
                 }}
             />
 

@@ -24,7 +24,8 @@ import {
     ChevronLeft,
     RefreshCw,
     Trash2,
-    GripVertical
+    GripVertical,
+    Info
 } from "lucide-react";
 
 import { SiteMetadata, parseSiteCsv, stringifySiteCsv } from "@/lib/sites";
@@ -43,6 +44,7 @@ interface SiteManagerSidebarProps {
     onLocateSite?: (siteCode: string) => void;
     onSitesChanged?: (sites: SiteMetadata[]) => void;
     highlightedSiteCode?: string | null;
+    onInspectSite?: (siteCode: string) => void;
 }
 
 export default function SiteManagerSidebar({
@@ -50,7 +52,8 @@ export default function SiteManagerSidebar({
     onToggle,
     onLocateSite,
     onSitesChanged,
-    highlightedSiteCode
+    highlightedSiteCode,
+    onInspectSite
 }: SiteManagerSidebarProps) {
     const [sites, setSites] = useState<SiteMetadata[]>([]);
     const [folders, setFolders] = useState<string[]>([]);
@@ -601,119 +604,123 @@ export default function SiteManagerSidebar({
         const isUnassigned = node.name === "Unassigned";
 
         return (
-            <div key={node.fullPath || "root"} className="select-none">
+            <div key={node.fullPath || "root"} className="relative select-none">
                 {node.name !== "Root" && (
-                    <div 
-                        draggable={!isUnassigned}
-                        onDragStart={(e) => {
-                            e.stopPropagation();
-                            e.dataTransfer.setData("application/json", JSON.stringify({
-                                type: "folder",
-                                folderPath: node.fullPath
-                            }));
-                            e.dataTransfer.effectAllowed = "copyMove";
-                        }}
-                        onDragOver={(e) => handleFolderDragOver(e, node.fullPath)}
-                        onDragLeave={(e) => handleFolderDragLeave(e, node.fullPath)}
-                        onDrop={(e) => handleFolderDrop(e, node.fullPath)}
-                        className={`group flex items-center justify-between py-1.5 px-2 rounded-lg transition-all cursor-pointer text-xs ${
-                            isTarget 
-                                ? 'bg-sky-500/20 border-2 border-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.4)]' 
-                                : 'hover:bg-white/[0.06] border border-transparent'
-                        }`}
-                        onClick={() => toggleFolder(node.fullPath)}
-                        title={isUnassigned ? "Unassigned sites without a folder" : `Group: ${node.fullPath}\nDrag to nest, or drag onto canvas to place`}
-                    >
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                            {!isUnassigned && (
-                                <GripVertical className="w-3 h-3 text-muted/40 group-hover:text-muted cursor-grab shrink-0" />
-                            )}
-                            <button 
-                                type="button" 
-                                className="text-muted group-hover:text-white p-0.5 rounded transition-transform"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleFolder(node.fullPath);
-                                }}
-                            >
-                                {isExpanded ? (
-                                    <ChevronDown className="w-3.5 h-3.5 text-accent-primary" />
-                                ) : (
-                                    <ChevronRight className="w-3.5 h-3.5 text-muted" />
+                    <div className="relative">
+                        {/* Traditional tree branch horizontal tick connector */}
+                        <span className="absolute -left-3.5 top-1/2 w-3 h-[1px] bg-white/20 -translate-y-1/2 pointer-events-none" />
+                        <div 
+                            draggable={!isUnassigned}
+                            onDragStart={(e) => {
+                                e.stopPropagation();
+                                e.dataTransfer.setData("application/json", JSON.stringify({
+                                    type: "folder",
+                                    folderPath: node.fullPath
+                                }));
+                                e.dataTransfer.effectAllowed = "copyMove";
+                            }}
+                            onDragOver={(e) => handleFolderDragOver(e, node.fullPath)}
+                            onDragLeave={(e) => handleFolderDragLeave(e, node.fullPath)}
+                            onDrop={(e) => handleFolderDrop(e, node.fullPath)}
+                            className={`group flex items-center justify-between py-1.5 px-2 rounded-lg transition-all cursor-pointer text-xs ${
+                                isTarget 
+                                    ? 'bg-sky-500/20 border-2 border-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.4)]' 
+                                    : 'hover:bg-white/[0.06] border border-transparent'
+                            }`}
+                            onClick={() => toggleFolder(node.fullPath)}
+                            title={isUnassigned ? "Unassigned sites without a folder" : `Group: ${node.fullPath}\nDrag to nest, or drag onto canvas to place`}
+                        >
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                {!isUnassigned && (
+                                    <GripVertical className="w-3 h-3 text-muted/40 group-hover:text-muted cursor-grab shrink-0" />
                                 )}
-                            </button>
-                            {isExpanded ? (
-                                <FolderOpen className={`w-3.5 h-3.5 shrink-0 ${isUnassigned ? 'text-amber-400/80' : 'text-sky-400'}`} />
-                            ) : (
-                                <Folder className={`w-3.5 h-3.5 shrink-0 ${isUnassigned ? 'text-amber-400/60' : 'text-sky-400/70'}`} />
-                            )}
-                            <span className="font-semibold text-white/90 truncate text-[11px]">
-                                {node.name}
-                            </span>
-                            <span className="text-[10px] text-muted px-1.5 py-0.2 bg-white/5 rounded-full border border-white/10 shrink-0">
-                                {totalSites}
-                            </span>
-                        </div>
+                                <button 
+                                    type="button" 
+                                    className="text-muted group-hover:text-white p-0.5 rounded transition-transform"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleFolder(node.fullPath);
+                                    }}
+                                >
+                                    {isExpanded ? (
+                                        <ChevronDown className="w-3.5 h-3.5 text-accent-primary" />
+                                    ) : (
+                                        <ChevronRight className="w-3.5 h-3.5 text-muted" />
+                                    )}
+                                </button>
+                                {isExpanded ? (
+                                    <FolderOpen className={`w-3.5 h-3.5 shrink-0 ${isUnassigned ? 'text-amber-400/80' : 'text-sky-400'}`} />
+                                ) : (
+                                    <Folder className={`w-3.5 h-3.5 shrink-0 ${isUnassigned ? 'text-amber-400/60' : 'text-sky-400/70'}`} />
+                                )}
+                                <span className="font-semibold text-white/90 truncate text-[11px]">
+                                    {node.name}
+                                </span>
+                                <span className="text-[10px] text-muted px-1.5 py-0.2 bg-white/5 rounded-full border border-white/10 shrink-0">
+                                    {totalSites}
+                                </span>
+                            </div>
 
-                        {/* Folder Quick Actions */}
-                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-                            {!isUnassigned && (
-                                <>
-                                    <button
-                                        type="button"
-                                        title="Add Subgroup"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setNewFolderParent(node.fullPath);
-                                            setIsNewFolderOpen(true);
-                                        }}
-                                        className="p-1 rounded hover:bg-white/10 text-muted hover:text-sky-300"
-                                    >
-                                        <FolderPlus className="w-3 h-3" />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        title="Rename Group"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setFolderToRename({ oldPath: node.fullPath, newName: node.name });
-                                            setIsRenameFolderOpen(true);
-                                        }}
-                                        className="p-1 rounded hover:bg-white/10 text-muted hover:text-amber-300"
-                                    >
-                                        <Edit2 className="w-3 h-3" />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        title="Delete Group"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeleteFolder(node.fullPath);
-                                        }}
-                                        className="p-1 rounded hover:bg-white/10 text-muted hover:text-rose-400"
-                                    >
-                                        <Trash2 className="w-3 h-3" />
-                                    </button>
-                                </>
-                            )}
-                            <button
-                                type="button"
-                                title="Add Site to Folder"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenAdd(node.fullPath);
-                                }}
-                                className="p-1 rounded hover:bg-white/10 text-muted hover:text-emerald-300"
-                            >
-                                <Plus className="w-3 h-3" />
-                            </button>
+                            {/* Folder Quick Actions */}
+                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+                                {!isUnassigned && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            title="Add Subgroup"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setNewFolderParent(node.fullPath);
+                                                setIsNewFolderOpen(true);
+                                            }}
+                                            className="p-1 rounded hover:bg-white/10 text-muted hover:text-sky-300"
+                                        >
+                                            <FolderPlus className="w-3 h-3" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            title="Rename Group"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setFolderToRename({ oldPath: node.fullPath, newName: node.name });
+                                                setIsRenameFolderOpen(true);
+                                            }}
+                                            className="p-1 rounded hover:bg-white/10 text-muted hover:text-amber-300"
+                                        >
+                                            <Edit2 className="w-3 h-3" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            title="Delete Group"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeleteFolder(node.fullPath);
+                                            }}
+                                            className="p-1 rounded hover:bg-white/10 text-muted hover:text-rose-400"
+                                        >
+                                            <Trash2 className="w-3 h-3" />
+                                        </button>
+                                    </>
+                                )}
+                                <button
+                                    type="button"
+                                    title="Add Site to Folder"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenAdd(node.fullPath);
+                                    }}
+                                    className="p-1 rounded hover:bg-white/10 text-muted hover:text-emerald-300"
+                                >
+                                    <Plus className="w-3 h-3" />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
 
                 {/* Sub-items if expanded (indented cleanly with hierarchy guide line according to depth) */}
                 {(isExpanded || node.name === "Root") && (
-                    <div className={node.name !== "Root" ? "ml-3.5 pl-2.5 border-l border-white/10 space-y-0.5 my-1" : "space-y-0.5"}>
+                    <div className={node.name !== "Root" ? "relative ml-4 pl-3.5 border-l border-white/15 space-y-0.5 my-1" : "space-y-0.5"}>
                         {/* Sub-groups first (alphabetical & logical) */}
                         {subFolderKeys.map(k => renderFolder(node.subFolders[k], depth + 1))}
 
@@ -721,64 +728,78 @@ export default function SiteManagerSidebar({
                         {sortedSites.map(site => {
                             const isHighlighted = highlightedSiteCode?.toUpperCase() === site.code.toUpperCase();
                             return (
-                                <div 
-                                    key={site.code} 
-                                    draggable={true}
-                                    onDragStart={(e) => {
-                                        e.dataTransfer.setData("application/json", JSON.stringify({
-                                            type: "site",
-                                            siteCode: site.code,
-                                            folderPath: site.folderPath || ""
-                                        }));
-                                        e.dataTransfer.effectAllowed = "copyMove";
-                                    }}
-                                    className={`group flex items-center justify-between py-1 pl-2 pr-1.5 my-0.5 rounded-lg border transition-all text-xs cursor-grab active:cursor-grabbing ${
-                                        isHighlighted 
-                                            ? 'bg-accent-primary/20 border-accent-primary/60 text-white shadow-sm' 
-                                            : 'border-transparent hover:bg-white/[0.05] text-white/80'
-                                    }`}
-                                    title={`${site.code} - ${site.name}${site.isHub ? ' (HUB)' : ''}\nDrag to folder or canvas`}
-                                >
+                                <div key={site.code} className="relative">
+                                    {/* Traditional tree branch horizontal tick connector */}
+                                    <span className="absolute -left-3.5 top-1/2 w-3 h-[1px] bg-white/20 -translate-y-1/2 pointer-events-none" />
                                     <div 
-                                        className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
-                                        onClick={() => onLocateSite && onLocateSite(site.code)}
+                                        draggable={true}
+                                        onDragStart={(e) => {
+                                            e.dataTransfer.setData("application/json", JSON.stringify({
+                                                type: "site",
+                                                siteCode: site.code,
+                                                folderPath: site.folderPath || ""
+                                            }));
+                                            e.dataTransfer.effectAllowed = "copyMove";
+                                        }}
+                                        className={`group flex items-center justify-between py-1 pl-2 pr-1.5 my-0.5 rounded-lg border transition-all text-xs cursor-grab active:cursor-grabbing ${
+                                            isHighlighted 
+                                                ? 'bg-accent-primary/20 border-accent-primary/60 text-white shadow-sm' 
+                                                : 'border-transparent hover:bg-white/[0.05] text-white/80'
+                                        }`}
+                                        title={`${site.code} - ${site.name}${site.isHub ? ' (HUB)' : ''}\nDrag to folder or canvas`}
                                     >
-                                        <GripVertical className="w-3 h-3 text-muted/30 group-hover:text-muted shrink-0" />
-                                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                            site.status === 'Active' ? 'bg-emerald-400' :
-                                            site.status === 'Future' ? 'bg-amber-400' : 'bg-rose-400'
-                                        }`} />
-                                        <span className="font-black text-[11px] tracking-wide text-white truncate">
-                                            {site.code}
-                                        </span>
-                                        {site.isHub && (
-                                            <span className="text-[9px] font-black uppercase tracking-wider px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                                                HUB
-                                            </span>
-                                        )}
-                                        <span className="text-[10px] text-muted truncate">
-                                            {site.name}
-                                        </span>
-                                    </div>
-
-                                    {/* Action Icons */}
-                                    <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-                                        <button
-                                            type="button"
-                                            title="Locate on Canvas"
+                                        <div 
+                                            className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
                                             onClick={() => onLocateSite && onLocateSite(site.code)}
-                                            className="p-1 rounded hover:bg-white/10 text-muted hover:text-accent-primary"
                                         >
-                                            <Crosshair className="w-3 h-3" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            title="Edit Site Details"
-                                            onClick={() => handleOpenEdit(site)}
-                                            className="p-1 rounded hover:bg-white/10 text-muted hover:text-white"
-                                        >
-                                            <Edit2 className="w-3 h-3" />
-                                        </button>
+                                            <GripVertical className="w-3 h-3 text-muted/30 group-hover:text-muted shrink-0" />
+                                            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                                site.status === 'Active' ? 'bg-emerald-400' :
+                                                site.status === 'Future' ? 'bg-amber-400' : 'bg-rose-400'
+                                            }`} />
+                                            <span className="font-black text-[11px] tracking-wide text-white truncate">
+                                                {site.code}
+                                            </span>
+                                            {site.isHub && (
+                                                <span className="text-[9px] font-black uppercase tracking-wider px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                                    HUB
+                                                </span>
+                                            )}
+                                            <span className="text-[10px] text-muted truncate">
+                                                {site.name}
+                                            </span>
+                                        </div>
+
+                                        {/* Action Icons */}
+                                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+                                            <button
+                                                type="button"
+                                                title="Inspect Site Details & Switches"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (onInspectSite) onInspectSite(site.code);
+                                                }}
+                                                className="p-1 rounded hover:bg-white/10 text-muted hover:text-sky-300 transition"
+                                            >
+                                                <Info className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                title="Locate on Canvas"
+                                                onClick={() => onLocateSite && onLocateSite(site.code)}
+                                                className="p-1 rounded hover:bg-white/10 text-muted hover:text-accent-primary transition"
+                                            >
+                                                <Crosshair className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                title="Edit Site Details"
+                                                onClick={() => handleOpenEdit(site)}
+                                                className="p-1 rounded hover:bg-white/10 text-muted hover:text-white transition"
+                                            >
+                                                <Edit2 className="w-3 h-3" />
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             );
