@@ -587,8 +587,9 @@ export default function TopologyGraph({
     const fetchSavedViews = async () => {
         try {
             const res = await fetch(`/api/crawler/views?snapshotId=${snapshotId || "master"}`);
+            if (!res.ok) return;
             const data = await res.json();
-            if (data.views) {
+            if (data && Array.isArray(data.views)) {
                 setSavedViews(data.views);
             }
         } catch (e) {
@@ -2793,13 +2794,20 @@ export default function TopologyGraph({
                     }
 
                     // Shift node positions inside this site
-                    const siteDevs = siteDeviceMap.get(sb.siteCode) || [];
-                    for (const dev of siteDevs) {
-                        const canon = dev.canonicalHostname || getCanonicalHostname(dev.hostname);
-                        const pos = positions.get(canon);
-                        if (pos) {
-                            pos.x += off.dx;
-                            pos.y += off.dy;
+                    const t = siteTemplates.get(sb.siteCode);
+                    if (t && t.devOffsets) {
+                        for (const d of t.devOffsets) {
+                            const posKey = positions.get(d.nodeKey);
+                            if (posKey) {
+                                posKey.x += off.dx;
+                                posKey.y += off.dy;
+                            }
+                            const canon = d.dev.canonicalHostname || d.dev.hostname;
+                            const posCanon = canon ? positions.get(canon) : null;
+                            if (posCanon && posCanon !== posKey) {
+                                posCanon.x += off.dx;
+                                posCanon.y += off.dy;
+                            }
                         }
                     }
                 }

@@ -82,13 +82,13 @@ export default function SiteManagerSidebar({
         setLoading(true);
         try {
             const res = await fetch('/api/settings/sites');
+            if (!res.ok) return;
             const data = await res.json();
             if (data.versions && data.versions.length > 0) {
                 const latest = data.versions[0];
                 if (latest.content) {
                     const parsed = parseSiteCsv(latest.content);
                     setSites(parsed);
-                    if (onSitesChanged) onSitesChanged(parsed);
                 }
             }
         } catch (e: any) {
@@ -96,7 +96,7 @@ export default function SiteManagerSidebar({
         } finally {
             setLoading(false);
         }
-    }, [onSitesChanged]);
+    }, []);
 
     useEffect(() => {
         loadSites();
@@ -231,6 +231,7 @@ export default function SiteManagerSidebar({
             }
 
             await loadSites();
+            if (onSitesChanged) onSitesChanged(sites);
             return true;
         } catch (e: any) {
             setFeedbackMsg({ type: 'error', text: e.message || 'Operation failed' });

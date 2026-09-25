@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { 
@@ -174,6 +174,12 @@ export default function AdminCrawlerPage() {
             setLoadingDetails(false);
         }
     };
+
+    const handleSitesChanged = useCallback(() => {
+        if (selectedSnapshotId) {
+            fetchSnapshotDetails(selectedSnapshotId);
+        }
+    }, [selectedSnapshotId]);
 
     useEffect(() => {
         if (selectedSnapshotId) {
@@ -672,9 +678,7 @@ export default function AdminCrawlerPage() {
                                 setLocateSiteCode(siteCode);
                                 setHighlightedSiteCode(siteCode);
                             }}
-                            onSitesChanged={() => {
-                                if (selectedSnapshotId) fetchSnapshotDetails(selectedSnapshotId);
-                            }}
+                            onSitesChanged={handleSitesChanged}
                             highlightedSiteCode={highlightedSiteCode}
                         />
 
