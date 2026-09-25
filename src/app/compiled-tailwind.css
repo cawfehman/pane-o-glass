@@ -4481,6 +4481,9 @@
     .group-hover\:bg-blue-400:is(:where(.group):hover *) {
       background-color: var(--color-blue-400);
     }
+    .group-hover\:fill-sky-300:is(:where(.group):hover *) {
+      fill: var(--color-sky-300);
+    }
     .group-hover\:fill-slate-800\/90:is(:where(.group):hover *) {
       fill: color-mix(in srgb, oklch(27.9% 0.041 260.031) 90%, transparent);
     }

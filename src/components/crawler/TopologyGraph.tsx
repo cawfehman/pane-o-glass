@@ -1793,8 +1793,8 @@ export default function TopologyGraph({
                     let rows = 1;
 
                     if (isIdfCollapsed) {
-                        idfNaturalWidth = 240;
-                        idfHeight = 44;
+                        idfNaturalWidth = 140;
+                        idfHeight = 38;
                     } else {
                         cols = devs.length > 4 ? 3 : (devs.length > 1 ? 2 : 1);
                         rows = Math.ceil(devs.length / cols);
@@ -1827,7 +1827,7 @@ export default function TopologyGraph({
                             return a.idfCode.localeCompare(b.idfCode);
                         });
                         const floorNaturalWidth = fg.idfs.reduce((sum, item) => sum + item.naturalWidth, 0) + (fg.idfs.length - 1) * IDF_GAP_X;
-                        const floorHeight = Math.max(...fg.idfs.map(item => item.height), 44);
+                        const floorHeight = Math.max(...fg.idfs.map(item => item.height), 38);
                         return {
                             ...fg,
                             floorNaturalWidth,
@@ -1871,7 +1871,7 @@ export default function TopologyGraph({
                             relX: currentIdfRelX,
                             relY: currentFloorRelY,
                             width: actualWidth,
-                            height: item.isCollapsed ? 44 : fg.floorHeight,
+                            height: item.isCollapsed ? 38 : fg.floorHeight,
                             deviceCount: item.devs.length,
                             isCollapsed: item.isCollapsed
                         };
@@ -4814,6 +4814,7 @@ export default function TopologyGraph({
                                                     key={`idf-${site.siteCode}-${idf.idfCode}`}
                                                     onClick={() => toggleCollapseIdf(site.siteCode, idf.idfCode)}
                                                     className="cursor-pointer group"
+                                                    title={`IDF ${idf.idfCode} (${idf.deviceCount} ${idf.deviceCount === 1 ? "Switch" : "Switches"}) - Click to expand`}
                                                 >
                                                     <rect
                                                         x={idf.x}
@@ -4827,44 +4828,18 @@ export default function TopologyGraph({
                                                         strokeDasharray="4,2"
                                                         className="group-hover:stroke-blue-400 group-hover:fill-slate-800/90 transition"
                                                     />
-                                                    <text x={idf.x + 12} y={idf.y + 20} fill="#e2e8f0" fontSize={11} fontWeight="bold" fontFamily="monospace">
-                                                        {idf.width >= 260 && idf.floorLabel ? `${idf.floorLabel} • ` : ""}IDF: {idf.idfCode} ({idf.deviceCount} {idf.deviceCount === 1 ? "Switch" : "Switches"})
-                                                    </text>
-                                                    <text x={idf.x + 12} y={idf.y + 35} fill="#38bdf8" fontSize={9} fontWeight="bold">
-                                                        CLICK TO EXPAND ▾
-                                                    </text>
-
-                                                    {/* IDF Uplinks Toggle Button */}
-                                                    <g
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            toggleIdfUplinks(site.siteCode, idf.idfCode);
-                                                        }}
-                                                        className="cursor-pointer hover:opacity-95 transition"
-                                                        transform={`translate(${idf.x + idf.width - 74}, ${idf.y + 12})`}
-                                                        title={`Toggle uplinks for IDF ${idf.idfCode}`}
+                                                    <text
+                                                        x={idf.x + idf.width / 2}
+                                                        y={idf.y + idf.height / 2 + 4}
+                                                        fill="#e2e8f0"
+                                                        fontSize={12}
+                                                        fontWeight="bold"
+                                                        fontFamily="monospace"
+                                                        textAnchor="middle"
+                                                        className="group-hover:fill-sky-300 transition-colors select-none"
                                                     >
-                                                        <rect
-                                                            x={0}
-                                                            y={0}
-                                                            width={62}
-                                                            height={20}
-                                                            rx={4}
-                                                            fill={isIdfUplinksOn ? "rgba(56, 189, 248, 0.3)" : "rgba(148, 163, 184, 0.12)"}
-                                                            stroke={isIdfUplinksOn ? "#38bdf8" : "rgba(148, 163, 184, 0.3)"}
-                                                            strokeWidth={0.8}
-                                                        />
-                                                        <text
-                                                            x={31}
-                                                            y={13.5}
-                                                            fill={isIdfUplinksOn ? "#38bdf8" : "#94a3b8"}
-                                                            fontSize={9.5}
-                                                            fontWeight="bold"
-                                                            textAnchor="middle"
-                                                        >
-                                                            {isIdfUplinksOn ? "✓ Uplinks" : "+ Uplinks"}
-                                                        </text>
-                                                    </g>
+                                                        {idf.idfCode}
+                                                    </text>
                                                 </g>
                                             );
                                         }
@@ -4889,7 +4864,7 @@ export default function TopologyGraph({
                                                         ■
                                                     </text>
                                                     <text x={24} y={10} fill="#cbd5e1" fontSize={11} fontWeight="bold" fontFamily="monospace">
-                                                        {idf.width >= 240 && idf.floorLabel ? `${idf.floorLabel} • ` : ""}IDF: {idf.idfCode}
+                                                        {idf.idfCode}
                                                     </text>
                                                     <text x={idf.width - 128} y={10} fill="#64748b" fontSize={10} fontFamily="monospace" textAnchor="end">
                                                         ({idf.deviceCount})
