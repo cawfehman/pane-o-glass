@@ -139,7 +139,7 @@ export function SiteModal({
                         </div>
                     </div>
 
-                    {/* Hub Designation & Status */}
+                    {/* Critical Site Designation & Status */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="flex items-center gap-3 p-2.5 rounded-xl border border-white/10 bg-white/[0.02]">
                             <input 
@@ -150,8 +150,8 @@ export function SiteModal({
                                 className="w-4 h-4 rounded border-white/20 text-accent-primary focus:ring-accent-primary"
                             />
                             <label htmlFor="isHubCheckbox" className="text-xs font-bold text-white cursor-pointer select-none">
-                                Core / Regional Hub
-                                <span className="block text-[10px] font-normal text-muted">Hosts core routing / connects satellites</span>
+                                <span className="text-amber-400 font-bold mr-1">★</span> Critical Site
+                                <span className="block text-[10px] font-normal text-muted">Mark as a critical primary facility</span>
                             </label>
                         </div>
                         <div>

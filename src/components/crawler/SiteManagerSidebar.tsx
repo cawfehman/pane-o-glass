@@ -746,7 +746,7 @@ export default function SiteManagerSidebar({
                                                 ? 'bg-accent-primary/20 border-accent-primary/60 text-white shadow-sm' 
                                                 : 'border-transparent hover:bg-white/[0.05] text-white/80'
                                         }`}
-                                        title={`${site.code} - ${site.name}${site.isHub ? ' (HUB)' : ''}\nDrag to folder or canvas`}
+                                        title={`${site.code} - ${site.name}${site.isHub ? ' (Critical Site ★)' : ''}\nDrag to folder or canvas`}
                                     >
                                         <div 
                                             className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer"
@@ -761,8 +761,8 @@ export default function SiteManagerSidebar({
                                                 {site.code}
                                             </span>
                                             {site.isHub && (
-                                                <span className="text-[9px] font-black uppercase tracking-wider px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                                                    HUB
+                                                <span className="text-amber-400 font-bold text-xs" title="Critical Site">
+                                                    ★
                                                 </span>
                                             )}
                                             <span className="text-[10px] text-muted truncate">
@@ -974,7 +974,7 @@ export default function SiteManagerSidebar({
                             value={newFolderName}
                             onChange={e => setNewFolderName(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
-                            placeholder="e.g. Campus, Acute Care Hubs, Ambulatory"
+                            placeholder="e.g. Campus, Acute Care, Ambulatory"
                             autoFocus
                             className="w-full px-3.5 py-2 bg-black/80 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary text-xs text-white mb-4"
                         />

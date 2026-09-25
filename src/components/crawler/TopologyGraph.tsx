@@ -4406,7 +4406,7 @@ export default function TopologyGraph({
                                                 type="button"
                                                 onClick={() => toggleDesignatedHub(site.siteCode)}
                                                 className="p-0.5 rounded hover:bg-amber-800/40 transition cursor-pointer shrink-0"
-                                                title={designatedHubs.has(site.siteCode) ? "Enterprise Hub (Click to remove)" : "Click to mark as Enterprise Hub"}
+                                                title={designatedHubs.has(site.siteCode) ? "Critical Site (Click to unmark)" : "Click to mark as Critical Site"}
                                             >
                                                 <Star className={`w-3.5 h-3.5 ${designatedHubs.has(site.siteCode) ? "text-amber-400 fill-amber-400" : "text-slate-600 hover:text-amber-400"}`} />
                                             </button>
@@ -4414,11 +4414,6 @@ export default function TopologyGraph({
                                             <span className="font-bold text-amber-200 font-mono text-[11px] truncate">
                                                 {site.siteCode} {site.siteName ? `• ${site.siteName}` : ""}
                                             </span>
-                                            {designatedHubs.has(site.siteCode) && (
-                                                <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
-                                                    HUB
-                                                </span>
-                                            )}
                                         </div>
                                         <div className="flex items-center gap-1 shrink-0 ml-1">
                                             <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -4470,18 +4465,13 @@ export default function TopologyGraph({
                                                 type="button"
                                                 onClick={() => toggleDesignatedHub(site.siteCode)}
                                                 className="p-0.5 rounded hover:bg-slate-800 transition cursor-pointer shrink-0"
-                                                title={designatedHubs.has(site.siteCode) ? "Enterprise Hub (Click to remove hub status)" : "Click to mark as Enterprise Hub"}
+                                                title={designatedHubs.has(site.siteCode) ? "Critical Site (Click to unmark)" : "Click to mark as Critical Site"}
                                             >
                                                 <Star className={`w-3.5 h-3.5 ${designatedHubs.has(site.siteCode) ? "text-amber-400 fill-amber-400" : "text-slate-600 hover:text-amber-400"}`} />
                                             </button>
                                             <span className="font-bold text-white font-mono text-[11px] truncate">
                                                 {site.siteCode} {site.siteName ? `• ${site.siteName}` : ""}
                                             </span>
-                                            {designatedHubs.has(site.siteCode) && (
-                                                <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
-                                                    HUB
-                                                </span>
-                                            )}
                                         </div>
                                         <div className="flex items-center gap-1 shrink-0 ml-1">
                                             <span className="text-[10px] font-mono text-slate-400">
@@ -5095,7 +5085,7 @@ export default function TopologyGraph({
                                             d={`M ${site.x} ${site.y + 8} A 8 8 0 0 1 ${site.x + 8} ${site.y} L ${site.x + 4} ${site.y} L ${site.x + 4} ${site.y + site.height} L ${site.x + 8} ${site.y + site.height} A 8 8 0 0 1 ${site.x} ${site.y + site.height - 8} Z`}
                                             fill={isKelCore ? "#f59e0b" : isHub ? "#eab308" : "#3b82f6"}
                                         />
-                                        <title>{`${site.siteCode}${site.siteName ? ` — ${site.siteName}` : ""}${isHub ? " (Enterprise Hub • Click to Drill Down)" : ` (${site.deviceCount} Switches)`}`}</title>
+                                        <title>{`${site.siteCode}${site.siteName ? ` — ${site.siteName}` : ""}${isHub ? " (Critical Site)" : ` (${site.deviceCount} Switches)`}`}</title>
                                         
                                         {/* Site Code (Prominent emphasis, no 'SITE:' prefix) */}
                                         <text x={site.x + 14} y={site.y + 22} fill="#ffffff" fontSize={13} fontWeight="bold" fontFamily="monospace">
@@ -5105,36 +5095,35 @@ export default function TopologyGraph({
                                             )}
                                         </text>
 
-                                        {/* Hub Designation Badge / Toggle */}
+                                        {/* Critical Site Star Toggle */}
                                         <g
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 toggleDesignatedHub(site.siteCode);
                                             }}
-                                            className="cursor-pointer hover:opacity-80 transition"
+                                            className="cursor-pointer hover:opacity-100 transition"
                                             transform={`translate(${site.x + (isKelCore ? 96 : 58)}, ${site.y + 7})`}
-                                            title={isHub ? "Enterprise Hub (Click to remove)" : "Click to mark as Enterprise Hub"}
+                                            title={isHub ? "Critical Site (Click to unmark)" : "Click to mark as Critical Site"}
                                         >
                                             <rect
                                                 x={0}
                                                 y={0}
-                                                width={isHub ? 52 : 62}
-                                                height={17}
+                                                width={20}
+                                                height={18}
                                                 rx={4}
-                                                fill={isHub ? "rgba(245, 158, 11, 0.25)" : "rgba(148, 163, 184, 0.12)"}
-                                                stroke={isHub ? "#f59e0b" : "rgba(148, 163, 184, 0.3)"}
+                                                fill={isHub ? "rgba(245, 158, 11, 0.25)" : "rgba(148, 163, 184, 0.08)"}
+                                                stroke={isHub ? "#f59e0b" : "rgba(148, 163, 184, 0.25)"}
                                                 strokeWidth={0.8}
                                             />
                                             <text
-                                                x={isHub ? 26 : 31}
-                                                y={12}
-                                                fill={isHub ? "#f59e0b" : "#94a3b8"}
-                                                fontSize={8.5}
+                                                x={10}
+                                                y={13}
+                                                fill={isHub ? "#f59e0b" : "#64748b"}
+                                                fontSize={12}
                                                 fontWeight="bold"
                                                 textAnchor="middle"
-                                                fontFamily="sans-serif"
                                             >
-                                                {isHub ? "★ HUB" : "+ Make Hub"}
+                                                ★
                                             </text>
                                         </g>
 
@@ -5287,36 +5276,35 @@ export default function TopologyGraph({
                                             )}
                                         </text>
 
-                                        {/* Hub Toggle on Expanded Header */}
+                                        {/* Critical Site Star Toggle on Expanded Header */}
                                         <g
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 toggleDesignatedHub(site.siteCode);
                                             }}
-                                            className="cursor-pointer hover:opacity-80 transition"
+                                            className="cursor-pointer hover:opacity-100 transition"
                                             transform={`translate(${Math.min(site.width - 290, 260)}, -2)`}
-                                            title={isHub ? "Enterprise Hub (Click to remove)" : "Click to mark as Enterprise Hub"}
+                                            title={isHub ? "Critical Site (Click to unmark)" : "Click to mark as Critical Site"}
                                         >
                                             <rect
                                                 x={0}
                                                 y={0}
-                                                width={isHub ? 52 : 62}
-                                                height={18}
-                                                rx={4}
-                                                fill={isHub ? "rgba(245, 158, 11, 0.25)" : "rgba(148, 163, 184, 0.12)"}
-                                                stroke={isHub ? "#f59e0b" : "rgba(148, 163, 184, 0.3)"}
+                                                width={20}
+                                                height={20}
+                                                rx={5}
+                                                fill={isHub ? "rgba(245, 158, 11, 0.25)" : "rgba(148, 163, 184, 0.08)"}
+                                                stroke={isHub ? "#f59e0b" : "rgba(148, 163, 184, 0.25)"}
                                                 strokeWidth={0.8}
                                             />
                                             <text
-                                                x={isHub ? 26 : 31}
-                                                y={12.5}
-                                                fill={isHub ? "#f59e0b" : "#94a3b8"}
-                                                fontSize={8.5}
+                                                x={10}
+                                                y={14}
+                                                fill={isHub ? "#f59e0b" : "#64748b"}
+                                                fontSize={13}
                                                 fontWeight="bold"
                                                 textAnchor="middle"
-                                                fontFamily="sans-serif"
                                             >
-                                                {isHub ? "★ HUB" : "+ Make Hub"}
+                                                ★
                                             </text>
                                         </g>
 

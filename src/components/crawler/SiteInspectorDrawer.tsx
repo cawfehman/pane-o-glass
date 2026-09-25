@@ -234,9 +234,9 @@ export default function SiteInspectorDrawer({
                         <div className="flex items-center gap-2 flex-wrap">
                             <h2 className="text-lg font-black text-white tracking-wide font-mono">{upperCode}</h2>
                             {isHub && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm" title="Critical Site">
                                     <Star className="w-3 h-3 fill-amber-300 text-amber-300" />
-                                    CORE HUB
+                                    CRITICAL SITE
                                 </span>
                             )}
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
