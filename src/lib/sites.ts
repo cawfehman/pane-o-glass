@@ -7,6 +7,65 @@ export interface SiteMetadata {
     address: string;
     status: string; // Active, Retired, Future
     notes?: string;
+    locationType?: string; // Campus, Administrative, Ambulatory
+    city?: string;
+}
+
+export function getSiteClassification(
+    siteCode?: string | null,
+    metadata?: Partial<SiteMetadata> | null
+): { locationType: string; city: string; groupKey: string } {
+    const code = (siteCode || "").toUpperCase().trim();
+    let locationType = (metadata?.locationType || "").trim();
+    let city = (metadata?.city || "").trim();
+
+    // 1. Resolve Location Type
+    if (!locationType) {
+        const campusCodes = new Set(["KEL", "PAV", "DOR", "ENR", "3CP", "CCI", "CRM"]);
+        const adminCodes = new Set(["WDC", "RDG", "L3B", "101"]);
+        if (campusCodes.has(code)) {
+            locationType = "Campus";
+        } else if (adminCodes.has(code)) {
+            locationType = "Administrative";
+        } else {
+            locationType = "Ambulatory";
+        }
+    } else {
+        if (/campus/i.test(locationType)) locationType = "Campus";
+        else if (/admin/i.test(locationType)) locationType = "Administrative";
+        else if (/ambulatory/i.test(locationType)) locationType = "Ambulatory";
+    }
+
+    // 2. Resolve City
+    if (!city) {
+        const addr = (metadata?.address || "").trim();
+        if (addr) {
+            const match = addr.match(/(?:,\s*|\n)([A-Za-z\s.-]+),\s*[A-Z]{2}\b/);
+            if (match && match[1]) {
+                city = match[1].trim();
+            } else if (addr.includes(",")) {
+                const parts = addr.split(",").map(p => p.trim());
+                if (parts.length >= 2 && parts[1]) {
+                    city = parts[1].replace(/\s+[A-Z]{2}\s+\d{5}.*$/, "").trim();
+                }
+            }
+        }
+    }
+
+    // Fallbacks if city is still unpopulated
+    if (!city) {
+        if (locationType === "Campus") {
+            city = "Camden";
+        } else {
+            city = "Regional";
+        }
+    }
+
+    return {
+        locationType,
+        city,
+        groupKey: `${locationType} - ${city}`
+    };
 }
 
 export function parseSiteCsv(csvContent: string): SiteMetadata[] {
@@ -34,12 +93,14 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
         return result;
     };
 
-    const headers = splitCsvRow(lines[0]).map(h => h.toLowerCase());
+    const headers = splitCsvRow(lines[0]).map(h => h.toLowerCase().trim().replace(/[-_]/g, ' '));
     const codeIdx = headers.indexOf('code');
     const nameIdx = headers.indexOf('name');
     const addrIdx = headers.indexOf('address');
     const statusIdx = headers.indexOf('status');
     const notesIdx = headers.indexOf('notes');
+    const locTypeIdx = headers.findIndex(h => h === 'location type' || h === 'locationtype' || h === 'type');
+    const cityIdx = headers.indexOf('city');
 
     if (codeIdx === -1) return [];
 
@@ -49,13 +110,17 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
         if (parts.length >= 1) {
             const code = parts[codeIdx]?.toUpperCase() || "UNK";
             const rawName = nameIdx !== -1 ? parts[nameIdx] || "" : "";
+            const locTypeRaw = locTypeIdx !== -1 ? parts[locTypeIdx]?.trim() || undefined : undefined;
+            const cityRaw = cityIdx !== -1 ? parts[cityIdx]?.trim() || undefined : undefined;
             
             results.push({
                 code,
                 name: rawName || code,
                 address: addrIdx !== -1 ? parts[addrIdx] || "" : "",
                 status: statusIdx !== -1 ? parts[statusIdx] || "Active" : "Active",
-                notes: notesIdx !== -1 ? parts[notesIdx] || "" : ""
+                notes: notesIdx !== -1 ? parts[notesIdx] || "" : "",
+                locationType: locTypeRaw,
+                city: cityRaw
             });
         }
     }
@@ -64,7 +129,7 @@ export function parseSiteCsv(csvContent: string): SiteMetadata[] {
 }
 
 export function stringifySiteCsv(sites: SiteMetadata[]): string {
-    const headers = ["Code", "Name", "Address", "Status", "Notes"];
+    const headers = ["Code", "Name", "Address", "Location Type", "City", "Status", "Notes"];
     const rows = [headers.join(",")];
 
     for (const site of sites) {
@@ -77,10 +142,14 @@ export function stringifySiteCsv(sites: SiteMetadata[]): string {
             return field;
         };
 
+        const classification = getSiteClassification(site.code, site);
+
         const row = [
             formatField(site.code),
             formatField(site.name),
             formatField(site.address),
+            formatField(site.locationType || classification.locationType),
+            formatField(site.city || classification.city),
             formatField(site.status),
             formatField(site.notes)
         ];

@@ -53,6 +53,7 @@ import {
     ArrowRight
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
+import { getSiteClassification } from "@/lib/sites";
 
 export function getBasePhysicalInterface(intf?: string | null): string {
     if (!intf) return "unknown";
@@ -67,6 +68,8 @@ export interface SiteMetadataLookup {
     address?: string;
     status?: string;
     notes?: string;
+    locationType?: string;
+    city?: string;
 }
 
 interface TopologyGraphProps {
@@ -112,13 +115,12 @@ export function parseFloorFromIdf(idfCode: string): { floorNum: number; floorLab
     if (clean === "MDF" || clean === "DC" || clean === "SERVER" || clean === "CORE") {
         return { floorNum: 1, floorLabel: "Ground / MDF" };
     }
-    if (clean === "LL" || clean === "BSMT" || clean === "SUB") {
-        return { floorNum: -1, floorLabel: "Basement / LL" };
-    }
-    if (/^(?:B|LL|SUB)[-_]?(\d+)/i.test(clean)) {
+    // Basement closets: starts with B (e.g. BNC, BTC, BSMT, B1, B01, B2), LL, or SUB
+    if (/^(?:B|LL|SUB)/i.test(clean)) {
         const m = clean.match(/^(?:B|LL|SUB)[-_]?(\d+)/i);
         const n = m ? parseInt(m[1], 10) : 1;
-        return { floorNum: -n, floorLabel: `Basement L${n}` };
+        const num = n === 0 ? 1 : n;
+        return { floorNum: -num, floorLabel: num === 1 ? "Basement" : `Basement L${num}` };
     }
     // Prefixes like IDF1, ID1, FL1, FLOOR2, IDF-101
     const prefixMatch = clean.match(/^(?:IDF|ID|FL|FLOOR)[-_]?(\d+)/i);
@@ -2355,72 +2357,137 @@ export default function TopologyGraph({
                     }
                 }
 
-                // 2. Place Satellites (e.g. PAV, DOR under KEL)
-                const spokeY = focalY + focalH + 110;
-                const SAT_GAP_X = 54;
-                let totalSatsW = 0;
-                let maxSatH = 0;
-
-                satellites.forEach((sCode, idx) => {
-                    const sT = siteTemplates.get(sCode)!;
-                    totalSatsW += sT.width;
-                    if (idx < satellites.length - 1) totalSatsW += SAT_GAP_X;
-                    if (sT.height > maxSatH) maxSatH = sT.height;
-                });
-
-                let curSatX = Math.max(focalX + (focalW - totalSatsW) / 2, 80);
+                // 2. Place Satellites grouped by Location Type and City
+                const groupMap = new Map<string, {
+                    groupKey: string;
+                    locationType: string;
+                    city: string;
+                    satCodes: string[];
+                }>();
 
                 for (const satCode of satellites) {
-                    const sT = siteTemplates.get(satCode)!;
-                    const satX = curSatX;
-                    const satY = spokeY;
+                    const siteLookup = siteDirectory?.[satCode] || siteDirectory?.[satCode.toUpperCase()];
+                    const { locationType, city, groupKey } = getSiteClassification(satCode, siteLookup);
+                    if (!groupMap.has(groupKey)) {
+                        groupMap.set(groupKey, { groupKey, locationType, city, satCodes: [] });
+                    }
+                    groupMap.get(groupKey)!.satCodes.push(satCode);
+                }
 
-                    siteContainers.push({
-                        siteCode: satCode,
-                        siteName: sT.siteName,
-                        x: satX,
-                        y: satY,
-                        width: sT.width,
-                        height: sT.height,
-                        deviceCount: sT.totalDevsInSite,
-                        l3Count: sT.l3Count,
-                        l2Count: sT.l2Count,
-                        isCollapsed: sT.isCollapsed,
-                        idfs: sT.idfs.map(idf => ({
-                            ...idf,
-                            x: satX + idf.relX,
-                            y: satY + idf.relY
-                        })),
-                        connectedSites: Array.from(interSiteAdj.get(satCode) || []),
-                        clusterId: `cluster-${focalHub}`,
-                        isClusterHub: false,
-                        isDesignatedHub: false,
-                        parentHub: focalHub
+                // Sort groups: Campus first, Administrative second, Ambulatory third; within type sort by city
+                const sortedGroups = Array.from(groupMap.values()).sort((a, b) => {
+                    const typePriority: Record<string, number> = { "Campus": 1, "Administrative": 2, "Ambulatory": 3 };
+                    const pA = typePriority[a.locationType] || 4;
+                    const pB = typePriority[b.locationType] || 4;
+                    if (pA !== pB) return pA - pB;
+                    return a.city.localeCompare(b.city);
+                });
+
+                const SITE_GAP_X = 20;
+                const SITE_GAP_Y = 16;
+                const POD_PAD_X = 20;
+                const POD_PAD_TOP = 42;
+                const POD_PAD_BOTTOM = 20;
+                const POD_GAP_X = 36;
+                const POD_GAP_Y = 40;
+
+                const startY = focalY + focalH + 90;
+                let curPodX = 60;
+                let curPodY = startY;
+                let maxRowH = 0;
+                let maxPodsRight = 0;
+                const MAX_ROW_WIDTH = 1350;
+
+                for (const g of sortedGroups) {
+                    const maxSiteW = Math.max(...g.satCodes.map(c => siteTemplates.get(c)?.width || 300), 280);
+                    const maxSiteH = Math.max(...g.satCodes.map(c => siteTemplates.get(c)?.height || 74), 74);
+                    const cols = g.satCodes.length <= 3 ? g.satCodes.length : (g.satCodes.length === 4 ? 2 : 3);
+                    const rows = Math.ceil(g.satCodes.length / cols);
+
+                    const podInnerW = cols * maxSiteW + (cols - 1) * SITE_GAP_X;
+                    const podW = podInnerW + POD_PAD_X * 2;
+                    const podInnerH = rows * maxSiteH + (rows - 1) * SITE_GAP_Y;
+                    const podH = podInnerH + POD_PAD_TOP + POD_PAD_BOTTOM;
+
+                    if (curPodX > 60 && curPodX + podW > MAX_ROW_WIDTH) {
+                        curPodX = 60;
+                        curPodY += maxRowH + POD_GAP_Y;
+                        maxRowH = 0;
+                    }
+
+                    const podX = curPodX;
+                    const podY = curPodY;
+                    if (podH > maxRowH) maxRowH = podH;
+                    curPodX += podW + POD_GAP_X;
+                    if (podX + podW > maxPodsRight) maxPodsRight = podX + podW;
+
+                    g.satCodes.forEach((satCode, idx) => {
+                        const sT = siteTemplates.get(satCode)!;
+                        const col = idx % cols;
+                        const row = Math.floor(idx / cols);
+                        const satX = podX + POD_PAD_X + col * (maxSiteW + SITE_GAP_X);
+                        const satY = podY + POD_PAD_TOP + row * (maxSiteH + SITE_GAP_Y);
+
+                        siteContainers.push({
+                            siteCode: satCode,
+                            siteName: sT.siteName,
+                            x: satX,
+                            y: satY,
+                            width: sT.width,
+                            height: sT.height,
+                            deviceCount: sT.totalDevsInSite,
+                            l3Count: sT.l3Count,
+                            l2Count: sT.l2Count,
+                            isCollapsed: sT.isCollapsed,
+                            idfs: sT.idfs.map(idf => ({
+                                ...idf,
+                                x: satX + idf.relX,
+                                y: satY + idf.relY
+                            })),
+                            connectedSites: Array.from(interSiteAdj.get(satCode) || []),
+                            clusterId: `pod-${g.groupKey.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`,
+                            isClusterHub: false,
+                            isDesignatedHub: false,
+                            parentHub: focalHub
+                        });
+
+                        for (const idf of sT.idfs) {
+                            idfContainers.push({
+                                ...idf,
+                                x: satX + idf.relX,
+                                y: satY + idf.relY
+                            });
+                        }
+
+                        for (const d of sT.devOffsets) {
+                            const nX = satX + d.relX;
+                            const nY = satY + d.relY;
+                            positions.set(d.nodeKey, { x: nX, y: nY });
+                            if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                                positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                            }
+                            layoutDevs.push(d.dev);
+                        }
                     });
 
-                    for (const idf of sT.idfs) {
-                        idfContainers.push({
-                            ...idf,
-                            x: satX + idf.relX,
-                            y: satY + idf.relY
-                        });
-                    }
-
-                    for (const d of sT.devOffsets) {
-                        const nX = satX + d.relX;
-                        const nY = satY + d.relY;
-                        positions.set(d.nodeKey, { x: nX, y: nY });
-                        if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
-                            positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
-                        }
-                        layoutDevs.push(d.dev);
-                    }
-
-                    curSatX += sT.width + SAT_GAP_X;
+                    const icon = g.locationType === "Campus" ? "🏛️" : g.locationType === "Administrative" ? "🏢" : "🏥";
+                    const podLabel = `${icon} ${g.groupKey} (${g.satCodes.length} ${g.satCodes.length === 1 ? "Site" : "Sites"})`;
+                    clusters.push({
+                        id: `pod-${g.groupKey.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`,
+                        label: podLabel,
+                        hubSiteCode: focalHub,
+                        siteCodes: g.satCodes,
+                        x: podX,
+                        y: podY,
+                        width: podW,
+                        height: podH,
+                        titleWidth: Math.max(podLabel.length * 8.5 + 40, 220),
+                        isSingle: false
+                    });
                 }
 
                 // 3. Perimeter Placement for Peer Hubs (compact summary cards)
-                const rightX = Math.max(focalX + focalW + 80, curSatX + 60, 1140);
+                const rightX = Math.max(focalX + focalW + 120, maxPodsRight + 60, 1200);
                 const peerPositions: Array<{ x: number; y: number }> = [
                     { x: 30, y: 60 },                         // Top-Left (e.g. CRM)
                     { x: 30, y: 280 },                        // Mid-Left (e.g. VMM)
@@ -2472,29 +2539,8 @@ export default function TopologyGraph({
                     }
                 });
 
-                // Cluster Enclosure for the Active Campus (Focal Hub + its Satellites)
-                if (satellites.length > 0) {
-                    const minCampX = Math.min(focalX, focalX + (focalW - totalSatsW) / 2) - 30;
-                    const maxCampX = Math.max(focalX + focalW, curSatX) + 30;
-                    const campW = maxCampX - minCampX;
-                    const campH = (spokeY + maxSatH) - (focalY - 20) + 30;
-
-                    clusters.push({
-                        id: `campus-${focalHub}`,
-                        label: `Campus Cluster: Hub ${focalHub} (${satellites.length + 1} Connected Sites)`,
-                        hubSiteCode: focalHub,
-                        siteCodes: [focalHub, ...satellites],
-                        x: minCampX,
-                        y: focalY - 20,
-                        width: campW,
-                        height: campH,
-                        titleWidth: 360,
-                        isSingle: false
-                    });
-                }
-
                 maxCanvasWidth = rightX + 340;
-                maxCanvasHeight = Math.max(spokeY + maxSatH + 120, 780);
+                maxCanvasHeight = Math.max(curPodY + maxRowH + 120, 850);
             }
         } else {
             // Classic Linear Grid Mode
@@ -4310,6 +4356,11 @@ export default function TopologyGraph({
                     <g ref={viewportRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
                         {/* 1A. RENDER MULTI-SITE CLUSTER ENCLOSURES (Campus / Hub Constellations) */}
                         {layoutMode === "container" && siteClusterMode === "topological" && siteClusters.filter(c => !c.isSingle).map((cluster) => {
+                            const isCampus = cluster.label.includes("Campus");
+                            const isAdmin = cluster.label.includes("Administrative");
+                            const strokeColor = isCampus ? "rgba(56, 189, 248, 0.35)" : isAdmin ? "rgba(245, 158, 11, 0.35)" : "rgba(16, 185, 129, 0.35)";
+                            const fillColor = isCampus ? "rgba(30, 41, 59, 0.22)" : isAdmin ? "rgba(45, 35, 20, 0.22)" : "rgba(20, 45, 35, 0.22)";
+                            const badgeColor = isCampus ? "#38bdf8" : isAdmin ? "#f59e0b" : "#34d399";
                             return (
                                 <g key={`cluster-${cluster.id}`} className="transition-opacity duration-300 pointer-events-none">
                                     {/* Soft ambient glassmorphism enclosure rect */}
@@ -4318,14 +4369,14 @@ export default function TopologyGraph({
                                         y={cluster.y}
                                         width={cluster.width}
                                         height={cluster.height}
-                                        rx={24}
-                                        fill="rgba(30, 41, 59, 0.22)"
-                                        stroke="rgba(56, 189, 248, 0.28)"
+                                        rx={18}
+                                        fill={fillColor}
+                                        stroke={strokeColor}
                                         strokeWidth={1.5}
                                         strokeDasharray="8,6"
                                     />
                                     {/* Cluster Header Pill Badge */}
-                                    <g transform={`translate(${cluster.x + 20}, ${cluster.y - 14})`}>
+                                    <g transform={`translate(${cluster.x + 18}, ${cluster.y - 13})`}>
                                         <rect
                                             x={0}
                                             y={0}
@@ -4333,20 +4384,20 @@ export default function TopologyGraph({
                                             height={26}
                                             rx={7}
                                             fill="rgba(15, 23, 42, 0.95)"
-                                            stroke="#38bdf8"
+                                            stroke={badgeColor}
                                             strokeWidth={1}
                                             filter="drop-shadow(0 2px 8px rgba(0,0,0,0.5))"
                                         />
                                         <text
-                                            x={14}
+                                            x={12}
                                             y={17}
-                                            fill="#38bdf8"
+                                            fill={badgeColor}
                                             fontSize={11}
                                             fontWeight="bold"
                                             fontFamily="sans-serif"
                                             letterSpacing="0.3"
                                         >
-                                            🌐 Campus Cluster: Hub {cluster.hubSiteCode} ({cluster.siteCodes.length} Sites)
+                                            {cluster.label || `🌐 Campus Cluster: Hub ${cluster.hubSiteCode} (${cluster.siteCodes.length} Sites)`}
                                         </text>
                                     </g>
                                 </g>
