@@ -129,6 +129,30 @@ export function formatLastVerified(ts?: string | null): string {
     return `${dateStr} ${timeStr}`;
 }
 
+export const KNOWN_HUB_NAMES: Record<string, string> = {
+    KEL: "Keleher Center",
+    CRM: "Cooper River Medical",
+    WDC: "Woodbury Data Center",
+    RDG: "Roberts Data Center",
+    VMM: "Voorhees Medical Mall"
+};
+
+export function getCleanSiteDisplayName(code?: string | null, rawName?: string | null): string | null {
+    const upperCode = (code || "").toUpperCase().trim();
+    if (KNOWN_HUB_NAMES[upperCode]) {
+        return KNOWN_HUB_NAMES[upperCode];
+    }
+    if (!rawName) return null;
+    let clean = rawName.trim();
+    if (/^site:?\s+/i.test(clean)) {
+        clean = clean.replace(/^site:?\s+/i, "").trim();
+    }
+    if (clean.toUpperCase() === upperCode) {
+        return null;
+    }
+    return clean || null;
+}
+
 export function detectSwitchStack(dev: any): { isStack: boolean; stackSize: number; portCount: number; members: string[] } {
     const rawInterfaces = dev.interfaces || {};
     const intfList: any[] = Array.isArray(rawInterfaces)
@@ -1574,7 +1598,7 @@ export default function TopologyGraph({
 
         for (const [siteCode, idfMap] of siteGroups.entries()) {
             const siteLookup = siteDirectory[siteCode];
-            const siteName = siteLookup?.name || null;
+            const siteName = getCleanSiteDisplayName(siteCode, siteLookup?.name);
             // In topological mode: Overview mode (activeDrillHub === null) keeps all sites collapsed.
             // Drill-down mode expands activeDrillHub and allows satellites to be toggled, keeping peer hubs collapsed.
             const isCollapsed = siteClusterMode === "topological"
@@ -1941,11 +1965,11 @@ export default function TopologyGraph({
                 // centered strictly around KEL. Fits immediately on screen (~1250x700px).
                 // =========================================================================
                 const PRESET_HUB_POSITIONS: Record<string, { x: number; y: number }> = {
-                    KEL: { x: 480, y: 240 },
+                    KEL: { x: 480, y: 220 },
                     CRM: { x: 100, y: 80 },
                     WDC: { x: 860, y: 80 },
-                    RDG: { x: 860, y: 400 },
-                    VMM: { x: 100, y: 400 }
+                    RDG: { x: 860, y: 360 },
+                    VMM: { x: 100, y: 360 }
                 };
 
                 const placedHubCodes = new Set<string>();
@@ -1968,15 +1992,15 @@ export default function TopologyGraph({
                     const devCount = sT ? sT.totalDevsInSite : 0;
                     const l3Count = sT ? sT.l3Count : 0;
                     const l2Count = sT ? sT.l2Count : 0;
-                    const siteName = sT?.siteName || siteDirectory[hCode]?.name || (hCode === "CRM" ? "Cooper River Medical" : `${hCode} Campus`);
+                    const siteName = getCleanSiteDisplayName(hCode, sT?.siteName || siteDirectory[hCode]?.name);
 
                     siteContainers.push({
                         siteCode: hCode,
                         siteName,
                         x: pos.x,
                         y: pos.y,
-                        width: 300,
-                        height: sats.length > 0 ? 84 : 74,
+                        width: 280,
+                        height: 54,
                         deviceCount: devCount,
                         l3Count,
                         l2Count,
@@ -2004,7 +2028,7 @@ export default function TopologyGraph({
                 }
 
                 // Place any extra custom hubs radially around KEL
-                const kelPos = PRESET_HUB_POSITIONS.KEL || { x: 480, y: 240 };
+                const kelPos = PRESET_HUB_POSITIONS.KEL || { x: 480, y: 220 };
                 extraHubs.forEach((hCode, idx) => {
                     const sT = siteTemplates.get(hCode);
                     const angle = ((idx + 0.5) / Math.max(extraHubs.length, 1)) * 2 * Math.PI;
@@ -2017,15 +2041,15 @@ export default function TopologyGraph({
                     const devCount = sT ? sT.totalDevsInSite : 0;
                     const l3Count = sT ? sT.l3Count : 0;
                     const l2Count = sT ? sT.l2Count : 0;
-                    const siteName = sT?.siteName || siteDirectory[hCode]?.name || `${hCode} Campus`;
+                    const siteName = getCleanSiteDisplayName(hCode, sT?.siteName || siteDirectory[hCode]?.name);
 
                     siteContainers.push({
                         siteCode: hCode,
                         siteName,
                         x: posX,
                         y: posY,
-                        width: 300,
-                        height: sats.length > 0 ? 84 : 74,
+                        width: 280,
+                        height: 54,
                         deviceCount: devCount,
                         l3Count,
                         l2Count,
@@ -2052,78 +2076,29 @@ export default function TopologyGraph({
                     }
                 });
 
-                // Populate coordinates for satellite devices so device search/filtering functions
-                for (const [satCode, pHub] of parentHubOfSite.entries()) {
-                    const satT = siteTemplates.get(satCode);
-                    const pContainer = siteContainers.find(c => c.siteCode === pHub);
-                    if (satT && pContainer) {
-                        for (const d of satT.devOffsets) {
-                            const nX = pContainer.x + pContainer.width / 2;
-                            const nY = pContainer.y + pContainer.height / 2;
-                            positions.set(d.nodeKey, { x: nX, y: nY });
-                            if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
-                                positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
-                            }
-                            layoutDevs.push(d.dev);
-                        }
-                    }
-                }
+                // Populate coordinates for non-hub & satellite devices so device search/filtering functions
+                const kelContainer = siteContainers.find(c => c.siteCode === "KEL") || siteContainers[0];
+                const defaultX = kelContainer ? kelContainer.x + kelContainer.width / 2 : 620;
+                const defaultY = kelContainer ? kelContainer.y + kelContainer.height / 2 : 247;
 
-                // Place standalone non-hub, non-satellite sites on a neat, wrapped grid at the bottom
-                const standaloneSites = Array.from(siteTemplates.keys()).filter(
-                    s => !designatedHubs.has(s) && !parentHubOfSite.has(s)
-                );
-
-                const SHELF_COLS = 3;
-                const CARD_W = 300;
-                const CARD_H = 74;
-                const GAP_X = 24;
-                const GAP_Y = 16;
-                const START_X = 140;
-                const START_Y = 560;
-
-                standaloneSites.forEach((sCode, idx) => {
-                    const sT = siteTemplates.get(sCode)!;
-                    const col = idx % SHELF_COLS;
-                    const row = Math.floor(idx / SHELF_COLS);
-                    const posX = START_X + col * (CARD_W + GAP_X);
-                    const posY = START_Y + row * (CARD_H + GAP_Y);
-
-                    siteContainers.push({
-                        siteCode: sCode,
-                        siteName: sT.siteName,
-                        x: posX,
-                        y: posY,
-                        width: CARD_W,
-                        height: CARD_H,
-                        deviceCount: sT.totalDevsInSite,
-                        l3Count: sT.l3Count,
-                        l2Count: sT.l2Count,
-                        isCollapsed: true,
-                        idfs: [],
-                        connectedSites: Array.from(interSiteAdj.get(sCode) || []),
-                        clusterId: `standalone-${sCode}`,
-                        isClusterHub: false,
-                        isDesignatedHub: false,
-                        satellites: []
-                    });
+                for (const [sCode, sT] of siteTemplates.entries()) {
+                    if (placedHubCodes.has(sCode) || extraHubs.includes(sCode)) continue;
+                    const pHub = parentHubOfSite.get(sCode);
+                    const pContainer = pHub ? siteContainers.find(c => c.siteCode === pHub) : kelContainer;
+                    const baseCenterX = pContainer ? pContainer.x + pContainer.width / 2 : defaultX;
+                    const baseCenterY = pContainer ? pContainer.y + pContainer.height / 2 : defaultY;
 
                     for (const d of sT.devOffsets) {
-                        const nX = posX + d.relX;
-                        const nY = posY + d.relY;
-                        positions.set(d.nodeKey, { x: nX, y: nY });
+                        positions.set(d.nodeKey, { x: baseCenterX, y: baseCenterY });
                         if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
-                            positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                            positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: baseCenterX, y: baseCenterY });
                         }
                         layoutDevs.push(d.dev);
                     }
-                });
+                }
 
-                const numShelfRows = Math.ceil(standaloneSites.length / SHELF_COLS);
-                const shelfTotalHeight = numShelfRows > 0 ? numShelfRows * (CARD_H + GAP_Y) : 0;
-
-                maxCanvasWidth = 1260;
-                maxCanvasHeight = standaloneSites.length > 0 ? (START_Y + shelfTotalHeight + 60) : 560;
+                maxCanvasWidth = 1240;
+                maxCanvasHeight = 500;
 
                 // Backbone Constellation Enclosure (5 Core Hub Tier)
                 clusters.push({
@@ -2133,26 +2108,11 @@ export default function TopologyGraph({
                     siteCodes: Array.from(designatedHubs),
                     x: 40,
                     y: 30,
-                    width: 1180,
-                    height: 480,
+                    width: 1160,
+                    height: 440,
                     titleWidth: 380,
                     isSingle: false
                 });
-
-                if (standaloneSites.length > 0) {
-                    clusters.push({
-                        id: "standalone-shelf",
-                        label: `Satellite & Edge Facilities (${standaloneSites.length} Sites)`,
-                        hubSiteCode: "SATELLITES",
-                        siteCodes: standaloneSites,
-                        x: 80,
-                        y: START_Y - 26,
-                        width: 1100,
-                        height: shelfTotalHeight + 40,
-                        titleWidth: 280,
-                        isSingle: false
-                    });
-                }
 
             } else {
                 // =========================================================================
@@ -2173,7 +2133,7 @@ export default function TopologyGraph({
                 const focalDevCount = focalT ? focalT.totalDevsInSite : 0;
                 const focalL3Count = focalT ? focalT.l3Count : 0;
                 const focalL2Count = focalT ? focalT.l2Count : 0;
-                const focalSiteName = focalT?.siteName || siteDirectory[focalHub]?.name || (focalHub === "CRM" ? "Cooper River Medical" : `${focalHub} Campus`);
+                const focalSiteName = getCleanSiteDisplayName(focalHub, focalT?.siteName || siteDirectory[focalHub]?.name);
 
                 // 1. Place Focal Hub
                 siteContainers.push({
@@ -2299,7 +2259,7 @@ export default function TopologyGraph({
                     const pT = siteTemplates.get(pCode);
                     const pPos = peerPositions[idx] || { x: rightX, y: 60 + idx * 120 };
                     const pSats = hubSatellitesMap.get(pCode) || [];
-                    const pSiteName = pT?.siteName || siteDirectory[pCode]?.name || (pCode === "CRM" ? "Cooper River Medical" : `${pCode} Campus`);
+                    const pSiteName = getCleanSiteDisplayName(pCode, pT?.siteName || siteDirectory[pCode]?.name);
                     const pDevCount = pT ? pT.totalDevsInSite : 0;
                     const pL3Count = pT ? pT.l3Count : 0;
                     const pL2Count = pT ? pT.l2Count : 0;
@@ -2309,8 +2269,8 @@ export default function TopologyGraph({
                         siteName: pSiteName,
                         x: pPos.x,
                         y: pPos.y,
-                        width: pT ? pT.width : 280,
-                        height: pSats.length > 0 ? 84 : (pT ? pT.height : 74),
+                        width: 280,
+                        height: 54,
                         deviceCount: pDevCount,
                         l3Count: pL3Count,
                         l2Count: pL2Count,
@@ -2642,8 +2602,8 @@ export default function TopologyGraph({
         }
 
         const isOverview = siteClusterMode === "topological" && !activeDrillHub;
-        const totalWidth = isOverview ? Math.max(maxX, 1280) : Math.max(maxX, 1600);
-        const totalHeight = isOverview ? Math.max(maxY, 620) : Math.max(maxY, 850);
+        const totalWidth = isOverview ? Math.max(maxX, 1240) : Math.max(maxX, 1600);
+        const totalHeight = isOverview ? Math.max(maxY, 490) : Math.max(maxY, 850);
 
         return {
             nodePositions: positions,
@@ -4269,7 +4229,9 @@ export default function TopologyGraph({
                                         fill="none"
                                         stroke="transparent"
                                         strokeWidth={26}
-                                    />
+                                    >
+                                        <title>{`${bridge.sourceSite} ↔ ${bridge.targetSite}: ${bridge.capacityLabel || bridge.label || "Backbone WAN Highway"}`}</title>
+                                    </path>
                                     {/* Ambient Glow */}
                                     <path
                                         d={bridge.path}
@@ -4289,51 +4251,53 @@ export default function TopologyGraph({
                                         className={isSelected ? "animate-pulse" : ""}
                                     />
 
-                                    {/* Midpoint Badge Pill */}
-                                    <g transform={`translate(${bridge.midX}, ${bridge.midY})`}>
-                                        <g transform={`translate(${-badgeW / 2}, -12)`}>
-                                            <rect
-                                                x={0}
-                                                y={0}
-                                                width={badgeW}
-                                                height={24}
-                                                rx={7}
-                                                fill="rgba(15, 23, 42, 0.96)"
-                                                stroke={badgeBorder}
-                                                strokeWidth={bridge.isHubHighway ? 1.5 : 1}
-                                                filter="drop-shadow(0 3px 8px rgba(0,0,0,0.7))"
-                                                className="group-hover:scale-105 transition-transform"
-                                            />
-                                            <rect
-                                                x={2}
-                                                y={2}
-                                                width={badgeW - 4}
-                                                height={20}
-                                                rx={5}
-                                                fill={badgeFill}
-                                            />
-                                            {/* Status indicator dot */}
-                                            <circle
-                                                cx={13}
-                                                cy={12}
-                                                r={3.2}
-                                                fill={isDown ? "#ef4444" : isUnverified ? "#f59e0b" : "#10b981"}
-                                                className={isDown ? "animate-ping" : ""}
-                                            />
-                                            <text
-                                                x={badgeW / 2 + 5}
-                                                y={15.5}
-                                                fill={badgeTextColor}
-                                                fontSize={9.5}
-                                                fontWeight="bold"
-                                                fontFamily="monospace"
-                                                textAnchor="middle"
-                                                letterSpacing="0.2"
-                                            >
-                                                {bridge.label}
-                                            </text>
+                                    {/* Midpoint Badge Pill - hidden for hub highways to keep backbone links clean & uncluttered */}
+                                    {!bridge.isHubHighway && (
+                                        <g transform={`translate(${bridge.midX}, ${bridge.midY})`}>
+                                            <g transform={`translate(${-badgeW / 2}, -12)`}>
+                                                <rect
+                                                    x={0}
+                                                    y={0}
+                                                    width={badgeW}
+                                                    height={24}
+                                                    rx={7}
+                                                    fill="rgba(15, 23, 42, 0.96)"
+                                                    stroke={badgeBorder}
+                                                    strokeWidth={1}
+                                                    filter="drop-shadow(0 3px 8px rgba(0,0,0,0.7))"
+                                                    className="group-hover:scale-105 transition-transform"
+                                                />
+                                                <rect
+                                                    x={2}
+                                                    y={2}
+                                                    width={badgeW - 4}
+                                                    height={20}
+                                                    rx={5}
+                                                    fill={badgeFill}
+                                                />
+                                                {/* Status indicator dot */}
+                                                <circle
+                                                    cx={13}
+                                                    cy={12}
+                                                    r={3.2}
+                                                    fill={isDown ? "#ef4444" : isUnverified ? "#f59e0b" : "#10b981"}
+                                                    className={isDown ? "animate-ping" : ""}
+                                                />
+                                                <text
+                                                    x={badgeW / 2 + 5}
+                                                    y={15.5}
+                                                    fill={badgeTextColor}
+                                                    fontSize={9.5}
+                                                    fontWeight="bold"
+                                                    fontFamily="monospace"
+                                                    textAnchor="middle"
+                                                    letterSpacing="0.2"
+                                                >
+                                                    {bridge.label}
+                                                </text>
+                                            </g>
                                         </g>
-                                    </g>
+                                    )}
                                 </g>
                             );
                         })}
@@ -4448,7 +4412,7 @@ export default function TopologyGraph({
                                             d={`M ${site.x} ${site.y + 8} A 8 8 0 0 1 ${site.x + 8} ${site.y} L ${site.x + 4} ${site.y} L ${site.x + 4} ${site.y + site.height} L ${site.x + 8} ${site.y + site.height} A 8 8 0 0 1 ${site.x} ${site.y + site.height - 8} Z`}
                                             fill={isKelCore ? "#f59e0b" : isHub ? "#eab308" : "#3b82f6"}
                                         />
-                                        <title>{`${site.siteCode}${site.siteName ? ` — ${site.siteName}` : ""} (${site.deviceCount} Switches)`}</title>
+                                        <title>{`${site.siteCode}${site.siteName ? ` — ${site.siteName}` : ""}${isHub ? " (Enterprise Hub • Click to Drill Down)" : ` (${site.deviceCount} Switches)`}`}</title>
                                         
                                         {/* Site Code (Prominent emphasis, no 'SITE:' prefix) */}
                                         <text x={site.x + 14} y={site.y + 22} fill="#ffffff" fontSize={13} fontWeight="bold" fontFamily="monospace">
@@ -4465,7 +4429,7 @@ export default function TopologyGraph({
                                                 toggleDesignatedHub(site.siteCode);
                                             }}
                                             className="cursor-pointer hover:opacity-80 transition"
-                                            transform={`translate(${site.x + (isKelCore ? 82 : 58)}, ${site.y + 8})`}
+                                            transform={`translate(${site.x + (isKelCore ? 96 : 58)}, ${site.y + 7})`}
                                             title={isHub ? "Enterprise Hub (Click to remove)" : "Click to mark as Enterprise Hub"}
                                         >
                                             <rect
@@ -4491,52 +4455,18 @@ export default function TopologyGraph({
                                             </text>
                                         </g>
 
-                                        {/* Site Name (Appears below Site Code with smaller styling) */}
+                                        {/* Site Name (Appears below Site Code with clean styling) */}
                                         {site.siteName && (
                                             <text 
                                                 x={site.x + 14} 
-                                                y={site.y + 37} 
+                                                y={site.y + (isHub ? 39 : 37)} 
                                                 fill="#7dd3fc" 
-                                                fontSize={9.5} 
+                                                fontSize={isHub ? 10 : 9.5} 
                                                 fontWeight="500" 
                                                 fontFamily="sans-serif"
                                             >
-                                                {site.siteName.length > 32 ? site.siteName.slice(0, 30) + "…" : site.siteName}
+                                                {site.siteName.length > 34 ? site.siteName.slice(0, 32) + "…" : site.siteName}
                                             </text>
-                                        )}
-
-                                        {/* Satellite Pill on Hub Card */}
-                                        {hasSatellites && (
-                                            <g
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleFocusHub(site.siteCode);
-                                                }}
-                                                className="cursor-pointer hover:opacity-90 transition"
-                                                transform={`translate(${site.x + 14}, ${site.y + (site.siteName ? 45 : 36)})`}
-                                                title={`Drill into ${site.siteCode} to view satellites: ${site.satellites?.join(", ")}`}
-                                            >
-                                                <rect
-                                                    x={0}
-                                                    y={0}
-                                                    width={Math.min(site.width - 28, 272)}
-                                                    height={16}
-                                                    rx={4}
-                                                    fill="rgba(56, 189, 248, 0.18)"
-                                                    stroke="#38bdf8"
-                                                    strokeWidth={0.8}
-                                                />
-                                                <text
-                                                    x={6}
-                                                    y={11.5}
-                                                    fill="#38bdf8"
-                                                    fontSize={8.5}
-                                                    fontWeight="bold"
-                                                    fontFamily="sans-serif"
-                                                >
-                                                    🌐 Satellites ({site.satellites?.length}): {site.satellites?.join(", ")} ➔ Drill In
-                                                </text>
-                                            </g>
                                         )}
 
                                         {/* Uplinks Toggle Button on Collapsed Site */}
@@ -4546,7 +4476,7 @@ export default function TopologyGraph({
                                                 toggleSiteUplinks(site.siteCode);
                                             }}
                                             className="cursor-pointer hover:opacity-95 transition"
-                                            transform={`translate(${site.x + site.width - 92}, ${site.y + 11})`}
+                                            transform={`translate(${site.x + site.width - 92}, ${site.y + (isHub ? 8 : 11)})`}
                                             title={`Toggle WAN/core uplinks for site ${site.siteCode}`}
                                         >
                                             <rect
@@ -4572,30 +4502,32 @@ export default function TopologyGraph({
                                         </g>
 
                                         {/* Expand Chevron Icon Badge */}
-                                        <g transform={`translate(${site.x + site.width - 24}, ${site.y + 12})`}>
+                                        <g transform={`translate(${site.x + site.width - 24}, ${site.y + (isHub ? 9 : 12)})`}>
                                             <circle cx={6} cy={6} r={8} fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" strokeWidth={0.8} />
                                             <text x={6} y={9.5} fill="#60a5fa" fontSize={10} fontWeight="bold" textAnchor="middle">
                                                 ▾
                                             </text>
                                         </g>
 
-                                        {/* Switch Census */}
-                                        <text
-                                            x={site.x + 14}
-                                            y={site.y + (hasSatellites ? 73 : (site.siteName ? 57 : 46))}
-                                            fill="#94a3b8"
-                                            fontSize={8.5}
-                                            fontFamily="monospace"
-                                        >
-                                            {site.deviceCount === 0 ? (
-                                                <tspan fill="#f59e0b">0 Switches • Pending Discovery Crawl</tspan>
-                                            ) : (
-                                                <>
-                                                    {site.deviceCount} Switches ({site.l3Count} Core/L3 • {site.l2Count} Access/L2)
-                                                    {site.connectedSites && site.connectedSites.length > 0 && !hasSatellites && ` • ⇄ Peers: ${site.connectedSites.join(", ")}`}
-                                                </>
-                                            )}
-                                        </text>
+                                        {/* Switch Census (only shown on non-hub sites; hubs stay simple and executive) */}
+                                        {!isHub && (
+                                            <text
+                                                x={site.x + 14}
+                                                y={site.y + (site.siteName ? 57 : 46)}
+                                                fill="#94a3b8"
+                                                fontSize={8.5}
+                                                fontFamily="monospace"
+                                            >
+                                                {site.deviceCount === 0 ? (
+                                                    <tspan fill="#f59e0b">0 Switches • Pending Discovery Crawl</tspan>
+                                                ) : (
+                                                    <>
+                                                        {site.deviceCount} Switches ({site.l3Count} Core/L3 • {site.l2Count} Access/L2)
+                                                        {site.connectedSites && site.connectedSites.length > 0 && ` • ⇄ Peers: ${site.connectedSites.join(", ")}`}
+                                                    </>
+                                                )}
+                                            </text>
+                                        )}
                                     </g>
                                 );
                             }
