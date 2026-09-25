@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { hasPermission } from "@/app/actions/permissions";
 
 export async function GET(
     request: NextRequest,
@@ -8,8 +9,9 @@ export async function GET(
 ) {
     try {
         const session = await auth();
-        if ((session?.user as any)?.role !== 'ADMIN') {
-            return NextResponse.json({ error: "Forbidden: Administrator access required." }, { status: 403 });
+        const role = (session?.user as any)?.role || 'USER';
+        if (!session?.user || !(await hasPermission(role, 'crawler'))) {
+            return NextResponse.json({ error: "Forbidden: Netcrawler permission required." }, { status: 403 });
         }
 
         const { id } = await context.params;

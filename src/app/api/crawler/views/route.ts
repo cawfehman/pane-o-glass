@@ -1,9 +1,16 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { auth } from '@/lib/auth';
+import { hasPermission } from '@/app/actions/permissions';
 
 export async function GET(req: Request) {
     try {
+        const session = await auth();
+        const role = (session?.user as any)?.role || 'USER';
+        if (!session?.user || !(await hasPermission(role, 'crawler'))) {
+            return NextResponse.json({ error: "Forbidden: Netcrawler permission required." }, { status: 403 });
+        }
+
         const { searchParams } = new URL(req.url);
         const snapshotId = searchParams.get('snapshotId');
 
@@ -26,6 +33,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
     try {
         const session = await auth();
+        const role = (session?.user as any)?.role || 'USER';
+        if (!session?.user || !(await hasPermission(role, 'crawler'))) {
+            return NextResponse.json({ error: "Forbidden: Netcrawler permission required." }, { status: 403 });
+        }
         const username = session?.user?.name || (session?.user as any)?.username || 'Admin';
 
         const body = await req.json();
@@ -67,6 +78,12 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
     try {
+        const session = await auth();
+        const role = (session?.user as any)?.role || 'USER';
+        if (!session?.user || !(await hasPermission(role, 'crawler'))) {
+            return NextResponse.json({ error: "Forbidden: Netcrawler permission required." }, { status: 403 });
+        }
+
         const { searchParams } = new URL(req.url);
         const id = searchParams.get('id');
 

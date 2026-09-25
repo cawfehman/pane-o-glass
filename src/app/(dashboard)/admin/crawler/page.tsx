@@ -34,6 +34,7 @@ import FailureInvestigationTable from "@/components/crawler/FailureInvestigation
 import CrawlModal from "@/components/crawler/CrawlModal";
 import { CrawlIcon } from "@/components/crawler/CrawlIcon";
 import { ToolHelp } from "@/components/ToolHelp";
+import { getPermissionsForRole } from "@/app/actions/permissions";
 
 export default function AdminCrawlerPage() {
     const { data: session, status } = useSession();
@@ -41,6 +42,21 @@ export default function AdminCrawlerPage() {
 
     const role = (session?.user as any)?.role || "USER";
     const isAdmin = role === "ADMIN";
+    const [hasCrawlerAccess, setHasCrawlerAccess] = useState<boolean | null>(isAdmin ? true : null);
+
+    useEffect(() => {
+        if (isAdmin) {
+            setHasCrawlerAccess(true);
+            return;
+        }
+        if (role) {
+            getPermissionsForRole(role).then((perms) => {
+                setHasCrawlerAccess(perms.includes('crawler'));
+            }).catch(() => {
+                setHasCrawlerAccess(false);
+            });
+        }
+    }, [role, isAdmin]);
 
     // Snapshots list & current snapshot
     const [snapshots, setSnapshots] = useState<any[]>([]);
@@ -94,14 +110,14 @@ export default function AdminCrawlerPage() {
     });
     const [siteActionLoading, setSiteActionLoading] = useState(false);
 
-    // Protect route for ADMIN role
+    // Protect route for crawler permission
     useEffect(() => {
         if (status === "unauthenticated") {
             router.push("/auth/signin");
-        } else if (status === "authenticated" && !isAdmin) {
+        } else if (status === "authenticated" && hasCrawlerAccess === false) {
             router.push("/");
         }
-    }, [status, isAdmin, router]);
+    }, [status, hasCrawlerAccess, router]);
 
     // Fetch snapshots list
     const fetchSnapshots = async (preferredId?: string) => {
@@ -111,7 +127,7 @@ export default function AdminCrawlerPage() {
             const res = await fetch("/api/crawler/snapshots");
             if (!res.ok) {
                 if (res.status === 403) {
-                    throw new Error("Forbidden: Administrator access required.");
+                    throw new Error("Forbidden: Netcrawler permission required.");
                 }
                 throw new Error("Failed to load snapshots list.");
             }
@@ -132,10 +148,10 @@ export default function AdminCrawlerPage() {
     };
 
     useEffect(() => {
-        if (isAdmin) {
+        if (hasCrawlerAccess) {
             fetchSnapshots();
         }
-    }, [isAdmin]);
+    }, [hasCrawlerAccess]);
 
     // Fetch snapshot details when selectedSnapshotId changes
     const fetchSnapshotDetails = async (id: string) => {
@@ -307,12 +323,12 @@ export default function AdminCrawlerPage() {
         }
     };
 
-    if (status === "loading" || (!isAdmin && status === "authenticated")) {
+    if (status === "loading" || (hasCrawlerAccess === null && status === "authenticated")) {
         return (
             <div className="flex items-center justify-center h-full min-h-[500px]">
                 <div className="flex flex-col items-center gap-3">
                     <span className="w-8 h-8 border-3 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></span>
-                    <p className="text-sm font-medium text-slate-400">Verifying administrative credentials...</p>
+                    <p className="text-sm font-medium text-slate-400">Verifying authorization...</p>
                 </div>
             </div>
         );

@@ -22,7 +22,7 @@ const TOOLS = [
     { id: 'hibp-account', name: 'HIBP Account Security' },
     { id: 'hibp-domain', name: 'HIBP Domain Security' },
     { id: 'vectra', name: 'Vectra Forensic Analysis' },
-    { id: 'site-management', name: 'Site Metadata Directory' },
+    { id: 'crawler', name: 'Netcrawler & Site Hierarchy' },
     { id: 'threat-intel', name: 'Threat Intelligence reputation' },
     { id: 'notification-center', name: 'Breach Notification Center' },
 ];
@@ -42,7 +42,7 @@ const DEFAULT_PERMISSIONS_MAP: Record<string, Record<string, boolean>> = {
     'hibp-account': { ADMIN: true, ANALYST: true, NETWORK: true, DESKTOP: true, SYSTEMS: true, USER: true },
     'hibp-domain': { ADMIN: true, ANALYST: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
     'vectra': { ADMIN: true, ANALYST: true, NETWORK: false, DESKTOP: false, SYSTEMS: false, USER: false },
-    'site-management': { ADMIN: true, ANALYST: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'crawler': { ADMIN: true, ANALYST: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
     'threat-intel': { ADMIN: true, ANALYST: true, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
     'notification-center': { ADMIN: true, ANALYST: true, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false }
 };

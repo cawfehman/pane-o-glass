@@ -196,90 +196,77 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                     <span className="nav-text">Notification Center</span>
                                 </Link>
                             )}
+                            {hasPermission('crawler') && (
+                                <Link 
+                                    href="/admin/crawler" 
+                                    onClick={closeMobile}
+                                    title={isCollapsed ? "Network Crawler" : undefined}
+                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/admin/crawler") ? "active" : ""}`}
+                                >
+                                    <Network size={18} className="shrink-0 text-cyan-400" />
+                                    <span className="nav-text">Network Crawler</span>
+                                </Link>
+                            )}
                         </div>
                     )}
 
-                    {(isAdmin || hasPermission('site-management')) && (
+                    {isAdmin && (
                         <>
                             <div className="nav-section mt-4">Settings & Admin</div>
-                            {hasPermission('site-management') && (
-                                <Link 
-                                    href="/settings/sites" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "Site Mapping" : undefined}
-                                    className={`nav-link ${pathname === "/settings/sites" ? "active" : ""}`}
-                                >
-                                    <Map size={20} className="shrink-0" />
-                                    <span className="nav-text">Site Mapping</span>
-                                </Link>
-                            )}
-                            {isAdmin && (
-                                <>
-                                    <Link 
-                                        href="/users" 
-                                        onClick={closeMobile}
-                                        title={isCollapsed ? "Account Management" : undefined}
-                                        className={`nav-link ${pathname === "/users" ? "active" : ""}`}
-                                    >
-                                        <Users size={20} className="shrink-0" />
-                                        <span className="nav-text">Account Management</span>
-                                    </Link>
-                                    <Link 
-                                        href="/users/permissions" 
-                                        onClick={closeMobile}
-                                        title={isCollapsed ? "Tool Permissions" : undefined}
-                                        className={`nav-link ${pathname === "/users/permissions" ? "active" : ""}`}
-                                    >
-                                        <Key size={20} className="shrink-0" />
-                                        <span className="nav-text">Tool Permissions</span>
-                                    </Link>
-                                    <Link 
-                                        href="/users/audit" 
-                                        onClick={closeMobile}
-                                        title={isCollapsed ? "Audit Logs" : undefined}
-                                        className={`nav-link ${pathname === "/users/audit" ? "active" : ""}`}
-                                    >
-                                        <ClipboardList size={20} className="shrink-0" />
-                                        <span className="nav-text">Audit Logs</span>
-                                    </Link>
-                                    <Link 
-                                        href="/users/health" 
-                                        onClick={closeMobile}
-                                        title={isCollapsed ? "System Health" : undefined}
-                                        className={`nav-link ${pathname === "/users/health" ? "active" : ""}`}
-                                    >
-                                        <Activity size={20} className="shrink-0" />
-                                        <span className="nav-text">System Health</span>
-                                    </Link>
-                                    <Link 
-                                        href="/admin/crawler" 
-                                        onClick={closeMobile}
-                                        title={isCollapsed ? "Network Crawler" : undefined}
-                                        className={`nav-link ${pathname === "/admin/crawler" ? "active" : ""}`}
-                                    >
-                                        <Network size={20} className="shrink-0 text-cyan-400" />
-                                        <span className="nav-text">Network Crawler</span>
-                                    </Link>
-                                    <Link 
-                                        href="/admin/feedback" 
-                                        onClick={closeMobile}
-                                        title={isCollapsed ? "User Feedback" : undefined}
-                                        className={`nav-link ${pathname === "/admin/feedback" ? "active" : ""}`}
-                                    >
-                                        <MessageSquare size={20} className="shrink-0" />
-                                        <span className="nav-text">User Feedback</span>
-                                    </Link>
-                                    <Link 
-                                        href="/admin/vectra" 
-                                        onClick={closeMobile}
-                                        title={isCollapsed ? "Vectra Time Machine" : undefined}
-                                        className={`nav-link ${pathname === "/admin/vectra" ? "active" : ""}`}
-                                    >
-                                        <Network size={20} className="shrink-0" />
-                                        <span className="nav-text">Vectra Time Machine</span>
-                                    </Link>
-                                </>
-                            )}
+                            <Link 
+                                href="/users" 
+                                onClick={closeMobile}
+                                title={isCollapsed ? "Account Management" : undefined}
+                                className={`nav-link ${pathname === "/users" ? "active" : ""}`}
+                            >
+                                <Users size={20} className="shrink-0" />
+                                <span className="nav-text">Account Management</span>
+                            </Link>
+                            <Link 
+                                href="/users/permissions" 
+                                onClick={closeMobile}
+                                title={isCollapsed ? "Tool Permissions" : undefined}
+                                className={`nav-link ${pathname === "/users/permissions" ? "active" : ""}`}
+                            >
+                                <Key size={20} className="shrink-0" />
+                                <span className="nav-text">Tool Permissions</span>
+                            </Link>
+                            <Link 
+                                href="/users/audit" 
+                                onClick={closeMobile}
+                                title={isCollapsed ? "Audit Logs" : undefined}
+                                className={`nav-link ${pathname === "/users/audit" ? "active" : ""}`}
+                            >
+                                <ClipboardList size={20} className="shrink-0" />
+                                <span className="nav-text">Audit Logs</span>
+                            </Link>
+                            <Link 
+                                href="/users/health" 
+                                onClick={closeMobile}
+                                title={isCollapsed ? "System Health" : undefined}
+                                className={`nav-link ${pathname === "/users/health" ? "active" : ""}`}
+                            >
+                                <Activity size={20} className="shrink-0" />
+                                <span className="nav-text">System Health</span>
+                            </Link>
+                            <Link 
+                                href="/admin/feedback" 
+                                onClick={closeMobile}
+                                title={isCollapsed ? "User Feedback" : undefined}
+                                className={`nav-link ${pathname === "/admin/feedback" ? "active" : ""}`}
+                            >
+                                <MessageSquare size={20} className="shrink-0" />
+                                <span className="nav-text">User Feedback</span>
+                            </Link>
+                            <Link 
+                                href="/admin/vectra" 
+                                onClick={closeMobile}
+                                title={isCollapsed ? "Vectra Time Machine" : undefined}
+                                className={`nav-link ${pathname === "/admin/vectra" ? "active" : ""}`}
+                            >
+                                <Network size={20} className="shrink-0" />
+                                <span className="nav-text">Vectra Time Machine</span>
+                            </Link>
                         </>
                     )}
                 </nav>

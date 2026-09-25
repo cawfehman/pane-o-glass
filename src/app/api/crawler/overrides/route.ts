@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
+import { hasPermission } from "@/app/actions/permissions";
+import { removeDirectorySites } from "@/lib/sites";
 
 export function normalizeHostname(h?: string | null): string {
     if (!h) return "";
@@ -11,8 +13,9 @@ export function normalizeHostname(h?: string | null): string {
 export async function GET(request: NextRequest) {
     try {
         const session = await auth();
-        if ((session?.user as any)?.role !== "ADMIN") {
-            return NextResponse.json({ error: "Forbidden: Administrator access required." }, { status: 403 });
+        const role = (session?.user as any)?.role || 'USER';
+        if (!session?.user || !(await hasPermission(role, 'crawler'))) {
+            return NextResponse.json({ error: "Forbidden: Netcrawler permission required." }, { status: 403 });
         }
 
         const overrides = await prisma.crawlerDeviceOverride.findMany({
@@ -26,13 +29,12 @@ export async function GET(request: NextRequest) {
     }
 }
 
-import { removeDirectorySites } from "@/lib/sites";
-
 export async function POST(request: NextRequest) {
     try {
         const session = await auth();
-        if ((session?.user as any)?.role !== "ADMIN") {
-            return NextResponse.json({ error: "Forbidden: Administrator access required." }, { status: 403 });
+        const role = (session?.user as any)?.role || 'USER';
+        if (!session?.user || !(await hasPermission(role, 'crawler'))) {
+            return NextResponse.json({ error: "Forbidden: Netcrawler permission required." }, { status: 403 });
         }
 
         const body = await request.json();
@@ -159,8 +161,9 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
     try {
         const session = await auth();
-        if ((session?.user as any)?.role !== "ADMIN") {
-            return NextResponse.json({ error: "Forbidden: Administrator access required." }, { status: 403 });
+        const role = (session?.user as any)?.role || 'USER';
+        if (!session?.user || !(await hasPermission(role, 'crawler'))) {
+            return NextResponse.json({ error: "Forbidden: Netcrawler permission required." }, { status: 403 });
         }
 
         const { searchParams } = new URL(request.url);

@@ -252,6 +252,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'ironport', role: 'NETWORK', isEnabled: false },
             { toolId: 'bec', role: 'NETWORK', isEnabled: false },
             { toolId: 'etd', role: 'NETWORK', isEnabled: false },
+            { toolId: 'crawler', role: 'NETWORK', isEnabled: true },
 
             { toolId: 'firewall', role: 'DESKTOP', isEnabled: true },
             { toolId: 'ise', role: 'DESKTOP', isEnabled: false },
@@ -263,6 +264,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'ironport', role: 'DESKTOP', isEnabled: false },
             { toolId: 'bec', role: 'DESKTOP', isEnabled: false },
             { toolId: 'etd', role: 'DESKTOP', isEnabled: false },
+            { toolId: 'crawler', role: 'DESKTOP', isEnabled: false },
 
             { toolId: 'firewall', role: 'SYSTEMS', isEnabled: false },
             { toolId: 'ise', role: 'SYSTEMS', isEnabled: false },
@@ -274,13 +276,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'ironport', role: 'SYSTEMS', isEnabled: true },
             { toolId: 'bec', role: 'SYSTEMS', isEnabled: true },
             { toolId: 'etd', role: 'SYSTEMS', isEnabled: true },
-
-            { toolId: 'site-management', role: 'ADMIN', isEnabled: true },
-            { toolId: 'site-management', role: 'ANALYST', isEnabled: false },
-            { toolId: 'site-management', role: 'USER', isEnabled: false },
-            { toolId: 'site-management', role: 'NETWORK', isEnabled: true },
-            { toolId: 'site-management', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'site-management', role: 'SYSTEMS', isEnabled: false },
+            { toolId: 'crawler', role: 'SYSTEMS', isEnabled: false },
 
             { toolId: 'vectra', role: 'ADMIN', isEnabled: true },
             { toolId: 'vectra', role: 'ANALYST', isEnabled: true },

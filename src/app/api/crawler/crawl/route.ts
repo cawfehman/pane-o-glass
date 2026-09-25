@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { ensureSitesExistFromDevices } from "@/lib/sites";
+import { hasPermission } from "@/app/actions/permissions";
 import { spawn, execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
@@ -446,8 +447,9 @@ async function persistLatestSnapshot(
 export async function POST(request: NextRequest) {
     try {
         const session = await auth();
-        if ((session?.user as any)?.role !== 'ADMIN') {
-            return NextResponse.json({ error: "Forbidden: Administrator access required." }, { status: 403 });
+        const role = (session?.user as any)?.role || 'USER';
+        if (!session?.user || !(await hasPermission(role, 'crawler'))) {
+            return NextResponse.json({ error: "Forbidden: Netcrawler permission required." }, { status: 403 });
         }
 
         const forwardedFor = request.headers.get("x-forwarded-for");

@@ -9,8 +9,8 @@ export async function GET(req: Request) {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role || 'USER';
-        if (!session?.user || !(await hasPermission(role, 'site-management'))) {
-            return NextResponse.json({ error: 'Unauthorized: Site Management permission required' }, { status: 403 });
+        if (!session?.user || !(await hasPermission(role, 'crawler'))) {
+            return NextResponse.json({ error: 'Unauthorized: Netcrawler permission required' }, { status: 403 });
         }
 
         const { searchParams } = new URL(req.url);

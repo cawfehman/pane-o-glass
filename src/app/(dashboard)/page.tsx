@@ -109,13 +109,13 @@ export default async function DashboardHome() {
                 badgeColor: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
             },
             {
-                id: 'site-management',
-                title: 'Site Mapping Engine',
-                desc: 'Maintain campus, branch, and data center subnet ranges and physical location coordinates.',
-                href: '/settings/sites',
-                icon: Map,
-                badge: 'Subnets',
-                badgeColor: 'bg-teal-500/10 text-teal-400 border-teal-500/20'
+                id: 'crawler',
+                title: 'Netcrawler & Site Hierarchy',
+                desc: 'Explore network topology, run live discovery crawls, and manage site hierarchy groupings.',
+                href: '/admin/crawler',
+                icon: Network,
+                badge: 'Topology & Sites',
+                badgeColor: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'
             }
         ];
 

@@ -8,8 +8,8 @@ export async function GET(req: Request) {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role || 'USER';
-        if (!session?.user || !(await hasPermission(role, 'site-management'))) {
-            return NextResponse.json({ error: 'Unauthorized: Site Management permission required' }, { status: 403 });
+        if (!session?.user || !(await hasPermission(role, 'crawler'))) {
+            return NextResponse.json({ error: 'Unauthorized: Netcrawler permission required' }, { status: 403 });
         }
 
         let versions = await getSiteVersions();
@@ -42,8 +42,8 @@ export async function POST(req: Request) {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role || 'USER';
-        if (!session?.user || !(await hasPermission(role, 'site-management'))) {
-            return NextResponse.json({ error: 'Unauthorized: Site Management permission required' }, { status: 403 });
+        if (!session?.user || !(await hasPermission(role, 'crawler'))) {
+            return NextResponse.json({ error: 'Unauthorized: Netcrawler permission required' }, { status: 403 });
         }
 
         const formData = await req.formData();
@@ -77,8 +77,8 @@ export async function PATCH(req: Request) {
     try {
         const session = await auth();
         const role = (session?.user as any)?.role || 'USER';
-        if (!session?.user || !(await hasPermission(role, 'site-management'))) {
-            return NextResponse.json({ error: 'Unauthorized: Site Management permission required' }, { status: 403 });
+        if (!session?.user || !(await hasPermission(role, 'crawler'))) {
+            return NextResponse.json({ error: 'Unauthorized: Netcrawler permission required' }, { status: 403 });
         }
 
         const body = await req.json();
