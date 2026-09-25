@@ -39,7 +39,9 @@ import {
     X,
     Edit3,
     LayoutGrid,
-    Star
+    Star,
+    Check,
+    Settings2
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 
@@ -476,6 +478,33 @@ export default function TopologyGraph({
     const [showUncrawledSites, setShowUncrawledSites] = useState(false); // Uncrawled Directory sites hidden by default
     const [siteClusterMode, setSiteClusterMode] = useState<"topological" | "grid">("topological"); // Topological Connected Clusters vs Linear Grid
     const [nodeDensity, setNodeDensity] = useState<"standard" | "compact">("standard"); // Standard Detailed Cards vs Compact Shapes
+
+    // Grouped Dropdown Menus for toolbar
+    const [activeDropdown, setActiveDropdown] = useState<"layout" | "display" | null>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleOutsideClick = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+                setActiveDropdown(null);
+            }
+        };
+        if (activeDropdown) {
+            document.addEventListener("mousedown", handleOutsideClick);
+            return () => document.removeEventListener("mousedown", handleOutsideClick);
+        }
+    }, [activeDropdown]);
+
+    const activeFilterCount = useMemo(() => {
+        let count = 0;
+        if (showAllLinks) count++;
+        if (!convergeTrunks) count++;
+        if (showVendorManaged) count++;
+        if (showUncrawledSites) count++;
+        if (nodeDensity === "compact") count++;
+        if (clickMode === "fade") count++;
+        return count;
+    }, [showAllLinks, convergeTrunks, showVendorManaged, showUncrawledSites, nodeDensity, clickMode]);
 
     // Enterprise Hub & Drill-Down State (KEL is the core central hub)
     const DEFAULT_HUBS = useMemo(() => ["KEL", "CRM", "WDC", "RDG", "VMM"], []);
@@ -2694,331 +2723,488 @@ export default function TopologyGraph({
 
                 <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
 
-                {/* Layout Mode Toggle */}
-                <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+                {/* Grouped Dropdown Menus */}
+                <div ref={dropdownRef} className="flex items-center gap-2 relative">
+                    {/* 1. Layout & Grouping Menu Trigger */}
                     <button
                         type="button"
-                        onClick={() => setLayoutMode("container")}
-                        className={`px-2 py-1 rounded-md font-medium transition flex items-center gap-1 cursor-pointer ${
-                            layoutMode === "container"
-                                ? "bg-blue-600 text-white shadow-sm"
-                                : "text-slate-400 hover:text-slate-200"
+                        onClick={() => setActiveDropdown(prev => prev === "layout" ? null : "layout")}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-sm ${
+                            activeDropdown === "layout"
+                                ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-400"
+                                : "bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800"
                         }`}
-                        title="Group switches by Site and IDF containers"
+                        title="Configure Topology Architecture, Clustering, Stacking, and IDF Density"
                     >
-                        <Box className="w-3 h-3" />
-                        Containers
+                        <Layers2 className="w-3.5 h-3.5 text-blue-400" />
+                        <span>Layout</span>
+                        <span className="text-[10px] text-slate-400 font-normal hidden sm:inline">
+                            ({layoutMode === "flow" ? "Hierarchical" : siteClusterMode === "topological" ? "Clusters" : "Grid"})
+                        </span>
+                        <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${activeDropdown === "layout" ? "rotate-180 text-white" : ""}`} />
                     </button>
+
+                    {/* 2. Display & Filters Menu Trigger */}
                     <button
                         type="button"
-                        onClick={() => setLayoutMode("flow")}
-                        className={`px-2 py-1 rounded-md font-medium transition flex items-center gap-1 cursor-pointer ${
-                            layoutMode === "flow"
-                                ? "bg-blue-600 text-white shadow-sm"
-                                : "text-slate-400 hover:text-slate-200"
+                        onClick={() => setActiveDropdown(prev => prev === "display" ? null : "display")}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-sm ${
+                            activeDropdown === "display"
+                                ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-400"
+                                : "bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800"
                         }`}
-                        title="Display hierarchical flow (Routers -> L3 -> L2)"
+                        title="Configure Visual Density, Link Overlays, Filters, and Interaction Mode"
                     >
-                        <Workflow className="w-3 h-3" />
-                        Hierarchical
-                    </button>
-                </div>
-
-                {layoutMode === "container" && (
-                    <>
-                        {/* Stacking Mode: Vertical Building Floors vs Horizontal Closets */}
-                        <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
-                            <button
-                                type="button"
-                                onClick={() => setStackingMode("building")}
-                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
-                                    stackingMode === "building"
-                                        ? "bg-blue-600 text-white shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                                title="Vertical Building Floor Stacking (Top floor down to Ground/MDF)"
-                            >
-                                <Layers2 className="w-3 h-3" />
-                                Building Stack
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setStackingMode("horizontal")}
-                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
-                                    stackingMode === "horizontal"
-                                        ? "bg-blue-600 text-white shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                                title="Horizontal Closets (Side-by-side IDFs)"
-                            >
-                                <Box className="w-3 h-3" />
-                                Closets
-                            </button>
-                        </div>
-
-                        {/* Cluster Formation Toggle: Connected Clusters vs Linear Grid */}
-                        <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
-                            <button
-                                type="button"
-                                onClick={() => setSiteClusterMode("topological")}
-                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
-                                    siteClusterMode === "topological"
-                                        ? "bg-sky-600 text-white shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                                title="Connected Clusters (Topology-driven constellation grouping hub sites and connected satellite campuses)"
-                            >
-                                <Network className="w-3 h-3" />
-                                Connected Clusters
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setSiteClusterMode("grid")}
-                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
-                                    siteClusterMode === "grid"
-                                        ? "bg-sky-600 text-white shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                                title="Linear Grid (Sites arranged sequentially in row-wrapped grid)"
-                            >
-                                <LayoutGrid className="w-3 h-3" />
-                                Linear Grid
-                            </button>
-                        </div>
-
-                        {/* Node Sizing & Role Silhouette Toggle */}
-                        <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
-                            <button
-                                type="button"
-                                onClick={() => setNodeDensity("standard")}
-                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
-                                    nodeDensity === "standard"
-                                        ? "bg-indigo-600 text-white shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                                title="Detailed Rack Cards (Full telemetry, StackWise 3D layers, LED port strips)"
-                            >
-                                <Server className="w-3 h-3" />
-                                Detailed Cards
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setNodeDensity("compact")}
-                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
-                                    nodeDensity === "compact"
-                                        ? "bg-indigo-600 text-white shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                                title="Compact Shapes (High-density footprint with Cisco role silhouettes)"
-                            >
-                                <Box className="w-3 h-3" />
-                                Compact Shapes
-                            </button>
-                        </div>
-
-                        {/* IDF Spacing Density Selector */}
-                        <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
-                            <span className="text-[10px] uppercase font-bold text-slate-400 px-1.5 flex items-center gap-1">
-                                <SlidersHorizontal className="w-3 h-3 text-cyan-400" />
-                                IDF Size:
+                        <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Display</span>
+                        {activeFilterCount > 0 && (
+                            <span className="bg-cyan-500/20 text-cyan-300 text-[10px] font-mono px-1.5 py-0.2 rounded-full border border-cyan-500/40">
+                                {activeFilterCount}
                             </span>
-                            <button
-                                type="button"
-                                onClick={() => setIdfSpacing("compact")}
-                                className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
-                                    idfSpacing === "compact" ? "bg-cyan-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
-                                }`}
-                                title="Compact IDF closets"
-                            >
-                                Compact
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setIdfSpacing("normal")}
-                                className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
-                                    idfSpacing === "normal" ? "bg-cyan-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
-                                }`}
-                                title="Standard spacious IDF closets"
-                            >
-                                Normal
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setIdfSpacing("spacious")}
-                                className={`px-2 py-0.5 rounded font-medium transition cursor-pointer ${
-                                    idfSpacing === "spacious" ? "bg-cyan-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
-                                }`}
-                                title="Extra spacious IDF closets with maximum clearance for links"
-                            >
-                                Spacious
-                            </button>
-                        </div>
-
-                        {/* High-Level View Mode Selector (Site Map vs Expanded) */}
-                        <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setCollapsedSites(new Set(uniqueSites));
-                                    setSiteFilter("ALL");
-                                }}
-                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
-                                    collapsedSites.size === uniqueSites.length && uniqueSites.length > 0
-                                        ? "bg-blue-600 text-white shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                                title="Site Map View: Compact overview of all sites with WAN trunks (default)"
-                            >
-                                <Compass className="w-3 h-3 text-cyan-400" />
-                                Site Map View
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setCollapsedSites(new Set())}
-                                className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
-                                    collapsedSites.size === 0
-                                        ? "bg-blue-600 text-white shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                                title="Expanded View: Fully expand all sites, floors, and individual switches"
-                            >
-                                <Building2 className="w-3 h-3 text-indigo-400" />
-                                Expanded View
-                            </button>
-                            <div className="h-3 w-[1px] bg-slate-800 mx-0.5"></div>
-                            <button
-                                type="button"
-                                onClick={collapsedIdfs.size > 0 ? expandAllIdfs : collapseAllIdfs}
-                                className="px-1.5 py-0.5 rounded font-medium hover:bg-slate-800 text-slate-400 hover:text-white transition cursor-pointer text-[10px]"
-                                title={collapsedIdfs.size > 0 ? "Expand all floor slabs" : "Collapse all floor slabs"}
-                            >
-                                {collapsedIdfs.size > 0 ? "Expand Floors" : "Collapse Floors"}
-                            </button>
-                        </div>
-                    </>
-                )}
-
-                <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
-
-                {/* Master Links Clean-Up Toggle (OFF by default) */}
-                <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
-                    <button
-                        type="button"
-                        onClick={() => setShowAllLinks(prev => !prev)}
-                        className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1.5 cursor-pointer ${
-                            showAllLinks 
-                                ? "bg-cyan-600 text-white shadow-sm" 
-                                : "text-slate-400 hover:text-slate-200"
-                        }`}
-                        title={showAllLinks ? "Hide all links (clean clutter-free mode)" : "Show all topology links across the entire diagram"}
-                    >
-                        <Cable className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>All Links: <strong className={showAllLinks ? "text-white" : "text-slate-400"}>{showAllLinks ? "ON" : "OFF"}</strong></span>
+                        )}
+                        <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${activeDropdown === "display" ? "rotate-180 text-white" : ""}`} />
                     </button>
-                    {(visibleUplinkSites.size > 0 || visibleUplinkIdfs.size > 0) && !showAllLinks && (
-                        <div className="flex items-center gap-1 pl-1.5 pr-1 text-[10px] text-cyan-300 font-mono border-l border-slate-800">
-                            <span>{visibleUplinkSites.size + visibleUplinkIdfs.size} active</span>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setVisibleUplinkSites(new Set());
-                                    setVisibleUplinkIdfs(new Set());
-                                }}
-                                className="text-slate-400 hover:text-white underline cursor-pointer ml-0.5"
-                                title="Hide all selective uplinks"
-                            >
-                                Clear
-                            </button>
+
+                    {/* --- LAYOUT DROPDOWN POPUP --- */}
+                    {activeDropdown === "layout" && (
+                        <div className="absolute top-full left-0 mt-2 w-80 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl p-3.5 z-50 animate-in fade-in zoom-in-95 duration-100 space-y-3.5 text-slate-200">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                                <div className="flex items-center gap-1.5">
+                                    <Layers2 className="w-4 h-4 text-blue-400" />
+                                    <span className="text-xs font-bold text-white uppercase tracking-wider">Layout & Grouping</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveDropdown(null)}
+                                    className="p-1 hover:bg-slate-800 rounded-md text-slate-400 hover:text-white transition cursor-pointer"
+                                    title="Close Menu"
+                                >
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+
+                            {/* Section 1: Architecture Engine */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Architecture</label>
+                                <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                    <button
+                                        type="button"
+                                        onClick={() => setLayoutMode("container")}
+                                        className={`px-2 py-1.5 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                            layoutMode === "container"
+                                                ? "bg-blue-600 text-white shadow-sm"
+                                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                                        }`}
+                                        title="Group switches by Site and IDF containers"
+                                    >
+                                        <Box className="w-3.5 h-3.5" />
+                                        <span>Containers</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setLayoutMode("flow")}
+                                        className={`px-2 py-1.5 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                            layoutMode === "flow"
+                                                ? "bg-blue-600 text-white shadow-sm"
+                                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                                        }`}
+                                        title="Display hierarchical flow (Routers -> L3 -> L2)"
+                                    >
+                                        <Workflow className="w-3.5 h-3.5" />
+                                        <span>Hierarchical</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {layoutMode === "container" && (
+                                <>
+                                    {/* Section 2: Site Clustering */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Site Clustering</label>
+                                        <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSiteClusterMode("topological")}
+                                                className={`px-2 py-1.5 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                    siteClusterMode === "topological"
+                                                        ? "bg-sky-600 text-white shadow-sm"
+                                                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                                                }`}
+                                                title="Topological constellation grouping hub sites and satellite campuses"
+                                            >
+                                                <Network className="w-3.5 h-3.5" />
+                                                <span>Connected</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSiteClusterMode("grid")}
+                                                className={`px-2 py-1.5 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                    siteClusterMode === "grid"
+                                                        ? "bg-sky-600 text-white shadow-sm"
+                                                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                                                }`}
+                                                title="Linear row-wrapped site grid"
+                                            >
+                                                <LayoutGrid className="w-3.5 h-3.5" />
+                                                <span>Linear Grid</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Section 3: Floor Stacking */}
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Floor Stacking</label>
+                                        <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                            <button
+                                                type="button"
+                                                onClick={() => setStackingMode("building")}
+                                                className={`px-2 py-1.5 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                    stackingMode === "building"
+                                                        ? "bg-blue-600 text-white shadow-sm"
+                                                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                                                }`}
+                                                title="Vertical Building Floor Stacking (Top floor down to Ground/MDF)"
+                                            >
+                                                <Layers2 className="w-3.5 h-3.5" />
+                                                <span>Building Stack</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setStackingMode("horizontal")}
+                                                className={`px-2 py-1.5 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                    stackingMode === "horizontal"
+                                                        ? "bg-blue-600 text-white shadow-sm"
+                                                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                                                }`}
+                                                title="Horizontal Closets (Side-by-side IDFs)"
+                                            >
+                                                <Box className="w-3.5 h-3.5" />
+                                                <span>Horizontal</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Section 4: IDF Spacing */}
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">IDF Closet Spacing</label>
+                                            <span className="text-[10px] text-cyan-400 capitalize">{idfSpacing}</span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                            {(["compact", "normal", "spacious"] as const).map(spacing => (
+                                                <button
+                                                    key={spacing}
+                                                    type="button"
+                                                    onClick={() => setIdfSpacing(spacing)}
+                                                    className={`py-1 rounded-lg text-xs font-medium capitalize transition cursor-pointer ${
+                                                        idfSpacing === spacing
+                                                            ? "bg-cyan-600 text-white shadow-sm"
+                                                            : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                                                    }`}
+                                                >
+                                                    {spacing}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Section 5: Campus View Expansion */}
+                                    <div className="space-y-1.5 pt-1 border-t border-slate-800/80">
+                                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Campus Overview</label>
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setCollapsedSites(new Set(uniqueSites));
+                                                    setSiteFilter("ALL");
+                                                    setActiveDropdown(null);
+                                                }}
+                                                className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                                                    collapsedSites.size === uniqueSites.length && uniqueSites.length > 0
+                                                        ? "bg-blue-950/60 border-blue-500/60 text-blue-200"
+                                                        : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                                                }`}
+                                                title="Site Map View: Compact overview of all sites with WAN trunks"
+                                            >
+                                                <Compass className="w-3.5 h-3.5 text-cyan-400" />
+                                                <span>Site Map View</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setCollapsedSites(new Set());
+                                                    setActiveDropdown(null);
+                                                }}
+                                                className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                                                    collapsedSites.size === 0
+                                                        ? "bg-blue-950/60 border-blue-500/60 text-blue-200"
+                                                        : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                                                }`}
+                                                title="Expanded View: Fully expand all sites, floors, and individual switches"
+                                            >
+                                                <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+                                                <span>Expanded View</span>
+                                            </button>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={collapsedIdfs.size > 0 ? expandAllIdfs : collapseAllIdfs}
+                                            className="w-full mt-1 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800/80 transition text-[11px] font-medium cursor-pointer"
+                                        >
+                                            {collapsedIdfs.size > 0 ? "Expand All Floor Slabs" : "Collapse All Floor Slabs"}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+
+                    {/* --- DISPLAY & FILTERS DROPDOWN POPUP --- */}
+                    {activeDropdown === "display" && (
+                        <div className="absolute top-full left-0 sm:left-auto sm:right-0 mt-2 w-84 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl p-3.5 z-50 animate-in fade-in zoom-in-95 duration-100 space-y-3 text-slate-200">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                                <div className="flex items-center gap-1.5">
+                                    <SlidersHorizontal className="w-4 h-4 text-cyan-400" />
+                                    <span className="text-xs font-bold text-white uppercase tracking-wider">Display & Filters</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveDropdown(null)}
+                                    className="p-1 hover:bg-slate-800 rounded-md text-slate-400 hover:text-white transition cursor-pointer"
+                                    title="Close Menu"
+                                >
+                                    <X className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+
+                            {/* Section 1: Node Silhouette & Density */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Device Visual Style</label>
+                                <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                    <button
+                                        type="button"
+                                        onClick={() => setNodeDensity("standard")}
+                                        className={`px-2 py-1.5 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                            nodeDensity === "standard"
+                                                ? "bg-indigo-600 text-white shadow-sm"
+                                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                                        }`}
+                                        title="Detailed Rack Cards (Full telemetry, StackWise 3D layers, LED port strips)"
+                                    >
+                                        <Server className="w-3.5 h-3.5" />
+                                        <span>Detailed Cards</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setNodeDensity("compact")}
+                                        className={`px-2 py-1.5 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                            nodeDensity === "compact"
+                                                ? "bg-indigo-600 text-white shadow-sm"
+                                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                                        }`}
+                                        title="Compact Shapes (High-density footprint with Cisco role silhouettes)"
+                                    >
+                                        <Box className="w-3.5 h-3.5" />
+                                        <span>Compact Shapes</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Section 2: Links & Aggregation Overlays */}
+                            <div className="space-y-2 pt-1 border-t border-slate-800/80">
+                                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Links & Overlays</label>
+                                
+                                {/* All Links Toggle */}
+                                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+                                    <div className="flex items-center gap-2">
+                                        <Cable className="w-4 h-4 text-cyan-400" />
+                                        <div>
+                                            <div className="text-xs font-semibold text-white">All Links Overlay</div>
+                                            <div className="text-[10px] text-slate-400">Render all circuit lines across diagram</div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAllLinks(prev => !prev)}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                            showAllLinks
+                                                ? "bg-cyan-600 text-white shadow-sm"
+                                                : "bg-slate-800 text-slate-400 hover:text-white"
+                                        }`}
+                                    >
+                                        {showAllLinks ? "ON" : "OFF"}
+                                    </button>
+                                </div>
+
+                                {/* Clear selective uplinks if active */}
+                                {(visibleUplinkSites.size > 0 || visibleUplinkIdfs.size > 0) && !showAllLinks && (
+                                    <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-cyan-950/40 border border-cyan-500/30 text-[11px] text-cyan-300">
+                                        <span>{visibleUplinkSites.size + visibleUplinkIdfs.size} selective uplinks active</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setVisibleUplinkSites(new Set());
+                                                setVisibleUplinkIdfs(new Set());
+                                            }}
+                                            className="underline hover:text-white cursor-pointer"
+                                        >
+                                            Clear
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Converge Trunks & MPLS */}
+                                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+                                    <div className="flex items-center gap-2">
+                                        <GitMerge className="w-4 h-4 text-purple-400" />
+                                        <div>
+                                            <div className="text-xs font-semibold text-white">Converge Trunks & MPLS</div>
+                                            <div className="text-[10px] text-slate-400">Bundle shared neighbor circuits into trunks</div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setConvergeTrunks(prev => !prev)}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                            convergeTrunks
+                                                ? "bg-purple-600 text-white shadow-sm"
+                                                : "bg-slate-800 text-slate-400 hover:text-white"
+                                        }`}
+                                    >
+                                        {convergeTrunks ? "ON" : "OFF"}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Section 3: Equipment & Site Filters */}
+                            <div className="space-y-2 pt-1 border-t border-slate-800/80">
+                                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Device Filters</label>
+                                
+                                {/* Vendor Managed Devices */}
+                                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+                                    <div className="flex items-center gap-2">
+                                        <ShieldAlert className="w-4 h-4 text-purple-400" />
+                                        <div>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-xs font-semibold text-white">Vendor Managed</span>
+                                                {vendorManagedCount > 0 && (
+                                                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                                                        {vendorManagedCount}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="text-[10px] text-slate-400">Meraki, Viptela, & ISP equipment</div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowVendorManaged(prev => !prev)}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                            showVendorManaged
+                                                ? "bg-purple-600 text-white shadow-sm"
+                                                : "bg-slate-800 text-slate-400 hover:text-white"
+                                        }`}
+                                    >
+                                        {showVendorManaged ? "INCLUDED" : "EXCLUDED"}
+                                    </button>
+                                </div>
+
+                                {/* Uncrawled Directory Sites */}
+                                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+                                    <div className="flex items-center gap-2">
+                                        <Building className="w-4 h-4 text-amber-400" />
+                                        <div>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-xs font-semibold text-white">Uncrawled Sites</span>
+                                                {uncrawledSiteCodes.length > 0 && (
+                                                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                                        {uncrawledSiteCodes.length}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="text-[10px] text-slate-400">Directory sites not yet crawled</div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowUncrawledSites(prev => !prev)}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                            showUncrawledSites
+                                                ? "bg-amber-600 text-white shadow-sm"
+                                                : "bg-slate-800 text-slate-400 hover:text-white"
+                                        }`}
+                                    >
+                                        {showUncrawledSites ? "SHOWN" : "HIDDEN"}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Section 4: Interaction & Pan Sensitivity */}
+                            <div className="space-y-2 pt-1 border-t border-slate-800/80">
+                                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Interaction & Canvas</label>
+                                
+                                {/* Click Mode */}
+                                <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                                    <button
+                                        type="button"
+                                        onClick={() => setClickMode("inspect")}
+                                        className={`px-2 py-1.5 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                            clickMode === "inspect"
+                                                ? "bg-blue-600 text-white shadow-sm"
+                                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                                        }`}
+                                        title="Clicking a switch opens the Device Inspector Drawer"
+                                    >
+                                        <span>Inspect Mode</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setClickMode("fade")}
+                                        className={`px-2 py-1.5 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                            clickMode === "fade"
+                                                ? "bg-amber-600 text-white shadow-sm"
+                                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                                        }`}
+                                        title="Clicking a switch dims/fades it (or Shift+Click in any mode)"
+                                    >
+                                        <EyeOff className="w-3.5 h-3.5" />
+                                        <span>Dim Mode</span>
+                                    </button>
+                                </div>
+
+                                {/* Pan Speed Selector */}
+                                <div className="flex items-center justify-between p-1.5 rounded-xl bg-slate-950 border border-slate-800">
+                                    <div className="flex items-center gap-1.5 text-xs text-slate-400 px-1">
+                                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                                        <span className="font-semibold text-slate-300">Pan Speed:</span>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        {[
+                                            { val: 1.0, label: "1.0x" },
+                                            { val: 1.5, label: "1.5x" },
+                                            { val: 2.2, label: "2.2x" }
+                                        ].map(p => (
+                                            <button
+                                                key={p.val}
+                                                type="button"
+                                                onClick={() => setPanSpeed(p.val)}
+                                                className={`px-2 py-0.5 rounded text-[10px] font-mono transition cursor-pointer ${
+                                                    panSpeed === p.val
+                                                        ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40"
+                                                        : "text-slate-400 hover:text-slate-200"
+                                                }`}
+                                            >
+                                                {p.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )}
                 </div>
 
-                {/* Converge Multi-Neighbor Trunks & MPLS */}
-                <button
-                    type="button"
-                    onClick={() => setConvergeTrunks(prev => !prev)}
-                    className={`px-2 py-1 rounded-lg border text-[11px] font-medium transition flex items-center gap-1.5 cursor-pointer ${
-                        convergeTrunks
-                            ? "bg-purple-950/60 border-purple-500/50 text-purple-200 shadow-sm"
-                            : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
-                    }`}
-                    title={convergeTrunks 
-                        ? "Converging multi-neighbor trunks and MPLS into single physical links before entering switch/site (click to disable)" 
-                        : "Showing separate lines for each neighbor (click to converge multi-neighbor trunks)"}
-                >
-                    <GitMerge className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Converge Trunks: <strong className={convergeTrunks ? "text-purple-300" : "text-slate-400"}>{convergeTrunks ? "ON" : "OFF"}</strong></span>
-                </button>
-
-                {/* Vendor Managed Nodes Filter Toggle (Excluded by default) */}
-                <button
-                    type="button"
-                    onClick={() => setShowVendorManaged(prev => !prev)}
-                    className={`px-2 py-1 rounded-lg border text-[11px] font-medium transition flex items-center gap-1.5 cursor-pointer ${
-                        showVendorManaged
-                            ? "bg-purple-950/70 border-purple-500/60 text-purple-200 shadow-sm"
-                            : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
-                    }`}
-                    title={showVendorManaged 
-                        ? "Vendor Managed devices are currently visible in the topology. Click to exclude them." 
-                        : "Vendor Managed devices are currently excluded from the topology. Click to show them."}
-                >
-                    <ShieldAlert className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Vendor Managed: <strong className={showVendorManaged ? "text-purple-300" : "text-slate-400"}>{showVendorManaged ? "INCLUDED" : "EXCLUDED"}</strong></span>
-                    {vendorManagedCount > 0 && (
-                        <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                            {vendorManagedCount}
-                        </span>
-                    )}
-                </button>
-
-                {/* Uncrawled Directory Sites Filter Toggle */}
-                <button
-                    type="button"
-                    onClick={() => setShowUncrawledSites(prev => !prev)}
-                    className={`px-2 py-1 rounded-lg border text-[11px] font-medium transition flex items-center gap-1.5 cursor-pointer ${
-                        showUncrawledSites
-                            ? "bg-amber-950/70 border-amber-500/60 text-amber-200 shadow-sm"
-                            : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
-                    }`}
-                    title={showUncrawledSites 
-                        ? "Uncrawled directory sites are currently visible in the topology. Click to hide them." 
-                        : "Uncrawled directory sites are currently hidden. Click to show them."}
-                >
-                    <Building className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Uncrawled Sites: <strong className={showUncrawledSites ? "text-amber-300" : "text-slate-400"}>{showUncrawledSites ? "SHOWN" : "HIDDEN"}</strong></span>
-                    {uncrawledSiteCodes.length > 0 && (
-                        <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                            {uncrawledSiteCodes.length}
-                        </span>
-                    )}
-                </button>
-
-                {/* Click / Dim Mode Controls */}
-                <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-[11px]">
-                    <button
-                        type="button"
-                        onClick={() => setClickMode("inspect")}
-                        className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
-                            clickMode === "inspect" ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
-                        }`}
-                        title="Clicking a switch opens the Device Inspector Drawer"
-                    >
-                        Inspect
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setClickMode("fade")}
-                        className={`px-2 py-0.5 rounded font-medium transition flex items-center gap-1 cursor-pointer ${
-                            clickMode === "fade" ? "bg-amber-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"
-                        }`}
-                        title="Clicking a switch dims/fades it (or Shift+Click in any mode)"
-                    >
-                        <EyeOff className="w-3 h-3" />
-                        Dim Mode
-                    </button>
-                </div>
-
+                {/* Inline Dimmed Alert Pill */}
                 {fadedNodes.size > 0 && (
                     <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg text-[11px] text-amber-300">
                         <span>Dimmed: <strong>{fadedNodes.size}</strong></span>
@@ -3033,6 +3219,7 @@ export default function TopologyGraph({
                     </div>
                 )}
 
+                {/* Inline Dim Others (when device selected) */}
                 {selectedDevice && (
                     <button
                         type="button"
@@ -3041,7 +3228,7 @@ export default function TopologyGraph({
                         title="Dim all switches except the selected switch and its neighbors"
                     >
                         <Eye className="w-3 h-3 text-cyan-400" />
-                        Dim Others
+                        <span>Dim Others</span>
                     </button>
                 )}
 
@@ -3072,44 +3259,6 @@ export default function TopologyGraph({
                         title="Reset View to 100%"
                     >
                         <RotateCcw size={13} />
-                    </button>
-                </div>
-
-                <div className="h-4 w-[1px] bg-slate-800 mx-1"></div>
-
-                {/* Pan Speed Controls */}
-                <div className="flex items-center gap-1 bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-800" title="Click-and-Drag Pan Speed (or use Arrow Keys)">
-                    <Zap className="w-3 h-3 text-amber-400 ml-0.5" />
-                    <span className="text-[10px] text-slate-400 font-medium mr-0.5">Pan:</span>
-                    <button
-                        type="button"
-                        onClick={() => setPanSpeed(1.0)}
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition cursor-pointer ${
-                            panSpeed === 1.0 ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40" : "text-slate-400 hover:text-slate-200"
-                        }`}
-                        title="Normal Pan Speed (1.0x)"
-                    >
-                        1x
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setPanSpeed(1.5)}
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition cursor-pointer ${
-                            panSpeed === 1.5 ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40" : "text-slate-400 hover:text-slate-200"
-                        }`}
-                        title="Fast Pan Speed (1.5x - snappy)"
-                    >
-                        1.5x
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setPanSpeed(2.2)}
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono transition cursor-pointer ${
-                            panSpeed === 2.2 ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40" : "text-slate-400 hover:text-slate-200"
-                        }`}
-                        title="Quick Pan Speed (2.2x - ultra fast across large campuses)"
-                    >
-                        2.2x
                     </button>
                 </div>
 
