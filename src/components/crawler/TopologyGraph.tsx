@@ -404,6 +404,7 @@ interface SiteContainerBox {
     isDesignatedHub?: boolean;
     satellites?: string[];
     parentHub?: string;
+    isPendingCrawl?: boolean;
 }
 
 export interface SiteClusterGroup {
@@ -541,7 +542,7 @@ export default function TopologyGraph({
                 if (saved) {
                     const parsed = JSON.parse(saved);
                     if (Array.isArray(parsed) && parsed.length > 0) {
-                        return new Set(parsed);
+                        return new Set([...DEFAULT_HUBS, ...parsed]);
                     }
                 }
             } catch {}
@@ -1940,66 +1941,72 @@ export default function TopologyGraph({
                 // centered strictly around KEL. Fits immediately on screen (~1250x700px).
                 // =========================================================================
                 const PRESET_HUB_POSITIONS: Record<string, { x: number; y: number }> = {
-                    KEL: { x: 500, y: 260 },
-                    CRM: { x: 180, y: 80 },
-                    WDC: { x: 880, y: 120 },
-                    RDG: { x: 840, y: 440 },
-                    VMM: { x: 60, y: 320 }
+                    KEL: { x: 480, y: 240 },
+                    CRM: { x: 100, y: 80 },
+                    WDC: { x: 860, y: 80 },
+                    RDG: { x: 860, y: 400 },
+                    VMM: { x: 100, y: 400 }
                 };
 
                 const placedHubCodes = new Set<string>();
                 const extraHubs: string[] = [];
 
                 for (const hCode of designatedHubs) {
-                    if (siteTemplates.has(hCode)) {
-                        if (PRESET_HUB_POSITIONS[hCode]) {
-                            placedHubCodes.add(hCode);
-                        } else {
-                            extraHubs.push(hCode);
-                        }
+                    if (PRESET_HUB_POSITIONS[hCode]) {
+                        placedHubCodes.add(hCode);
+                    } else {
+                        extraHubs.push(hCode);
                     }
                 }
 
-                // Place standard hubs
+                // Place standard hubs (KEL, CRM, WDC, RDG, VMM)
                 for (const hCode of placedHubCodes) {
-                    const sT = siteTemplates.get(hCode)!;
+                    const sT = siteTemplates.get(hCode);
                     const pos = PRESET_HUB_POSITIONS[hCode];
                     const sats = hubSatellitesMap.get(hCode) || [];
 
+                    const devCount = sT ? sT.totalDevsInSite : 0;
+                    const l3Count = sT ? sT.l3Count : 0;
+                    const l2Count = sT ? sT.l2Count : 0;
+                    const siteName = sT?.siteName || siteDirectory[hCode]?.name || (hCode === "CRM" ? "Cooper River Medical" : `${hCode} Campus`);
+
                     siteContainers.push({
                         siteCode: hCode,
-                        siteName: sT.siteName,
+                        siteName,
                         x: pos.x,
                         y: pos.y,
-                        width: sT.width,
-                        height: sats.length > 0 ? 84 : sT.height,
-                        deviceCount: sT.totalDevsInSite,
-                        l3Count: sT.l3Count,
-                        l2Count: sT.l2Count,
+                        width: 300,
+                        height: sats.length > 0 ? 84 : 74,
+                        deviceCount: devCount,
+                        l3Count,
+                        l2Count,
                         isCollapsed: true,
                         idfs: [],
                         connectedSites: Array.from(interSiteAdj.get(hCode) || []),
                         clusterId: `hub-${hCode}`,
                         isClusterHub: true,
                         isDesignatedHub: true,
-                        satellites: sats
+                        satellites: sats,
+                        isPendingCrawl: devCount === 0
                     });
 
-                    for (const d of sT.devOffsets) {
-                        const nX = pos.x + d.relX;
-                        const nY = pos.y + d.relY;
-                        positions.set(d.nodeKey, { x: nX, y: nY });
-                        if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
-                            positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                    if (sT) {
+                        for (const d of sT.devOffsets) {
+                            const nX = pos.x + d.relX;
+                            const nY = pos.y + d.relY;
+                            positions.set(d.nodeKey, { x: nX, y: nY });
+                            if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                                positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                            }
+                            layoutDevs.push(d.dev);
                         }
-                        layoutDevs.push(d.dev);
                     }
                 }
 
                 // Place any extra custom hubs radially around KEL
-                const kelPos = PRESET_HUB_POSITIONS.KEL || { x: 500, y: 260 };
+                const kelPos = PRESET_HUB_POSITIONS.KEL || { x: 480, y: 240 };
                 extraHubs.forEach((hCode, idx) => {
-                    const sT = siteTemplates.get(hCode)!;
+                    const sT = siteTemplates.get(hCode);
                     const angle = ((idx + 0.5) / Math.max(extraHubs.length, 1)) * 2 * Math.PI;
                     const radX = 420;
                     const radY = 280;
@@ -2007,33 +2014,41 @@ export default function TopologyGraph({
                     const posY = Math.max(kelPos.y + Math.sin(angle) * radY, 60);
                     const sats = hubSatellitesMap.get(hCode) || [];
 
+                    const devCount = sT ? sT.totalDevsInSite : 0;
+                    const l3Count = sT ? sT.l3Count : 0;
+                    const l2Count = sT ? sT.l2Count : 0;
+                    const siteName = sT?.siteName || siteDirectory[hCode]?.name || `${hCode} Campus`;
+
                     siteContainers.push({
                         siteCode: hCode,
-                        siteName: sT.siteName,
+                        siteName,
                         x: posX,
                         y: posY,
-                        width: sT.width,
-                        height: sats.length > 0 ? 84 : sT.height,
-                        deviceCount: sT.totalDevsInSite,
-                        l3Count: sT.l3Count,
-                        l2Count: sT.l2Count,
+                        width: 300,
+                        height: sats.length > 0 ? 84 : 74,
+                        deviceCount: devCount,
+                        l3Count,
+                        l2Count,
                         isCollapsed: true,
                         idfs: [],
                         connectedSites: Array.from(interSiteAdj.get(hCode) || []),
                         clusterId: `hub-${hCode}`,
                         isClusterHub: true,
                         isDesignatedHub: true,
-                        satellites: sats
+                        satellites: sats,
+                        isPendingCrawl: devCount === 0
                     });
 
-                    for (const d of sT.devOffsets) {
-                        const nX = posX + d.relX;
-                        const nY = posY + d.relY;
-                        positions.set(d.nodeKey, { x: nX, y: nY });
-                        if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
-                            positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                    if (sT) {
+                        for (const d of sT.devOffsets) {
+                            const nX = posX + d.relX;
+                            const nY = posY + d.relY;
+                            positions.set(d.nodeKey, { x: nX, y: nY });
+                            if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                                positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                            }
+                            layoutDevs.push(d.dev);
                         }
-                        layoutDevs.push(d.dev);
                     }
                 });
 
@@ -2054,22 +2069,33 @@ export default function TopologyGraph({
                     }
                 }
 
-                // Place standalone non-hub, non-satellite sites on a neat shelf at the bottom
+                // Place standalone non-hub, non-satellite sites on a neat, wrapped grid at the bottom
                 const standaloneSites = Array.from(siteTemplates.keys()).filter(
                     s => !designatedHubs.has(s) && !parentHubOfSite.has(s)
                 );
 
-                let shelfX = 60;
-                const shelfY = 620;
-                for (const sCode of standaloneSites) {
+                const SHELF_COLS = 3;
+                const CARD_W = 300;
+                const CARD_H = 74;
+                const GAP_X = 24;
+                const GAP_Y = 16;
+                const START_X = 140;
+                const START_Y = 560;
+
+                standaloneSites.forEach((sCode, idx) => {
                     const sT = siteTemplates.get(sCode)!;
+                    const col = idx % SHELF_COLS;
+                    const row = Math.floor(idx / SHELF_COLS);
+                    const posX = START_X + col * (CARD_W + GAP_X);
+                    const posY = START_Y + row * (CARD_H + GAP_Y);
+
                     siteContainers.push({
                         siteCode: sCode,
                         siteName: sT.siteName,
-                        x: shelfX,
-                        y: shelfY,
-                        width: sT.width,
-                        height: sT.height,
+                        x: posX,
+                        y: posY,
+                        width: CARD_W,
+                        height: CARD_H,
                         deviceCount: sT.totalDevsInSite,
                         l3Count: sT.l3Count,
                         l2Count: sT.l2Count,
@@ -2083,33 +2109,50 @@ export default function TopologyGraph({
                     });
 
                     for (const d of sT.devOffsets) {
-                        const nX = shelfX + d.relX;
-                        const nY = shelfY + d.relY;
+                        const nX = posX + d.relX;
+                        const nY = posY + d.relY;
                         positions.set(d.nodeKey, { x: nX, y: nY });
                         if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
                             positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
                         }
                         layoutDevs.push(d.dev);
                     }
-                    shelfX += sT.width + 40;
-                }
+                });
 
-                maxCanvasWidth = Math.max(1260, shelfX + 80);
-                maxCanvasHeight = standaloneSites.length > 0 ? 760 : 660;
+                const numShelfRows = Math.ceil(standaloneSites.length / SHELF_COLS);
+                const shelfTotalHeight = numShelfRows > 0 ? numShelfRows * (CARD_H + GAP_Y) : 0;
 
-                // Backbone Constellation Enclosure
+                maxCanvasWidth = 1260;
+                maxCanvasHeight = standaloneSites.length > 0 ? (START_Y + shelfTotalHeight + 60) : 560;
+
+                // Backbone Constellation Enclosure (5 Core Hub Tier)
                 clusters.push({
                     id: "backbone-constellation",
-                    label: "Enterprise WAN Backbone Constellation (Core Hub Tier)",
+                    label: "Enterprise WAN Backbone Constellation (5 Core Hub Tier)",
                     hubSiteCode: "KEL",
                     siteCodes: Array.from(designatedHubs),
-                    x: 20,
-                    y: 40,
-                    width: 1220,
-                    height: 540,
+                    x: 40,
+                    y: 30,
+                    width: 1180,
+                    height: 480,
                     titleWidth: 380,
                     isSingle: false
                 });
+
+                if (standaloneSites.length > 0) {
+                    clusters.push({
+                        id: "standalone-shelf",
+                        label: `Satellite & Edge Facilities (${standaloneSites.length} Sites)`,
+                        hubSiteCode: "SATELLITES",
+                        siteCodes: standaloneSites,
+                        x: 80,
+                        y: START_Y - 26,
+                        width: 1100,
+                        height: shelfTotalHeight + 40,
+                        titleWidth: 280,
+                        isSingle: false
+                    });
+                }
 
             } else {
                 // =========================================================================
@@ -2119,55 +2162,62 @@ export default function TopologyGraph({
                 // Peer Hubs (CRM, WDC, RDG, VMM) remain visible in summary cards along perimeter.
                 // =========================================================================
                 const focalHub = activeDrillHub;
-                const focalT = siteTemplates.get(focalHub) || siteTemplates.values().next().value;
+                const focalT = siteTemplates.get(focalHub);
                 const satellites = hubSatellitesMap.get(focalHub) || [];
-                const peerHubs = Array.from(designatedHubs).filter(h => h !== focalHub && siteTemplates.has(h));
+                const peerHubs = Array.from(designatedHubs).filter(h => h !== focalHub);
 
                 const focalX = 360;
                 const focalY = 120;
-                const focalW = focalT.width;
-                const focalH = focalT.height;
+                const focalW = focalT ? focalT.width : 300;
+                const focalH = focalT ? focalT.height : 74;
+                const focalDevCount = focalT ? focalT.totalDevsInSite : 0;
+                const focalL3Count = focalT ? focalT.l3Count : 0;
+                const focalL2Count = focalT ? focalT.l2Count : 0;
+                const focalSiteName = focalT?.siteName || siteDirectory[focalHub]?.name || (focalHub === "CRM" ? "Cooper River Medical" : `${focalHub} Campus`);
 
                 // 1. Place Focal Hub
                 siteContainers.push({
                     siteCode: focalHub,
-                    siteName: focalT.siteName,
+                    siteName: focalSiteName,
                     x: focalX,
                     y: focalY,
                     width: focalW,
                     height: focalH,
-                    deviceCount: focalT.totalDevsInSite,
-                    l3Count: focalT.l3Count,
-                    l2Count: focalT.l2Count,
-                    isCollapsed: focalT.isCollapsed,
-                    idfs: focalT.idfs.map(idf => ({
+                    deviceCount: focalDevCount,
+                    l3Count: focalL3Count,
+                    l2Count: focalL2Count,
+                    isCollapsed: focalT ? focalT.isCollapsed : true,
+                    idfs: focalT ? focalT.idfs.map(idf => ({
                         ...idf,
                         x: focalX + idf.relX,
                         y: focalY + idf.relY
-                    })),
+                    })) : [],
                     connectedSites: Array.from(interSiteAdj.get(focalHub) || []),
                     clusterId: `cluster-${focalHub}`,
                     isClusterHub: true,
                     isDesignatedHub: true,
-                    satellites: satellites
+                    satellites: satellites,
+                    isPendingCrawl: focalDevCount === 0
                 });
 
-                for (const idf of focalT.idfs) {
-                    idfContainers.push({
-                        ...idf,
-                        x: focalX + idf.relX,
-                        y: focalY + idf.relY
-                    });
-                }
-
-                for (const d of focalT.devOffsets) {
-                    const nX = focalX + d.relX;
-                    const nY = focalY + d.relY;
-                    positions.set(d.nodeKey, { x: nX, y: nY });
-                    if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
-                        positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                if (focalT) {
+                    for (const idf of focalT.idfs) {
+                        idfContainers.push({
+                            ...idf,
+                            x: focalX + idf.relX,
+                            y: focalY + idf.relY
+                        });
                     }
-                    layoutDevs.push(d.dev);
+
+                    for (const d of focalT.devOffsets) {
+                        const nX = focalX + d.relX;
+                        const nY = focalY + d.relY;
+                        positions.set(d.nodeKey, { x: nX, y: nY });
+                        if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                            positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                        }
+                        layoutDevs.push(d.dev);
+                    }
                 }
 
                 // 2. Place Satellites (e.g. PAV, DOR under KEL)
@@ -2246,37 +2296,44 @@ export default function TopologyGraph({
                 ];
 
                 peerHubs.forEach((pCode, idx) => {
-                    const pT = siteTemplates.get(pCode)!;
+                    const pT = siteTemplates.get(pCode);
                     const pPos = peerPositions[idx] || { x: rightX, y: 60 + idx * 120 };
                     const pSats = hubSatellitesMap.get(pCode) || [];
+                    const pSiteName = pT?.siteName || siteDirectory[pCode]?.name || (pCode === "CRM" ? "Cooper River Medical" : `${pCode} Campus`);
+                    const pDevCount = pT ? pT.totalDevsInSite : 0;
+                    const pL3Count = pT ? pT.l3Count : 0;
+                    const pL2Count = pT ? pT.l2Count : 0;
 
                     siteContainers.push({
                         siteCode: pCode,
-                        siteName: pT.siteName,
+                        siteName: pSiteName,
                         x: pPos.x,
                         y: pPos.y,
-                        width: pT.width,
-                        height: pSats.length > 0 ? 84 : pT.height,
-                        deviceCount: pT.totalDevsInSite,
-                        l3Count: pT.l3Count,
-                        l2Count: pT.l2Count,
+                        width: pT ? pT.width : 280,
+                        height: pSats.length > 0 ? 84 : (pT ? pT.height : 74),
+                        deviceCount: pDevCount,
+                        l3Count: pL3Count,
+                        l2Count: pL2Count,
                         isCollapsed: true,
                         idfs: [],
                         connectedSites: Array.from(interSiteAdj.get(pCode) || []),
                         clusterId: `peer-${pCode}`,
                         isClusterHub: true,
                         isDesignatedHub: true,
-                        satellites: pSats
+                        satellites: pSats,
+                        isPendingCrawl: pDevCount === 0
                     });
 
-                    for (const d of pT.devOffsets) {
-                        const nX = pPos.x + d.relX;
-                        const nY = pPos.y + d.relY;
-                        positions.set(d.nodeKey, { x: nX, y: nY });
-                        if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
-                            positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                    if (pT) {
+                        for (const d of pT.devOffsets) {
+                            const nX = pPos.x + d.relX;
+                            const nY = pPos.y + d.relY;
+                            positions.set(d.nodeKey, { x: nX, y: nY });
+                            if (!positions.has(d.dev.canonicalHostname || d.dev.hostname)) {
+                                positions.set(d.dev.canonicalHostname || d.dev.hostname, { x: nX, y: nY });
+                            }
+                            layoutDevs.push(d.dev);
                         }
-                        layoutDevs.push(d.dev);
                     }
                 });
 
@@ -2584,8 +2641,9 @@ export default function TopologyGraph({
             if (sb.y + sb.height + 120 > maxY) maxY = sb.y + sb.height + 120;
         }
 
-        const totalWidth = Math.max(maxX, 1600);
-        const totalHeight = Math.max(maxY, 850);
+        const isOverview = siteClusterMode === "topological" && !activeDrillHub;
+        const totalWidth = isOverview ? Math.max(maxX, 1280) : Math.max(maxX, 1600);
+        const totalHeight = isOverview ? Math.max(maxY, 620) : Math.max(maxY, 850);
 
         return {
             nodePositions: positions,
@@ -4529,8 +4587,14 @@ export default function TopologyGraph({
                                             fontSize={8.5}
                                             fontFamily="monospace"
                                         >
-                                            {site.deviceCount} Switches ({site.l3Count} Core/L3 • {site.l2Count} Access/L2)
-                                            {site.connectedSites && site.connectedSites.length > 0 && !hasSatellites && ` • ⇄ Peers: ${site.connectedSites.join(", ")}`}
+                                            {site.deviceCount === 0 ? (
+                                                <tspan fill="#f59e0b">0 Switches • Pending Discovery Crawl</tspan>
+                                            ) : (
+                                                <>
+                                                    {site.deviceCount} Switches ({site.l3Count} Core/L3 • {site.l2Count} Access/L2)
+                                                    {site.connectedSites && site.connectedSites.length > 0 && !hasSatellites && ` • ⇄ Peers: ${site.connectedSites.join(", ")}`}
+                                                </>
+                                            )}
                                         </text>
                                     </g>
                                 );
