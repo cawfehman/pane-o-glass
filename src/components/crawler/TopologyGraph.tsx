@@ -129,28 +129,17 @@ export function formatLastVerified(ts?: string | null): string {
     return `${dateStr} ${timeStr}`;
 }
 
-export const KNOWN_HUB_NAMES: Record<string, string> = {
-    KEL: "Keleher Center",
-    CRM: "Cooper River Medical",
-    WDC: "Woodbury Data Center",
-    RDG: "Roberts Data Center",
-    VMM: "Voorhees Medical Mall"
-};
-
 export function getCleanSiteDisplayName(code?: string | null, rawName?: string | null): string | null {
-    const upperCode = (code || "").toUpperCase().trim();
-    if (KNOWN_HUB_NAMES[upperCode]) {
-        return KNOWN_HUB_NAMES[upperCode];
-    }
     if (!rawName) return null;
+    const upperCode = (code || "").toUpperCase().trim();
     let clean = rawName.trim();
     if (/^site:?\s+/i.test(clean)) {
         clean = clean.replace(/^site:?\s+/i, "").trim();
     }
-    if (clean.toUpperCase() === upperCode) {
+    if (!clean || clean.toUpperCase() === upperCode) {
         return null;
     }
-    return clean || null;
+    return clean;
 }
 
 export function detectSwitchStack(dev: any): { isStack: boolean; stackSize: number; portCount: number; members: string[] } {
@@ -1597,7 +1586,7 @@ export default function TopologyGraph({
         const siteTemplates = new Map<string, SiteTemplate>();
 
         for (const [siteCode, idfMap] of siteGroups.entries()) {
-            const siteLookup = siteDirectory[siteCode];
+            const siteLookup = siteDirectory?.[siteCode] || siteDirectory?.[siteCode.toUpperCase()];
             const siteName = getCleanSiteDisplayName(siteCode, siteLookup?.name);
             // In topological mode: Overview mode (activeDrillHub === null) keeps all sites collapsed.
             // Drill-down mode expands activeDrillHub and allows satellites to be toggled, keeping peer hubs collapsed.
@@ -1992,7 +1981,7 @@ export default function TopologyGraph({
                     const devCount = sT ? sT.totalDevsInSite : 0;
                     const l3Count = sT ? sT.l3Count : 0;
                     const l2Count = sT ? sT.l2Count : 0;
-                    const siteName = getCleanSiteDisplayName(hCode, sT?.siteName || siteDirectory[hCode]?.name);
+                    const siteName = getCleanSiteDisplayName(hCode, siteDirectory?.[hCode]?.name || siteDirectory?.[hCode.toUpperCase()]?.name || sT?.siteName);
 
                     siteContainers.push({
                         siteCode: hCode,
@@ -2041,7 +2030,7 @@ export default function TopologyGraph({
                     const devCount = sT ? sT.totalDevsInSite : 0;
                     const l3Count = sT ? sT.l3Count : 0;
                     const l2Count = sT ? sT.l2Count : 0;
-                    const siteName = getCleanSiteDisplayName(hCode, sT?.siteName || siteDirectory[hCode]?.name);
+                    const siteName = getCleanSiteDisplayName(hCode, siteDirectory?.[hCode]?.name || siteDirectory?.[hCode.toUpperCase()]?.name || sT?.siteName);
 
                     siteContainers.push({
                         siteCode: hCode,
@@ -2133,7 +2122,7 @@ export default function TopologyGraph({
                 const focalDevCount = focalT ? focalT.totalDevsInSite : 0;
                 const focalL3Count = focalT ? focalT.l3Count : 0;
                 const focalL2Count = focalT ? focalT.l2Count : 0;
-                const focalSiteName = getCleanSiteDisplayName(focalHub, focalT?.siteName || siteDirectory[focalHub]?.name);
+                const focalSiteName = getCleanSiteDisplayName(focalHub, siteDirectory?.[focalHub]?.name || siteDirectory?.[focalHub.toUpperCase()]?.name || focalT?.siteName);
 
                 // 1. Place Focal Hub
                 siteContainers.push({
@@ -2259,7 +2248,7 @@ export default function TopologyGraph({
                     const pT = siteTemplates.get(pCode);
                     const pPos = peerPositions[idx] || { x: rightX, y: 60 + idx * 120 };
                     const pSats = hubSatellitesMap.get(pCode) || [];
-                    const pSiteName = getCleanSiteDisplayName(pCode, pT?.siteName || siteDirectory[pCode]?.name);
+                    const pSiteName = getCleanSiteDisplayName(pCode, siteDirectory?.[pCode]?.name || siteDirectory?.[pCode.toUpperCase()]?.name || pT?.siteName);
                     const pDevCount = pT ? pT.totalDevsInSite : 0;
                     const pL3Count = pT ? pT.l3Count : 0;
                     const pL2Count = pT ? pT.l2Count : 0;
@@ -4250,54 +4239,6 @@ export default function TopologyGraph({
                                         strokeDasharray={bridge.isHubHighway ? "8,5" : bridge.isRouted ? "6,4" : undefined}
                                         className={isSelected ? "animate-pulse" : ""}
                                     />
-
-                                    {/* Midpoint Badge Pill - hidden for hub highways to keep backbone links clean & uncluttered */}
-                                    {!bridge.isHubHighway && (
-                                        <g transform={`translate(${bridge.midX}, ${bridge.midY})`}>
-                                            <g transform={`translate(${-badgeW / 2}, -12)`}>
-                                                <rect
-                                                    x={0}
-                                                    y={0}
-                                                    width={badgeW}
-                                                    height={24}
-                                                    rx={7}
-                                                    fill="rgba(15, 23, 42, 0.96)"
-                                                    stroke={badgeBorder}
-                                                    strokeWidth={1}
-                                                    filter="drop-shadow(0 3px 8px rgba(0,0,0,0.7))"
-                                                    className="group-hover:scale-105 transition-transform"
-                                                />
-                                                <rect
-                                                    x={2}
-                                                    y={2}
-                                                    width={badgeW - 4}
-                                                    height={20}
-                                                    rx={5}
-                                                    fill={badgeFill}
-                                                />
-                                                {/* Status indicator dot */}
-                                                <circle
-                                                    cx={13}
-                                                    cy={12}
-                                                    r={3.2}
-                                                    fill={isDown ? "#ef4444" : isUnverified ? "#f59e0b" : "#10b981"}
-                                                    className={isDown ? "animate-ping" : ""}
-                                                />
-                                                <text
-                                                    x={badgeW / 2 + 5}
-                                                    y={15.5}
-                                                    fill={badgeTextColor}
-                                                    fontSize={9.5}
-                                                    fontWeight="bold"
-                                                    fontFamily="monospace"
-                                                    textAnchor="middle"
-                                                    letterSpacing="0.2"
-                                                >
-                                                    {bridge.label}
-                                                </text>
-                                            </g>
-                                        </g>
-                                    )}
                                 </g>
                             );
                         })}
@@ -5115,37 +5056,12 @@ export default function TopologyGraph({
                                         />
                                     )}
 
-                                    {/* Port-Channel / Site Trunk / Bundle Midpoint Badge */}
-                                    {bundle.isPortChannel || bundle.isSiteTrunk ? (
-                                        <g transform={`translate(${midX}, ${midY})`}>
-                                            <rect
-                                                x={-34}
-                                                y={-9}
-                                                width={68}
-                                                height={18}
-                                                rx={5}
-                                                fill="#090d16"
-                                                stroke={strokeColor}
-                                                strokeWidth={1}
-                                                filter="drop-shadow(0 2px 4px rgba(0,0,0,0.6))"
-                                            />
-                                            <text
-                                                x={0}
-                                                y={3.5}
-                                                fill={strokeColor}
-                                                fontSize={8.5}
-                                                fontWeight="bold"
-                                                fontFamily="monospace"
-                                                textAnchor="middle"
-                                            >
-                                                {bundle.channelName || `Po (${bundle.links.length}x)`}
-                                            </text>
-                                        </g>
-                                    ) : (
+                                    {/* Link Midpoint (subtle indicator only when highlighted; no pills) */}
+                                    {isHighlighted && (
                                         <circle
                                             cx={midX}
                                             cy={midY}
-                                            r={isHighlighted ? 4 : 2.5}
+                                            r={4}
                                             fill={strokeColor}
                                             opacity={linkOpacity}
                                         />
