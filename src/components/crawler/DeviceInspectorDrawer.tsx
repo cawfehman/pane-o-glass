@@ -21,7 +21,9 @@ import {
     Play,
     Clock,
     Tag,
-    Edit3
+    Edit3,
+    Eye,
+    EyeOff
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 import { detectSwitchStack, parseFloorFromIdf } from "./TopologyGraph";
@@ -66,10 +68,41 @@ export default function DeviceInspectorDrawer({
     const [targetIdf, setTargetIdf] = useState("");
     const [targetRole, setTargetRole] = useState("");
     const [overrideReason, setOverrideReason] = useState("");
+    const [excludeFromTopology, setExcludeFromTopology] = useState(false);
     const [cleanupEmptySite, setCleanupEmptySite] = useState(true);
     const [savingOverride, setSavingOverride] = useState(false);
     const [overrideSuccess, setOverrideSuccess] = useState<string | null>(null);
     const [overrideError, setOverrideError] = useState<string | null>(null);
+
+    const handleToggleHideFromTopology = async () => {
+        try {
+            setSavingOverride(true);
+            setOverrideError(null);
+            setOverrideSuccess(null);
+            const canonical = (device.canonicalHostname || device.hostname || "").split(".")[0].split("(")[0].trim().toLowerCase();
+            const currentExcluded = Boolean(device.excludeFromTopology);
+            const res = await fetch("/api/crawler/overrides", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    hostname: canonical,
+                    excludeFromTopology: !currentExcluded,
+                    reason: !currentExcluded ? "Hidden from topology canvas via inspector quick action" : "Restored to topology canvas via inspector quick action"
+                })
+            });
+            if (res.ok) {
+                setOverrideSuccess(!currentExcluded ? "Device hidden from topology map." : "Device restored to topology map.");
+                if (onRefresh) onRefresh();
+            } else {
+                const data = await res.json();
+                setOverrideError(data.error || "Failed to update topology exclusion.");
+            }
+        } catch (err: any) {
+            setOverrideError(err.message || "Network error");
+        } finally {
+            setSavingOverride(false);
+        }
+    };
 
     useEffect(() => {
         setIsEditingNode(false);
@@ -124,6 +157,7 @@ export default function DeviceInspectorDrawer({
         setTargetIdf(device.idfOverride || device.idf || idfCode);
         setTargetRole(device.roleOverride || device.role || "L2 Switch");
         setOverrideReason(device.overrideReason || "");
+        setExcludeFromTopology(Boolean(device.excludeFromTopology));
         setCleanupEmptySite(true);
         setOverrideSuccess(null);
         setOverrideError(null);
@@ -149,6 +183,7 @@ export default function DeviceInspectorDrawer({
                     idfOverride: targetIdf.trim().toUpperCase(),
                     roleOverride: targetRole.trim(),
                     reason: overrideReason.trim() || "Manual node governance override",
+                    excludeFromTopology,
                     cleanupEmptySite,
                     formerSite: device.site || siteCode
                 })
@@ -330,6 +365,20 @@ export default function DeviceInspectorDrawer({
                         <Edit3 className="w-3.5 h-3.5 text-amber-400" />
                         <span>Edit Node</span>
                     </button>
+                    <button
+                        type="button"
+                        onClick={handleToggleHideFromTopology}
+                        disabled={savingOverride}
+                        className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer shadow-sm ${
+                            device.excludeFromTopology
+                                ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                : "bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                        }`}
+                        title={device.excludeFromTopology ? "Restore device to topology map" : "Hide / Remove device from topology map"}
+                    >
+                        {device.excludeFromTopology ? <Eye className="w-3.5 h-3.5 text-emerald-400" /> : <EyeOff className="w-3.5 h-3.5 text-rose-400" />}
+                        <span>{device.excludeFromTopology ? "Restore to Map" : "Hide from Map"}</span>
+                    </button>
                     {onReseed && isReachable && primaryIp && (
                         <button
                             onClick={() => onReseed(device)}
@@ -431,6 +480,19 @@ export default function DeviceInspectorDrawer({
                             />
                         </div>
                     </div>
+
+                    {/* Exclude from topology option */}
+                    <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer pt-1">
+                        <input
+                            type="checkbox"
+                            checked={excludeFromTopology}
+                            onChange={(e) => setExcludeFromTopology(e.target.checked)}
+                            className="w-4 h-4 accent-amber-500 rounded bg-slate-900 border-slate-700 cursor-pointer"
+                        />
+                        <span className="text-[11px]">
+                            Exclude from Topology (hide this node from the topology canvas)
+                        </span>
+                    </label>
 
                     {/* Errant site cleanup option */}
                     <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer pt-1">

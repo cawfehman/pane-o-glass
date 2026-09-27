@@ -606,6 +606,20 @@ export default function TopologyGraph({
         }
     };
 
+    const handleRemoveSiteFromMap = (siteCode: string) => {
+        const upper = siteCode.toUpperCase();
+        setSiteOffsets(prev => {
+            const next = { ...prev };
+            delete next[upper];
+            delete next[siteCode];
+            try {
+                const key = `crawler_topology_site_offsets_${snapshotId || "master"}`;
+                localStorage.setItem(key, JSON.stringify(next));
+            } catch {}
+            return next;
+        });
+    };
+
     // Grouped Dropdown Menus for toolbar
     const [activeDropdown, setActiveDropdown] = useState<"layout" | "display" | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -1398,10 +1412,19 @@ export default function TopologyGraph({
             if (e.key === "Escape") {
                 if (isSpotlightOpen) setIsSpotlightOpen(false);
             }
+            if ((e.key === "Delete" || e.key === "Backspace") && selectedDevice && !["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement)?.tagName)) {
+                e.preventDefault();
+                const canon = selectedDevice.canonicalHostname || getCanonicalHostname(selectedDevice.hostname);
+                setDeselectedSwitches(prev => {
+                    const next = new Set(prev);
+                    next.add(canon);
+                    return next;
+                });
+            }
         };
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [isSpotlightOpen]);
+    }, [isSpotlightOpen, selectedDevice]);
 
     // Path Trace Auto-Play Timer
     useEffect(() => {
@@ -5073,7 +5096,7 @@ export default function TopologyGraph({
                                                 if (onInspectSite) onInspectSite(site.siteCode);
                                             }}
                                             className="cursor-pointer hover:opacity-100 opacity-70 transition"
-                                            transform={`translate(${site.x + site.width - 50}, ${site.y + 10})`}
+                                            transform={`translate(${site.x + site.width - 72}, ${site.y + 10})`}
                                             title={`Inspect ${site.siteCode} details`}
                                         >
                                             <rect x={0} y={0} width={18} height={18} rx={4} fill="rgba(245, 158, 11, 0.15)" stroke="#f59e0b" strokeWidth={0.8} />
@@ -5087,11 +5110,25 @@ export default function TopologyGraph({
                                                 if (onEditSite) onEditSite(site.siteCode);
                                             }}
                                             className="cursor-pointer hover:opacity-100 opacity-60 transition"
-                                            transform={`translate(${site.x + site.width - 26}, ${site.y + 10})`}
+                                            transform={`translate(${site.x + site.width - 48}, ${site.y + 10})`}
                                             title={`Edit ${site.siteCode} properties`}
                                         >
                                             <rect x={0} y={0} width={18} height={18} rx={4} fill="rgba(245, 158, 11, 0.15)" stroke="#f59e0b" strokeWidth={0.8} />
                                             <path d="M 4 14 L 5.5 10.5 L 11 5 L 13 7 L 7.5 12.5 Z" fill="none" stroke="#fbbf24" strokeWidth={1} />
+                                        </g>
+
+                                        {/* Remove from Map Button */}
+                                        <g
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleRemoveSiteFromMap(site.siteCode);
+                                            }}
+                                            className="cursor-pointer hover:opacity-100 opacity-70 transition"
+                                            transform={`translate(${site.x + site.width - 24}, ${site.y + 10})`}
+                                            title={`Remove ${site.siteCode} from map`}
+                                        >
+                                            <rect x={0} y={0} width={18} height={18} rx={4} fill="rgba(239, 68, 68, 0.15)" stroke="#ef4444" strokeWidth={0.8} />
+                                            <text x={9} y={13} fill="#f87171" fontSize={11} fontWeight="bold" textAnchor="middle">✕</text>
                                         </g>
 
                                         {/* Site Name */}
@@ -5292,6 +5329,22 @@ export default function TopologyGraph({
                                             <rect x={0} y={0} width={18} height={18} rx={4} fill="rgba(56, 189, 248, 0.12)" stroke="rgba(56, 189, 248, 0.3)" strokeWidth={0.8} />
                                             <text x={9} y={13} fill="#38bdf8" fontSize={11} fontWeight="bold" textAnchor="middle" fontFamily="sans-serif">ℹ</text>
                                         </g>
+
+                                        {/* Reset Dragged Position (if site was moved) */}
+                                        {(siteOffsets[site.siteCode] || siteOffsets[site.siteCode.toUpperCase()]) && (
+                                            <g
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleRemoveSiteFromMap(site.siteCode);
+                                                }}
+                                                className="cursor-pointer hover:opacity-100 opacity-70 transition"
+                                                transform={`translate(${site.x + site.width - 92}, ${site.y + (isHub ? 8 : 11)})`}
+                                                title={`Reset manual position for ${site.siteCode}`}
+                                            >
+                                                <rect x={0} y={0} width={18} height={18} rx={4} fill="rgba(245, 158, 11, 0.15)" stroke="#f59e0b" strokeWidth={0.8} />
+                                                <text x={9} y={13} fill="#fbbf24" fontSize={11} fontWeight="bold" textAnchor="middle">⤺</text>
+                                            </g>
+                                        )}
 
                                         {/* Edit Site Button */}
                                         <g
@@ -5498,6 +5551,22 @@ export default function TopologyGraph({
                                                 <text x={31} y={13.5} fill="#38bdf8" fontSize={9} fontWeight="bold" textAnchor="middle">
                                                     ⤺ Overview
                                                 </text>
+                                            </g>
+                                        )}
+
+                                        {/* Reset Dragged Position (if site was moved) */}
+                                        {(siteOffsets[site.siteCode] || siteOffsets[site.siteCode.toUpperCase()]) && (
+                                            <g
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleRemoveSiteFromMap(site.siteCode);
+                                                }}
+                                                className="cursor-pointer hover:opacity-100 opacity-70 transition"
+                                                transform={`translate(${site.width - 118}, -3)`}
+                                                title={`Reset manual position for ${site.siteCode}`}
+                                            >
+                                                <rect x={0} y={0} width={20} height={20} rx={5} fill="rgba(245, 158, 11, 0.15)" stroke="#f59e0b" strokeWidth={0.8} />
+                                                <text x={10} y={14} fill="#fbbf24" fontSize={12} fontWeight="bold" textAnchor="middle">⤺</text>
                                             </g>
                                         )}
 

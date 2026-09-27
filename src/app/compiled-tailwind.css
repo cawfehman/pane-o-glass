@@ -5173,6 +5173,14 @@
     .hover\:bg-red-600:hover {
       background-color: var(--color-red-600);
     }
+    .hover\:bg-rose-500\/20:hover {
+      background-color: color-mix(in srgb, oklch(64.5% 0.246 16.439) 20%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-rose-500\/20:hover {
+        background-color: color-mix(in oklab, var(--color-rose-500) 20%, transparent);
+      }
+    }
     .hover\:bg-rose-500\/25:hover {
       background-color: color-mix(in srgb, oklch(64.5% 0.246 16.439) 25%, transparent);
     }
