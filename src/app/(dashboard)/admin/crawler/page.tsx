@@ -22,11 +22,13 @@ import {
     Download,
     Copy,
     Check,
-    X
+    X,
+    Building2
 } from "lucide-react";
 
 import TopologyGraph from "@/components/crawler/TopologyGraph";
 import SiteManagerSidebar from "@/components/crawler/SiteManagerSidebar";
+import SiteInventoryManager from "@/components/crawler/SiteInventoryManager";
 import { SiteModal } from "@/components/sites/SiteModal";
 import DeviceInspectorDrawer from "@/components/crawler/DeviceInspectorDrawer";
 import SiteInspectorDrawer from "@/components/crawler/SiteInspectorDrawer";
@@ -69,7 +71,7 @@ export default function AdminCrawlerPage() {
     const [lastCrawlNotification, setLastCrawlNotification] = useState<{ snapshotId: string; snapshotNumber?: number } | null>(null);
 
     // Active sub-view tab
-    const [activeTab, setActiveTab] = useState<"topology" | "tracer" | "failures">("topology");
+    const [activeTab, setActiveTab] = useState<"inventory" | "topology" | "tracer" | "failures">("inventory");
 
     // Drawer selection
     const [selectedDevice, setSelectedDevice] = useState<any | null>(null);
@@ -622,6 +624,18 @@ export default function AdminCrawlerPage() {
             <div className="flex items-center justify-between border-b border-slate-800 shrink-0">
                 <div className="flex items-center gap-2">
                     <button
+                        onClick={() => setActiveTab("inventory")}
+                        className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 transition -mb-[1px] ${
+                            activeTab === "inventory"
+                                ? "text-blue-400 border-blue-500 bg-slate-900/40 rounded-t-lg"
+                                : "text-slate-400 border-transparent hover:text-slate-200"
+                        }`}
+                    >
+                        <Building2 className="w-4 h-4" />
+                        Site & IDF Manager
+                    </button>
+
+                    <button
                         onClick={() => setActiveTab("topology")}
                         className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 transition -mb-[1px] ${
                             activeTab === "topology"
@@ -671,6 +685,45 @@ export default function AdminCrawlerPage() {
 
             {/* Tab Contents */}
             <div className="flex-1 min-h-0 flex flex-col">
+                {activeTab === "inventory" && (
+                    <SiteInventoryManager
+                        devices={devices}
+                        links={links}
+                        siteDirectory={currentSnapshotData?.siteDirectory}
+                        onReseedDevice={(d) => {
+                            setReseedDevice(d);
+                            setIsCrawlModalOpen(true);
+                        }}
+                        onSelectDevice={(d) => setSelectedDevice(d)}
+                        onEditSite={handleOpenEditSite}
+                        onAddSite={(folderPath) => {
+                            setSelectedSiteForEdit({
+                                code: "",
+                                name: "",
+                                address: "",
+                                status: "Active",
+                                notes: "",
+                                locationType: "Ambulatory",
+                                city: "",
+                                folderPath: folderPath || "",
+                                isHub: false
+                            });
+                            setSiteModalMode("add");
+                            setIsSiteModalOpen(true);
+                        }}
+                        onRefreshSnapshot={() => {
+                            if (selectedSnapshotId) fetchSnapshotDetails(selectedSnapshotId);
+                        }}
+                        onNavigateToTopology={(siteCode) => {
+                            if (siteCode) {
+                                setLocateSiteCode(siteCode);
+                                setHighlightedSiteCode(siteCode);
+                            }
+                            setActiveTab("topology");
+                        }}
+                    />
+                )}
+
                 {activeTab === "topology" && (
                     <div className="flex-1 h-full min-h-0 flex flex-row overflow-hidden relative rounded-2xl border border-slate-800 bg-slate-950/70 shadow-xl">
                         <SiteManagerSidebar
@@ -708,17 +761,6 @@ export default function AdminCrawlerPage() {
                                 className="relative w-full flex-1 h-full min-h-[660px] border-0 rounded-none bg-transparent"
                             />
                         </div>
-
-                        {/* Direct Site Editing Modal from Topology Canvas */}
-                        <SiteModal
-                            isModalOpen={isSiteModalOpen}
-                            setIsModalOpen={setIsSiteModalOpen}
-                            currentSite={selectedSiteForEdit}
-                            setCurrentSite={setSelectedSiteForEdit}
-                            performAction={performSiteAction}
-                            actionLoading={siteActionLoading}
-                            mode={siteModalMode}
-                        />
                     </div>
                 )}
 
@@ -835,6 +877,17 @@ export default function AdminCrawlerPage() {
                     setLocateSiteCode(code);
                     setHighlightedSiteCode(code);
                 }}
+            />
+
+            {/* Direct Site Editing Modal */}
+            <SiteModal
+                isModalOpen={isSiteModalOpen}
+                setIsModalOpen={setIsSiteModalOpen}
+                currentSite={selectedSiteForEdit}
+                setCurrentSite={setSelectedSiteForEdit}
+                performAction={performSiteAction}
+                actionLoading={siteActionLoading}
+                mode={siteModalMode}
             />
 
             {/* Crawl Initiation Modal */}
