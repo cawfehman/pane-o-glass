@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
     X, 
     Server, 
@@ -23,7 +23,11 @@ import {
     Tag,
     Edit3,
     Eye,
-    EyeOff
+    EyeOff,
+    Search,
+    Wifi,
+    Phone,
+    Filter
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 import { detectSwitchStack, parseFloorFromIdf } from "./TopologyGraph";
@@ -100,6 +104,127 @@ export function getInterfaceStatus(intf: any): InterfaceStatusResult {
     };
 }
 
+export type CdpDeviceCategory = "ALL" | "SWITCH" | "AP" | "ROUTER" | "PHONE" | "OTHER";
+
+export interface CdpDeviceTypeInfo {
+    category: "SWITCH" | "AP" | "ROUTER" | "PHONE" | "OTHER";
+    label: string;
+    badgeClass: string;
+    icon: any;
+}
+
+export function classifyCdpNeighbor(n: any): CdpDeviceTypeInfo {
+    const platform = String(n?.platform || "").toLowerCase();
+    const host = String(n?.destination_host || n?.device_id || "").toLowerCase();
+    const capabilities = Array.isArray(n?.capabilities) 
+        ? n.capabilities.map((c: any) => String(c).toLowerCase()) 
+        : [];
+    const isApFlag = Boolean(n?.is_ap);
+
+    // 1. Wireless Access Point
+    if (
+        isApFlag ||
+        platform.includes("air-") ||
+        platform.includes("ap38") ||
+        platform.includes("ap28") ||
+        platform.includes("ap48") ||
+        platform.includes("c91") ||
+        platform.includes("cw9") ||
+        platform.includes("meraki mr") ||
+        platform.includes("access point") ||
+        host.includes("-wlap") ||
+        host.includes("-ap") ||
+        host.includes("-wap") ||
+        (capabilities.includes("trans-bridge") && !capabilities.includes("router") && !capabilities.includes("switch"))
+    ) {
+        return {
+            category: "AP",
+            label: "Access Point",
+            badgeClass: "bg-amber-500/10 text-amber-300 border-amber-500/30",
+            icon: Wifi
+        };
+    }
+
+    // 2. IP Phone / VoIP
+    if (
+        platform.includes("phone") ||
+        platform.includes("cp-7") ||
+        platform.includes("cp-8") ||
+        platform.includes("cp-9") ||
+        platform.includes("ata") ||
+        host.includes("sep") ||
+        capabilities.includes("phone") ||
+        capabilities.includes("voip")
+    ) {
+        return {
+            category: "PHONE",
+            label: "IP Phone",
+            badgeClass: "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
+            icon: Phone
+        };
+    }
+
+    // 3. Router / Gateway (WAN/Edge)
+    const isPureRouter = (capabilities.includes("router") && !capabilities.includes("switch")) ||
+        platform.includes("isr") ||
+        platform.includes("asr") ||
+        platform.includes("c8000") ||
+        platform.includes("c8200") ||
+        platform.includes("c8300") ||
+        platform.includes("c8500") ||
+        host.includes("-cr") ||
+        host.includes("-rtr") ||
+        host.includes("-gw");
+
+    if (isPureRouter) {
+        return {
+            category: "ROUTER",
+            label: "Router / GW",
+            badgeClass: "bg-purple-500/10 text-purple-300 border-purple-500/30",
+            icon: RouteIcon
+        };
+    }
+
+    // 4. Switch
+    if (
+        capabilities.includes("switch") ||
+        platform.includes("ws-c") ||
+        platform.includes("catalyst") ||
+        platform.includes("nexus") ||
+        platform.includes("c92") ||
+        platform.includes("c93") ||
+        platform.includes("c94") ||
+        platform.includes("c95") ||
+        platform.includes("c96") ||
+        platform.includes("c29") ||
+        platform.includes("c35") ||
+        platform.includes("c36") ||
+        platform.includes("c37") ||
+        platform.includes("c38") ||
+        host.includes("-sw") ||
+        host.includes("-swcs") ||
+        host.includes("-swds") ||
+        host.includes("-swas") ||
+        host.includes("-mdf") ||
+        host.includes("-idf")
+    ) {
+        return {
+            category: "SWITCH",
+            label: "Switch",
+            badgeClass: "bg-blue-500/10 text-blue-300 border-blue-500/30",
+            icon: Network
+        };
+    }
+
+    // 5. Other / Endpoint
+    return {
+        category: "OTHER",
+        label: "Other Device",
+        badgeClass: "bg-slate-800 text-slate-300 border-slate-700",
+        icon: Server
+    };
+}
+
 interface DeviceInspectorDrawerProps {
     device: any | null;
     onClose: () => void;
@@ -119,6 +244,8 @@ export default function DeviceInspectorDrawer({
 }: DeviceInspectorDrawerProps) {
     const [activeTab, setActiveTab] = useState<"overview" | "interfaces" | "routes" | "vlans" | "cdp">("overview");
     const [stackMemberFilter, setStackMemberFilter] = useState<string>("ALL");
+    const [cdpTypeFilter, setCdpTypeFilter] = useState<CdpDeviceCategory>("ALL");
+    const [cdpSearchQuery, setCdpSearchQuery] = useState<string>("");
 
     // Node Governance Override State
     const [isEditingNode, setIsEditingNode] = useState(false);
@@ -195,6 +322,39 @@ export default function DeviceInspectorDrawer({
 
     const rawCdp = device.cdpNeighbors || device.cdp_neighbors || [];
     const cdpNeighbors: any[] = Array.isArray(rawCdp) ? rawCdp : Object.values(rawCdp);
+
+    const classifiedCdpNeighbors = useMemo(() => {
+        return cdpNeighbors.map((n: any) => ({
+            neighbor: n,
+            typeInfo: classifyCdpNeighbor(n)
+        }));
+    }, [cdpNeighbors]);
+
+    const cdpCounts = useMemo(() => {
+        const counts = { ALL: classifiedCdpNeighbors.length, SWITCH: 0, AP: 0, ROUTER: 0, PHONE: 0, OTHER: 0 };
+        for (const item of classifiedCdpNeighbors) {
+            counts[item.typeInfo.category] = (counts[item.typeInfo.category] || 0) + 1;
+        }
+        return counts;
+    }, [classifiedCdpNeighbors]);
+
+    const displayedCdpNeighbors = useMemo(() => {
+        return classifiedCdpNeighbors.filter(({ neighbor, typeInfo }) => {
+            if (cdpTypeFilter !== "ALL" && typeInfo.category !== cdpTypeFilter) {
+                return false;
+            }
+            if (cdpSearchQuery.trim()) {
+                const q = cdpSearchQuery.toLowerCase().trim();
+                const host = String(neighbor.destination_host || neighbor.device_id || "").toLowerCase();
+                const platform = String(neighbor.platform || "").toLowerCase();
+                const local = String(neighbor.local_port || neighbor.local_interface || "").toLowerCase();
+                const remote = String(neighbor.remote_port || neighbor.remote_interface || "").toLowerCase();
+                const ip = String(neighbor.management_ip || "").toLowerCase();
+                return host.includes(q) || platform.includes(q) || local.includes(q) || remote.includes(q) || ip.includes(q);
+            }
+            return true;
+        });
+    }, [classifiedCdpNeighbors, cdpTypeFilter, cdpSearchQuery]);
 
     const isUnverified = device.status === "UNVERIFIED";
     const isReachable = device.status ? device.status === "REACHABLE" : device.reachable !== false;
@@ -1116,27 +1276,109 @@ export default function DeviceInspectorDrawer({
                 {activeTab === "cdp" && (
                     <div className="space-y-3">
                         <div className="text-xs text-slate-400 flex items-center justify-between">
-                            <span>Cisco Discovery Protocol (CDP) Neighbors</span>
-                            <span className="font-mono">{cdpNeighbors.length} neighbors</span>
+                            <span>CDP &amp; LLDP Adjacencies</span>
+                            <span className="font-mono">{displayedCdpNeighbors.length} of {cdpNeighbors.length} peers</span>
                         </div>
-                        {cdpNeighbors.length === 0 ? (
-                            <p className="text-xs text-slate-500 py-6 text-center">No CDP neighbors recorded for this device.</p>
+
+                        {/* Search and Device Type Filter Pills */}
+                        <div className="space-y-2">
+                            <div className="relative">
+                                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                                <input
+                                    type="text"
+                                    value={cdpSearchQuery}
+                                    onChange={(e) => setCdpSearchQuery(e.target.value)}
+                                    placeholder="Search host, platform, port, IP..."
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-sans"
+                                />
+                                {cdpSearchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setCdpSearchQuery("")}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Type Filter Buttons */}
+                            <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-950 rounded-lg border border-slate-800 text-[11px]">
+                                {[
+                                    { id: "ALL", label: `All (${cdpCounts.ALL})`, icon: Share2 },
+                                    { id: "SWITCH", label: `Switches (${cdpCounts.SWITCH})`, icon: Network },
+                                    { id: "AP", label: `APs (${cdpCounts.AP})`, icon: Wifi },
+                                    { id: "ROUTER", label: `Routers (${cdpCounts.ROUTER})`, icon: RouteIcon },
+                                    ...(cdpCounts.PHONE > 0 ? [{ id: "PHONE", label: `Phones (${cdpCounts.PHONE})`, icon: Phone }] : []),
+                                    ...(cdpCounts.OTHER > 0 ? [{ id: "OTHER", label: `Other (${cdpCounts.OTHER})`, icon: Server }] : [])
+                                ].map((tab) => {
+                                    const Icon = tab.icon;
+                                    const isSelected = cdpTypeFilter === tab.id;
+                                    return (
+                                        <button
+                                            key={tab.id}
+                                            type="button"
+                                            onClick={() => setCdpTypeFilter(tab.id as any)}
+                                            className={`px-2 py-0.5 rounded font-medium transition cursor-pointer flex items-center gap-1 text-[10px] ${
+                                                isSelected
+                                                    ? "bg-blue-600 text-white shadow-sm font-semibold"
+                                                    : "text-slate-400 hover:text-white hover:bg-slate-800"
+                                            }`}
+                                        >
+                                            <Icon className="w-3 h-3" />
+                                            <span>{tab.label}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {displayedCdpNeighbors.length === 0 ? (
+                            <p className="text-xs text-slate-500 py-6 text-center">
+                                {cdpNeighbors.length === 0 
+                                    ? "No CDP / LLDP neighbors recorded for this device." 
+                                    : "No neighbors match the selected filter."}
+                            </p>
                         ) : (
                             <div className="space-y-2">
-                                {cdpNeighbors.map((n: any, idx: number) => (
-                                    <div key={idx} className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5 text-xs">
-                                        <div className="flex items-center justify-between">
-                                            <span className="font-bold text-white font-mono">{n.destination_host || n.device_id}</span>
-                                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px]">
-                                                {n.platform || "Cisco"}
-                                            </span>
+                                {displayedCdpNeighbors.map(({ neighbor: n, typeInfo }, idx: number) => {
+                                    const Icon = typeInfo.icon;
+                                    return (
+                                        <div key={idx} className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-2 text-xs hover:border-slate-700 transition">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <Icon className="w-4 h-4 text-blue-400 shrink-0" />
+                                                    <span className="font-bold text-white font-mono truncate" title={n.destination_host || n.device_id}>
+                                                        {n.destination_host || n.device_id}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${typeInfo.badgeClass}`}>
+                                                        {typeInfo.label}
+                                                    </span>
+                                                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px] truncate max-w-[140px]" title={n.platform || "Cisco"}>
+                                                        {n.platform || "Cisco"}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2 text-slate-400 text-[11px] pt-1.5 border-t border-slate-900 font-mono">
+                                                <div>
+                                                    <span className="text-slate-500 block text-[9px]">LOCAL PORT</span>
+                                                    <span className="text-slate-200 font-semibold">{n.local_port || n.local_interface || "—"}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-slate-500 block text-[9px]">REMOTE PORT</span>
+                                                    <span className="text-slate-200 font-semibold">{n.remote_port || n.remote_interface || "—"}</span>
+                                                </div>
+                                            </div>
+                                            {n.management_ip && (
+                                                <div className="text-[11px] font-mono text-cyan-300 pt-0.5">
+                                                    IP: {n.management_ip}
+                                                </div>
+                                            )}
                                         </div>
-                                        <div className="flex items-center justify-between text-slate-400 text-[11px] pt-1 border-t border-slate-900 font-mono">
-                                            <span>Local: <strong className="text-slate-200">{n.local_port || n.local_interface}</strong></span>
-                                            <span>Remote: <strong className="text-slate-200">{n.remote_port || n.remote_interface}</strong></span>
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

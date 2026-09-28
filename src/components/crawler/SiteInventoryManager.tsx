@@ -40,12 +40,14 @@ import {
     Eye,
     EyeOff,
     MoreVertical,
-    KeyRound
+    KeyRound,
+    Wifi,
+    Phone
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 import { SiteMetadataLookup, parseDeviceSiteAndIdf, parseFloorFromIdf, detectSwitchStack } from "./TopologyGraph";
 import EditIdfModal from "./EditIdfModal";
-import { formatFullVerifiedDate, getInterfaceStatus } from "./DeviceInspectorDrawer";
+import { formatFullVerifiedDate, getInterfaceStatus, classifyCdpNeighbor, CdpDeviceCategory } from "./DeviceInspectorDrawer";
 
 interface SiteInventoryManagerProps {
     devices: any[];
@@ -199,6 +201,8 @@ export default function SiteInventoryManager({
     const [deviceActiveTab, setDeviceActiveTab] = useState<"overview" | "interfaces" | "routes" | "vlans" | "cdp">("overview");
     const [deviceStackFilter, setDeviceStackFilter] = useState<string>("ALL");
     const [interfaceSearch, setInterfaceSearch] = useState<string>("");
+    const [cdpTypeFilter, setCdpTypeFilter] = useState<CdpDeviceCategory>("ALL");
+    const [cdpSearchQuery, setCdpSearchQuery] = useState<string>("");
 
     // Group devices by site and IDF
     const { siteMap, unassignedDevices, allIdfMap } = useMemo(() => {
@@ -1364,6 +1368,35 @@ export default function SiteInventoryManager({
                     const rawCdp = activeDevice.cdpNeighbors || activeDevice.cdp_neighbors || [];
                     const cdpNeighbors: any[] = Array.isArray(rawCdp) ? rawCdp : Object.values(rawCdp);
 
+                    const classifiedCdpNeighbors = cdpNeighbors.map((n: any) => ({
+                        neighbor: n,
+                        typeInfo: classifyCdpNeighbor(n)
+                    }));
+
+                    const cdpCounts = (() => {
+                        const counts = { ALL: classifiedCdpNeighbors.length, SWITCH: 0, AP: 0, ROUTER: 0, PHONE: 0, OTHER: 0 };
+                        for (const item of classifiedCdpNeighbors) {
+                            counts[item.typeInfo.category] = (counts[item.typeInfo.category] || 0) + 1;
+                        }
+                        return counts;
+                    })();
+
+                    const displayedCdpNeighbors = classifiedCdpNeighbors.filter(({ neighbor, typeInfo }) => {
+                        if (cdpTypeFilter !== "ALL" && typeInfo.category !== cdpTypeFilter) {
+                            return false;
+                        }
+                        if (cdpSearchQuery.trim()) {
+                            const q = cdpSearchQuery.toLowerCase().trim();
+                            const host = String(neighbor.destination_host || neighbor.device_id || "").toLowerCase();
+                            const platform = String(neighbor.platform || "").toLowerCase();
+                            const local = String(neighbor.local_port || neighbor.local_interface || "").toLowerCase();
+                            const remote = String(neighbor.remote_port || neighbor.remote_interface || "").toLowerCase();
+                            const ip = String(neighbor.management_ip || "").toLowerCase();
+                            return host.includes(q) || platform.includes(q) || local.includes(q) || remote.includes(q) || ip.includes(q);
+                        }
+                        return true;
+                    });
+
                     const isUnverified = activeDevice.status === "UNVERIFIED";
                     const isReachable = activeDevice.status ? activeDevice.status === "REACHABLE" : activeDevice.reachable !== false;
                     const isL3 = activeDevice.role === "Router" || activeDevice.role === "L3 Switch" || activeDevice.role === "L3";
@@ -2033,43 +2066,108 @@ export default function SiteInventoryManager({
                                     <div className="space-y-4">
                                         <div className="flex items-center justify-between text-xs text-slate-400">
                                             <span>Cisco Discovery Protocol (CDP) & LLDP Adjacencies</span>
-                                            <span className="font-mono">{cdpNeighbors.length} neighbor peers</span>
+                                            <span className="font-mono">{displayedCdpNeighbors.length} of {cdpNeighbors.length} peers</span>
                                         </div>
 
-                                        {cdpNeighbors.length === 0 ? (
+                                        {/* Search and Device Type Filter Pills */}
+                                        <div className="space-y-2">
+                                            <div className="relative">
+                                                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                                                <input
+                                                    type="text"
+                                                    value={cdpSearchQuery}
+                                                    onChange={(e) => setCdpSearchQuery(e.target.value)}
+                                                    placeholder="Search host, platform, port, IP..."
+                                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-sans"
+                                                />
+                                                {cdpSearchQuery && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCdpSearchQuery("")}
+                                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {/* Type Filter Buttons */}
+                                            <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-950 rounded-lg border border-slate-800 text-[11px]">
+                                                {[
+                                                    { id: "ALL", label: `All (${cdpCounts.ALL})`, icon: Share2 },
+                                                    { id: "SWITCH", label: `Switches (${cdpCounts.SWITCH})`, icon: Network },
+                                                    { id: "AP", label: `APs (${cdpCounts.AP})`, icon: Wifi },
+                                                    { id: "ROUTER", label: `Routers (${cdpCounts.ROUTER})`, icon: RouteIcon },
+                                                    ...(cdpCounts.PHONE > 0 ? [{ id: "PHONE", label: `Phones (${cdpCounts.PHONE})`, icon: Phone }] : []),
+                                                    ...(cdpCounts.OTHER > 0 ? [{ id: "OTHER", label: `Other (${cdpCounts.OTHER})`, icon: Server }] : [])
+                                                ].map((tab) => {
+                                                    const Icon = tab.icon;
+                                                    const isSelected = cdpTypeFilter === tab.id;
+                                                    return (
+                                                        <button
+                                                            key={tab.id}
+                                                            type="button"
+                                                            onClick={() => setCdpTypeFilter(tab.id as any)}
+                                                            className={`px-2.5 py-1 rounded font-medium transition cursor-pointer flex items-center gap-1.5 text-xs ${
+                                                                isSelected
+                                                                    ? "bg-blue-600 text-white shadow-sm font-semibold"
+                                                                    : "text-slate-400 hover:text-white hover:bg-slate-800"
+                                                            }`}
+                                                        >
+                                                            <Icon className="w-3.5 h-3.5" />
+                                                            <span>{tab.label}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {displayedCdpNeighbors.length === 0 ? (
                                             <div className="bg-slate-900/40 border border-slate-800/60 rounded-xl p-8 text-center text-slate-500 text-xs">
-                                                No direct neighbor adjacencies recorded in crawl telemetry.
+                                                {cdpNeighbors.length === 0
+                                                    ? "No direct neighbor adjacencies recorded in crawl telemetry."
+                                                    : "No neighbors match the selected filter."}
                                             </div>
                                         ) : (
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                {cdpNeighbors.map((n: any, idx: number) => (
-                                                    <div key={idx} className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-2 text-xs hover:border-slate-700 transition">
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="flex items-center gap-2">
-                                                                <Server className="w-4 h-4 text-blue-400" />
-                                                                <span className="font-bold text-white font-mono">{n.destination_host || n.device_id}</span>
+                                                {displayedCdpNeighbors.map(({ neighbor: n, typeInfo }, idx: number) => {
+                                                    const Icon = typeInfo.icon;
+                                                    return (
+                                                        <div key={idx} className="p-4 bg-slate-900/60 border border-slate-800 rounded-xl space-y-2 text-xs hover:border-slate-700 transition">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    <Icon className="w-4 h-4 text-blue-400 shrink-0" />
+                                                                    <span className="font-bold text-white font-mono truncate" title={n.destination_host || n.device_id}>
+                                                                        {n.destination_host || n.device_id}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${typeInfo.badgeClass}`}>
+                                                                        {typeInfo.label}
+                                                                    </span>
+                                                                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px] border border-slate-700 truncate max-w-[140px]" title={n.platform || "Cisco"}>
+                                                                        {n.platform || "Cisco"}
+                                                                    </span>
+                                                                </div>
                                                             </div>
-                                                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono text-[10px] border border-slate-700">
-                                                                {n.platform || "Cisco"}
-                                                            </span>
+                                                            <div className="grid grid-cols-2 gap-2 text-slate-400 text-[11px] pt-1.5 border-t border-slate-800 font-mono">
+                                                                <div>
+                                                                    <span className="text-slate-500 block text-[10px]">LOCAL PORT</span>
+                                                                    <span className="text-slate-200 font-semibold">{n.local_port || n.local_interface || "—"}</span>
+                                                                </div>
+                                                                <div>
+                                                                    <span className="text-slate-500 block text-[10px]">REMOTE PORT</span>
+                                                                    <span className="text-slate-200 font-semibold">{n.remote_port || n.remote_interface || "—"}</span>
+                                                                </div>
+                                                            </div>
+                                                            {n.management_ip && (
+                                                                <div className="pt-1 text-[11px] font-mono text-cyan-300">
+                                                                    IP: {n.management_ip}
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                        <div className="grid grid-cols-2 gap-2 text-slate-400 text-[11px] pt-1.5 border-t border-slate-800 font-mono">
-                                                            <div>
-                                                                <span className="text-slate-500 block text-[10px]">LOCAL PORT</span>
-                                                                <span className="text-slate-200 font-semibold">{n.local_port || n.local_interface || "—"}</span>
-                                                            </div>
-                                                            <div>
-                                                                <span className="text-slate-500 block text-[10px]">REMOTE PORT</span>
-                                                                <span className="text-slate-200 font-semibold">{n.remote_port || n.remote_interface || "—"}</span>
-                                                            </div>
-                                                        </div>
-                                                        {n.management_ip && (
-                                                            <div className="pt-1 text-[11px] font-mono text-cyan-300">
-                                                                IP: {n.management_ip}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         )}
                                     </div>
