@@ -345,6 +345,7 @@ export default function SiteInventoryManager({
     const renderFolderNode = (node: any, depth: number = 0) => {
         const isRoot = node.name === "Root";
         const isExpanded = isRoot ? true : expandedFolders[node.fullPath] !== false;
+        const folderIndent = isRoot ? 0 : Math.max(depth * 16 + 8, 8);
 
         const subKeys = Object.keys(node.subFolders).sort((a, b) => a.localeCompare(b));
         const sortedSites = [...node.sites].sort((a: any, b: any) => {
@@ -374,12 +375,12 @@ export default function SiteInventoryManager({
                             setExpandedFolders(prev => ({ ...prev, [node.fullPath]: !isExpanded }));
                             setSelectedEntity({ type: "folder", folderPath: node.fullPath });
                         }}
-                        className={`flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer transition ${
+                        className={`flex items-center justify-between pr-2 py-1.5 rounded-lg text-xs cursor-pointer transition ${
                             selectedEntity.type === "folder" && selectedEntity.folderPath === node.fullPath
                                 ? "bg-blue-600/20 text-blue-300 font-semibold border border-blue-500/30"
                                 : "hover:bg-slate-800/60 text-slate-300"
                         }`}
-                        style={{ paddingLeft: `${Math.max(depth * 14, 8)}px` }}
+                        style={{ paddingLeft: `${folderIndent}px` }}
                     >
                         <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
                             {isExpanded ? (
@@ -397,7 +398,7 @@ export default function SiteInventoryManager({
                 )}
 
                 {isExpanded && (
-                    <div className={!isRoot ? "border-l border-slate-800/80 ml-3.5 pl-1 my-0.5 space-y-0.5" : "space-y-0.5"}>
+                    <div className="space-y-0.5">
                         {subKeys.map(k => renderFolderNode(node.subFolders[k], depth + 1))}
 
                         {visibleSites.map((siteEntry: any) => {
@@ -412,18 +413,23 @@ export default function SiteInventoryManager({
                                 return (a as string).localeCompare(b as string, undefined, { numeric: true });
                             });
 
+                            // Indentation geometry: Site -> IDFs (+18px) -> Switches (+18px)
+                            const siteIndent = isRoot ? 12 : folderIndent + 16;
+                            const idfIndent = siteIndent + 18;
+                            const switchIndent = idfIndent + 18;
+
                             return (
                                 <div key={siteEntry.siteCode} className="space-y-0.5">
                                     <div
                                         onClick={() => {
                                             setSelectedEntity({ type: "site", siteCode: siteEntry.siteCode });
                                         }}
-                                        className={`group flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer transition ${
+                                        className={`group flex items-center justify-between pr-2 py-1.5 rounded-lg text-xs cursor-pointer transition ${
                                             isSiteSelected
                                                 ? "bg-blue-600/25 text-white border border-blue-500/50 shadow-sm"
                                                 : "hover:bg-slate-800/60 text-slate-200 border border-transparent"
                                         }`}
-                                        style={{ paddingLeft: `${Math.max(depth * 14 + 6, 8)}px` }}
+                                        style={{ paddingLeft: `${siteIndent}px` }}
                                     >
                                         <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
                                             <button
@@ -477,7 +483,13 @@ export default function SiteInventoryManager({
 
                                     {/* IDFs inside this Site */}
                                     {isSiteExpanded && (
-                                        <div className="border-l border-slate-800/60 ml-4 pl-1.5 space-y-0.5 my-0.5">
+                                        <div className="relative space-y-0.5 my-0.5">
+                                            {/* Vertical hierarchy guide line under Site */}
+                                            <div 
+                                                className="absolute top-1 bottom-1 w-[1px] bg-slate-800 pointer-events-none"
+                                                style={{ left: `${siteIndent + 7}px` }}
+                                            />
+
                                             {idfKeys.map((idfCode: any) => {
                                                 const idfKey = `${siteEntry.siteCode}:${idfCode}`;
                                                 const isIdfExpanded = expandedIdfs[idfKey] === true;
@@ -491,12 +503,19 @@ export default function SiteInventoryManager({
                                                     <div key={idfKey} className="space-y-0.5">
                                                         <div
                                                             onClick={() => setSelectedEntity({ type: "idf", siteCode: siteEntry.siteCode, idfCode })}
-                                                            className={`group flex items-center justify-between px-2 py-1 rounded-md text-[11px] cursor-pointer transition ${
+                                                            className={`group relative flex items-center justify-between pr-2 py-1 rounded-md text-[11px] cursor-pointer transition ${
                                                                 isIdfSelected
                                                                     ? "bg-blue-500/20 text-blue-300 font-semibold border border-blue-500/40"
                                                                     : "hover:bg-slate-800/50 text-slate-300 border border-transparent"
                                                             }`}
+                                                            style={{ paddingLeft: `${idfIndent}px` }}
                                                         >
+                                                            {/* Horizontal branch tick connector */}
+                                                            <span 
+                                                                className="absolute w-2.5 h-[1px] bg-slate-800 pointer-events-none"
+                                                                style={{ left: `${siteIndent + 8}px`, top: "50%" }}
+                                                            />
+
                                                             <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
                                                                 <button
                                                                     type="button"
@@ -512,7 +531,7 @@ export default function SiteInventoryManager({
                                                                         <ChevronRight className="w-3 h-3 text-slate-500" />
                                                                     )}
                                                                 </button>
-                                                                <DoorOpen className="w-3 h-3 text-cyan-400 shrink-0" />
+                                                                <DoorOpen className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                                                                 <span className="font-semibold text-slate-100">{idfCode}</span>
                                                                 <span className="text-[10px] text-slate-500 font-normal truncate">
                                                                     ({floorInfo.floorLabel})
@@ -540,7 +559,13 @@ export default function SiteInventoryManager({
 
                                                         {/* Switches inside this IDF */}
                                                         {isIdfExpanded && (
-                                                            <div className="border-l border-slate-800/40 ml-3.5 pl-1.5 space-y-0.5">
+                                                            <div className="relative space-y-0.5 my-0.5">
+                                                                {/* Vertical hierarchy guide line under IDF */}
+                                                                <div 
+                                                                    className="absolute top-1 bottom-1 w-[1px] bg-slate-800/80 pointer-events-none"
+                                                                    style={{ left: `${idfIndent + 7}px` }}
+                                                                />
+
                                                                 {filteredIdfDevs.map((dev: any) => {
                                                                     const isDevSelected = selectedEntity.type === "device" && selectedEntity.hostname.toLowerCase() === dev.hostname.toLowerCase();
                                                                     const isReachable = dev.status === "REACHABLE";
@@ -550,12 +575,19 @@ export default function SiteInventoryManager({
                                                                         <div
                                                                             key={dev.hostname}
                                                                             onClick={() => setSelectedEntity({ type: "device", hostname: dev.hostname })}
-                                                                            className={`group flex items-center justify-between px-2 py-1 rounded text-[11px] cursor-pointer transition ${
+                                                                            className={`group relative flex items-center justify-between pr-2 py-1 rounded text-[11px] cursor-pointer transition ${
                                                                                 isDevSelected
                                                                                     ? "bg-blue-600 text-white font-medium shadow-sm"
                                                                                     : "hover:bg-slate-800/60 text-slate-300"
                                                                             }`}
+                                                                            style={{ paddingLeft: `${switchIndent}px` }}
                                                                         >
+                                                                            {/* Horizontal branch tick connector */}
+                                                                            <span 
+                                                                                className="absolute w-2.5 h-[1px] bg-slate-800/80 pointer-events-none"
+                                                                                style={{ left: `${idfIndent + 8}px`, top: "50%" }}
+                                                                            />
+
                                                                             <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
                                                                                 <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                                                                                     isReachable ? "bg-emerald-400" : "bg-red-400"
@@ -601,7 +633,8 @@ export default function SiteInventoryManager({
                                                     setNewIdfSelectedHosts([]);
                                                     setIsAddIdfModalOpen(true);
                                                 }}
-                                                className="flex items-center gap-1.5 px-2 py-1 text-[10px] text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-md transition w-full text-left"
+                                                className="flex items-center gap-1.5 pr-2 py-1 text-[10px] text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-md transition w-full text-left"
+                                                style={{ paddingLeft: `${idfIndent}px` }}
                                             >
                                                 <Plus className="w-3 h-3" />
                                                 <span>Add IDF Closet to {siteEntry.siteCode}</span>
