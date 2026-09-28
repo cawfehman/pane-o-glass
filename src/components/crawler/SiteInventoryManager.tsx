@@ -711,13 +711,13 @@ export default function SiteInventoryManager({
             </div>
 
             {/* Right Column: Command & Validation Workspace */}
-            <div className="flex-1 min-w-0 flex flex-col bg-slate-950/50 overflow-y-auto">
+            <div className="flex-1 min-w-0 flex flex-col bg-slate-950/50 h-full overflow-hidden">
                 {/* 1. SITE VIEW */}
                 {selectedEntity.type === "site" && activeSite && (
-                    <div className="p-6 space-y-6">
-                        {/* Site Header Banner */}
-                        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
-                            <div className="space-y-1.5">
+                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                        {/* Pinned Site Header */}
+                        <div className="shrink-0 px-6 py-4 border-b border-slate-800 bg-slate-950/90 backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4 z-10 shadow-sm">
+                            <div className="space-y-1">
                                 <div className="flex items-center gap-2.5">
                                     <div className={`p-2 rounded-xl border ${
                                         activeSite.siteLookup?.isHub 
@@ -750,18 +750,13 @@ export default function SiteInventoryManager({
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-sm text-slate-400 mt-0.5">
+                                        <p className="text-xs text-slate-400 mt-0.5">
                                             {activeSite.siteLookup?.name || activeSite.siteCode}
                                             {activeSite.siteLookup?.city && ` • ${activeSite.siteLookup.city}`}
+                                            {activeSite.siteLookup?.address && ` • ${activeSite.siteLookup.address}`}
                                         </p>
                                     </div>
                                 </div>
-                                {activeSite.siteLookup?.address && (
-                                    <div className="flex items-center gap-1.5 text-xs text-slate-400 pt-1">
-                                        <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                        <span>{activeSite.siteLookup.address}</span>
-                                    </div>
-                                )}
                             </div>
 
                             {/* Action Buttons */}
@@ -813,15 +808,17 @@ export default function SiteInventoryManager({
                             </div>
                         </div>
 
-                        {/* KPI Cards */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-1">
-                                <span className="text-[11px] text-slate-400 font-medium">Closets & IDFs</span>
-                                <div className="text-2xl font-bold font-mono text-white">
-                                    {activeSite.idfs.size}
+                        {/* Scrollable Site Body */}
+                        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
+                            {/* KPI Cards */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-1">
+                                    <span className="text-[11px] text-slate-400 font-medium">Closets & IDFs</span>
+                                    <div className="text-2xl font-bold font-mono text-white">
+                                        {activeSite.idfs.size}
+                                    </div>
+                                    <span className="text-[10px] text-slate-500">Distribution rooms</span>
                                 </div>
-                                <span className="text-[10px] text-slate-500">Distribution rooms</span>
-                            </div>
 
                             <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-1">
                                 <span className="text-[11px] text-slate-400 font-medium">Total Switches</span>
@@ -1026,16 +1023,17 @@ export default function SiteInventoryManager({
                             </div>
                         </div>
                     </div>
-                )}
+                </div>
+            )}
 
                 {/* 2. IDF CLOSET VIEW */}
                 {selectedEntity.type === "idf" && (
-                    <div className="p-6 space-y-6">
-                        {/* IDF Header */}
-                        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
+                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                        {/* Pinned IDF Header */}
+                        <div className="shrink-0 px-6 py-4 border-b border-slate-800 bg-slate-950/90 backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4 z-10 shadow-sm">
                             <div className="flex items-center gap-3">
-                                <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
-                                    <DoorOpen className="w-6 h-6" />
+                                <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                                    <DoorOpen className="w-5 h-5" />
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-2">
@@ -1054,7 +1052,7 @@ export default function SiteInventoryManager({
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 shrink-0">
                                 {activeIdfDevices.length > 0 && (
                                     <button
                                         type="button"
@@ -1083,7 +1081,9 @@ export default function SiteInventoryManager({
                             </div>
                         </div>
 
-                        {/* Closet Switches Table */}
+                        {/* Scrollable IDF Body */}
+                        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
+                            {/* Closet Switches Table */}
                         <div className="space-y-3">
                             <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                                 <Server className="w-4 h-4 text-cyan-400" />
@@ -1172,20 +1172,21 @@ export default function SiteInventoryManager({
                             </div>
                         </div>
                     </div>
-                )}
+                </div>
+            )}
 
                 {/* 3. DEVICE / SWITCH VIEW */}
                 {selectedEntity.type === "device" && activeDevice && (
-                    <div className="p-6 space-y-6">
-                        {/* Device Header Banner */}
-                        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
+                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                        {/* Pinned Device Header */}
+                        <div className="shrink-0 px-6 py-4 border-b border-slate-800 bg-slate-950/90 backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4 z-10 shadow-sm">
                             <div className="flex items-center gap-3.5">
-                                <div className={`p-3 rounded-xl border ${
+                                <div className={`p-2.5 rounded-xl border ${
                                     activeDevice.status === "REACHABLE"
                                         ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
                                         : "bg-red-500/10 border-red-500/30 text-red-400"
                                 }`}>
-                                    <Server className="w-6 h-6" />
+                                    <Server className="w-5 h-5" />
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-2">
@@ -1201,7 +1202,7 @@ export default function SiteInventoryManager({
                                             {activeDevice.status === "REACHABLE" ? "Online" : "Offline"}
                                         </span>
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-1">
+                                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-0.5">
                                         <span className="font-mono text-cyan-300 font-semibold">{activeDevice.primaryIp || activeDevice.ip_address || "No IP"}</span>
                                         <span>•</span>
                                         <span>Site: <strong className="text-slate-200">{activeDevice.siteOverride || activeDevice.site || "—"}</strong></span>
@@ -1211,7 +1212,7 @@ export default function SiteInventoryManager({
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 shrink-0">
                                 <button
                                     type="button"
                                     onClick={() => onReseedDevice(activeDevice)}
@@ -1237,135 +1238,138 @@ export default function SiteInventoryManager({
                             </div>
                         </div>
 
-                        {/* Inline Edit Form if active */}
-                        {editingNodeHost && (
-                            <div className="p-4 bg-slate-900 border border-amber-500/40 rounded-xl space-y-3 shadow-xl">
-                                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                                    <h4 className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                                        <Edit3 className="w-3.5 h-3.5 text-amber-400" />
-                                        Authoritative Node Assignment Override
-                                    </h4>
-                                    <button
-                                        type="button"
-                                        onClick={() => setEditingNodeHost(null)}
-                                        className="text-slate-400 hover:text-white"
-                                    >
-                                        <X className="w-4 h-4" />
-                                    </button>
-                                </div>
+                        {/* Scrollable Device Body */}
+                        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
+                            {/* Inline Edit Form if active */}
+                            {editingNodeHost && (
+                                <div className="p-4 bg-slate-900 border border-amber-500/40 rounded-xl space-y-3 shadow-xl">
+                                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                                        <h4 className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                                            <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                                            Authoritative Node Assignment Override
+                                        </h4>
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditingNodeHost(null)}
+                                            className="text-slate-400 hover:text-white"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div>
-                                        <label className="text-[11px] text-slate-400 font-semibold block mb-1">Target Site</label>
-                                        <input
-                                            type="text"
-                                            value={overrideSite}
-                                            onChange={(e) => setOverrideSite(e.target.value.toUpperCase())}
-                                            placeholder="e.g. KEL"
-                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white uppercase font-mono"
-                                        />
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div>
+                                            <label className="text-[11px] text-slate-400 font-semibold block mb-1">Target Site</label>
+                                            <input
+                                                type="text"
+                                                value={overrideSite}
+                                                onChange={(e) => setOverrideSite(e.target.value.toUpperCase())}
+                                                placeholder="e.g. KEL"
+                                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white uppercase font-mono"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[11px] text-slate-400 font-semibold block mb-1">Target Closet / IDF</label>
+                                            <input
+                                                type="text"
+                                                value={overrideIdf}
+                                                onChange={(e) => setOverrideIdf(e.target.value.toUpperCase())}
+                                                placeholder="e.g. MDF or 2MC"
+                                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white uppercase font-mono"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[11px] text-slate-400 font-semibold block mb-1">Role Override</label>
+                                            <input
+                                                type="text"
+                                                value={overrideRole}
+                                                onChange={(e) => setOverrideRole(e.target.value)}
+                                                placeholder="e.g. Core Switch"
+                                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                                            />
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label className="text-[11px] text-slate-400 font-semibold block mb-1">Target Closet / IDF</label>
-                                        <input
-                                            type="text"
-                                            value={overrideIdf}
-                                            onChange={(e) => setOverrideIdf(e.target.value.toUpperCase())}
-                                            placeholder="e.g. MDF or 2MC"
-                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white uppercase font-mono"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-[11px] text-slate-400 font-semibold block mb-1">Role Override</label>
-                                        <input
-                                            type="text"
-                                            value={overrideRole}
-                                            onChange={(e) => setOverrideRole(e.target.value)}
-                                            placeholder="e.g. Core Switch"
-                                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
-                                        />
-                                    </div>
-                                </div>
 
-                                {overrideErrorMsg && (
-                                    <p className="text-xs text-red-400">{overrideErrorMsg}</p>
-                                )}
-                                {overrideSuccessMsg && (
-                                    <p className="text-xs text-emerald-400">{overrideSuccessMsg}</p>
-                                )}
+                                    {overrideErrorMsg && (
+                                        <p className="text-xs text-red-400">{overrideErrorMsg}</p>
+                                    )}
+                                    {overrideSuccessMsg && (
+                                        <p className="text-xs text-emerald-400">{overrideSuccessMsg}</p>
+                                    )}
 
-                                <div className="flex justify-end gap-2 pt-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => setEditingNodeHost(null)}
-                                        className="px-3 py-1.5 text-xs text-slate-400 hover:text-white"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleSaveNodeOverride(activeDevice.hostname)}
-                                        disabled={savingOverride}
-                                        className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition"
-                                    >
-                                        {savingOverride ? "Saving..." : "Save Override"}
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Specs Grid */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3">
-                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                    <Cpu className="w-3.5 h-3.5 text-blue-400" />
-                                    Hardware & Software
-                                </h3>
-                                <div className="space-y-2 text-xs">
-                                    <div className="flex justify-between py-1 border-b border-slate-800/60">
-                                        <span className="text-slate-400">Model</span>
-                                        <span className="font-semibold text-white">{activeDevice.model || "—"}</span>
-                                    </div>
-                                    <div className="flex justify-between py-1 border-b border-slate-800/60">
-                                        <span className="text-slate-400">Serial Number</span>
-                                        <span className="font-mono text-white">{activeDevice.serialNumber || "—"}</span>
-                                    </div>
-                                    <div className="flex justify-between py-1 border-b border-slate-800/60">
-                                        <span className="text-slate-400">Software Version</span>
-                                        <span className="font-mono text-slate-200 text-[11px] truncate max-w-[220px]" title={activeDevice.version}>
-                                            {activeDevice.version || "—"}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between py-1">
-                                        <span className="text-slate-400">Uptime</span>
-                                        <span className="text-slate-200">{activeDevice.uptime || "—"}</span>
+                                    <div className="flex justify-end gap-2 pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditingNodeHost(null)}
+                                            className="px-3 py-1.5 text-xs text-slate-400 hover:text-white"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleSaveNodeOverride(activeDevice.hostname)}
+                                            disabled={savingOverride}
+                                            className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition"
+                                        >
+                                            {savingOverride ? "Saving..." : "Save Override"}
+                                        </button>
                                     </div>
                                 </div>
-                            </div>
+                            )}
 
-                            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3">
-                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                                    <Activity className="w-3.5 h-3.5 text-emerald-400" />
-                                    Discovery & Telemetry
-                                </h3>
-                                <div className="space-y-2 text-xs">
-                                    <div className="flex justify-between py-1 border-b border-slate-800/60">
-                                        <span className="text-slate-400">Last Verified</span>
-                                        <span className="text-emerald-400 font-mono">
-                                            {activeDevice.lastVerifiedAt ? new Date(activeDevice.lastVerifiedAt).toLocaleString() : "Never"}
-                                        </span>
+                            {/* Specs Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Cpu className="w-3.5 h-3.5 text-blue-400" />
+                                        Hardware & Software
+                                    </h3>
+                                    <div className="space-y-2 text-xs">
+                                        <div className="flex justify-between py-1 border-b border-slate-800/60">
+                                            <span className="text-slate-400">Model</span>
+                                            <span className="font-semibold text-white">{activeDevice.model || "—"}</span>
+                                        </div>
+                                        <div className="flex justify-between py-1 border-b border-slate-800/60">
+                                            <span className="text-slate-400">Serial Number</span>
+                                            <span className="font-mono text-white">{activeDevice.serialNumber || "—"}</span>
+                                        </div>
+                                        <div className="flex justify-between py-1 border-b border-slate-800/60">
+                                            <span className="text-slate-400">Software Version</span>
+                                            <span className="font-mono text-slate-200 text-[11px] truncate max-w-[220px]" title={activeDevice.version}>
+                                                {activeDevice.version || "—"}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between py-1">
+                                            <span className="text-slate-400">Uptime</span>
+                                            <span className="text-slate-200">{activeDevice.uptime || "—"}</span>
+                                        </div>
                                     </div>
-                                    <div className="flex justify-between py-1 border-b border-slate-800/60">
-                                        <span className="text-slate-400">Auth Profile</span>
-                                        <span className="font-mono text-slate-200">{activeDevice.credentialUsed || "—"}</span>
-                                    </div>
-                                    <div className="flex justify-between py-1 border-b border-slate-800/60">
-                                        <span className="text-slate-400">Total Ports</span>
-                                        <span className="font-mono text-white">{activeDevice.interfaces?.length || 0}</span>
-                                    </div>
-                                    <div className="flex justify-between py-1">
-                                        <span className="text-slate-400">Direct Peers (CDP/LLDP)</span>
-                                        <span className="font-mono text-white">{activeDevice.cdpNeighbors?.length || 0}</span>
+                                </div>
+
+                                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3">
+                                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                                        Discovery & Telemetry
+                                    </h3>
+                                    <div className="space-y-2 text-xs">
+                                        <div className="flex justify-between py-1 border-b border-slate-800/60">
+                                            <span className="text-slate-400">Last Verified</span>
+                                            <span className="text-emerald-400 font-mono">
+                                                {activeDevice.lastVerifiedAt ? new Date(activeDevice.lastVerifiedAt).toLocaleString() : "Never"}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between py-1 border-b border-slate-800/60">
+                                            <span className="text-slate-400">Auth Profile</span>
+                                            <span className="font-mono text-slate-200">{activeDevice.credentialUsed || "—"}</span>
+                                        </div>
+                                        <div className="flex justify-between py-1 border-b border-slate-800/60">
+                                            <span className="text-slate-400">Total Ports</span>
+                                            <span className="font-mono text-white">{activeDevice.interfaces?.length || 0}</span>
+                                        </div>
+                                        <div className="flex justify-between py-1">
+                                            <span className="text-slate-400">Direct Peers (CDP/LLDP)</span>
+                                            <span className="font-mono text-white">{activeDevice.cdpNeighbors?.length || 0}</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1375,11 +1379,12 @@ export default function SiteInventoryManager({
 
                 {/* 4. FOLDER VIEW */}
                 {selectedEntity.type === "folder" && (
-                    <div className="p-6 space-y-6">
-                        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 flex items-center justify-between shadow-xl">
+                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                        {/* Pinned Folder Header */}
+                        <div className="shrink-0 px-6 py-4 border-b border-slate-800 bg-slate-950/90 backdrop-blur-md flex items-center justify-between z-10 shadow-sm">
                             <div className="flex items-center gap-3">
-                                <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400">
-                                    <FolderTree className="w-6 h-6" />
+                                <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400">
+                                    <FolderTree className="w-5 h-5" />
                                 </div>
                                 <div>
                                     <h2 className="text-xl font-bold text-white tracking-tight">
@@ -1389,6 +1394,13 @@ export default function SiteInventoryManager({
                                         Group container for network sites
                                     </p>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Scrollable Folder Body */}
+                        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
+                            <div className="bg-slate-900/40 border border-slate-800/60 rounded-xl p-6 text-center text-slate-400 text-xs">
+                                Select a specific site or closet from this group in the tree to manage and crawl assets.
                             </div>
                         </div>
                     </div>
