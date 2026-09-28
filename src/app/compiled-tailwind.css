@@ -1683,6 +1683,9 @@
       border-color: color-mix(in oklab, var(--color-amber-700) 80%, transparent);
     }
   }
+  .border-amber-800 {
+    border-color: var(--color-amber-800);
+  }
   .border-amber-800\/40 {
     border-color: color-mix(in srgb, oklch(47.3% 0.137 46.201) 40%, transparent);
     @supports (color: color-mix(in lab, red, red)) {

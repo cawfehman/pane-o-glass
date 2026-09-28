@@ -46,11 +46,16 @@ class Interface(BaseModel):
     duplex: Optional[str] = None
     admin_status: str = "up"
     oper_status: str = "up"
+    status: Optional[str] = None
     is_svi: bool = False
     is_trunk: bool = False
     access_vlan: Optional[int] = None
     allowed_vlans: Optional[str] = None
     description: Optional[str] = None
+
+    def model_post_init(self, __context: Any) -> None:
+        if not self.status:
+            self.status = self.oper_status
 
 
 class Route(BaseModel):

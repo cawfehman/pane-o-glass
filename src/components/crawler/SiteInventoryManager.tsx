@@ -45,7 +45,7 @@ import {
 import { CrawlIcon } from "./CrawlIcon";
 import { SiteMetadataLookup, parseDeviceSiteAndIdf, parseFloorFromIdf, detectSwitchStack } from "./TopologyGraph";
 import EditIdfModal from "./EditIdfModal";
-import { formatFullVerifiedDate } from "./DeviceInspectorDrawer";
+import { formatFullVerifiedDate, getInterfaceStatus } from "./DeviceInspectorDrawer";
 
 interface SiteInventoryManagerProps {
     devices: any[];
@@ -1884,20 +1884,16 @@ export default function SiteInventoryManager({
                                                     </thead>
                                                     <tbody className="divide-y divide-slate-800/60 font-mono">
                                                         {displayedInterfaces.map((intf: any, idx: number) => {
-                                                            const isUp = intf.status === "up" || intf.status === "connected";
+                                                            const intfStatus = getInterfaceStatus(intf);
                                                             return (
                                                                 <tr key={idx} className="hover:bg-slate-800/40 transition">
                                                                     <td className="py-2.5 px-4 font-bold text-white">
                                                                         {intf.name}
                                                                     </td>
                                                                     <td className="py-2.5 px-4 font-sans">
-                                                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                                                                            isUp 
-                                                                                ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800' 
-                                                                                : 'bg-red-950/60 text-red-400 border-red-800'
-                                                                        }`}>
-                                                                            <span className={`w-1.5 h-1.5 rounded-full ${isUp ? 'bg-emerald-400' : 'bg-red-400'}`}></span>
-                                                                            {intf.status || "down"}
+                                                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${intfStatus.badgeClass}`}>
+                                                                            <span className={`w-1.5 h-1.5 rounded-full ${intfStatus.dotClass}`} />
+                                                                            {intfStatus.label}
                                                                         </span>
                                                                     </td>
                                                                     <td className="py-2.5 px-4">

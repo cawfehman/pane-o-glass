@@ -42,6 +42,64 @@ export function formatFullVerifiedDate(ts?: string | null): string {
     });
 }
 
+export interface InterfaceStatusResult {
+    isUp: boolean;
+    label: string;
+    badgeClass: string;
+    dotClass: string;
+}
+
+export function getInterfaceStatus(intf: any): InterfaceStatusResult {
+    const oper = String(intf?.oper_status || intf?.status || "").trim().toLowerCase();
+    const admin = String(intf?.admin_status || "").trim().toLowerCase();
+
+    const isUp = oper === "up" || oper === "connected";
+    const isAdminDown = admin.includes("admin") || admin === "down";
+
+    if (isUp) {
+        return {
+            isUp: true,
+            label: "UP",
+            badgeClass: "bg-emerald-950/60 text-emerald-400 border-emerald-800",
+            dotClass: "bg-emerald-400"
+        };
+    }
+
+    if (isAdminDown) {
+        return {
+            isUp: false,
+            label: "ADMIN DOWN",
+            badgeClass: "bg-slate-900 text-slate-400 border-slate-700",
+            dotClass: "bg-slate-500"
+        };
+    }
+
+    if (oper === "notconnect") {
+        return {
+            isUp: false,
+            label: "NOT CONNECTED",
+            badgeClass: "bg-slate-900 text-slate-400 border-slate-700",
+            dotClass: "bg-slate-500"
+        };
+    }
+
+    if (oper.includes("err")) {
+        return {
+            isUp: false,
+            label: "ERR-DISABLED",
+            badgeClass: "bg-amber-950/60 text-amber-400 border-amber-800",
+            dotClass: "bg-amber-400"
+        };
+    }
+
+    return {
+        isUp: false,
+        label: (oper || admin || "down").toUpperCase(),
+        badgeClass: "bg-red-950/60 text-red-400 border-red-800",
+        dotClass: "bg-red-400"
+    };
+}
+
 interface DeviceInspectorDrawerProps {
     device: any | null;
     onClose: () => void;
@@ -938,7 +996,7 @@ export default function DeviceInspectorDrawer({
                         ) : (
                             <div className="space-y-2">
                                 {displayedInterfaces.map((intf: any, idx: number) => {
-                                    const isUp = intf.status === "up" || intf.status === "connected";
+                                    const intfStatus = getInterfaceStatus(intf);
                                     return (
                                         <div key={idx} className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 text-xs space-y-1.5 hover:border-slate-700 transition">
                                             <div className="flex items-center justify-between">
@@ -950,13 +1008,9 @@ export default function DeviceInspectorDrawer({
                                                         </span>
                                                     )}
                                                 </div>
-                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                                                    isUp 
-                                                        ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800' 
-                                                        : 'bg-red-950/60 text-red-400 border-red-800'
-                                                }`}>
-                                                    <span className={`w-1.5 h-1.5 rounded-full ${isUp ? 'bg-emerald-400' : 'bg-red-400'}`}></span>
-                                                    {intf.status || "down"}
+                                                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${intfStatus.badgeClass}`}>
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${intfStatus.dotClass}`}></span>
+                                                    {intfStatus.label}
                                                 </span>
                                             </div>
 

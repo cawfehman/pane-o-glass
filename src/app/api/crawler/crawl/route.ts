@@ -373,6 +373,26 @@ async function persistLatestSnapshot(
         const resolvedIdf = ov?.idfOverride ? String(ov.idfOverride).toUpperCase() : (dev.site_info?.idf ? dev.site_info.idf.toUpperCase() : fallbackIdf);
         const resolvedRole = ov?.roleOverride || dev.role;
 
+        // Ensure each interface has both oper_status and status populated
+        const normalizedInterfaces = (() => {
+            const raw = dev.interfaces || {};
+            if (typeof raw !== "object" || Array.isArray(raw)) return raw;
+            const out: Record<string, any> = {};
+            for (const [k, v] of Object.entries(raw)) {
+                if (v && typeof v === "object") {
+                    const intfObj = v as any;
+                    out[k] = {
+                        ...intfObj,
+                        status: intfObj.status || intfObj.oper_status || "down",
+                        oper_status: intfObj.oper_status || intfObj.status || "down"
+                    };
+                } else {
+                    out[k] = v;
+                }
+            }
+            return out;
+        })();
+
         await prisma.crawlDevice.create({
             data: {
                 snapshotId: newSnapshot.id,
@@ -394,7 +414,7 @@ async function persistLatestSnapshot(
                 idf: resolvedIdf,
                 roleCode: dev.site_info?.role_code || null,
                 iterator: dev.site_info?.iterator || null,
-                interfaces: dev.interfaces || {},
+                interfaces: normalizedInterfaces,
                 routes: dev.routes || [],
                 vlans: dev.vlans || [],
                 cdpNeighbors: dev.cdp_neighbors || [],
