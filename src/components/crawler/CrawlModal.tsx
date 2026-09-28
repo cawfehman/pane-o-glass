@@ -57,9 +57,9 @@ interface CrawlModalProps {
 export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, initialMaxHops }: CrawlModalProps) {
     const [mode, setMode] = useState<"mock" | "live">(initialSeed ? "live" : "mock");
     const [profile, setProfile] = useState<"discovery" | "mapping" | "intensive">("intensive");
-    const [name, setName] = useState<string>(initialSeed ? `Reseed from ${initialSeed}` : "Lab Multi-Site Topology");
+    const [name, setName] = useState<string>(initialSeed ? `Crawl ${initialSeed}` : "Lab Multi-Site Topology");
     const [seeds, setSeeds] = useState<string>(initialSeed || "10.10.1.1, 10.20.1.1");
-    const [maxHops, setMaxHops] = useState<number>(initialMaxHops ?? 1);
+    const [maxHops, setMaxHops] = useState<number>(initialMaxHops ?? 0);
     const [enableLldp, setEnableLldp] = useState<boolean>(false);
     const [enableEigrp, setEnableEigrp] = useState<boolean>(true);
 
@@ -97,8 +97,8 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
         if (initialSeed) {
             setMode("live");
             setSeeds(initialSeed);
-            setName(`Reseed from ${initialSeed}`);
-            setMaxHops(initialMaxHops ?? 1);
+            setName(`Crawl ${initialSeed}`);
+            setMaxHops(initialMaxHops ?? 0);
         }
     }, [initialSeed, initialMaxHops]);
 
@@ -203,14 +203,14 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
             setStatusMessage(
                 mode === "mock" 
                     ? `Generating ${profile.toUpperCase()} topology from lab fixtures...` 
-                    : `Connecting to seeds via SSH worker (${profile.toUpperCase()} profile, ${maxHops} hop max)...`
+                    : `Connecting to seeds via SSH worker (${profile.toUpperCase()} profile, ${maxHops === 0 ? "target switch only" : `${maxHops} hop max`})...`
             );
 
             const payload: any = {
                 name: name.trim() || (mode === "mock" ? "Mock Lab Topology" : "Live Production Crawl"),
                 useMock: mode === "mock",
                 profile,
-                maxHops: Math.min(Math.max(maxHops, 1), 10),
+                maxHops: Math.min(Math.max(maxHops, 0), 10),
                 enableLldp,
                 enableEigrp,
                 seeds: mode === "live" ? seeds.split(",").map(s => s.trim()).filter(Boolean) : undefined,
@@ -410,7 +410,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                 <div className="text-slate-400 hidden sm:flex items-center gap-2 text-[11px]">
                                     <span>Profile: <strong className="text-slate-200 uppercase">{profile}</strong></span>
                                     <span>•</span>
-                                    <span>Limit: <strong className="text-slate-200">{maxHops} {maxHops === 1 ? "Hop" : "Hops"}</strong></span>
+                                    <span>Limit: <strong className="text-slate-200">{maxHops === 0 ? "0 Hops (Target Only)" : maxHops === 1 ? "1 Hop" : `${maxHops} Hops`}</strong></span>
                                     {mode === "live" && (
                                         <>
                                             <span>•</span>
@@ -549,13 +549,13 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                             Max Hop Distance
                                         </label>
                                         <span className="font-mono text-blue-400 font-bold bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded text-xs">
-                                            {maxHops} {maxHops === 1 ? "Hop (Default)" : "Hops"}
+                                            {maxHops === 0 ? "0 Hops (Only This Switch)" : maxHops === 1 ? "1 Hop (Neighbors)" : `${maxHops} Hops`}
                                         </span>
                                     </div>
 
                                     <input
                                         type="range"
-                                        min={1}
+                                        min={0}
                                         max={10}
                                         value={maxHops}
                                         onChange={(e) => setMaxHops(parseInt(e.target.value, 10))}
@@ -563,10 +563,10 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                     />
 
                                     <div className="flex justify-between text-[10px] font-mono text-slate-500 px-0.5">
-                                        <span className="text-blue-400 font-semibold">1 (Default)</span>
+                                        <span className={maxHops === 0 ? "text-blue-400 font-semibold" : ""}>0 (Target Only)</span>
+                                        <span className={maxHops === 1 ? "text-blue-400 font-semibold" : ""}>1 (Neighbors)</span>
                                         <span>2 (Dist)</span>
                                         <span>4 (Campus)</span>
-                                        <span>7 (Ext)</span>
                                         <span className="text-amber-400 font-semibold">10 (Cap)</span>
                                     </div>
 
@@ -1082,7 +1082,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                         <span className="font-semibold uppercase tracking-wider text-slate-500">Profile:</span>
                         <span className="font-bold text-white uppercase">{profile}</span>
                         <span>•</span>
-                        <span>{maxHops} {maxHops === 1 ? "Hop Limit" : "Hops Limit"}</span>
+                        <span>{maxHops === 0 ? "0 Hops (Target Switch Only)" : maxHops === 1 ? "1 Hop Limit" : `${maxHops} Hops Limit`}</span>
                         <span>•</span>
                         <span className="text-slate-500 font-mono">{mode === "live" ? (seeds.split(",")[0] || "No seed") : "Mock lab"}</span>
                     </div>
@@ -1116,7 +1116,7 @@ export default function CrawlModal({ isOpen, onClose, onSuccess, initialSeed, in
                                 }}
                                 className="px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 transition cursor-pointer animate-in fade-in"
                             >
-                                <span>Open Topology #{completedSnapshot.num}</span>
+                                <span>{initialSeed ? "Update Master Inventory & Close" : `Open Topology #${completedSnapshot.num}`}</span>
                                 <ArrowRight className="w-3.5 h-3.5" />
                             </button>
                         )}

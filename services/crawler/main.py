@@ -139,7 +139,7 @@ def cmd_crawl(args, cfg: dict):
         max_workers=workers,
         use_mock=use_mock,
         crawl_profile=getattr(args, "profile", "intensive") or "intensive",
-        max_hops=getattr(args, "max_hops", 1),
+        max_hops=getattr(args, "max_hops", 0) if getattr(args, "max_hops", None) is not None else 0,
         enable_lldp=getattr(args, "enable_lldp", False),
         lldp_fallback_on_cdp_fail=not getattr(args, "no_lldp_fallback", False),
         enable_eigrp=getattr(args, "enable_eigrp", True),

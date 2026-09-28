@@ -720,6 +720,9 @@
   .h-0\.5 {
     height: calc(var(--spacing) * 0.5);
   }
+  .h-1 {
+    height: var(--spacing);
+  }
   .h-1\.5 {
     height: calc(var(--spacing) * 1.5);
   }
@@ -1674,12 +1677,6 @@
       border-color: color-mix(in oklab, var(--color-amber-600) 80%, transparent);
     }
   }
-  .border-amber-700\/60 {
-    border-color: color-mix(in srgb, oklch(55.5% 0.163 48.998) 60%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-amber-700) 60%, transparent);
-    }
-  }
   .border-amber-700\/80 {
     border-color: color-mix(in srgb, oklch(55.5% 0.163 48.998) 80%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1874,6 +1871,12 @@
   }
   .border-emerald-800 {
     border-color: var(--color-emerald-800);
+  }
+  .border-emerald-800\/40 {
+    border-color: color-mix(in srgb, oklch(43.2% 0.095 166.913) 40%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-emerald-800) 40%, transparent);
+    }
   }
   .border-emerald-800\/60 {
     border-color: color-mix(in srgb, oklch(43.2% 0.095 166.913) 60%, transparent);
@@ -2104,6 +2107,12 @@
     border-color: color-mix(in srgb, oklch(37.2% 0.044 257.287) 50%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-slate-700) 50%, transparent);
+    }
+  }
+  .border-slate-700\/60 {
+    border-color: color-mix(in srgb, oklch(37.2% 0.044 257.287) 60%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-slate-700) 60%, transparent);
     }
   }
   .border-slate-700\/80 {
@@ -2730,6 +2739,12 @@
   .bg-emerald-950 {
     background-color: var(--color-emerald-950);
   }
+  .bg-emerald-950\/40 {
+    background-color: color-mix(in srgb, oklch(26.2% 0.051 172.552) 40%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-emerald-950) 40%, transparent);
+    }
+  }
   .bg-emerald-950\/50 {
     background-color: color-mix(in srgb, oklch(26.2% 0.051 172.552) 50%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -3047,6 +3062,12 @@
   }
   .bg-sky-600 {
     background-color: var(--color-sky-600);
+  }
+  .bg-slate-400 {
+    background-color: var(--color-slate-400);
+  }
+  .bg-slate-500 {
+    background-color: var(--color-slate-500);
   }
   .bg-slate-600 {
     background-color: var(--color-slate-600);

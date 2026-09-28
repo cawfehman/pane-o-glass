@@ -57,6 +57,85 @@ interface SiteInventoryManagerProps {
     onNavigateToTopology?: (siteCode?: string) => void;
 }
 
+export type FreshnessCategory = "fresh" | "recent" | "stale" | "uncrawled" | "failed";
+
+export interface FreshnessInfo {
+    category: FreshnessCategory;
+    label: string;
+    subLabel: string;
+    color: "emerald" | "amber" | "slate" | "red";
+    dotClass: string;
+    badgeClass: string;
+    hoursAgo: number | null;
+}
+
+export function getDeviceFreshness(device: any): FreshnessInfo {
+    const hasActiveFailure = device.status && device.status !== "REACHABLE" && device.status !== "UNVERIFIED" && Boolean(device.failureReason || device.error);
+
+    const ts = device.lastVerifiedAt || (device.status === "REACHABLE" ? (device.createdAt || device.timestamp) : null);
+    
+    if (!ts) {
+        if (hasActiveFailure) {
+            return {
+                category: "failed",
+                label: "Crawl Failed",
+                subLabel: device.failureReason || "Connection failed",
+                color: "red",
+                dotClass: "bg-red-400",
+                badgeClass: "bg-red-950/60 text-red-400 border-red-800/60",
+                hoursAgo: null
+            };
+        }
+        return {
+            category: "uncrawled",
+            label: "Never Crawled",
+            subLabel: "No crawl history",
+            color: "slate",
+            dotClass: "bg-slate-500",
+            badgeClass: "bg-slate-900 text-slate-400 border-slate-700/60",
+            hoursAgo: null
+        };
+    }
+
+    const date = new Date(ts);
+    const diffMs = Date.now() - date.getTime();
+    const hoursAgo = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60)));
+    const daysAgo = Math.floor(hoursAgo / 24);
+
+    if (hoursAgo <= 24) {
+        const timeStr = hoursAgo === 0 ? "Just now" : `${hoursAgo}h ago`;
+        return {
+            category: "fresh",
+            label: `Fresh (${timeStr})`,
+            subLabel: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            color: "emerald",
+            dotClass: "bg-emerald-400",
+            badgeClass: "bg-emerald-950/60 text-emerald-400 border-emerald-800/60",
+            hoursAgo
+        };
+    } else if (daysAgo <= 7) {
+        return {
+            category: "recent",
+            label: `${daysAgo}d ago`,
+            subLabel: date.toLocaleDateString(),
+            color: "amber",
+            dotClass: "bg-amber-400",
+            badgeClass: "bg-amber-950/60 text-amber-400 border-amber-800/60",
+            hoursAgo
+        };
+    } else {
+        return {
+            category: "stale",
+            label: `Stale (${daysAgo}d ago)`,
+            subLabel: date.toLocaleDateString(),
+            color: "slate",
+            dotClass: "bg-slate-400",
+            badgeClass: "bg-slate-900 text-slate-400 border-slate-700",
+            hoursAgo
+        };
+    }
+}
+
 type SelectedEntity = 
     | { type: "site"; siteCode: string }
     | { type: "idf"; siteCode: string; idfCode: string }
@@ -76,7 +155,7 @@ export default function SiteInventoryManager({
 }: SiteInventoryManagerProps) {
     const [searchQuery, setSearchQuery] = useState("");
     const [roleFilter, setRoleFilter] = useState<string>("ALL");
-    const [healthFilter, setHealthFilter] = useState<"ALL" | "REACHABLE" | "UNREACHABLE">("ALL");
+    const [freshnessFilter, setFreshnessFilter] = useState<"ALL" | "FRESH" | "RECENT" | "STALE" | "UNCRAWLED" | "FAILED">("ALL");
 
     // Tree expanded states
     const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
@@ -306,7 +385,7 @@ export default function SiteInventoryManager({
         }
     };
 
-    // Filter devices based on search query, role filter, health filter
+    // Filter devices based on search query, role filter, freshness filter
     const matchesFilter = useCallback((dev: any) => {
         if (roleFilter !== "ALL") {
             const devRole = dev.roleOverride || dev.role || "";
@@ -317,8 +396,14 @@ export default function SiteInventoryManager({
             if (roleFilter === "L2" && (devRole === "L3 Switch" || devRole === "Router")) return false;
         }
 
-        if (healthFilter === "REACHABLE" && dev.status !== "REACHABLE") return false;
-        if (healthFilter === "UNREACHABLE" && dev.status === "REACHABLE") return false;
+        if (freshnessFilter !== "ALL") {
+            const freshness = getDeviceFreshness(dev);
+            if (freshnessFilter === "FRESH" && freshness.category !== "fresh") return false;
+            if (freshnessFilter === "RECENT" && freshness.category !== "recent") return false;
+            if (freshnessFilter === "STALE" && freshness.category !== "stale") return false;
+            if (freshnessFilter === "UNCRAWLED" && freshness.category !== "uncrawled") return false;
+            if (freshnessFilter === "FAILED" && freshness.category !== "failed") return false;
+        }
 
         if (!searchQuery.trim()) return true;
         const q = searchQuery.toLowerCase().trim();
@@ -330,7 +415,7 @@ export default function SiteInventoryManager({
         const idf = (dev.idfOverride || dev.idf || "").toLowerCase();
 
         return host.includes(q) || ip.includes(q) || model.includes(q) || serial.includes(q) || site.includes(q) || idf.includes(q);
-    }, [searchQuery, roleFilter, healthFilter]);
+    }, [searchQuery, roleFilter, freshnessFilter]);
 
     // Active selected object data
     const activeSite = selectedEntity.type === "site" ? siteMap.get(selectedEntity.siteCode) : null;
@@ -404,7 +489,7 @@ export default function SiteInventoryManager({
                         {visibleSites.map((siteEntry: any) => {
                             const isSiteExpanded = expandedSites[siteEntry.siteCode] === true;
                             const isSiteSelected = selectedEntity.type === "site" && selectedEntity.siteCode === siteEntry.siteCode;
-                            const reachableCount = siteEntry.allDevices.filter((d: any) => d.status === "REACHABLE").length;
+                            const freshCount = siteEntry.allDevices.filter((d: any) => getDeviceFreshness(d).category === "fresh").length;
                             const totalDevs = siteEntry.allDevices.length;
                             const isHub = siteEntry.siteLookup?.isHub;
                             const idfKeys = Array.from(siteEntry.idfs.keys()).sort((a: any, b: any) => {
@@ -457,14 +542,20 @@ export default function SiteInventoryManager({
                                         </div>
 
                                         <div className="flex items-center gap-1 shrink-0">
-                                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono border ${
-                                                totalDevs === 0 
-                                                    ? "bg-slate-800 text-slate-400 border-slate-700" 
-                                                    : reachableCount === totalDevs 
-                                                    ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/60" 
-                                                    : "bg-amber-950/60 text-amber-300 border-amber-700/60"
-                                            }`}>
-                                                {reachableCount}/{totalDevs}
+                                            <span 
+                                                className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono border flex items-center gap-1 ${
+                                                    totalDevs === 0 
+                                                        ? "bg-slate-800 text-slate-400 border-slate-700" 
+                                                        : freshCount === totalDevs 
+                                                        ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/60" 
+                                                        : freshCount > 0
+                                                        ? "bg-emerald-950/40 text-emerald-300 border-emerald-800/40"
+                                                        : "bg-slate-800 text-slate-400 border-slate-700"
+                                                }`}
+                                                title={`${freshCount} fresh (≤24h) of ${totalDevs} total switches`}
+                                            >
+                                                <span className={`w-1.5 h-1.5 rounded-full ${freshCount > 0 ? "bg-emerald-400" : "bg-slate-500"}`} />
+                                                <span>{freshCount}/{totalDevs}</span>
                                             </span>
                                             <button
                                                 type="button"
@@ -496,7 +587,6 @@ export default function SiteInventoryManager({
                                                 const isIdfSelected = selectedEntity.type === "idf" && selectedEntity.siteCode === siteEntry.siteCode && selectedEntity.idfCode === idfCode;
                                                 const idfDevs = siteEntry.idfs.get(idfCode) || [];
                                                 const filteredIdfDevs = idfDevs.filter((d: any) => matchesFilter(d));
-                                                const reachableIdfCount = idfDevs.filter((d: any) => d.status === "REACHABLE").length;
                                                 const floorInfo = parseFloorFromIdf(idfCode);
 
                                                 return (
@@ -539,9 +629,22 @@ export default function SiteInventoryManager({
                                                             </div>
 
                                                             <div className="flex items-center gap-1 shrink-0">
-                                                                <span className="text-[9px] px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
-                                                                    {reachableIdfCount}/{idfDevs.length}
-                                                                </span>
+                                                                {(() => {
+                                                                    const freshIdfCount = idfDevs.filter((d: any) => getDeviceFreshness(d).category === "fresh").length;
+                                                                    return (
+                                                                        <span 
+                                                                            className={`text-[9px] px-1 py-0.2 rounded font-mono flex items-center gap-1 ${
+                                                                                freshIdfCount > 0 
+                                                                                    ? "bg-emerald-950/40 text-emerald-300 border border-emerald-800/40" 
+                                                                                    : "bg-slate-800 text-slate-400 border border-slate-700/60"
+                                                                            }`}
+                                                                            title={`${freshIdfCount} fresh (≤24h) of ${idfDevs.length} total switches`}
+                                                                        >
+                                                                            <span className={`w-1 h-1 rounded-full ${freshIdfCount > 0 ? "bg-emerald-400" : "bg-slate-500"}`} />
+                                                                            <span>{freshIdfCount}/{idfDevs.length}</span>
+                                                                        </span>
+                                                                    );
+                                                                })()}
                                                                 <button
                                                                     type="button"
                                                                     title={`Crawl closet ${idfCode}`}
@@ -568,7 +671,7 @@ export default function SiteInventoryManager({
 
                                                                 {filteredIdfDevs.map((dev: any) => {
                                                                     const isDevSelected = selectedEntity.type === "device" && selectedEntity.hostname.toLowerCase() === dev.hostname.toLowerCase();
-                                                                    const isReachable = dev.status === "REACHABLE";
+                                                                    const freshness = getDeviceFreshness(dev);
                                                                     const isL3 = dev.role === "Router" || dev.role === "L3 Switch";
 
                                                                     return (
@@ -589,9 +692,10 @@ export default function SiteInventoryManager({
                                                                             />
 
                                                                             <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
-                                                                                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                                                                                    isReachable ? "bg-emerald-400" : "bg-red-400"
-                                                                                }`} />
+                                                                                <div 
+                                                                                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${freshness.dotClass}`} 
+                                                                                    title={freshness.label} 
+                                                                                />
                                                                                 <Server className="w-3 h-3 text-slate-400 shrink-0" />
                                                                                 <span className="font-mono truncate">{dev.hostname}</span>
                                                                             </div>
@@ -719,13 +823,16 @@ export default function SiteInventoryManager({
                         </select>
 
                         <select
-                            value={healthFilter}
-                            onChange={(e) => setHealthFilter(e.target.value as any)}
+                            value={freshnessFilter}
+                            onChange={(e) => setFreshnessFilter(e.target.value as any)}
                             className="bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-[10px] text-slate-300 focus:outline-none focus:border-blue-500 flex-1"
                         >
-                            <option value="ALL">All Status</option>
-                            <option value="REACHABLE">Reachable Only</option>
-                            <option value="UNREACHABLE">Unreachable Only</option>
+                            <option value="ALL">All Freshness</option>
+                            <option value="FRESH">🟢 Fresh (≤ 24h)</option>
+                            <option value="RECENT">🟡 Recent (1 - 7d)</option>
+                            <option value="STALE">⚪ Stale (&gt; 7d)</option>
+                            <option value="UNCRAWLED">⚪ Never Crawled</option>
+                            <option value="FAILED">🔴 Crawl Errors</option>
                         </select>
                     </div>
                 </div>
@@ -855,18 +962,26 @@ export default function SiteInventoryManager({
 
                             <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-1">
                                 <span className="text-[11px] text-slate-400 font-medium">Total Switches</span>
-                                <div className="text-2xl font-bold font-mono text-white flex items-center gap-2">
-                                    <span>{activeSite.allDevices.length}</span>
-                                    <span className="text-xs font-normal text-slate-400">
-                                        ({activeSite.allDevices.filter(d => d.status === "REACHABLE").length} online)
-                                    </span>
-                                </div>
-                                <span className="text-[10px] text-emerald-400">
-                                    {activeSite.allDevices.length > 0 
-                                        ? `${Math.round((activeSite.allDevices.filter(d => d.status === "REACHABLE").length / activeSite.allDevices.length) * 100)}% reachability`
-                                        : "No switches discovered"
-                                    }
-                                </span>
+                                {(() => {
+                                    const siteFreshCount = activeSite.allDevices.filter(d => getDeviceFreshness(d).category === "fresh").length;
+                                    return (
+                                        <>
+                                            <div className="text-2xl font-bold font-mono text-white flex items-center gap-2">
+                                                <span>{activeSite.allDevices.length}</span>
+                                                <span className="text-xs font-normal text-emerald-400 flex items-center gap-1 font-sans">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                                                    {siteFreshCount} fresh
+                                                </span>
+                                            </div>
+                                            <span className="text-[10px] text-slate-400">
+                                                {siteFreshCount > 0 
+                                                    ? `${siteFreshCount} crawled in last 24h • ${activeSite.allDevices.length - siteFreshCount} awaiting crawl` 
+                                                    : "Awaiting crawl validation"
+                                                }
+                                            </span>
+                                        </>
+                                    );
+                                })()}
                             </div>
 
                             <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-1">
@@ -956,9 +1071,14 @@ export default function SiteInventoryManager({
 
                                             <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-800/80 text-slate-400">
                                                 <span>{devs.length} switches {stackCount > 0 && `(${stackCount} stack)`}</span>
-                                                <span className={reachableInIdf === devs.length ? "text-emerald-400 font-medium" : "text-amber-400 font-medium"}>
-                                                    {reachableInIdf}/{devs.length} online
-                                                </span>
+                                                {(() => {
+                                                    const idfFresh = devs.filter((d: any) => getDeviceFreshness(d).category === "fresh").length;
+                                                    return (
+                                                        <span className={idfFresh > 0 ? "text-emerald-400 font-medium" : "text-slate-400 font-medium"}>
+                                                            {idfFresh}/{devs.length} fresh
+                                                        </span>
+                                                    );
+                                                })()}
                                             </div>
                                         </div>
                                     );
@@ -977,7 +1097,7 @@ export default function SiteInventoryManager({
                                 <table className="w-full text-left text-xs text-slate-300">
                                     <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
                                         <tr>
-                                            <th className="py-3 px-4">Status</th>
+                                            <th className="py-3 px-4">Freshness</th>
                                             <th className="py-3 px-4">Hostname</th>
                                             <th className="py-3 px-4">Management IP</th>
                                             <th className="py-3 px-4">Closet / IDF</th>
@@ -990,7 +1110,7 @@ export default function SiteInventoryManager({
                                     <tbody className="divide-y divide-slate-800/60">
                                         {activeSite.allDevices.map((dev: any) => {
                                             const { idf: devIdf } = parseDeviceSiteAndIdf(dev.hostname, dev.siteOverride || dev.site, dev.idfOverride || dev.idf);
-                                            const isReachable = dev.status === "REACHABLE";
+                                            const freshness = getDeviceFreshness(dev);
                                             const isL3 = dev.role === "Router" || dev.role === "L3 Switch";
 
                                             return (
@@ -1000,13 +1120,9 @@ export default function SiteInventoryManager({
                                                     className="hover:bg-slate-800/40 cursor-pointer transition"
                                                 >
                                                     <td className="py-3 px-4">
-                                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                                                            isReachable 
-                                                                ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/60" 
-                                                                : "bg-red-950/60 text-red-400 border-red-800/60"
-                                                        }`}>
-                                                            {isReachable ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                                                            {isReachable ? "Online" : "Offline"}
+                                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${freshness.badgeClass}`}>
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${freshness.dotClass}`} />
+                                                            {freshness.label}
                                                         </span>
                                                     </td>
                                                     <td className="py-3 px-4 font-mono font-bold text-white">
@@ -1127,7 +1243,7 @@ export default function SiteInventoryManager({
                                 <table className="w-full text-left text-xs text-slate-300">
                                     <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
                                         <tr>
-                                            <th className="py-3 px-4">Status</th>
+                                            <th className="py-3 px-4">Freshness</th>
                                             <th className="py-3 px-4">Hostname</th>
                                             <th className="py-3 px-4">Management IP</th>
                                             <th className="py-3 px-4">Role</th>
@@ -1139,7 +1255,7 @@ export default function SiteInventoryManager({
                                     </thead>
                                     <tbody className="divide-y divide-slate-800/60">
                                         {activeIdfDevices.map((dev: any) => {
-                                            const isReachable = dev.status === "REACHABLE";
+                                            const freshness = getDeviceFreshness(dev);
                                             const stack = detectSwitchStack(dev);
 
                                             return (
@@ -1149,13 +1265,9 @@ export default function SiteInventoryManager({
                                                     className="hover:bg-slate-800/40 cursor-pointer transition"
                                                 >
                                                     <td className="py-3 px-4">
-                                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                                                            isReachable 
-                                                                ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/60" 
-                                                                : "bg-red-950/60 text-red-400 border-red-800/60"
-                                                        }`}>
-                                                            {isReachable ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                                                            {isReachable ? "Online" : "Offline"}
+                                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${freshness.badgeClass}`}>
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${freshness.dotClass}`} />
+                                                            {freshness.label}
                                                         </span>
                                                     </td>
                                                     <td className="py-3 px-4 font-mono font-bold text-white">
@@ -1215,9 +1327,13 @@ export default function SiteInventoryManager({
                         <div className="shrink-0 px-6 py-4 border-b border-slate-800 bg-slate-950/90 backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4 z-10 shadow-sm">
                             <div className="flex items-center gap-3.5">
                                 <div className={`p-2.5 rounded-xl border ${
-                                    activeDevice.status === "REACHABLE"
-                                        ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
-                                        : "bg-red-500/10 border-red-500/30 text-red-400"
+                                    getDeviceFreshness(activeDevice).category === "fresh"
+                                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                                        : getDeviceFreshness(activeDevice).category === "recent"
+                                        ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                                        : getDeviceFreshness(activeDevice).category === "failed"
+                                        ? "bg-red-500/10 border-red-500/30 text-red-400"
+                                        : "bg-slate-800 border-slate-700 text-slate-400"
                                 }`}>
                                     <Server className="w-5 h-5" />
                                 </div>
@@ -1226,14 +1342,15 @@ export default function SiteInventoryManager({
                                         <h2 className="text-xl font-bold text-white tracking-tight font-mono">
                                             {activeDevice.hostname}
                                         </h2>
-                                        <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                                            activeDevice.status === "REACHABLE"
-                                                ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/60"
-                                                : "bg-red-950/60 text-red-400 border-red-800/60"
-                                        }`}>
-                                            {activeDevice.status === "REACHABLE" ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
-                                            {activeDevice.status === "REACHABLE" ? "Online" : "Offline"}
-                                        </span>
+                                        {(() => {
+                                            const freshness = getDeviceFreshness(activeDevice);
+                                            return (
+                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${freshness.badgeClass}`}>
+                                                    <span className={`w-2 h-2 rounded-full ${freshness.dotClass}`} />
+                                                    {freshness.label}
+                                                </span>
+                                            );
+                                        })()}
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-0.5">
                                         <span className="font-mono text-cyan-300 font-semibold">{activeDevice.primaryIp || activeDevice.ip_address || "No IP"}</span>
@@ -1386,9 +1503,15 @@ export default function SiteInventoryManager({
                                     </h3>
                                     <div className="space-y-2 text-xs">
                                         <div className="flex justify-between py-1 border-b border-slate-800/60">
-                                            <span className="text-slate-400">Last Verified</span>
+                                            <span className="text-slate-400">Freshness Status</span>
+                                            <span className="text-slate-200 font-medium">
+                                                {getDeviceFreshness(activeDevice).label}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between py-1 border-b border-slate-800/60">
+                                            <span className="text-slate-400">Last Crawled</span>
                                             <span className="text-emerald-400 font-mono">
-                                                {activeDevice.lastVerifiedAt ? new Date(activeDevice.lastVerifiedAt).toLocaleString() : "Never"}
+                                                {activeDevice.lastVerifiedAt ? new Date(activeDevice.lastVerifiedAt).toLocaleString() : "Never Crawled"}
                                             </span>
                                         </div>
                                         <div className="flex justify-between py-1 border-b border-slate-800/60">

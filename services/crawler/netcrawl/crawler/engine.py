@@ -70,11 +70,11 @@ class NetworkCrawler:
         self.ssh_timeout = ssh_timeout
         self.use_mock = use_mock
         self.crawl_profile = crawl_profile.lower()
-        # Default hop depth is 1. Hard-capped at 10 to prevent runaway crawls and loop formation.
+        # Default hop depth is 0 (seed devices only). Hard-capped at 10 to prevent runaway crawls and loop formation.
         if max_hops is not None:
-            self.max_hops = max(1, min(int(max_hops), 10))
+            self.max_hops = max(0, min(int(max_hops), 10))
         else:
-            self.max_hops = 1
+            self.max_hops = 0
         self.enable_lldp = enable_lldp
         self.lldp_fallback_on_cdp_fail = lldp_fallback_on_cdp_fail
         self.enable_eigrp = enable_eigrp

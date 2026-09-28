@@ -461,8 +461,8 @@ export async function POST(request: NextRequest) {
         const seeds = Array.isArray(body.seeds) && body.seeds.length > 0 ? body.seeds : ["10.100.1.1"];
         const workers = body.workers || 10;
         const profile = typeof body.profile === "string" ? body.profile.toLowerCase() : "intensive";
-        const rawHops = body.maxHops !== undefined && body.maxHops !== null ? Number(body.maxHops) : 1;
-        const maxHops = Math.min(Math.max(isNaN(rawHops) ? 1 : rawHops, 1), 10);
+        const rawHops = body.maxHops !== undefined && body.maxHops !== null ? Number(body.maxHops) : 0;
+        const maxHops = Math.min(Math.max(isNaN(rawHops) ? 0 : rawHops, 0), 10);
         const enableLldp = Boolean(body.enableLldp);
         const enableEigrp = body.enableEigrp !== false;
 

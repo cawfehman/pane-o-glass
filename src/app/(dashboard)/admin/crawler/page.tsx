@@ -901,10 +901,12 @@ export default function AdminCrawlerPage() {
                     setIsCrawlModalOpen(false);
                     setReseedDevice(null);
                     setLastCrawlNotification({ snapshotId: newId });
-                    fetchSnapshots(selectedSnapshotId === "master" ? "master" : newId);
+                    // Always stay on Master cumulative topology to keep all sites, IDFs, and switches populated
+                    setSelectedSnapshotId("master");
+                    fetchSnapshots("master");
                 }}
                 initialSeed={reseedDevice?.ipAddress || reseedDevice?.ip_address || (Array.isArray(reseedDevice?.interfaces) ? reseedDevice?.interfaces.find((i: any) => i.ip_address)?.ip_address : undefined)}
-                initialMaxHops={1}
+                initialMaxHops={0}
             />
 
             {/* Snapshot Crawl Execution Log Viewer Modal */}
