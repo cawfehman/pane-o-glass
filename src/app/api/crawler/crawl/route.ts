@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { ensureSitesExistFromDevices } from "@/lib/sites";
 import { hasPermission } from "@/app/actions/permissions";
+import { invalidateCrawlerSnapshotCache } from "@/lib/crawlerSnapshotCache";
 import { spawn, execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
@@ -660,6 +661,9 @@ export async function POST(request: NextRequest) {
                             session,
                             clientIp
                         );
+
+                        // Invalidate cached server-side snapshots so next fetch retrieves fresh crawl data
+                        invalidateCrawlerSnapshotCache();
 
                         // Stream structured hop breakdown lines into console and run audit log
                         for (const line of hopTextSummary) {

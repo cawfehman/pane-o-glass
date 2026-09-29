@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/app/actions/permissions";
+import { getCachedSnapshot, setCachedSnapshot } from "@/lib/crawlerSnapshotCache";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -20,6 +21,19 @@ export async function GET(
         const { id } = await context.params;
         const cleanId = (id || "").trim();
         const isMaster = cleanId.toLowerCase() === "master";
+
+        const forceRefresh = request.nextUrl.searchParams.get("refresh") === "true";
+        if (!forceRefresh) {
+            const cached = getCachedSnapshot(cleanId);
+            if (cached) {
+                return NextResponse.json(cached, {
+                    headers: {
+                        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                        "X-Crawler-Cache": "HIT"
+                    }
+                });
+            }
+        }
 
         let snapshot: any = null;
         let devices: any[] = [];
@@ -433,7 +447,7 @@ export async function GET(
             }
         }
 
-        return NextResponse.json({
+        const responseData = {
             metadata: {
                 id: snapshot.id,
                 snapshotNumber: snapshot.snapshotNumber,
@@ -462,9 +476,17 @@ export async function GET(
             siteDirectory,
             devices: enrichedDevices,
             links: links || snapshot.links || []
-        }, {
+        };
+
+        setCachedSnapshot(cleanId, responseData);
+        if (isMaster) {
+            setCachedSnapshot("master", responseData);
+        }
+
+        return NextResponse.json(responseData, {
             headers: {
-                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "X-Crawler-Cache": "MISS"
             }
         });
     } catch (error: any) {

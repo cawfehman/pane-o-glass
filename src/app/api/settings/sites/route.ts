@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { hasPermission } from "@/app/actions/permissions";
 import { getSiteVersions, saveSiteMap, getSiteVersionContent, parseSiteCsv, stringifySiteCsv } from '@/lib/sites';
 import { logAudit } from '@/lib/audit';
+import { invalidateCrawlerSnapshotCache } from '@/lib/crawlerSnapshotCache';
 
 export async function GET(req: Request) {
     try {
@@ -74,6 +75,7 @@ export async function POST(req: Request) {
         const userId = (session.user as any)?.id;
         const clientIp = req.headers.get("x-forwarded-for")?.split(',')[0] || 'internal';
         await logAudit("SITE_MAP_INGEST", `Ingested full directory mapping spreadsheet: ${filename} (v${newVersion.versionNumber})`, userId, clientIp);
+        invalidateCrawlerSnapshotCache();
         return NextResponse.json({ success: true, version: newVersion });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
@@ -117,6 +119,7 @@ export async function PATCH(req: Request) {
             await logAudit("SITE_REVERT", `Reverted live mapping engine schema directly to ${targetVerStr} baseline snapshot`, userId, clientIp);
 
             const parsed = parseSiteCsv(targetContent.content);
+            invalidateCrawlerSnapshotCache();
             return NextResponse.json({ success: true, version: newVersion, sites: parsed, folders: (parsed as any).folders || [] });
         }
 
@@ -153,6 +156,7 @@ export async function PATCH(req: Request) {
             const filename = `Folder_Add_${Date.now()}.csv`;
             const newVersion = await saveSiteMap(newCsvContent, filename, username);
             await logAudit("FOLDER_CREATE", `Created site folder/group '${clean}' (v${newVersion.versionNumber})`, userId, clientIp);
+            invalidateCrawlerSnapshotCache();
             return NextResponse.json({ success: true, version: newVersion, sites, folders });
         }
 
@@ -171,6 +175,7 @@ export async function PATCH(req: Request) {
             const filename = `Folder_Delete_${Date.now()}.csv`;
             const newVersion = await saveSiteMap(newCsvContent, filename, username);
             await logAudit("FOLDER_DELETE", `Deleted site folder/group '${target}' (v${newVersion.versionNumber})`, userId, clientIp);
+            invalidateCrawlerSnapshotCache();
             return NextResponse.json({ success: true, version: newVersion, sites, folders });
         }
 
@@ -196,6 +201,7 @@ export async function PATCH(req: Request) {
             const filename = `Folder_Rename_${Date.now()}.csv`;
             const newVersion = await saveSiteMap(newCsvContent, filename, username);
             await logAudit("FOLDER_RENAME", `Renamed site folder from '${cleanOld}' to '${cleanNew}' (v${newVersion.versionNumber})`, userId, clientIp);
+            invalidateCrawlerSnapshotCache();
             return NextResponse.json({ success: true, version: newVersion, sites, folders });
         }
 
@@ -218,6 +224,7 @@ export async function PATCH(req: Request) {
             const filename = `Site_Move_${Date.now()}.csv`;
             const newVersion = await saveSiteMap(newCsvContent, filename, username);
             await logAudit("SITE_MOVE", `Moved site ${targetCode} to '${targetFolder || 'Unassigned'}' (v${newVersion.versionNumber})`, userId, clientIp);
+            invalidateCrawlerSnapshotCache();
             return NextResponse.json({ success: true, version: newVersion, sites, folders });
         }
 
@@ -288,7 +295,7 @@ export async function PATCH(req: Request) {
             : `Deleted site record ${site.code.toUpperCase()}`;
             
         await logAudit(actionLabel, `${actionDesc} via inline management console (v${newVersion.versionNumber})`, userId, clientIp);
-        
+        invalidateCrawlerSnapshotCache();
         return NextResponse.json({ success: true, version: newVersion, sites, folders });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });

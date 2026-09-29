@@ -39,6 +39,11 @@ import { CrawlIcon } from "@/components/crawler/CrawlIcon";
 import { ToolHelp } from "@/components/ToolHelp";
 import { getPermissionsForRole } from "@/app/actions/permissions";
 
+// Module-level client cache to enable instant zero-delay navigation between tools
+let clientSnapshotsList: any[] | null = null;
+let clientSelectedSnapshotId: string = "master";
+const clientSnapshotCache = new Map<string, { data: any; timestamp: number }>();
+
 export default function AdminCrawlerPage() {
     const { data: session, status } = useSession();
     const router = useRouter();
@@ -61,12 +66,18 @@ export default function AdminCrawlerPage() {
         }
     }, [role, isAdmin]);
 
-    // Snapshots list & current snapshot
-    const [snapshots, setSnapshots] = useState<any[]>([]);
-    const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>("master");
-    const [currentSnapshotData, setCurrentSnapshotData] = useState<any | null>(null);
-    const [loadingSnapshots, setLoadingSnapshots] = useState(true);
-    const [loadingDetails, setLoadingDetails] = useState(false);
+    // Snapshots list & current snapshot initialized from client cache for 0ms transitions
+    const [snapshots, setSnapshots] = useState<any[]>(() => clientSnapshotsList || []);
+    const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>(() => clientSelectedSnapshotId || "master");
+    const [currentSnapshotData, setCurrentSnapshotData] = useState<any | null>(() => {
+        const cached = clientSnapshotCache.get((clientSelectedSnapshotId || "master").toLowerCase());
+        return cached ? cached.data : null;
+    });
+    const [loadingSnapshots, setLoadingSnapshots] = useState<boolean>(() => !clientSnapshotsList);
+    const [loadingDetails, setLoadingDetails] = useState<boolean>(() => {
+        const cached = clientSnapshotCache.get((clientSelectedSnapshotId || "master").toLowerCase());
+        return !cached;
+    });
     const [error, setError] = useState<string | null>(null);
     const [lastCrawlNotification, setLastCrawlNotification] = useState<{ snapshotId: string; snapshotNumber?: number } | null>(null);
 
@@ -123,9 +134,16 @@ export default function AdminCrawlerPage() {
         }
     }, [status, hasCrawlerAccess, router]);
 
+    // Update module-level selected id whenever state changes
+    useEffect(() => {
+        clientSelectedSnapshotId = selectedSnapshotId;
+    }, [selectedSnapshotId]);
+
     // Fetch snapshots list
     const fetchSnapshots = async (preferredId?: string) => {
-        setLoadingSnapshots(true);
+        if (!clientSnapshotsList) {
+            setLoadingSnapshots(true);
+        }
         setError(null);
         try {
             const res = await fetch("/api/crawler/snapshots", { cache: "no-store" });
@@ -136,12 +154,11 @@ export default function AdminCrawlerPage() {
                 throw new Error("Failed to load snapshots list.");
             }
             const data = await res.json();
+            clientSnapshotsList = data;
             setSnapshots(data);
 
             const targetId = preferredId || (selectedSnapshotId === "master" || data.some((s: any) => s.id === selectedSnapshotId) ? selectedSnapshotId : "master");
-            if (targetId === selectedSnapshotId) {
-                fetchSnapshotDetails(targetId);
-            } else {
+            if (targetId !== selectedSnapshotId) {
                 setSelectedSnapshotId(targetId);
             }
         } catch (err: any) {
@@ -157,23 +174,49 @@ export default function AdminCrawlerPage() {
         }
     }, [hasCrawlerAccess]);
 
-    // Fetch snapshot details when selectedSnapshotId changes
-    const fetchSnapshotDetails = async (id: string) => {
+    // Fetch snapshot details with client cache & stale-while-revalidate support
+    const fetchSnapshotDetails = async (id: string, forceRefresh: boolean = false) => {
         if (!id) return;
-        setLoadingDetails(true);
+        const cleanKey = id.trim().toLowerCase();
+        const cached = clientSnapshotCache.get(cleanKey);
+        const isFresh = cached && (Date.now() - cached.timestamp < 3 * 60 * 1000); // 3-minute freshness
+
+        // Serve instantly from client cache if fresh and not explicitly forced
+        if (isFresh && !forceRefresh) {
+            if (currentSnapshotData !== cached.data) {
+                setCurrentSnapshotData(cached.data);
+            }
+            setLoadingDetails(false);
+            return;
+        }
+
+        // Stale-while-revalidate: if we have cached data, display it immediately while fetching fresh data in the background
+        if (cached && !forceRefresh) {
+            if (currentSnapshotData !== cached.data) {
+                setCurrentSnapshotData(cached.data);
+            }
+        } else {
+            setLoadingDetails(true);
+        }
+
         try {
-            const res = await fetch(`/api/crawler/snapshot/${id}`, { cache: "no-store" });
+            const url = `/api/crawler/snapshot/${id}${forceRefresh ? "?refresh=true" : ""}`;
+            const res = await fetch(url, { cache: "no-store" });
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
                 throw new Error(errData.error || `Failed to load snapshot details (HTTP ${res.status}).`);
             }
             const data = await res.json();
+            clientSnapshotCache.set(cleanKey, {
+                data,
+                timestamp: Date.now()
+            });
             setCurrentSnapshotData(data);
-            setSelectedDevice(null);
-            setActiveHopDevices([]);
-            setHighlightedLinks([]);
+            setError(null);
         } catch (err: any) {
-            setError(err.message || "Failed to load snapshot topology.");
+            if (!cached) {
+                setError(err.message || "Failed to load snapshot topology.");
+            }
         } finally {
             setLoadingDetails(false);
         }
@@ -181,7 +224,7 @@ export default function AdminCrawlerPage() {
 
     const handleSitesChanged = useCallback(() => {
         if (selectedSnapshotId) {
-            fetchSnapshotDetails(selectedSnapshotId);
+            fetchSnapshotDetails(selectedSnapshotId, true);
         }
     }, [selectedSnapshotId]);
 
@@ -340,7 +383,7 @@ export default function AdminCrawlerPage() {
             }
 
             if (selectedSnapshotId) {
-                fetchSnapshotDetails(selectedSnapshotId);
+                fetchSnapshotDetails(selectedSnapshotId, true);
             }
             return true;
         } catch (e: any) {
@@ -451,7 +494,7 @@ export default function AdminCrawlerPage() {
 
                     {/* Refresh Snapshot */}
                     <button
-                        onClick={() => fetchSnapshotDetails(selectedSnapshotId)}
+                        onClick={() => fetchSnapshotDetails(selectedSnapshotId, true)}
                         disabled={loadingDetails}
                         className="p-2 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-xl transition"
                         title="Reload Current Snapshot"
@@ -877,7 +920,7 @@ export default function AdminCrawlerPage() {
                 }}
                 onRefresh={() => {
                     if (selectedSnapshotId) {
-                        fetchSnapshotDetails(selectedSnapshotId);
+                        fetchSnapshotDetails(selectedSnapshotId, true);
                     }
                 }}
             />
@@ -921,9 +964,11 @@ export default function AdminCrawlerPage() {
                     setIsCrawlModalOpen(false);
                     setReseedDevice(null);
                     setLastCrawlNotification({ snapshotId: newId });
+                    clientSnapshotCache.clear();
                     // Always stay on Master cumulative topology to keep all sites, IDFs, and switches populated
                     setSelectedSnapshotId("master");
                     fetchSnapshots("master");
+                    fetchSnapshotDetails("master", true);
                 }}
                 initialSeed={reseedDevice?.ipAddress || reseedDevice?.ip_address || (Array.isArray(reseedDevice?.interfaces) ? reseedDevice?.interfaces.find((i: any) => i.ip_address)?.ip_address : undefined)}
                 initialMaxHops={0}

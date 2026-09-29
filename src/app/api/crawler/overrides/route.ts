@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/app/actions/permissions";
 import { removeDirectorySites } from "@/lib/sites";
+import { invalidateCrawlerSnapshotCache } from "@/lib/crawlerSnapshotCache";
 
 export function normalizeHostname(h?: string | null): string {
     if (!h) return "";
@@ -201,6 +202,8 @@ export async function POST(request: NextRequest) {
             clientIp
         );
 
+        invalidateCrawlerSnapshotCache();
+
         return NextResponse.json({
             success: true,
             count: savedOverrides.length,
@@ -241,6 +244,8 @@ export async function DELETE(request: NextRequest) {
             (session?.user as any)?.id,
             clientIp
         );
+
+        invalidateCrawlerSnapshotCache();
 
         return NextResponse.json({ success: true, removed: normHost });
     } catch (error: any) {
