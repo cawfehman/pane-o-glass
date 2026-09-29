@@ -9,6 +9,37 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const prisma = new PrismaClient();
 
+function ipToLong(ip: string): number {
+    return ip.split('.').reduce((long, octet) => (long << 8) + parseInt(octet, 10), 0) >>> 0;
+}
+
+const NON_PUBLIC_RANGES = [
+    { start: "10.0.0.0", end: "10.255.255.255" },
+    { start: "100.64.0.0", end: "100.127.255.255" },
+    { start: "127.0.0.0", end: "127.255.255.255" },
+    { start: "169.254.0.0", end: "169.254.255.255" },
+    { start: "172.16.0.0", end: "172.31.255.255" },
+    { start: "192.0.0.0", end: "192.0.0.255" },
+    { start: "192.0.2.0", end: "192.0.2.255" },
+    { start: "192.168.0.0", end: "192.168.255.255" },
+    { start: "198.18.0.0", end: "198.19.255.255" },
+    { start: "198.51.100.0", end: "198.51.100.255" },
+    { start: "203.0.113.0", end: "203.0.113.255" },
+    { start: "224.0.0.0", end: "239.255.255.255" },
+    { start: "240.0.0.0", end: "255.255.255.255" }
+];
+
+function isPrivateIp(ip: string): boolean {
+    try {
+        const ipLong = ipToLong(ip);
+        return NON_PUBLIC_RANGES.some(range => {
+            return ipLong >= ipToLong(range.start) && ipLong <= ipToLong(range.end);
+        });
+    } catch {
+        return false;
+    }
+}
+
 async function run() {
     console.log(`[${new Date().toISOString()}] Starting daily Shun Snapshot & Enrichment Cron...`);
     try {
@@ -171,6 +202,34 @@ async function run() {
 
         // 4. IPLocate Quota Engine
         console.log("Checking IPLocate enrichment queue...");
+
+        // 4a. Resolve any private RFC 1918 / Internal IPs locally (no external API calls or quota consumed)
+        const pendingIpsAll = await prisma.shunDatabaseIp.findMany({
+            where: { enrichedAt: null },
+            select: { ip: true }
+        });
+
+        let localPrivateCount = 0;
+        for (const p of pendingIpsAll) {
+            if (isPrivateIp(p.ip)) {
+                await prisma.shunDatabaseIp.update({
+                    where: { ip: p.ip },
+                    data: {
+                        ipAsn: "PRIVATE",
+                        org: "RFC 1918 / Private Network",
+                        ipCountry: "Internal Network",
+                        city: "Private Subnet",
+                        continent: "Internal",
+                        enrichedAt: new Date()
+                    }
+                });
+                localPrivateCount++;
+            }
+        }
+        if (localPrivateCount > 0) {
+            console.log(`Enriched ${localPrivateCount} RFC 1918 private IP(s) locally.`);
+        }
+
         const startOfUtcDay = new Date();
         startOfUtcDay.setUTCHours(0, 0, 0, 0);
 
@@ -189,19 +248,20 @@ async function run() {
         let enrichedCount = 0;
         
         if (remainingQuota > 0) {
-            // Find unenriched IPs
-            const pendingIps = await prisma.shunDatabaseIp.findMany({
+            // Find unenriched public IPs
+            const pendingPublicIps = await prisma.shunDatabaseIp.findMany({
                 where: { enrichedAt: null },
                 take: remainingQuota,
                 select: { ip: true }
             });
 
-            if (pendingIps.length > 0) {
-                console.log(`Found ${pendingIps.length} pending IPs for enrichment. Processing batches...`);
-                const ipList = pendingIps.map(p => p.ip);
+            if (pendingPublicIps.length > 0) {
+                console.log(`Found ${pendingPublicIps.length} pending public IPs for enrichment. Processing batches...`);
+                const ipList = pendingPublicIps.map(p => p.ip);
+                let quotaExhausted = false;
                 
                 // Process in batches of 100
-                for (let i = 0; i < ipList.length; i += 100) {
+                for (let i = 0; i < ipList.length && !quotaExhausted; i += 100) {
                     const batch = ipList.slice(i, i + 100);
                     const results: any = {};
                     const apiKey = process.env.IPLOCATE_API_KEY!;
@@ -222,6 +282,11 @@ async function run() {
                                 }
                             });
                         } catch (e: any) {
+                            if (e.response?.status === 429) {
+                                console.warn(`[cron] IPLocate API rate limit / quota exceeded (HTTP 429) at IP ${batchIp}. Halting queue.`);
+                                quotaExhausted = true;
+                                break;
+                            }
                             console.error(`Failed to enrich IP ${batchIp}:`, e.message);
                         }
                     }
