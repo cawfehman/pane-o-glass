@@ -19,14 +19,14 @@ async function cleanup() {
 
         // 3. Health Probes (30 days retention)
         const healthResult = await prisma.healthProbe.deleteMany({
-            where: { timestamp: { lt: thirtyDaysAgo } }
+            where: { createdAt: { lt: thirtyDaysAgo } }
         });
 
         // 4. Firewall Shun Snapshots (90 days retention)
         const ninetyDaysAgo = new Date();
         ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
         const shunSnapshotResult = await prisma.firewallShunSnapshot.deleteMany({
-            where: { createdAt: { lt: ninetyDaysAgo } }
+            where: { snapshotDate: { lt: ninetyDaysAgo } }
         });
 
         const msg = `System Retention Cleanup: Deleted ${auditResult.count} audit logs (30d), ${becResult.count} BEC raw URLs (14d), ${healthResult.count} health probes (30d), ${shunSnapshotResult.count} shun snapshots (90d).`;
