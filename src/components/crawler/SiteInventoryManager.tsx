@@ -42,7 +42,11 @@ import {
     MoreVertical,
     KeyRound,
     Wifi,
-    Phone
+    Phone,
+    GripVertical,
+    Trash2,
+    Sparkles,
+    MoveRight
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 import { SiteMetadataLookup, parseDeviceSiteAndIdf, parseFloorFromIdf, detectSwitchStack } from "./TopologyGraph";
@@ -186,6 +190,33 @@ export default function SiteInventoryManager({
     const [newIdfSelectedHosts, setNewIdfSelectedHosts] = useState<string[]>([]);
     const [addIdfSaving, setAddIdfSaving] = useState(false);
     const [addIdfError, setAddIdfError] = useState<string | null>(null);
+
+    // Create Group / Folder Modal
+    const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
+    const [newFolderName, setNewFolderName] = useState("");
+    const [newFolderParent, setNewFolderParent] = useState("");
+    const [creatingFolder, setCreatingFolder] = useState(false);
+    const [createFolderError, setCreateFolderError] = useState<string | null>(null);
+
+    // Rename Group Modal
+    const [isRenameFolderModalOpen, setIsRenameFolderModalOpen] = useState(false);
+    const [folderToRename, setFolderToRename] = useState<string | null>(null);
+    const [renamedFolderName, setRenamedFolderName] = useState("");
+    const [renamingFolder, setRenamingFolder] = useState(false);
+
+    // Drag and Drop State
+    const [draggedItem, setDraggedItem] = useState<{
+        type: "node" | "idf" | "site";
+        hostname?: string;
+        idfCode?: string;
+        siteCode?: string;
+        hostnames?: string[];
+        currentFolder?: string;
+        currentSite?: string;
+        currentIdf?: string;
+    } | null>(null);
+    const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
+    const [dndStatus, setDndStatus] = useState<{ loading: boolean; message: string; isError?: boolean } | null>(null);
 
     // Node Governance Override inline form
     const [editingNodeHost, setEditingNodeHost] = useState<string | null>(null);
@@ -397,6 +428,255 @@ export default function SiteInventoryManager({
         }
     };
 
+    // Extract all existing folder paths for selection in modals
+    const existingFolderPaths = useMemo(() => {
+        const set = new Set<string>();
+        const traverse = (node: any) => {
+            if (node.fullPath) set.add(node.fullPath);
+            for (const sub of Object.values(node.subFolders || {})) {
+                traverse(sub);
+            }
+        };
+        traverse(folderTree);
+        return Array.from(set).sort();
+    }, [folderTree]);
+
+    // Create New Group / Folder
+    const handleCreateFolder = async (suggestedName?: string) => {
+        const rawName = (suggestedName || newFolderName).trim();
+        if (!rawName) {
+            setCreateFolderError("Group / Folder name is required.");
+            return;
+        }
+        setCreatingFolder(true);
+        setCreateFolderError(null);
+
+        const targetPath = newFolderParent ? `${newFolderParent}/${rawName}` : rawName;
+        const cleanPath = targetPath.replace(/^\/+|\/+$/g, '').trim();
+
+        try {
+            const res = await fetch("/api/settings/sites", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "add_folder",
+                    folderPath: cleanPath
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+                throw new Error(data.error || "Failed to create group.");
+            }
+
+            setExpandedFolders(prev => ({ ...prev, [cleanPath]: true }));
+            setSelectedEntity({ type: "folder", folderPath: cleanPath });
+            setIsCreateFolderModalOpen(false);
+            setNewFolderName("");
+            setNewFolderParent("");
+            setDndStatus({ loading: false, message: `Created group '${cleanPath}'` });
+            setTimeout(() => setDndStatus(null), 3500);
+            if (onRefreshSnapshot) onRefreshSnapshot();
+        } catch (e: any) {
+            setCreateFolderError(e.message || "Failed to create group.");
+        } finally {
+            setCreatingFolder(false);
+        }
+    };
+
+    // Rename Group / Folder
+    const handleRenameFolder = async () => {
+        if (!folderToRename || !renamedFolderName.trim()) return;
+        setRenamingFolder(true);
+        try {
+            const cleanNew = renamedFolderName.trim().replace(/^\/+|\/+$/g, '');
+            const res = await fetch("/api/settings/sites", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "rename_folder",
+                    oldPath: folderToRename,
+                    newPath: cleanNew
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) throw new Error(data.error || "Failed to rename group.");
+
+            setSelectedEntity({ type: "folder", folderPath: cleanNew });
+            setIsRenameFolderModalOpen(false);
+            setFolderToRename(null);
+            setRenamedFolderName("");
+            setDndStatus({ loading: false, message: `Renamed group to '${cleanNew}'` });
+            setTimeout(() => setDndStatus(null), 3500);
+            if (onRefreshSnapshot) onRefreshSnapshot();
+        } catch (e: any) {
+            alert(e.message || "Failed to rename group.");
+        } finally {
+            setRenamingFolder(false);
+        }
+    };
+
+    // Delete Group / Folder
+    const handleDeleteFolder = async (folderPath: string) => {
+        if (!confirm(`Are you sure you want to delete group '${folderPath}'? Member sites will be moved to Root (Unassigned).`)) {
+            return;
+        }
+        try {
+            const res = await fetch("/api/settings/sites", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "delete_folder",
+                    folderPath
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) throw new Error(data.error || "Failed to delete group.");
+
+            setSelectedEntity({ type: "folder", folderPath: "Root" });
+            setDndStatus({ loading: false, message: `Deleted group '${folderPath}'` });
+            setTimeout(() => setDndStatus(null), 3500);
+            if (onRefreshSnapshot) onRefreshSnapshot();
+        } catch (e: any) {
+            alert(e.message || "Failed to delete group.");
+        }
+    };
+
+    // Move Site into Group / Folder via Drag & Drop
+    const handleMoveSite = async (siteCode: string, targetFolderPath: string) => {
+        const cleanTarget = targetFolderPath === "Root" || targetFolderPath === "Unassigned" ? "" : targetFolderPath.trim();
+        setDndStatus({ loading: true, message: `Moving site ${siteCode} to ${cleanTarget || "Root"}...` });
+        try {
+            const res = await fetch("/api/settings/sites", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "move_site",
+                    siteCode: siteCode.toUpperCase(),
+                    folderPath: cleanTarget
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) throw new Error(data.error || "Failed to move site.");
+
+            if (cleanTarget) {
+                setExpandedFolders(prev => ({ ...prev, [cleanTarget]: true }));
+            }
+            setDndStatus({ loading: false, message: `Moved site ${siteCode} to ${cleanTarget || "Root"}` });
+            setTimeout(() => setDndStatus(null), 3500);
+            if (onRefreshSnapshot) onRefreshSnapshot();
+        } catch (e: any) {
+            setDndStatus({ loading: false, message: e.message || "Failed to move site", isError: true });
+            setTimeout(() => setDndStatus(null), 4500);
+        }
+    };
+
+    // Move Switch into another Closet or Site via Drag & Drop
+    const handleMoveNode = async (hostname: string, targetSite: string, targetIdf?: string) => {
+        const canonHost = hostname.split(".")[0].split("(")[0].trim().toLowerCase();
+        const resolvedIdf = (targetIdf || "MDF").trim().toUpperCase();
+        setDndStatus({ loading: true, message: `Moving switch ${canonHost} to ${targetSite} / ${resolvedIdf}...` });
+
+        try {
+            const res = await fetch("/api/crawler/overrides", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    hostname: canonHost,
+                    siteOverride: targetSite.toUpperCase(),
+                    idfOverride: resolvedIdf,
+                    reason: `Moved via Drag & Drop to ${targetSite} / ${resolvedIdf}`
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) throw new Error(data.error || "Failed to move switch.");
+
+            setExpandedSites(prev => ({ ...prev, [targetSite.toUpperCase()]: true }));
+            setExpandedIdfs(prev => ({ ...prev, [`${targetSite.toUpperCase()}:${resolvedIdf}`]: true }));
+            setDndStatus({ loading: false, message: `Moved switch ${canonHost} to ${targetSite} / ${resolvedIdf}` });
+            setTimeout(() => setDndStatus(null), 3500);
+            if (onRefreshSnapshot) onRefreshSnapshot();
+        } catch (e: any) {
+            setDndStatus({ loading: false, message: e.message || "Failed to move switch", isError: true });
+            setTimeout(() => setDndStatus(null), 4500);
+        }
+    };
+
+    // Move Entire Closet into another Site via Drag & Drop
+    const handleMoveIdf = async (sourceSite: string, idfCode: string, hostnames: string[], targetSite: string) => {
+        if (sourceSite.toUpperCase() === targetSite.toUpperCase()) {
+            return;
+        }
+        const canonHosts = hostnames
+            .filter(Boolean)
+            .map(h => String(h).split(".")[0].split("(")[0].trim().toLowerCase())
+            .filter(Boolean);
+
+        setDndStatus({ loading: true, message: `Moving closet ${idfCode} (${canonHosts.length} switches) to ${targetSite}...` });
+
+        try {
+            const res = await fetch("/api/crawler/overrides", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    hostnames: canonHosts,
+                    siteOverride: targetSite.toUpperCase(),
+                    idfOverride: idfCode.toUpperCase(),
+                    reason: `Moved closet ${idfCode} from ${sourceSite} to ${targetSite} via Drag & Drop`
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || data.error) throw new Error(data.error || "Failed to move closet.");
+
+            setExpandedSites(prev => ({ ...prev, [targetSite.toUpperCase()]: true }));
+            setExpandedIdfs(prev => ({ ...prev, [`${targetSite.toUpperCase()}:${idfCode.toUpperCase()}`]: true }));
+            setDndStatus({ loading: false, message: `Moved closet ${idfCode} (${canonHosts.length} switches) to ${targetSite}` });
+            setTimeout(() => setDndStatus(null), 3500);
+            if (onRefreshSnapshot) onRefreshSnapshot();
+        } catch (e: any) {
+            setDndStatus({ loading: false, message: e.message || "Failed to move closet", isError: true });
+            setTimeout(() => setDndStatus(null), 4500);
+        }
+    };
+
+    // Drag-and-drop drop dispatchers
+    const handleDropOnFolder = (e: React.DragEvent, folderPath: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOverTarget(null);
+        try {
+            const data = JSON.parse(e.dataTransfer.getData("application/json"));
+            if (data.type === "site" && data.siteCode) {
+                handleMoveSite(data.siteCode, folderPath);
+            }
+        } catch {}
+    };
+
+    const handleDropOnSite = (e: React.DragEvent, targetSite: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOverTarget(null);
+        try {
+            const data = JSON.parse(e.dataTransfer.getData("application/json"));
+            if (data.type === "node" && data.hostname) {
+                handleMoveNode(data.hostname, targetSite, data.currentIdf || "MDF");
+            } else if (data.type === "idf" && data.idfCode && Array.isArray(data.hostnames)) {
+                handleMoveIdf(data.sourceSite, data.idfCode, data.hostnames, targetSite);
+            }
+        } catch {}
+    };
+
+    const handleDropOnIdf = (e: React.DragEvent, targetSite: string, targetIdf: string) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOverTarget(null);
+        try {
+            const data = JSON.parse(e.dataTransfer.getData("application/json"));
+            if (data.type === "node" && data.hostname) {
+                handleMoveNode(data.hostname, targetSite, targetIdf);
+            }
+        } catch {}
+    };
+
     // Filter devices based on search query, role filter, freshness filter
     const matchesFilter = useCallback((dev: any) => {
         if (roleFilter !== "ALL") {
@@ -466,31 +746,72 @@ export default function SiteInventoryManager({
 
         return (
             <div key={node.fullPath || "root"} className="space-y-0.5 select-none">
-                {!isRoot && (
-                    <div 
-                        onClick={() => {
-                            setExpandedFolders(prev => ({ ...prev, [node.fullPath]: !isExpanded }));
-                            setSelectedEntity({ type: "folder", folderPath: node.fullPath });
-                        }}
-                        className={`flex items-center justify-between pr-2 py-1.5 rounded-lg text-xs cursor-pointer transition ${
-                            selectedEntity.type === "folder" && selectedEntity.folderPath === node.fullPath
-                                ? "bg-blue-600/20 text-blue-300 font-semibold border border-blue-500/30"
-                                : "hover:bg-slate-800/60 text-slate-300"
-                        }`}
-                        style={{ paddingLeft: `${folderIndent}px` }}
-                    >
-                        <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
-                            {isExpanded ? (
-                                <ChevronDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                            ) : (
-                                <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                            )}
-                            <Folder className={`w-3.5 h-3.5 shrink-0 ${isExpanded ? "text-blue-400" : "text-slate-400"}`} />
-                            <span className="truncate text-[11px] font-medium">{node.name}</span>
+                {!isRoot && (() => {
+                    const isDragOverFolder = dragOverTarget === `folder:${node.fullPath}`;
+                    return (
+                        <div 
+                            onClick={() => {
+                                setExpandedFolders(prev => ({ ...prev, [node.fullPath]: !isExpanded }));
+                                setSelectedEntity({ type: "folder", folderPath: node.fullPath });
+                            }}
+                            onDragOver={(e) => {
+                                e.preventDefault();
+                                e.dataTransfer.dropEffect = "move";
+                                if (dragOverTarget !== `folder:${node.fullPath}`) {
+                                    setDragOverTarget(`folder:${node.fullPath}`);
+                                }
+                            }}
+                            onDragLeave={() => {
+                                setDragOverTarget(null);
+                            }}
+                            onDrop={(e) => handleDropOnFolder(e, node.fullPath)}
+                            className={`flex items-center justify-between pr-2 py-1.5 rounded-lg text-xs cursor-pointer transition ${
+                                isDragOverFolder
+                                    ? "bg-emerald-600/30 text-emerald-200 ring-2 ring-emerald-400 font-bold shadow-lg"
+                                    : selectedEntity.type === "folder" && selectedEntity.folderPath === node.fullPath
+                                    ? "bg-blue-600/20 text-blue-300 font-semibold border border-blue-500/30"
+                                    : "hover:bg-slate-800/60 text-slate-300"
+                            }`}
+                            style={{ paddingLeft: `${folderIndent}px` }}
+                        >
+                            <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
+                                {isExpanded ? (
+                                    <ChevronDown className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                                ) : (
+                                    <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                                )}
+                                <Folder className={`w-3.5 h-3.5 shrink-0 ${isDragOverFolder ? "text-emerald-400" : isExpanded ? "text-blue-400" : "text-slate-400"}`} />
+                                <span className="truncate text-[11px] font-medium">{node.name}</span>
+                                {isDragOverFolder && (
+                                    <span className="text-[9px] px-1 py-0.2 bg-emerald-500/20 text-emerald-300 rounded font-semibold ml-1">
+                                        Drop site
+                                    </span>
+                                )}
+                            </div>
+                            <span className="text-[10px] text-slate-500 px-1.5 py-0.2 bg-slate-900 rounded-full border border-slate-800 shrink-0">
+                                {sortedSites.length}
+                            </span>
                         </div>
-                        <span className="text-[10px] text-slate-500 px-1.5 py-0.2 bg-slate-900 rounded-full border border-slate-800 shrink-0">
-                            {sortedSites.length}
-                        </span>
+                    );
+                })()}
+
+                {/* Root / Unassigned Dropzone indicator when dragging a site */}
+                {isRoot && draggedItem?.type === "site" && (
+                    <div
+                        onDragOver={(e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = "move";
+                            if (dragOverTarget !== "root") setDragOverTarget("root");
+                        }}
+                        onDragLeave={() => setDragOverTarget(null)}
+                        onDrop={(e) => handleDropOnFolder(e, "")}
+                        className={`mx-2 my-1 px-3 py-1.5 rounded-lg border-2 border-dashed text-center text-xs transition ${
+                            dragOverTarget === "root"
+                                ? "border-emerald-500 bg-emerald-500/20 text-emerald-300 font-bold"
+                                : "border-slate-700 text-slate-400 bg-slate-900/40 hover:border-slate-600"
+                        }`}
+                    >
+                        📥 Drop here to move site to Root (Unassigned)
                     </div>
                 )}
 
@@ -514,21 +835,54 @@ export default function SiteInventoryManager({
                             const siteIndent = isRoot ? 12 : folderIndent + 16;
                             const idfIndent = siteIndent + 18;
                             const switchIndent = idfIndent + 18;
+                            const isDragOverSite = dragOverTarget === `site:${siteEntry.siteCode}`;
 
                             return (
                                 <div key={siteEntry.siteCode} className="space-y-0.5">
                                     <div
+                                        draggable={true}
+                                        onDragStart={(e) => {
+                                            e.dataTransfer.setData("application/json", JSON.stringify({
+                                                type: "site",
+                                                siteCode: siteEntry.siteCode,
+                                                currentFolder: siteEntry.siteLookup?.folderPath || ""
+                                            }));
+                                            e.dataTransfer.effectAllowed = "move";
+                                            setDraggedItem({
+                                                type: "site",
+                                                siteCode: siteEntry.siteCode,
+                                                currentFolder: siteEntry.siteLookup?.folderPath || ""
+                                            });
+                                        }}
+                                        onDragEnd={() => {
+                                            setDraggedItem(null);
+                                            setDragOverTarget(null);
+                                        }}
+                                        onDragOver={(e) => {
+                                            e.preventDefault();
+                                            e.dataTransfer.dropEffect = "move";
+                                            if (dragOverTarget !== `site:${siteEntry.siteCode}`) {
+                                                setDragOverTarget(`site:${siteEntry.siteCode}`);
+                                            }
+                                        }}
+                                        onDragLeave={() => {
+                                            setDragOverTarget(null);
+                                        }}
+                                        onDrop={(e) => handleDropOnSite(e, siteEntry.siteCode)}
                                         onClick={() => {
                                             setSelectedEntity({ type: "site", siteCode: siteEntry.siteCode });
                                         }}
                                         className={`group flex items-center justify-between pr-2 py-1.5 rounded-lg text-xs cursor-pointer transition ${
-                                            isSiteSelected
+                                            isDragOverSite
+                                                ? "bg-blue-600/30 text-white ring-2 ring-blue-400 font-bold shadow-lg"
+                                                : isSiteSelected
                                                 ? "bg-blue-600/25 text-white border border-blue-500/50 shadow-sm"
                                                 : "hover:bg-slate-800/60 text-slate-200 border border-transparent"
                                         }`}
                                         style={{ paddingLeft: `${siteIndent}px` }}
                                     >
                                         <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
+                                            <GripVertical className="w-3 h-3 text-slate-500 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing shrink-0" title="Drag to move site into a group" />
                                             <button
                                                 type="button"
                                                 onClick={(e) => {
@@ -551,6 +905,11 @@ export default function SiteInventoryManager({
                                             <span className="text-[10px] text-slate-400 truncate">
                                                 {siteEntry.siteLookup?.name || ""}
                                             </span>
+                                            {isDragOverSite && (
+                                                <span className="text-[9px] px-1 py-0.2 bg-blue-500/20 text-blue-300 rounded font-semibold animate-pulse">
+                                                    Drop closet or switch
+                                                </span>
+                                            )}
                                         </div>
 
                                         <div className="flex items-center gap-1 shrink-0">
@@ -561,7 +920,7 @@ export default function SiteInventoryManager({
                                                         : freshCount === totalDevs 
                                                         ? "bg-emerald-950/60 text-emerald-400 border-emerald-800/60" 
                                                         : freshCount > 0
-                                                        ? "bg-emerald-950/40 text-emerald-300 border-emerald-800/40"
+                                                        ? "bg-emerald-950/40 text-emerald-300 border-emerald-800/40" 
                                                         : "bg-slate-800 text-slate-400 border-slate-700"
                                                 }`}
                                                 title={`${freshCount} fresh (≤24h) of ${totalDevs} total switches`}
@@ -600,13 +959,47 @@ export default function SiteInventoryManager({
                                                 const idfDevs = siteEntry.idfs.get(idfCode) || [];
                                                 const filteredIdfDevs = idfDevs.filter((d: any) => matchesFilter(d));
                                                 const floorInfo = parseFloorFromIdf(idfCode);
+                                                const isDragOverIdf = dragOverTarget === `idf:${siteEntry.siteCode}:${idfCode}`;
 
                                                 return (
                                                     <div key={idfKey} className="space-y-0.5">
                                                         <div
+                                                            draggable={true}
+                                                            onDragStart={(e) => {
+                                                                e.dataTransfer.setData("application/json", JSON.stringify({
+                                                                    type: "idf",
+                                                                    idfCode,
+                                                                    sourceSite: siteEntry.siteCode,
+                                                                    hostnames: idfDevs.map((d: any) => d.hostname)
+                                                                }));
+                                                                e.dataTransfer.effectAllowed = "move";
+                                                                setDraggedItem({
+                                                                    type: "idf",
+                                                                    idfCode,
+                                                                    siteCode: siteEntry.siteCode,
+                                                                    hostnames: idfDevs.map((d: any) => d.hostname)
+                                                                });
+                                                            }}
+                                                            onDragEnd={() => {
+                                                                setDraggedItem(null);
+                                                                setDragOverTarget(null);
+                                                            }}
+                                                            onDragOver={(e) => {
+                                                                e.preventDefault();
+                                                                e.dataTransfer.dropEffect = "move";
+                                                                if (dragOverTarget !== `idf:${siteEntry.siteCode}:${idfCode}`) {
+                                                                    setDragOverTarget(`idf:${siteEntry.siteCode}:${idfCode}`);
+                                                                }
+                                                            }}
+                                                            onDragLeave={() => {
+                                                                setDragOverTarget(null);
+                                                            }}
+                                                            onDrop={(e) => handleDropOnIdf(e, siteEntry.siteCode, idfCode)}
                                                             onClick={() => setSelectedEntity({ type: "idf", siteCode: siteEntry.siteCode, idfCode })}
                                                             className={`group relative flex items-center justify-between pr-2 py-1 rounded-md text-[11px] cursor-pointer transition ${
-                                                                isIdfSelected
+                                                                isDragOverIdf
+                                                                    ? "bg-cyan-600/30 text-cyan-200 ring-2 ring-cyan-400 font-bold shadow-lg"
+                                                                    : isIdfSelected
                                                                     ? "bg-blue-500/20 text-blue-300 font-semibold border border-blue-500/40"
                                                                     : "hover:bg-slate-800/50 text-slate-300 border border-transparent"
                                                             }`}
@@ -619,6 +1012,7 @@ export default function SiteInventoryManager({
                                                             />
 
                                                             <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
+                                                                <GripVertical className="w-2.5 h-2.5 text-slate-500 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing shrink-0" title="Drag closet to move into another site" />
                                                                 <button
                                                                     type="button"
                                                                     onClick={(e) => {
@@ -638,6 +1032,11 @@ export default function SiteInventoryManager({
                                                                 <span className="text-[10px] text-slate-500 font-normal truncate">
                                                                     ({floorInfo.floorLabel})
                                                                 </span>
+                                                                {isDragOverIdf && (
+                                                                    <span className="text-[9px] px-1 py-0.2 bg-cyan-500/20 text-cyan-300 rounded font-semibold animate-pulse">
+                                                                        Drop switch
+                                                                    </span>
+                                                                )}
                                                             </div>
 
                                                             <div className="flex items-center gap-1 shrink-0">
@@ -689,6 +1088,26 @@ export default function SiteInventoryManager({
                                                                     return (
                                                                         <div
                                                                             key={dev.hostname}
+                                                                            draggable={true}
+                                                                            onDragStart={(e) => {
+                                                                                e.dataTransfer.setData("application/json", JSON.stringify({
+                                                                                    type: "node",
+                                                                                    hostname: dev.hostname,
+                                                                                    currentSite: siteEntry.siteCode,
+                                                                                    currentIdf: idfCode
+                                                                                }));
+                                                                                e.dataTransfer.effectAllowed = "move";
+                                                                                setDraggedItem({
+                                                                                    type: "node",
+                                                                                    hostname: dev.hostname,
+                                                                                    currentSite: siteEntry.siteCode,
+                                                                                    currentIdf: idfCode
+                                                                                });
+                                                                            }}
+                                                                            onDragEnd={() => {
+                                                                                setDraggedItem(null);
+                                                                                setDragOverTarget(null);
+                                                                            }}
                                                                             onClick={() => setSelectedEntity({ type: "device", hostname: dev.hostname })}
                                                                             className={`group relative flex items-center justify-between pr-2 py-1 rounded text-[11px] cursor-pointer transition ${
                                                                                 isDevSelected
@@ -704,6 +1123,7 @@ export default function SiteInventoryManager({
                                                                             />
 
                                                                             <div className="flex items-center gap-1.5 truncate flex-1 min-w-0">
+                                                                                <GripVertical className="w-2.5 h-2.5 text-slate-500 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing shrink-0" title="Drag switch to move to another closet or site" />
                                                                                 <div 
                                                                                     className={`w-1.5 h-1.5 rounded-full shrink-0 ${freshness.dotClass}`} 
                                                                                     title={freshness.label} 
@@ -768,6 +1188,28 @@ export default function SiteInventoryManager({
 
     return (
         <div className="flex-1 min-h-0 flex flex-row overflow-hidden relative rounded-2xl border border-slate-800 bg-slate-950/70 shadow-xl">
+            {/* Floating Drag & Drop / Action Toast */}
+            {dndStatus && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-2 duration-200 pointer-events-none">
+                    <div className={`flex items-center gap-2.5 px-4 py-2 rounded-xl border shadow-2xl backdrop-blur-md text-xs font-semibold ${
+                        dndStatus.isError
+                            ? "bg-rose-950/90 border-rose-800/80 text-rose-200 shadow-rose-950/50"
+                            : dndStatus.loading
+                            ? "bg-slate-900/90 border-blue-500/50 text-blue-300 shadow-black/80"
+                            : "bg-emerald-950/90 border-emerald-800/80 text-emerald-200 shadow-emerald-950/50"
+                    }`}>
+                        {dndStatus.loading ? (
+                            <div className="w-3.5 h-3.5 rounded-full border-2 border-blue-400 border-t-transparent animate-spin shrink-0" />
+                        ) : dndStatus.isError ? (
+                            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                        ) : (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        )}
+                        <span>{dndStatus.message}</span>
+                    </div>
+                </div>
+            )}
+
             {/* Left Column: Asset Hierarchy Tree */}
             <div className="w-80 md:w-96 border-r border-slate-800 flex flex-col bg-slate-900/60 shrink-0">
                 {/* Search & Actions Header */}
@@ -777,17 +1219,34 @@ export default function SiteInventoryManager({
                             <Building2 className="w-4 h-4 text-blue-400" />
                             <h3 className="text-xs font-bold text-white tracking-wide uppercase">Network Hierarchy</h3>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setNewFolderName("");
+                                    setNewFolderParent("");
+                                    setCreateFolderError(null);
+                                    setIsCreateFolderModalOpen(true);
+                                }}
+                                title="Create New Group / Folder"
+                                className="flex items-center gap-1 px-2 py-1 rounded-md bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 border border-blue-500/30 text-[10px] font-bold transition shadow-sm"
+                            >
+                                <FolderPlus className="w-3.5 h-3.5" />
+                                <span>+ Group</span>
+                            </button>
                             {onAddSite && (
                                 <button
+                                    type="button"
                                     onClick={() => onAddSite()}
                                     title="Add New Site"
-                                    className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-emerald-400 transition"
+                                    className="flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 text-[10px] font-bold transition shadow-sm"
                                 >
                                     <Plus className="w-3.5 h-3.5" />
+                                    <span>+ Site</span>
                                 </button>
                             )}
                             <button
+                                type="button"
                                 onClick={() => {
                                     if (onRefreshSnapshot) onRefreshSnapshot();
                                 }}
@@ -2185,33 +2644,245 @@ export default function SiteInventoryManager({
                 })()}
 
                 {/* 4. FOLDER VIEW */}
-                {selectedEntity.type === "folder" && (
-                    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-                        {/* Pinned Folder Header */}
-                        <div className="shrink-0 px-6 py-4 border-b border-slate-800 bg-slate-950/90 backdrop-blur-md flex items-center justify-between z-10 shadow-sm">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400">
-                                    <FolderTree className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <h2 className="text-xl font-bold text-white tracking-tight">
-                                        {selectedEntity.folderPath}
-                                    </h2>
-                                    <p className="text-xs text-slate-400 mt-0.5">
-                                        Group container for network sites
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
+                {selectedEntity.type === "folder" && (() => {
+                    const folderPath = selectedEntity.folderPath;
+                    const isRootOrAll = folderPath === "Root" || folderPath === "All";
+                    
+                    // Filter member sites belonging to this folder path
+                    const memberSites: any[] = [];
+                    for (const [code, entry] of siteMap.entries()) {
+                        const fp = entry.siteLookup?.folderPath || "";
+                        if (isRootOrAll) {
+                            memberSites.push(entry);
+                        } else if (fp === folderPath || fp.startsWith(folderPath + "/")) {
+                            memberSites.push(entry);
+                        }
+                    }
 
-                        {/* Scrollable Folder Body */}
-                        <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
-                            <div className="bg-slate-900/40 border border-slate-800/60 rounded-xl p-6 text-center text-slate-400 text-xs">
-                                Select a specific site or closet from this group in the tree to manage and crawl assets.
+                    memberSites.sort((a, b) => {
+                        if (a.siteLookup?.isHub && !b.siteLookup?.isHub) return -1;
+                        if (!a.siteLookup?.isHub && b.siteLookup?.isHub) return 1;
+                        return a.siteCode.localeCompare(b.siteCode, undefined, { numeric: true });
+                    });
+
+                    const totalSwitches = memberSites.reduce((sum, s) => sum + s.allDevices.length, 0);
+                    const freshSwitches = memberSites.reduce((sum, s) => sum + s.allDevices.filter((d: any) => getDeviceFreshness(d).category === "fresh").length, 0);
+                    const hubCount = memberSites.filter(s => s.siteLookup?.isHub).length;
+                    const isDragOverFolderView = dragOverTarget === `folder-view:${folderPath}`;
+
+                    return (
+                        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                            {/* Pinned Folder Header */}
+                            <div className="shrink-0 px-6 py-4 border-b border-slate-800 bg-slate-950/90 backdrop-blur-md flex flex-wrap items-center justify-between gap-4 z-10 shadow-sm">
+                                <div className="flex items-center gap-3 min-w-0">
+                                    <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 shrink-0">
+                                        <FolderTree className="w-5 h-5" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <h2 className="text-xl font-bold text-white tracking-tight truncate">
+                                                {folderPath}
+                                            </h2>
+                                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 font-semibold shrink-0">
+                                                {memberSites.length} {memberSites.length === 1 ? "Site" : "Sites"}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-slate-400 mt-0.5 truncate">
+                                            {isRootOrAll ? "All managed network sites" : `Group container · ${totalSwitches} switches · ${freshSwitches} fresh (≤24h)`}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {onAddSite && (
+                                        <button
+                                            type="button"
+                                            onClick={() => onAddSite(isRootOrAll ? "" : folderPath)}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition"
+                                        >
+                                            <Plus className="w-3.5 h-3.5" />
+                                            <span>Add Site to Group</span>
+                                        </button>
+                                    )}
+
+                                    {!isRootOrAll && (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setFolderToRename(folderPath);
+                                                    setRenamedFolderName(folderPath);
+                                                    setIsRenameFolderModalOpen(true);
+                                                }}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+                                            >
+                                                <Edit2 className="w-3.5 h-3.5 text-slate-400" />
+                                                <span>Rename</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteFolder(folderPath)}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-semibold border border-rose-800/40 transition"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                                                <span>Delete</span>
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Scrollable Folder Body */}
+                            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6">
+                                {/* Summary Metrics */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800/80">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Sites</span>
+                                        <span className="text-xl font-black text-white font-mono mt-0.5 block">{memberSites.length}</span>
+                                    </div>
+                                    <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800/80">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Switches</span>
+                                        <span className="text-xl font-black text-blue-400 font-mono mt-0.5 block">{totalSwitches}</span>
+                                    </div>
+                                    <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800/80">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Fresh (≤24h)</span>
+                                        <span className="text-xl font-black text-emerald-400 font-mono mt-0.5 block">
+                                            {freshSwitches}
+                                            <span className="text-xs text-slate-400 font-normal ml-1">
+                                                ({totalSwitches > 0 ? Math.round((freshSwitches / totalSwitches) * 100) : 0}%)
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800/80">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Critical Facilities</span>
+                                        <span className="text-xl font-black text-amber-400 font-mono mt-0.5 block">{hubCount}</span>
+                                    </div>
+                                </div>
+
+                                {/* Drag & Drop target dropzone */}
+                                {!isRootOrAll && (
+                                    <div
+                                        onDragOver={(e) => {
+                                            e.preventDefault();
+                                            e.dataTransfer.dropEffect = "move";
+                                            if (dragOverTarget !== `folder-view:${folderPath}`) {
+                                                setDragOverTarget(`folder-view:${folderPath}`);
+                                            }
+                                        }}
+                                        onDragLeave={() => setDragOverTarget(null)}
+                                        onDrop={(e) => {
+                                            e.preventDefault();
+                                            handleDropOnFolder(e, folderPath);
+                                        }}
+                                        className={`p-4 rounded-xl border-2 border-dashed text-center transition ${
+                                            isDragOverFolderView
+                                                ? "border-emerald-500 bg-emerald-500/20 text-emerald-200 shadow-xl"
+                                                : "border-slate-800 bg-slate-900/30 text-slate-400 hover:border-slate-700"
+                                        }`}
+                                    >
+                                        <p className="text-xs font-semibold">
+                                            {isDragOverFolderView ? "📥 Release to drop site into this group!" : "Drag and drop any Site from the hierarchy tree here to move it into this group."}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Member Sites Grid */}
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                                            Member Sites ({memberSites.length})
+                                        </h3>
+                                    </div>
+
+                                    {memberSites.length === 0 ? (
+                                        <div className="bg-slate-900/40 border border-slate-800/60 rounded-xl p-8 text-center text-slate-400 text-xs space-y-2">
+                                            <p>No sites currently assigned to this group.</p>
+                                            {onAddSite && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onAddSite(isRootOrAll ? "" : folderPath)}
+                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition"
+                                                >
+                                                    <Plus className="w-3.5 h-3.5" />
+                                                    <span>Add First Site</span>
+                                                </button>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {memberSites.map((s: any) => {
+                                                const siteFresh = s.allDevices.filter((d: any) => getDeviceFreshness(d).category === "fresh").length;
+                                                const siteTotal = s.allDevices.length;
+                                                const isHub = s.siteLookup?.isHub;
+                                                const locType = s.siteLookup?.locationType || "Ambulatory";
+
+                                                return (
+                                                    <div
+                                                        key={s.siteCode}
+                                                        className="p-4 bg-slate-900/80 border border-slate-800 rounded-xl hover:border-blue-500/50 hover:bg-slate-900 transition flex flex-col justify-between space-y-3 group shadow-sm"
+                                                    >
+                                                        <div>
+                                                            <div className="flex items-start justify-between gap-2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <Building2 className={`w-4 h-4 shrink-0 ${isHub ? "text-amber-400" : "text-blue-400"}`} />
+                                                                    <span className="font-mono font-bold text-white text-sm">
+                                                                        {s.siteCode}
+                                                                    </span>
+                                                                    {isHub && (
+                                                                        <span className="text-amber-400 text-xs" title="Critical Facility">★</span>
+                                                                    )}
+                                                                </div>
+                                                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-semibold truncate max-w-[120px]">
+                                                                    {locType}
+                                                                </span>
+                                                            </div>
+                                                            <h4 className="text-xs font-semibold text-slate-200 mt-1 truncate" title={s.siteLookup?.name || s.siteCode}>
+                                                                {s.siteLookup?.name || s.siteCode}
+                                                            </h4>
+                                                            {s.siteLookup?.city && (
+                                                                <p className="text-[11px] text-slate-400 mt-0.5 truncate flex items-center gap-1">
+                                                                    <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
+                                                                    <span>{s.siteLookup.city}</span>
+                                                                </p>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                                                            <span className="font-mono text-[11px] text-slate-400 flex items-center gap-1.5">
+                                                                <span className={`w-1.5 h-1.5 rounded-full ${siteFresh > 0 ? "bg-emerald-400" : "bg-slate-500"}`} />
+                                                                <span>{siteFresh}/{siteTotal} fresh</span>
+                                                            </span>
+
+                                                            <div className="flex items-center gap-1">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setSelectedEntity({ type: "site", siteCode: s.siteCode })}
+                                                                    className="px-2.5 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white font-semibold text-[11px] transition"
+                                                                >
+                                                                    Manage
+                                                                </button>
+                                                                {s.allDevices.length > 0 && (
+                                                                    <button
+                                                                        type="button"
+                                                                        title={`Crawl ${s.siteCode}`}
+                                                                        onClick={() => onReseedDevice(s.allDevices[0])}
+                                                                        className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-blue-300 transition"
+                                                                    >
+                                                                        <CrawlIcon size={12} className="text-blue-400" />
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    );
+                })()}
             </div>
 
             {/* Quick Add IDF Modal */}
@@ -2319,6 +2990,213 @@ export default function SiteInventoryManager({
                         if (onRefreshSnapshot) onRefreshSnapshot();
                     }}
                 />
+            )}
+
+            {/* Create Group / Folder Modal */}
+            {isCreateFolderModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                            <div className="flex items-center gap-2">
+                                <FolderPlus className="w-5 h-5 text-blue-400" />
+                                <h3 className="text-base font-bold text-white">
+                                    Create New Group / Folder
+                                </h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsCreateFolderModalOpen(false)}
+                                className="text-slate-400 hover:text-white"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <p className="text-xs text-slate-400">
+                            Organize sites into logical categories or regional groups (e.g. Campus, Ambulatory, Data Center, South Jersey).
+                        </p>
+
+                        {/* Quick Category / Group Suggestions */}
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                Quick Category Suggestions
+                            </label>
+                            <div className="flex flex-wrap gap-1.5">
+                                {[
+                                    { label: "Campus", icon: "🏛️" },
+                                    { label: "Data Center", icon: "🖥️" },
+                                    { label: "Ambulatory", icon: "🏥" },
+                                    { label: "Administrative", icon: "🏢" },
+                                    { label: "Regional", icon: "📍" },
+                                    { label: "Clinics", icon: "🩺" },
+                                    { label: "Urgent Care", icon: "🚑" },
+                                    { label: "Warehouse", icon: "📦" }
+                                ].map((cat) => (
+                                    <button
+                                        key={cat.label}
+                                        type="button"
+                                        onClick={() => setNewFolderName(cat.label)}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition flex items-center gap-1 ${
+                                            newFolderName === cat.label
+                                                ? "bg-blue-600/30 text-blue-200 border-blue-500/50"
+                                                : "bg-slate-800/80 text-slate-300 border-slate-700 hover:bg-slate-800 hover:border-slate-600"
+                                        }`}
+                                    >
+                                        <span>{cat.icon}</span>
+                                        <span>{cat.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Parent Folder (Optional) */}
+                        {existingFolderPaths.length > 0 && (
+                            <div>
+                                <label className="text-xs text-slate-300 font-semibold block mb-1">
+                                    Parent Group (Optional)
+                                </label>
+                                <select
+                                    value={newFolderParent}
+                                    onChange={(e) => setNewFolderParent(e.target.value)}
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                                >
+                                    <option value="">Root / Top Level</option>
+                                    {existingFolderPaths.map((f) => (
+                                        <option key={f} value={f}>
+                                            📁 {f}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {/* Group / Folder Name */}
+                        <div>
+                            <label className="text-xs text-slate-300 font-semibold block mb-1">
+                                Group Name
+                            </label>
+                            <input
+                                type="text"
+                                value={newFolderName}
+                                onChange={(e) => setNewFolderName(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleCreateFolder();
+                                    }
+                                }}
+                                placeholder="e.g. South Jersey or Specialty Care"
+                                autoFocus
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-medium focus:outline-none focus:border-blue-500"
+                            />
+                            {newFolderParent && newFolderName && (
+                                <p className="text-[11px] text-slate-500 mt-1">
+                                    Full Path: <span className="font-mono text-blue-400">{newFolderParent}/{newFolderName.trim()}</span>
+                                </p>
+                            )}
+                        </div>
+
+                        {createFolderError && (
+                            <p className="text-xs text-red-400 bg-red-950/40 border border-red-800/40 p-2 rounded-lg">
+                                {createFolderError}
+                            </p>
+                        )}
+
+                        <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                            <button
+                                type="button"
+                                onClick={() => setIsCreateFolderModalOpen(false)}
+                                className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleCreateFolder()}
+                                disabled={creatingFolder || !newFolderName.trim()}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                            >
+                                {creatingFolder ? (
+                                    <>
+                                        <div className="w-3 h-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                                        <span>Creating...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus className="w-3.5 h-3.5" />
+                                        <span>Create Group</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Rename Group Modal */}
+            {isRenameFolderModalOpen && folderToRename && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm shadow-2xl p-6 space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                            <div className="flex items-center gap-2">
+                                <Edit2 className="w-5 h-5 text-blue-400" />
+                                <h3 className="text-base font-bold text-white">
+                                    Rename Group
+                                </h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsRenameFolderModalOpen(false);
+                                    setFolderToRename(null);
+                                }}
+                                className="text-slate-400 hover:text-white"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div>
+                            <label className="text-xs text-slate-300 font-semibold block mb-1">
+                                New Group Name / Path
+                            </label>
+                            <input
+                                type="text"
+                                value={renamedFolderName}
+                                onChange={(e) => setRenamedFolderName(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleRenameFolder();
+                                    }
+                                }}
+                                autoFocus
+                                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-medium focus:outline-none focus:border-blue-500"
+                            />
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsRenameFolderModalOpen(false);
+                                    setFolderToRename(null);
+                                }}
+                                className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleRenameFolder}
+                                disabled={renamingFolder || !renamedFolderName.trim()}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow transition"
+                            >
+                                {renamingFolder ? "Saving..." : "Save Changes"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

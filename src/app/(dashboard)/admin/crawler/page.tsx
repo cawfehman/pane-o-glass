@@ -194,6 +194,24 @@ export default function AdminCrawlerPage() {
     // Calculate pulse metrics
     const devices: any[] = currentSnapshotData?.devices || [];
     const links: any[] = currentSnapshotData?.links || [];
+    const existingFolders = useMemo(() => {
+        const dir = currentSnapshotData?.siteDirectory || {};
+        const set = new Set<string>();
+        for (const s of Object.values(dir)) {
+            if ((s as any)?.folderPath) set.add((s as any).folderPath);
+        }
+        return Array.from(set).sort();
+    }, [currentSnapshotData?.siteDirectory]);
+
+    const existingCategories = useMemo(() => {
+        const dir = currentSnapshotData?.siteDirectory || {};
+        const set = new Set<string>();
+        for (const s of Object.values(dir)) {
+            if ((s as any)?.locationType) set.add((s as any).locationType);
+        }
+        return Array.from(set).sort();
+    }, [currentSnapshotData?.siteDirectory]);
+
     const unreachableDevices = useMemo(() => {
         return devices.filter(d => (d.status && d.status !== "REACHABLE") || d.reachable === false || Boolean(d.failureReason) || Boolean(d.error));
     }, [devices]);
@@ -888,6 +906,8 @@ export default function AdminCrawlerPage() {
                 performAction={performSiteAction}
                 actionLoading={siteActionLoading}
                 mode={siteModalMode}
+                existingFolders={existingFolders}
+                existingCategories={existingCategories}
             />
 
             {/* Crawl Initiation Modal */}

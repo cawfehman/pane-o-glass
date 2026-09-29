@@ -10,6 +10,7 @@ interface SiteModalProps {
     actionLoading: boolean;
     mode?: 'add' | 'edit';
     existingFolders?: string[];
+    existingCategories?: string[];
 }
 
 export function SiteModal({ 
@@ -20,11 +21,52 @@ export function SiteModal({
     performAction, 
     actionLoading,
     mode = 'add',
-    existingFolders = []
+    existingFolders = [],
+    existingCategories = []
 }: SiteModalProps) {
     if (!isModalOpen) return null;
 
     const isEditMode = mode === 'edit';
+
+    const [isAddingNewCategory, setIsAddingNewCategory] = React.useState(false);
+    const [newCategoryName, setNewCategoryName] = React.useState("");
+    const [customCategories, setCustomCategories] = React.useState<string[]>([]);
+
+    const DEFAULT_CATEGORIES = React.useMemo(() => ["Campus", "Administrative", "Ambulatory", "Data Center"], []);
+
+    const getCategoryIcon = (cat: string) => {
+        const lower = cat.toLowerCase();
+        if (lower.includes("campus")) return "🏛️";
+        if (lower.includes("admin")) return "🏢";
+        if (lower.includes("ambulatory") || lower.includes("clinic") || lower.includes("hospital")) return "🏥";
+        if (lower.includes("data") || lower.includes("center")) return "🖥️";
+        if (lower.includes("ware") || lower.includes("dist")) return "📦";
+        if (lower.includes("lab") || lower.includes("research")) return "🔬";
+        if (lower.includes("remote") || lower.includes("satellite")) return "📡";
+        return "🏷️";
+    };
+
+    const allCategories = React.useMemo(() => {
+        const list = [...DEFAULT_CATEGORIES, ...(existingCategories || []), ...customCategories];
+        if (currentSite.locationType && !list.includes(currentSite.locationType)) {
+            list.push(currentSite.locationType);
+        }
+        return Array.from(new Set(list.filter(Boolean)));
+    }, [DEFAULT_CATEGORIES, existingCategories, customCategories, currentSite.locationType]);
+
+    const handleConfirmNewCategory = () => {
+        const trimmed = newCategoryName.trim();
+        if (!trimmed) return;
+        setCustomCategories(prev => Array.from(new Set([...prev, trimmed])));
+        setCurrentSite((prev: any) => ({
+            ...prev,
+            locationType: trimmed,
+            // If folder path is empty, optionally prefill with new category name so Group is created on demand
+            folderPath: prev.folderPath || trimmed
+        }));
+        setNewCategoryName("");
+        setIsAddingNewCategory(false);
+    };
 
     return (
         <div style={{
@@ -115,17 +157,89 @@ export function SiteModal({
                     {/* Location Type & City */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                            <label className="block text-[10px] font-black text-muted uppercase tracking-widest mb-1.5">Location Type</label>
-                            <select 
-                                value={currentSite.locationType || 'Ambulatory'} 
-                                onChange={e => setCurrentSite({...currentSite, locationType: e.target.value})}
-                                className="w-full px-3.5 py-2 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary font-bold appearance-none text-white text-xs"
-                            >
-                                <option value="Campus">🏛️ Campus</option>
-                                <option value="Administrative">🏢 Administrative</option>
-                                <option value="Ambulatory">🏥 Ambulatory</option>
-                                <option value="Data Center">🖥️ Data Center</option>
-                            </select>
+                            <div className="flex justify-between items-center mb-1.5">
+                                <label className="block text-[10px] font-black text-muted uppercase tracking-widest">
+                                    Location Type / Category
+                                </label>
+                                {!isAddingNewCategory && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsAddingNewCategory(true)}
+                                        className="text-[10px] font-bold text-accent-primary hover:underline flex items-center gap-0.5"
+                                    >
+                                        + New
+                                    </button>
+                                )}
+                            </div>
+
+                            {isAddingNewCategory ? (
+                                <div className="flex items-center gap-1.5">
+                                    <input 
+                                        type="text" 
+                                        value={newCategoryName} 
+                                        onChange={e => setNewCategoryName(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleConfirmNewCategory();
+                                            } else if (e.key === 'Escape') {
+                                                setIsAddingNewCategory(false);
+                                                setNewCategoryName("");
+                                            }
+                                        }}
+                                        placeholder="e.g. Urgent Care, Warehouse"
+                                        autoFocus
+                                        className="w-full px-3 py-1.5 bg-black/90 border border-accent-primary rounded-xl focus:outline-none text-white text-xs font-bold"
+                                    />
+                                    <button 
+                                        type="button" 
+                                        onClick={handleConfirmNewCategory}
+                                        className="p-2 bg-accent-primary text-black font-bold rounded-xl hover:opacity-90 transition shrink-0"
+                                        title="Add Category"
+                                    >
+                                        <Check className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => { setIsAddingNewCategory(false); setNewCategoryName(""); }}
+                                        className="p-2 bg-white/10 text-white rounded-xl hover:bg-white/20 transition shrink-0"
+                                        title="Cancel"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex gap-1.5">
+                                    <select 
+                                        value={currentSite.locationType || 'Ambulatory'} 
+                                        onChange={e => {
+                                            if (e.target.value === '__NEW__') {
+                                                setIsAddingNewCategory(true);
+                                            } else {
+                                                setCurrentSite({...currentSite, locationType: e.target.value});
+                                            }
+                                        }}
+                                        className="w-full px-3.5 py-2 bg-black/90 border border-white/20 rounded-xl focus:border-accent-primary focus:outline-none focus:ring-1 focus:ring-accent-primary font-bold appearance-none text-white text-xs"
+                                    >
+                                        {allCategories.map(cat => (
+                                            <option key={cat} value={cat}>
+                                                {getCategoryIcon(cat)} {cat}
+                                            </option>
+                                        ))}
+                                        <option value="__NEW__" className="text-accent-primary font-bold">
+                                            ✨ + New Category / Group...
+                                        </option>
+                                    </select>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsAddingNewCategory(true)}
+                                        title="Add New Category / Type"
+                                        className="p-2 bg-white/5 border border-white/20 hover:border-accent-primary text-muted hover:text-white rounded-xl transition shrink-0 flex items-center justify-center"
+                                    >
+                                        <Plus className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            )}
                         </div>
                         <div>
                             <label className="block text-[10px] font-black text-muted uppercase tracking-widest mb-1.5">City</label>
