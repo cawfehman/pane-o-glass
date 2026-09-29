@@ -47,7 +47,7 @@ import {
 import { CrawlIcon } from "./CrawlIcon";
 import { SiteMetadataLookup, parseDeviceSiteAndIdf, parseFloorFromIdf, detectSwitchStack } from "./TopologyGraph";
 import EditIdfModal from "./EditIdfModal";
-import { formatFullVerifiedDate, getInterfaceStatus, classifyCdpNeighbor, CdpDeviceCategory } from "./DeviceInspectorDrawer";
+import { formatFullVerifiedDate, getInterfaceStatus, classifyCdpNeighbor, CdpDeviceCategory, formatCredentialType } from "./DeviceInspectorDrawer";
 
 interface SiteInventoryManagerProps {
     devices: any[];
@@ -1476,6 +1476,12 @@ export default function SiteInventoryManager({
                                                         </span>
                                                     </>
                                                 )}
+                                                {activeDevice.credentialUsed && (
+                                                    <>
+                                                        <span>•</span>
+                                                        <span className="text-slate-400 font-medium">Auth: <strong className="text-emerald-400 font-mono font-semibold">{formatCredentialType(activeDevice.credentialUsed)}</strong></span>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -1787,8 +1793,8 @@ export default function SiteInventoryManager({
                                                 </h3>
                                                 <div className="space-y-2 text-xs">
                                                     <div className="flex justify-between py-1 border-b border-slate-800/60">
-                                                        <span className="text-slate-400">Credential Profile</span>
-                                                        <span className="font-mono text-emerald-400 font-semibold">{activeDevice.credentialUsed || "—"}</span>
+                                                        <span className="text-slate-400">Credential Type</span>
+                                                        <span className="font-mono text-emerald-400 font-semibold">{formatCredentialType(activeDevice.credentialUsed)}</span>
                                                     </div>
                                                     <div className="flex justify-between py-1 border-b border-slate-800/60">
                                                         <span className="text-slate-400">Auth Latency</span>

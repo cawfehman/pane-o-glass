@@ -46,6 +46,18 @@ export function formatFullVerifiedDate(ts?: string | null): string {
     });
 }
 
+export function formatCredentialType(rawCred?: string | null): string {
+    if (!rawCred || rawCred === "—" || rawCred === "-" || rawCred === "None") return "—";
+    const lower = rawCred.toLowerCase().trim();
+    if (lower.includes("tacacs") || lower.includes("primary") || lower.includes("radius") || lower.includes("tac")) {
+        return "TACACS";
+    }
+    if (lower.includes("local") || lower.includes("fallback") || lower.includes("admin")) {
+        return "Local";
+    }
+    return rawCred;
+}
+
 export interface InterfaceStatusResult {
     isUp: boolean;
     label: string;
@@ -548,7 +560,7 @@ export default function DeviceInspectorDrawer({
                             {device.credentialUsed && (
                                 <div className="flex items-center gap-1.5">
                                     <span className="text-slate-500 font-medium">Auth:</span>
-                                    <span className="text-emerald-400 font-mono font-medium">{device.credentialUsed}</span>
+                                    <span className="text-emerald-400 font-mono font-medium">{formatCredentialType(device.credentialUsed)}</span>
                                     {device.authTimeMs !== undefined && device.authTimeMs !== null && (
                                         <span className="text-slate-500 font-mono text-[10px]">({device.authTimeMs}ms)</span>
                                     )}
@@ -1086,8 +1098,8 @@ export default function DeviceInspectorDrawer({
                             </h3>
                             <div className="grid grid-cols-2 gap-3 text-xs">
                                 <div>
-                                    <span className="text-slate-500 block">Credential Profile</span>
-                                    <span className="text-emerald-400 font-mono font-semibold">{device.credentialUsed || "Primary TACACS+"}</span>
+                                    <span className="text-slate-500 block">Credential Type</span>
+                                    <span className="text-emerald-400 font-mono font-semibold">{formatCredentialType(device.credentialUsed) || "TACACS"}</span>
                                 </div>
                                 <div>
                                     <span className="text-slate-500 block">Auth Latency</span>

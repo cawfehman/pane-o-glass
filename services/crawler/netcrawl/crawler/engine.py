@@ -172,7 +172,7 @@ class NetworkCrawler:
         t_auth_start = time.time()
         success, err = client.connect()
         auth_time_ms = int((time.time() - t_auth_start) * 1000)
-        credential_used = f"Primary ({self.username})" if success else None
+        credential_used = "TACACS" if success else None
 
         if not success:
             err_lower = (err or "").lower()
@@ -197,7 +197,7 @@ class NetworkCrawler:
                             client = fb_client
                             success = True
                             err = None
-                            credential_used = f"Fallback ({fallback.get('username')})"
+                            credential_used = "Local"
                             auth_time_ms = int((time.time() - fb_t_start) * 1000)
                             from netcrawl.audit.logger import get_audit_logger
                             get_audit_logger().log(

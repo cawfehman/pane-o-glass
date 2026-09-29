@@ -405,7 +405,9 @@ async function persistLatestSnapshot(
                 status: dev.status,
                 failureReason: dev.failure_reason,
                 discoveredVia: dev.discovered_via,
-                credentialUsed: dev.credential_used || null,
+                credentialUsed: dev.credential_used 
+                    ? (dev.credential_used.toLowerCase().includes("fallback") || dev.credential_used.toLowerCase().includes("local") ? "Local" : "TACACS")
+                    : null,
                 authTimeMs: dev.auth_time_ms ?? null,
                 hopDistance: dev.hop_distance ?? 0,
                 isReseedFrontier: Boolean(dev.is_reseed_frontier),
