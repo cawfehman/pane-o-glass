@@ -96,8 +96,8 @@ export async function getPermissionsForRole(role: string) {
 
 export async function hasPermission(role: string, toolId: string) {
     if (role === 'ADMIN') return true;
-    noStore();
     try {
+        try { noStore(); } catch {}
         const targetId = (toolId === 'ise-failures' || toolId === 'ise-tacacs') ? 'ise' : toolId;
         
         // Check explicit permission for toolId first

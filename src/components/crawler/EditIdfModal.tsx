@@ -95,9 +95,10 @@ export default function EditIdfModal({
         setSuccess(null);
 
         try {
-            const canonicalHosts = selectedHosts.map(h => 
-                h.split(".")[0].split("(")[0].trim().toLowerCase()
-            );
+            const canonicalHosts = selectedHosts
+                .filter(Boolean)
+                .map(h => String(h).split(".")[0].split("(")[0].trim().toLowerCase())
+                .filter(Boolean);
 
             const res = await fetch("/api/crawler/overrides", {
                 method: "POST",

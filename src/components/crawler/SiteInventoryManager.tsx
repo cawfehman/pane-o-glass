@@ -369,9 +369,10 @@ export default function SiteInventoryManager({
         setAddIdfError(null);
 
         try {
-            const canonicalHosts = newIdfSelectedHosts.map(h => 
-                h.split(".")[0].split("(")[0].trim().toLowerCase()
-            );
+            const canonicalHosts = newIdfSelectedHosts
+                .filter(Boolean)
+                .map(h => String(h).split(".")[0].split("(")[0].trim().toLowerCase())
+                .filter(Boolean);
             const res = await fetch("/api/crawler/overrides", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
