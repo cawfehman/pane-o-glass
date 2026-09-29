@@ -128,7 +128,7 @@ export default function AdminCrawlerPage() {
         setLoadingSnapshots(true);
         setError(null);
         try {
-            const res = await fetch("/api/crawler/snapshots");
+            const res = await fetch("/api/crawler/snapshots", { cache: "no-store" });
             if (!res.ok) {
                 if (res.status === 403) {
                     throw new Error("Forbidden: Netcrawler permission required.");
@@ -162,7 +162,7 @@ export default function AdminCrawlerPage() {
         if (!id) return;
         setLoadingDetails(true);
         try {
-            const res = await fetch(`/api/crawler/snapshot/${id}`);
+            const res = await fetch(`/api/crawler/snapshot/${id}`, { cache: "no-store" });
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
                 throw new Error(errData.error || `Failed to load snapshot details (HTTP ${res.status}).`);

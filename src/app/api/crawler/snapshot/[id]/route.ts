@@ -3,6 +3,9 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/app/actions/permissions";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET(
     request: NextRequest,
     context: { params: Promise<{ id: string }> }
@@ -459,6 +462,10 @@ export async function GET(
             siteDirectory,
             devices: enrichedDevices,
             links: links || snapshot.links || []
+        }, {
+            headers: {
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"
+            }
         });
     } catch (error: any) {
         console.error("Failed to fetch snapshot details:", error);
