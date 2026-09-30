@@ -81,6 +81,67 @@ interface IpScanResult {
     }>;
 }
 
+interface ClusterGroup<T> {
+    clusterId: string;
+    clusterName: string;
+    siteCode: string;
+    primary?: T;
+    secondary?: T;
+    others: T[];
+}
+
+function groupNodesByCluster<T extends { firewallId?: string; id?: string; name?: string; firewallName?: string }>(items: T[]): ClusterGroup<T>[] {
+    const wilmington: ClusterGroup<T> = {
+        clusterId: "wilmington",
+        clusterName: "Wilmington Cluster (Connect)",
+        siteCode: "WILM",
+        others: []
+    };
+    const keleman: ClusterGroup<T> = {
+        clusterId: "keleman",
+        clusterName: "Keleman Cluster (Reconnect)",
+        siteCode: "KEL",
+        others: []
+    };
+    const other: ClusterGroup<T> = {
+        clusterId: "other",
+        clusterName: "Other Perimeter Firewalls",
+        siteCode: "OTHER",
+        others: []
+    };
+
+    for (const item of items) {
+        const id = (item.firewallId || item.id || "").toLowerCase();
+        const name = (item.firewallName || item.name || "").toLowerCase();
+
+        if (id === "fw1" || (name.includes("wilmington") && name.includes("primary"))) {
+            wilmington.primary = item;
+        } else if (id === "fw2" || (name.includes("wilmington") && name.includes("secondary"))) {
+            wilmington.secondary = item;
+        } else if (id === "fw3" || (name.includes("keleman") && name.includes("primary"))) {
+            keleman.primary = item;
+        } else if (id === "fw4" || (name.includes("keleman") && name.includes("secondary"))) {
+            keleman.secondary = item;
+        } else if (name.includes("wilmington")) {
+            if (!wilmington.primary) wilmington.primary = item;
+            else if (!wilmington.secondary) wilmington.secondary = item;
+            else wilmington.others.push(item);
+        } else if (name.includes("keleman")) {
+            if (!keleman.primary) keleman.primary = item;
+            else if (!keleman.secondary) keleman.secondary = item;
+            else keleman.others.push(item);
+        } else {
+            other.others.push(item);
+        }
+    }
+
+    return [
+        wilmington,
+        keleman,
+        ...(other.primary || other.secondary || other.others.length > 0 ? [other] : [])
+    ].filter(c => c.primary || c.secondary || c.others.length > 0);
+}
+
 export default function FtdOperationsPage() {
     const [hosts, setHosts] = useState<FirewallHost[]>([]);
     const [fleetStatuses, setFleetStatuses] = useState<FleetNodeStatus[]>([]);
@@ -401,65 +462,88 @@ export default function FtdOperationsPage() {
                     )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {hosts.map((host) => {
-                        const status = fleetStatuses.find(s => s.firewallId === host.id || s.ip === host.ip);
-                        const hasRun = status !== undefined;
-                        const isConnected = status?.success;
-                        const isChecking = loadingFleet;
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {groupNodesByCluster(hosts).map((cluster) => {
+                        const nodes = [
+                            cluster.primary ? { node: cluster.primary, role: "Primary Node" } : null,
+                            cluster.secondary ? { node: cluster.secondary, role: "Secondary Node" } : null,
+                            ...cluster.others.map(o => ({ node: o, role: "Member Node" }))
+                        ].filter(Boolean) as { node: FirewallHost; role: string }[];
 
                         return (
                             <div
-                                key={host.id}
-                                className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700 transition space-y-2"
+                                key={cluster.clusterId}
+                                className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-md space-y-3"
                             >
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0">
-                                        <h4 className="text-xs font-bold text-white truncate" title={host.name}>
-                                            {host.name}
-                                        </h4>
-                                        <span className="text-[11px] font-mono text-cyan-400">
-                                            {host.ip}
-                                        </span>
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+                                    <div className="flex items-center gap-2">
+                                        <Server className="w-4 h-4 text-blue-400" />
+                                        <h4 className="text-xs font-bold text-white">{cluster.clusterName}</h4>
                                     </div>
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 ${
-                                        isChecking
-                                            ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
-                                            : !hasRun
-                                            ? "bg-slate-800 text-slate-400 border-slate-700"
-                                            : isConnected
-                                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                                            : "bg-rose-500/10 text-rose-400 border-rose-500/30"
-                                    }`}>
-                                        <span className={`w-1.5 h-1.5 rounded-full ${
-                                            isChecking
-                                                ? "bg-blue-400 animate-pulse"
-                                                : !hasRun
-                                                ? "bg-slate-500"
-                                                : isConnected
-                                                ? "bg-emerald-400"
-                                                : "bg-rose-400"
-                                        }`} />
-                                        {isChecking ? "Testing..." : !hasRun ? "Configured" : isConnected ? "Online" : "Unreachable"}
+                                    <span className="text-[10px] font-semibold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full border border-slate-700">
+                                        HA Pair Stack
                                     </span>
                                 </div>
 
-                                {status?.prompt ? (
-                                    <div className="text-[10px] font-mono text-slate-400 pt-1 border-t border-slate-800/60 flex items-center justify-between">
-                                        <span>Diagnostic CLI:</span>
-                                        <span className="text-emerald-400 font-bold">{status.prompt}</span>
-                                    </div>
-                                ) : (
-                                    <div className="text-[10px] font-mono text-slate-500 pt-1 border-t border-slate-800/60 flex items-center justify-between">
-                                        <span>Status:</span>
-                                        <span>{hasRun ? (isConnected ? "Connected" : "Error") : "Ready"}</span>
-                                    </div>
-                                )}
-                                {status?.error && (
-                                    <p className="text-[10px] text-rose-400 truncate" title={status.error}>
-                                        {status.error}
-                                    </p>
-                                )}
+                                <div className="space-y-2">
+                                    {nodes.map(({ node, role }) => {
+                                        const status = fleetStatuses.find(s => s.firewallId === node.id || s.ip === node.ip);
+                                        const hasRun = status !== undefined;
+                                        const isConnected = status?.success;
+                                        const isChecking = loadingFleet;
+
+                                        return (
+                                            <div
+                                                key={node.id}
+                                                className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/70 hover:border-slate-700 transition flex items-center justify-between gap-3"
+                                            >
+                                                <div className="min-w-0 flex items-center gap-2.5">
+                                                    <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${
+                                                        role === "Primary Node"
+                                                            ? "bg-blue-500/10 text-blue-300 border-blue-500/30"
+                                                            : "bg-slate-800 text-slate-300 border-slate-700"
+                                                    }`}>
+                                                        {role}
+                                                    </span>
+                                                    <div className="min-w-0">
+                                                        <h5 className="text-xs font-bold text-white truncate" title={node.name}>
+                                                            {node.name}
+                                                        </h5>
+                                                        <div className="flex items-center gap-2 text-[11px] font-mono">
+                                                            <span className="text-cyan-400">{node.ip}</span>
+                                                            {status?.prompt && (
+                                                                <span className="text-slate-500">
+                                                                    · CLI: <span className="text-emerald-400 font-bold">{status.prompt}</span>
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 ${
+                                                    isChecking
+                                                        ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                                                        : !hasRun
+                                                        ? "bg-slate-800 text-slate-400 border-slate-700"
+                                                        : isConnected
+                                                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                                        : "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                                                }`}>
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${
+                                                        isChecking
+                                                            ? "bg-blue-400 animate-pulse"
+                                                            : !hasRun
+                                                            ? "bg-slate-500"
+                                                            : isConnected
+                                                            ? "bg-emerald-400"
+                                                            : "bg-rose-400"
+                                                    }`} />
+                                                    {isChecking ? "Testing..." : !hasRun ? "Configured" : isConnected ? "Online" : "Unreachable"}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         );
                     })}
@@ -642,77 +726,150 @@ export default function FtdOperationsPage() {
                                 </h4>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {scanResult.fleetResults.map((node) => {
-                                        const isShunned = node.isShunned;
-                                        const isExpanded = expandedCli[node.firewallId];
+                                    {groupNodesByCluster(scanResult.fleetResults).map((cluster) => {
+                                        const nodes = [
+                                            cluster.primary ? { node: cluster.primary, role: "Primary Node" } : null,
+                                            cluster.secondary ? { node: cluster.secondary, role: "Secondary Node" } : null,
+                                            ...cluster.others.map(o => ({ node: o, role: "Member Node" }))
+                                        ].filter(Boolean) as { node: (typeof scanResult.fleetResults)[0]; role: string }[];
+
+                                        const primaryShunned = cluster.primary?.isShunned;
+                                        const secondaryShunned = cluster.secondary?.isShunned;
+                                        const hasError = nodes.some(n => !n.node.success);
+
+                                        let clusterBadge = { 
+                                            text: "NOT SHUNNED", 
+                                            badgeClass: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30", 
+                                            dotClass: "bg-emerald-400" 
+                                        };
+
+                                        if (hasError) {
+                                            clusterBadge = { 
+                                                text: "NODE ERROR", 
+                                                badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/40", 
+                                                dotClass: "bg-amber-400" 
+                                            };
+                                        } else if (primaryShunned && secondaryShunned) {
+                                            clusterBadge = { 
+                                                text: "BOTH NODES SHUNNED", 
+                                                badgeClass: "bg-rose-500/20 text-rose-300 border-rose-500/40", 
+                                                dotClass: "bg-rose-400" 
+                                            };
+                                        } else if (primaryShunned || secondaryShunned) {
+                                            clusterBadge = { 
+                                                text: "ASYMMETRIC SHUN (1 NODE)", 
+                                                badgeClass: "bg-amber-500/20 text-amber-300 border-amber-500/40", 
+                                                dotClass: "bg-amber-400" 
+                                            };
+                                        }
 
                                         return (
                                             <div
-                                                key={node.firewallId}
-                                                className={`p-4 rounded-xl border transition ${
-                                                    isShunned 
-                                                        ? "bg-rose-950/10 border-rose-500/40" 
-                                                        : "bg-slate-900/60 border-slate-800"
-                                                }`}
+                                                key={cluster.clusterId}
+                                                className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-3.5"
                                             >
-                                                <div className="flex items-start justify-between gap-2 pb-2">
-                                                    <div>
-                                                        <h5 className="text-xs font-bold text-white">{node.firewallName}</h5>
-                                                        <span className="text-[11px] font-mono text-slate-400">{node.ip}</span>
+                                                {/* Cluster Header */}
+                                                <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+                                                    <div className="flex items-center gap-2">
+                                                        <Server className="w-4 h-4 text-blue-400" />
+                                                        <h5 className="text-xs font-bold text-white tracking-wide">
+                                                            {cluster.clusterName}
+                                                        </h5>
                                                     </div>
-                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${
-                                                        !node.success 
-                                                            ? "bg-slate-800 text-slate-400 border-slate-700" 
-                                                            : isShunned 
-                                                            ? "bg-rose-500/20 text-rose-300 border-rose-500/40" 
-                                                            : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                                                    }`}>
-                                                        <span className={`w-2 h-2 rounded-full ${
-                                                            !node.success ? "bg-slate-400" : isShunned ? "bg-rose-400" : "bg-emerald-400"
-                                                        }`} />
-                                                        {!node.success ? "Error" : isShunned ? "SHUNNED" : "NOT SHUNNED"}
+                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${clusterBadge.badgeClass}`}>
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${clusterBadge.dotClass}`} />
+                                                        {clusterBadge.text}
                                                     </span>
                                                 </div>
 
-                                                {/* Node Action Buttons */}
-                                                <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setExpandedCli(prev => ({ ...prev, [node.firewallId]: !prev[node.firewallId] }))}
-                                                        className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 transition cursor-pointer"
-                                                    >
-                                                        <Terminal className="w-3 h-3 text-blue-400" />
-                                                        <span>{isExpanded ? "Hide CLI Output" : "View CLI Output"}</span>
-                                                        {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                                                    </button>
+                                                {/* Stacked HA Nodes */}
+                                                <div className="space-y-3">
+                                                    {nodes.map(({ node, role }) => {
+                                                        const isShunned = node.isShunned;
+                                                        const isExpanded = expandedCli[node.firewallId];
 
-                                                    <div className="flex items-center gap-1.5">
-                                                        {isShunned ? (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => triggerActionConfirm("unshun", scanResult.targetIp, node.firewallId)}
-                                                                className="px-2.5 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-semibold transition cursor-pointer"
+                                                        return (
+                                                            <div
+                                                                key={node.firewallId}
+                                                                className={`p-3.5 rounded-xl border transition ${
+                                                                    !node.success
+                                                                        ? "bg-slate-950/60 border-slate-800"
+                                                                        : isShunned
+                                                                        ? "bg-rose-950/20 border-rose-500/40"
+                                                                        : "bg-slate-950/60 border-slate-800/80 hover:border-slate-700"
+                                                                }`}
                                                             >
-                                                                Unshun Node
-                                                            </button>
-                                                        ) : (
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => triggerActionConfirm("shun", scanResult.targetIp, node.firewallId)}
-                                                                className="px-2.5 py-1 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 rounded-lg text-xs font-semibold transition cursor-pointer"
-                                                            >
-                                                                Shun Node
-                                                            </button>
-                                                        )}
-                                                    </div>
+                                                                <div className="flex items-start justify-between gap-2 pb-2">
+                                                                    <div className="flex items-start gap-2.5">
+                                                                        <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 mt-0.5 ${
+                                                                            role === "Primary Node"
+                                                                                ? "bg-blue-500/10 text-blue-300 border-blue-500/30"
+                                                                                : "bg-slate-800 text-slate-300 border-slate-700"
+                                                                        }`}>
+                                                                            {role}
+                                                                        </span>
+                                                                        <div>
+                                                                            <h6 className="text-xs font-bold text-white">{node.firewallName}</h6>
+                                                                            <span className="text-[11px] font-mono text-cyan-400">{node.ip}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border shrink-0 ${
+                                                                        !node.success 
+                                                                            ? "bg-slate-800 text-slate-400 border-slate-700" 
+                                                                            : isShunned 
+                                                                            ? "bg-rose-500/20 text-rose-300 border-rose-500/40" 
+                                                                            : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                                                    }`}>
+                                                                        <span className={`w-2 h-2 rounded-full ${
+                                                                            !node.success ? "bg-slate-400" : isShunned ? "bg-rose-400" : "bg-emerald-400"
+                                                                        }`} />
+                                                                        {!node.success ? "Error" : isShunned ? "SHUNNED" : "NOT SHUNNED"}
+                                                                    </span>
+                                                                </div>
+
+                                                                {/* Node Action Buttons */}
+                                                                <div className="flex items-center justify-between pt-2 border-t border-slate-800/60">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setExpandedCli(prev => ({ ...prev, [node.firewallId]: !prev[node.firewallId] }))}
+                                                                        className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 transition cursor-pointer"
+                                                                    >
+                                                                        <Terminal className="w-3 h-3 text-blue-400" />
+                                                                        <span>{isExpanded ? "Hide CLI Output" : "View CLI Output"}</span>
+                                                                        {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                                                    </button>
+
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        {isShunned ? (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => triggerActionConfirm("unshun", scanResult.targetIp, node.firewallId)}
+                                                                                className="px-2.5 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-semibold transition cursor-pointer"
+                                                                            >
+                                                                                Unshun Node
+                                                                            </button>
+                                                                        ) : (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => triggerActionConfirm("shun", scanResult.targetIp, node.firewallId)}
+                                                                                className="px-2.5 py-1 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 rounded-lg text-xs font-semibold transition cursor-pointer"
+                                                                            >
+                                                                                Shun Node
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Raw CLI Drawer */}
+                                                                {isExpanded && (
+                                                                    <div className="mt-3 p-3 bg-slate-950 border border-slate-800 rounded-lg font-mono text-[11px] text-slate-300 overflow-x-auto whitespace-pre-wrap">
+                                                                        {node.output || node.error || "No command output recorded."}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
-
-                                                {/* Raw CLI Drawer */}
-                                                {isExpanded && (
-                                                    <div className="mt-3 p-3 bg-slate-950 border border-slate-800 rounded-lg font-mono text-[11px] text-slate-300 overflow-x-auto whitespace-pre-wrap">
-                                                        {node.output || node.error || "No command output recorded."}
-                                                    </div>
-                                                )}
                                             </div>
                                         );
                                     })}
@@ -742,47 +899,82 @@ export default function FtdOperationsPage() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {liveShunsData.map((node: any) => (
-                            <div key={node.firewallId} className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-3">
-                                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                                    <div>
-                                        <h4 className="text-xs font-bold text-white">{node.firewallName}</h4>
-                                        <span className="text-[11px] font-mono text-cyan-400">{node.ip}</span>
-                                    </div>
-                                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                                        {node.shunCount ?? 0} Active Shuns
-                                    </span>
-                                </div>
+                        {groupNodesByCluster(liveShunsData).map((cluster) => {
+                            const nodes = [
+                                cluster.primary ? { node: cluster.primary, role: "Primary Node" } : null,
+                                cluster.secondary ? { node: cluster.secondary, role: "Secondary Node" } : null,
+                                ...cluster.others.map(o => ({ node: o, role: "Member Node" }))
+                            ].filter(Boolean) as { node: any; role: string }[];
 
-                                <div className="max-h-60 overflow-y-auto font-mono text-xs text-slate-300 space-y-1">
-                                    {Array.isArray(node.shunnedIps) && node.shunnedIps.length > 0 ? (
-                                        node.shunnedIps.map((ip: string) => (
-                                            <div
-                                                key={ip}
-                                                className="flex items-center justify-between px-2.5 py-1 bg-slate-950/60 rounded border border-slate-800/80 hover:border-slate-700 transition"
-                                            >
-                                                <span>{ip}</span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setSearchIp(ip);
-                                                        setActiveTab("audit");
-                                                        handleScanIp(ip);
-                                                    }}
-                                                    className="text-[10px] text-blue-400 hover:text-blue-300 font-sans font-semibold cursor-pointer"
-                                                >
-                                                    Audit / Unshun →
-                                                </button>
+                            const totalShuns = nodes.reduce((acc, n) => acc + (n.node.shunCount ?? 0), 0);
+
+                            return (
+                                <div key={cluster.clusterId} className="p-4 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl space-y-3.5">
+                                    <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+                                        <div className="flex items-center gap-2">
+                                            <Server className="w-4 h-4 text-blue-400" />
+                                            <h4 className="text-xs font-bold text-white tracking-wide">{cluster.clusterName}</h4>
+                                        </div>
+                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-300 border border-blue-500/30">
+                                            {totalShuns} Total Cluster Shuns
+                                        </span>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        {nodes.map(({ node, role }) => (
+                                            <div key={node.firewallId} className="p-3 bg-slate-950/60 border border-slate-800/80 rounded-xl space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${
+                                                            role === "Primary Node"
+                                                                ? "bg-blue-500/10 text-blue-300 border-blue-500/30"
+                                                                : "bg-slate-800 text-slate-300 border-slate-700"
+                                                        }`}>
+                                                            {role}
+                                                        </span>
+                                                        <div>
+                                                            <h5 className="text-xs font-bold text-white">{node.firewallName}</h5>
+                                                            <span className="text-[11px] font-mono text-cyan-400">{node.ip}</span>
+                                                        </div>
+                                                    </div>
+                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                                                        {node.shunCount ?? 0} active
+                                                    </span>
+                                                </div>
+
+                                                <div className="max-h-48 overflow-y-auto font-mono text-xs text-slate-300 space-y-1">
+                                                    {Array.isArray(node.shunnedIps) && node.shunnedIps.length > 0 ? (
+                                                        node.shunnedIps.map((ip: string) => (
+                                                            <div
+                                                                key={ip}
+                                                                className="flex items-center justify-between px-2.5 py-1 bg-slate-900 rounded border border-slate-800 hover:border-slate-700 transition"
+                                                            >
+                                                                <span>{ip}</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setSearchIp(ip);
+                                                                        setActiveTab("audit");
+                                                                        handleScanIp(ip);
+                                                                    }}
+                                                                    className="text-[10px] text-blue-400 hover:text-blue-300 font-sans font-semibold cursor-pointer"
+                                                                >
+                                                                    Audit / Unshun →
+                                                                </button>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <p className="text-slate-500 text-[11px] py-2 text-center">
+                                                            {node.success ? "No active shuns on this node." : (node.error || "Failed to poll node.")}
+                                                        </p>
+                                                    )}
+                                                </div>
                                             </div>
-                                        ))
-                                    ) : (
-                                        <p className="text-slate-500 text-xs py-4 text-center">
-                                            {node.success ? "No active shuns on this node." : (node.error || "Failed to poll node.")}
-                                        </p>
-                                    )}
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}
