@@ -50,6 +50,10 @@
   --accent-glow: rgba(59, 130, 246, 0.2);
 
   --border-color: #2e3440;
+  --border-hover: #3e4756;
+  --bg-default: var(--bg-dark);
+  --table-header-bg: var(--bg-surface);
+  --row-hover: var(--bg-surface-hover);
   --glass-bg: rgba(26, 29, 36, 0.7);
 
   /* Typography */
@@ -508,6 +512,7 @@ thead.sticky-header th {
   --accent-glow: rgba(37, 99, 235, 0.12);
   
   --border-color: #cbd5e1;
+  --border-hover: #94a3b8;
   --glass-bg: rgba(255, 255, 255, 0.9);
 }
 

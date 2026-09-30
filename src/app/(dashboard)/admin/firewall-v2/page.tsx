@@ -451,22 +451,22 @@ export default function FtdOperationsPage() {
     return (
         <div className="p-6 max-w-7xl mx-auto space-y-6">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-[var(--border-color)]">
                 <div>
                     <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-xl bg-blue-600/10 border border-blue-500/20 text-blue-400">
+                        <div className="p-2.5 rounded-xl bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/20 text-[var(--accent-primary)]">
                             <Shield className="w-6 h-6" />
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
-                                <h1 className="text-xl font-bold text-white tracking-tight">
+                                <h1 className="text-xl font-bold text-[var(--text-primary)] tracking-tight">
                                     Cisco FTD Perimeter Defense Operations
                                 </h1>
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
                                     V2 PREVIEW · ADMIN ONLY
                                 </span>
                             </div>
-                            <p className="text-xs text-slate-400 mt-0.5">
+                            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
                                 Real-time parallel Netmiko engine for Cisco Firepower Threat Defense (FTD 7.2+) and Lina diagnostic sub-shells.
                             </p>
                         </div>
@@ -475,9 +475,9 @@ export default function FtdOperationsPage() {
 
                 <div className="flex items-center gap-3">
                     {/* Safe Dry-Run Switch */}
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)]">
                         <div className="text-right">
-                            <span className="text-[10px] text-slate-400 uppercase font-bold block">Safety Guardrail</span>
+                            <span className="text-[10px] text-[var(--text-secondary)] uppercase font-bold block">Safety Guardrail</span>
                             <span className={`text-xs font-bold ${isDryRun ? "text-emerald-400" : "text-rose-400"}`}>
                                 {isDryRun ? "Safe Dry-Run Mode" : "LIVE MUTATIONS ON"}
                             </span>
@@ -499,9 +499,9 @@ export default function FtdOperationsPage() {
                         type="button"
                         onClick={refreshFleetStatus}
                         disabled={loadingFleet}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition cursor-pointer"
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-surface)] text-[var(--text-primary)] text-xs font-semibold border border-[var(--border-color)] transition cursor-pointer"
                     >
-                        <RefreshCw className={`w-3.5 h-3.5 ${loadingFleet ? "animate-spin text-blue-400" : ""}`} />
+                        <RefreshCw className={`w-3.5 h-3.5 ${loadingFleet ? "animate-spin text-[var(--accent-primary)]" : ""}`} />
                         <span>{loadingFleet ? "Testing Fleet..." : fleetStatuses.length === 0 ? "Test Connectivity" : "Re-test Fleet"}</span>
                     </button>
                 </div>
@@ -509,15 +509,15 @@ export default function FtdOperationsPage() {
 
             {/* Fleet Status Strip */}
             <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-slate-400">
+                <div className="flex items-center justify-between text-xs text-[var(--text-secondary)]">
                     <span className="font-semibold flex items-center gap-1.5">
-                        <Server className="w-3.5 h-3.5 text-blue-400" />
+                        <Server className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
                         Perimeter FTD Fleet Connectivity
                     </span>
                     {fleetLastUpdated ? (
                         <span>Last verified: {fleetLastUpdated}</span>
                     ) : (
-                        <span className="text-slate-500 italic">Click &quot;Test Connectivity&quot; to verify live SSH links</span>
+                        <span className="text-[var(--text-muted)] italic">Click &quot;Test Connectivity&quot; to verify live SSH links</span>
                     )}
                 </div>
 
@@ -532,14 +532,14 @@ export default function FtdOperationsPage() {
                         return (
                             <div
                                 key={cluster.clusterId}
-                                className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 shadow-md space-y-3"
+                                className="p-4 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-color)] shadow-md space-y-3"
                             >
-                                <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+                                <div className="flex items-center justify-between pb-2 border-b border-[var(--border-color)]">
                                     <div className="flex items-center gap-2">
-                                        <Server className="w-4 h-4 text-blue-400" />
-                                        <h4 className="text-xs font-bold text-white">{cluster.clusterName}</h4>
+                                        <Server className="w-4 h-4 text-[var(--accent-primary)]" />
+                                        <h4 className="text-xs font-bold text-[var(--text-primary)]">{cluster.clusterName}</h4>
                                     </div>
-                                    <span className="text-[10px] font-semibold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full border border-slate-700">
+                                    <span className="text-[10px] font-semibold text-[var(--text-secondary)] bg-[var(--bg-dark)] px-2 py-0.5 rounded-full border border-[var(--border-color)]">
                                         HA Pair Stack
                                     </span>
                                 </div>
@@ -554,24 +554,24 @@ export default function FtdOperationsPage() {
                                         return (
                                             <div
                                                 key={node.id}
-                                                className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/70 hover:border-slate-700 transition flex items-center justify-between gap-3"
+                                                className="p-3 rounded-xl bg-[var(--bg-dark)]/60 border border-[var(--border-color)] hover:border-[var(--accent-primary)] transition flex items-center justify-between gap-3"
                                             >
                                                 <div className="min-w-0 flex items-center gap-2.5">
                                                     <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 ${
                                                         role === "Primary Node"
-                                                            ? "bg-blue-500/10 text-blue-300 border-blue-500/30"
-                                                            : "bg-slate-800 text-slate-300 border-slate-700"
+                                                            ? "bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] border-[var(--accent-primary)]/30"
+                                                            : "bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-color)]"
                                                     }`}>
                                                         {role}
                                                     </span>
                                                     <div className="min-w-0">
-                                                        <h5 className="text-xs font-bold text-white truncate" title={node.name}>
+                                                        <h5 className="text-xs font-bold text-[var(--text-primary)] truncate" title={node.name}>
                                                             {node.name}
                                                         </h5>
                                                         <div className="flex items-center gap-2 text-[11px] font-mono">
                                                             <span className="text-cyan-400">{node.ip}</span>
                                                             {status?.prompt && (
-                                                                <span className="text-slate-500">
+                                                                <span className="text-[var(--text-muted)]">
                                                                     · CLI: <span className="text-emerald-400 font-bold">{status.prompt}</span>
                                                                 </span>
                                                             )}
@@ -581,18 +581,18 @@ export default function FtdOperationsPage() {
 
                                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 ${
                                                     isChecking
-                                                        ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                                                        ? "bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] border-[var(--accent-primary)]/30"
                                                         : !hasRun
-                                                        ? "bg-slate-800 text-slate-400 border-slate-700"
+                                                        ? "bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-color)]"
                                                         : isConnected
                                                         ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
                                                         : "bg-rose-500/10 text-rose-400 border-rose-500/30"
                                                 }`}>
                                                     <span className={`w-1.5 h-1.5 rounded-full ${
                                                         isChecking
-                                                            ? "bg-blue-400 animate-pulse"
+                                                            ? "bg-[var(--accent-primary)] animate-pulse"
                                                             : !hasRun
-                                                            ? "bg-slate-500"
+                                                            ? "bg-[var(--text-muted)]"
                                                             : isConnected
                                                             ? "bg-emerald-400"
                                                             : "bg-rose-400"
@@ -610,7 +610,7 @@ export default function FtdOperationsPage() {
             </div>
 
             {/* Navigation Tabs */}
-            <div className="flex items-center gap-1 border-b border-slate-800 pt-2 overflow-x-auto">
+            <div className="flex items-center gap-1 border-b border-[var(--border-color)] pt-2 overflow-x-auto">
                 {[
                     { id: "audit", label: "Global IP Fleet Audit", icon: Search },
                     { id: "shun_db", label: "Shun Database & Snapshots", icon: Database },
@@ -626,8 +626,8 @@ export default function FtdOperationsPage() {
                             onClick={() => setActiveTab(t.id as any)}
                             className={`flex items-center gap-2 py-2.5 px-4 text-xs font-semibold border-b-2 transition -mb-[1px] cursor-pointer whitespace-nowrap ${
                                 isActive
-                                    ? "text-blue-400 border-blue-500 bg-slate-900/40"
-                                    : "text-slate-400 border-transparent hover:text-slate-200"
+                                    ? "text-[var(--accent-primary)] border-[var(--accent-primary)] bg-[var(--accent-primary)]/10"
+                                    : "text-[var(--text-secondary)] border-transparent hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
                             }`}
                         >
                             <Icon className="w-3.5 h-3.5" />
@@ -641,16 +641,16 @@ export default function FtdOperationsPage() {
             {activeTab === "audit" && (
                 <div className="space-y-6">
                     {/* Search & Audit Bar */}
-                    <div className="p-5 bg-slate-900/70 border border-slate-800 rounded-2xl shadow-xl space-y-4">
+                    <div className="p-5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-xl space-y-4">
                         <form onSubmit={(e) => { e.preventDefault(); handleScanIp(); }} className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
                             <div className="relative flex-1">
-                                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                <Search className="w-4 h-4 text-[var(--text-secondary)] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                                 <input
                                     type="text"
                                     value={searchIp}
                                     onChange={(e) => setSearchIp(e.target.value.trim())}
                                     placeholder="Enter public IPv4 address to audit across all 4 FTD firewalls (e.g. 198.51.100.42)..."
-                                    className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-12 pr-4 py-2.5 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500"
+                                    className="w-full bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-xl pl-12 pr-4 py-2.5 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] font-mono focus:outline-none focus:border-[var(--accent-primary)]"
                                     style={{ paddingLeft: '3rem' }}
                                 />
                             </div>
@@ -659,7 +659,7 @@ export default function FtdOperationsPage() {
                                 <select
                                     value={targetSelection}
                                     onChange={(e) => setTargetSelection(e.target.value)}
-                                    className="bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 cursor-pointer"
+                                    className="bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-xl px-3 py-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-primary)] cursor-pointer"
                                 >
                                     <option value="fleet">⚡ All 4 Firewalls (Parallel Fleet)</option>
                                     {hosts.map(h => (
@@ -670,7 +670,7 @@ export default function FtdOperationsPage() {
                                 <button
                                     type="submit"
                                     disabled={scanningIp || !searchIp.trim()}
-                                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/20 transition flex items-center gap-2 cursor-pointer"
+                                    className="px-5 py-2.5 bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-lg shadow-[var(--accent-primary)]/20 transition flex items-center gap-2 cursor-pointer"
                                 >
                                     {scanningIp ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
                                     <span>{scanningIp ? "Scanning Fleet..." : "Audit Fleet"}</span>
@@ -701,12 +701,12 @@ export default function FtdOperationsPage() {
                     {scanResult && (
                         <div className="space-y-6">
                             {/* Context & Safety Intelligence Banner */}
-                            <div className="p-5 bg-slate-900 border border-slate-800 rounded-2xl space-y-3 shadow-lg">
-                                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                            <div className="p-5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl space-y-3 shadow-lg">
+                                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border-color)]">
                                     <div className="flex items-center gap-2.5">
-                                        <Globe className="w-5 h-5 text-blue-400" />
+                                        <Globe className="w-5 h-5 text-[var(--accent-primary)]" />
                                         <div>
-                                            <h3 className="text-sm font-bold text-white font-mono flex items-center gap-2">
+                                            <h3 className="text-sm font-bold text-[var(--text-primary)] font-mono flex items-center gap-2">
                                                 {scanResult.targetIp}
                                                 {scanResult.isPrivate && (
                                                     <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-sans">
@@ -714,7 +714,7 @@ export default function FtdOperationsPage() {
                                                     </span>
                                                 )}
                                             </h3>
-                                            <p className="text-xs text-slate-400">
+                                            <p className="text-xs text-[var(--text-secondary)]">
                                                 {scanResult.geoInfo?.country || "Unknown Country"} · {scanResult.geoInfo?.as_name || scanResult.geoInfo?.asn || "Autonomous System Unspecified"}
                                             </p>
                                         </div>
@@ -750,12 +750,12 @@ export default function FtdOperationsPage() {
                                             <User className="w-4 h-4" />
                                             <span>Legitimate VPN User Correlation Detected!</span>
                                         </div>
-                                        <p className="text-slate-300">
+                                        <p className="text-[var(--text-secondary)]">
                                             This IP address was recently used for AnyConnect VPN authentication by{" "}
-                                            <span className="font-bold text-white">{scanResult.vpnSessions[0].username}</span>
+                                            <span className="font-bold text-[var(--text-primary)]">{scanResult.vpnSessions[0].username}</span>
                                             {scanResult.vpnSessions[0].adDisplayName && ` (${scanResult.vpnSessions[0].adDisplayName})`} on{" "}
                                             {new Date(scanResult.vpnSessions[0].createdAt).toLocaleDateString()} via{" "}
-                                            <span className="font-mono text-cyan-300">{scanResult.vpnSessions[0].vpnStream || "VPN"}</span>.
+                                            <span className="font-mono text-cyan-400">{scanResult.vpnSessions[0].vpnStream || "VPN"}</span>.
                                             Take caution before shunning to avoid locking out legitimate staff.
                                         </p>
                                     </div>
@@ -768,8 +768,8 @@ export default function FtdOperationsPage() {
                                             <Lock className="w-3.5 h-3.5 text-rose-400" />
                                             <span>Listed on Guardian Safety Blacklist</span>
                                         </div>
-                                        <p className="text-slate-400">
-                                            Reason: <span className="text-slate-200">{scanResult.blacklistEntry.reason}</span>
+                                        <p className="text-[var(--text-secondary)]">
+                                            Reason: <span className="text-[var(--text-primary)]">{scanResult.blacklistEntry.reason}</span>
                                         </p>
                                     </div>
                                 )}
@@ -777,7 +777,7 @@ export default function FtdOperationsPage() {
 
                             {/* Parallel Fleet Matrix */}
                             <div className="space-y-3">
-                                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                                <h4 className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wider">
                                     Firewall Node Status Matrix ({scanResult.fleetResults.length} Nodes Queried)
                                 </h4>
 
@@ -822,13 +822,13 @@ export default function FtdOperationsPage() {
                                         return (
                                             <div
                                                 key={cluster.clusterId}
-                                                className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-3.5"
+                                                className="p-4 rounded-2xl bg-[var(--bg-surface)] border border-[var(--border-color)] shadow-xl space-y-3.5"
                                             >
                                                 {/* Cluster Header */}
-                                                <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+                                                <div className="flex items-center justify-between pb-3 border-b border-[var(--border-color)]">
                                                     <div className="flex items-center gap-2">
-                                                        <Server className="w-4 h-4 text-blue-400" />
-                                                        <h5 className="text-xs font-bold text-white tracking-wide">
+                                                        <Server className="w-4 h-4 text-[var(--accent-primary)]" />
+                                                        <h5 className="text-xs font-bold text-[var(--text-primary)] tracking-wide">
                                                             {cluster.clusterName}
                                                         </h5>
                                                     </div>
@@ -849,48 +849,48 @@ export default function FtdOperationsPage() {
                                                                 key={node.firewallId}
                                                                 className={`p-3.5 rounded-xl border transition ${
                                                                     !node.success
-                                                                        ? "bg-slate-950/60 border-slate-800"
+                                                                        ? "bg-[var(--bg-dark)]/60 border-[var(--border-color)]"
                                                                         : isShunned
                                                                         ? "bg-rose-950/20 border-rose-500/40"
-                                                                        : "bg-slate-950/60 border-slate-800/80 hover:border-slate-700"
+                                                                        : "bg-[var(--bg-dark)]/60 border-[var(--border-color)] hover:border-[var(--accent-primary)]"
                                                                 }`}
                                                             >
                                                                 <div className="flex items-start justify-between gap-2 pb-2">
                                                                     <div className="flex items-start gap-2.5">
                                                                         <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border shrink-0 mt-0.5 ${
                                                                             role === "Primary Node"
-                                                                                ? "bg-blue-500/10 text-blue-300 border-blue-500/30"
-                                                                                : "bg-slate-800 text-slate-300 border-slate-700"
+                                                                                ? "bg-[var(--accent-primary)]/10 text-[var(--accent-primary)] border-[var(--accent-primary)]/30"
+                                                                                : "bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-color)]"
                                                                         }`}>
                                                                             {role}
                                                                         </span>
                                                                         <div>
-                                                                            <h6 className="text-xs font-bold text-white">{node.firewallName}</h6>
+                                                                            <h6 className="text-xs font-bold text-[var(--text-primary)]">{node.firewallName}</h6>
                                                                             <span className="text-[11px] font-mono text-cyan-400">{node.ip}</span>
                                                                         </div>
                                                                     </div>
                                                                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border shrink-0 ${
                                                                         !node.success 
-                                                                            ? "bg-slate-800 text-slate-400 border-slate-700" 
+                                                                            ? "bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-color)]" 
                                                                             : isShunned 
                                                                             ? "bg-rose-500/20 text-rose-300 border-rose-500/40" 
                                                                             : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
                                                                     }`}>
                                                                         <span className={`w-2 h-2 rounded-full ${
-                                                                            !node.success ? "bg-slate-400" : isShunned ? "bg-rose-400" : "bg-emerald-400"
+                                                                            !node.success ? "bg-[var(--text-muted)]" : isShunned ? "bg-rose-400" : "bg-emerald-400"
                                                                         }`} />
                                                                         {!node.success ? "Error" : isShunned ? "SHUNNED" : "NOT SHUNNED"}
                                                                     </span>
                                                                 </div>
 
                                                                 {/* Node Action Buttons */}
-                                                                <div className="flex items-center justify-between pt-2 border-t border-slate-800/60">
+                                                                <div className="flex items-center justify-between pt-2 border-t border-[var(--border-color)]">
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => setExpandedCli(prev => ({ ...prev, [node.firewallId]: !prev[node.firewallId] }))}
-                                                                        className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 transition cursor-pointer"
+                                                                        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1 transition cursor-pointer"
                                                                     >
-                                                                        <Terminal className="w-3 h-3 text-blue-400" />
+                                                                        <Terminal className="w-3 h-3 text-[var(--accent-primary)]" />
                                                                         <span>{isExpanded ? "Hide CLI Output" : "View CLI Output"}</span>
                                                                         {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                                                                     </button>
@@ -918,7 +918,7 @@ export default function FtdOperationsPage() {
 
                                                                 {/* Raw CLI Drawer */}
                                                                 {isExpanded && (
-                                                                    <div className="mt-3 p-3 bg-slate-950 border border-slate-800 rounded-lg font-mono text-[11px] text-slate-300 overflow-x-auto whitespace-pre-wrap">
+                                                                    <div className="mt-3 p-3 bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-lg font-mono text-[11px] text-[var(--text-secondary)] overflow-x-auto whitespace-pre-wrap">
                                                                         {node.output || node.error || "No command output recorded."}
                                                                     </div>
                                                                 )}
@@ -948,7 +948,7 @@ export default function FtdOperationsPage() {
                 <div className="space-y-4">
                     {/* Guardian Health Status */}
                     {guardianStatus && (
-                        <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl flex flex-wrap items-center justify-between gap-4 text-xs shadow-md">
+                        <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl flex flex-wrap items-center justify-between gap-4 text-xs shadow-md">
                             <div className="flex items-center gap-3">
                                 <div className={`p-2.5 rounded-xl border ${
                                     guardianStatus.isLive 
@@ -958,44 +958,44 @@ export default function FtdOperationsPage() {
                                     <ShieldAlert className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h4 className="font-bold text-white text-sm">Guardian Automated Safety Daemon</h4>
-                                    <p className="text-slate-400 mt-0.5">
+                                    <h4 className="font-bold text-[var(--text-primary)] text-sm">Guardian Automated Safety Daemon</h4>
+                                    <p className="text-[var(--text-secondary)] mt-0.5">
                                         Daemon Status: <span className="font-semibold text-emerald-400">{guardianStatus.status || "ACTIVE"}</span> · Last Heartbeat: {guardianStatus.lastRun ? new Date(guardianStatus.lastRun).toLocaleTimeString() : "Recent"}
                                     </p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
                                 <div className="text-right">
-                                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Active Watchlist</span>
-                                    <span className="text-xs font-mono font-bold text-cyan-300">{monitoredIps.length} Target IPs</span>
+                                    <span className="text-[10px] text-[var(--text-secondary)] uppercase font-bold block">Active Watchlist</span>
+                                    <span className="text-xs font-mono font-bold text-cyan-400">{monitoredIps.length} Target IPs</span>
                                 </div>
                                 <button
                                     type="button"
                                     onClick={() => { fetchGuardianEvents(); fetchMonitoredIps(); }}
                                     disabled={loadingGuardian || loadingMonitored}
-                                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+                                    className="p-2 rounded-xl bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border-color)] transition cursor-pointer"
                                     title="Refresh Guardian Intelligence"
                                 >
-                                    <RefreshCw className={`w-3.5 h-3.5 ${loadingGuardian || loadingMonitored ? "animate-spin" : ""}`} />
+                                    <RefreshCw className={`w-3.5 h-3.5 ${loadingGuardian || loadingMonitored ? "animate-spin text-[var(--accent-primary)]" : ""}`} />
                                 </button>
                             </div>
                         </div>
                     )}
 
                     {/* Sub-Tab Navigation */}
-                    <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-2 border-b border-[var(--border-color)] pb-2">
                         <button
                             type="button"
                             onClick={() => setGuardianSubTab("events")}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
                                 guardianSubTab === "events"
-                                    ? "bg-blue-600 text-white shadow-md shadow-blue-900/30"
-                                    : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
+                                    ? "bg-[var(--accent-primary)] text-white shadow-md shadow-[var(--accent-primary)]/20"
+                                    : "bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)]"
                             }`}
                         >
                             <ShieldAlert className="w-3.5 h-3.5" />
                             <span>Automated Events Log</span>
-                            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/30 text-slate-300 font-mono">
+                            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20 text-inherit font-mono">
                                 {guardianEvents.length}
                             </span>
                         </button>
@@ -1004,13 +1004,13 @@ export default function FtdOperationsPage() {
                             onClick={() => setGuardianSubTab("monitored")}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
                                 guardianSubTab === "monitored"
-                                    ? "bg-blue-600 text-white shadow-md shadow-blue-900/30"
-                                    : "bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800"
+                                    ? "bg-[var(--accent-primary)] text-white shadow-md shadow-[var(--accent-primary)]/20"
+                                    : "bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] border border-[var(--border-color)]"
                             }`}
                         >
                             <ListFilter className="w-3.5 h-3.5" />
                             <span>Monitored Watchlist</span>
-                            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/30 text-slate-300 font-mono">
+                            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-black/20 text-inherit font-mono">
                                 {monitoredIps.length}
                             </span>
                         </button>
@@ -1027,24 +1027,24 @@ export default function FtdOperationsPage() {
                         return (
                             <div className="space-y-3">
                                 {/* Top Search and Pagination Bar */}
-                                <div className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 flex flex-col md:flex-row gap-3 items-center justify-between shadow-sm">
+                                <div className="bg-[var(--bg-surface)] p-3.5 rounded-2xl border border-[var(--border-color)] flex flex-col md:flex-row gap-3 items-center justify-between shadow-sm">
                                     <div className="flex w-full md:w-auto items-center gap-2 flex-1 max-w-xl">
                                         <div className="relative flex-1">
-                                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                            <Search className="w-3.5 h-3.5 text-[var(--text-secondary)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                             <input
                                                 type="text"
                                                 value={guardianSearch}
                                                 onChange={(e) => { setGuardianSearch(e.target.value); setGuardianPage(1); }}
                                                 onKeyDown={(e) => e.key === "Enter" && fetchGuardianEvents()}
                                                 placeholder="Omnisearch: IP, Reason, ASN, Company..."
-                                                className="w-full bg-slate-950 border border-slate-800 rounded-full pl-10 pr-8 py-2 text-xs text-white focus:outline-none focus:border-blue-500 shadow-inner"
+                                                className="w-full bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-full pl-10 pr-8 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)] shadow-inner"
                                                 style={{ paddingLeft: '2.5rem' }}
                                             />
                                             {guardianSearch && (
                                                 <button
                                                     type="button"
                                                     onClick={() => { setGuardianSearch(""); setGuardianPage(1); }}
-                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xs"
                                                 >
                                                     ✕
                                                 </button>
@@ -1053,7 +1053,7 @@ export default function FtdOperationsPage() {
                                         <select
                                             value={guardianActionFilter}
                                             onChange={(e) => { setGuardianActionFilter(e.target.value); setGuardianPage(1); }}
-                                            className="bg-slate-950 border border-slate-800 rounded-full px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                                            className="bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-full px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-primary)] cursor-pointer"
                                         >
                                             <option value="">All Actions</option>
                                             <option value="AUTO_UNSHUNNED">Auto-Unshunned</option>
@@ -1063,16 +1063,16 @@ export default function FtdOperationsPage() {
                                     </div>
 
                                     {/* Top Pagination Controls */}
-                                    <div className="flex items-center gap-3 text-xs text-slate-400 w-full md:w-auto justify-between md:justify-end">
+                                    <div className="flex items-center gap-3 text-xs text-[var(--text-secondary)] w-full md:w-auto justify-between md:justify-end">
                                         <span>
-                                            Showing <span className="font-medium text-white">{guardianEvents.length > 0 ? (guardianPage - 1) * guardianLimit + 1 : 0}</span> to <span className="font-medium text-white">{Math.min(guardianPage * guardianLimit, guardianEvents.length)}</span> of <span className="font-medium text-white">{guardianEvents.length}</span>
+                                            Showing <span className="font-medium text-[var(--text-primary)]">{guardianEvents.length > 0 ? (guardianPage - 1) * guardianLimit + 1 : 0}</span> to <span className="font-medium text-[var(--text-primary)]">{Math.min(guardianPage * guardianLimit, guardianEvents.length)}</span> of <span className="font-medium text-[var(--text-primary)]">{guardianEvents.length}</span>
                                         </span>
                                         <div className="flex items-center gap-1.5">
                                             <span>Rows:</span>
                                             <select
                                                 value={guardianLimit}
                                                 onChange={(e) => { setGuardianLimit(Number(e.target.value)); setGuardianPage(1); }}
-                                                className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white focus:outline-none"
+                                                className="bg-[var(--bg-dark)] border border-[var(--border-color)] rounded px-2 py-1 text-xs text-[var(--text-primary)] focus:outline-none cursor-pointer"
                                             >
                                                 {[25, 50, 100, 250].map(val => (
                                                     <option key={val} value={val}>{val}</option>
@@ -1084,18 +1084,18 @@ export default function FtdOperationsPage() {
                                                 type="button"
                                                 onClick={() => setGuardianPage(p => Math.max(1, p - 1))}
                                                 disabled={guardianPage === 1}
-                                                className="px-2.5 py-1 rounded bg-slate-800 text-slate-200 disabled:opacity-40 hover:bg-slate-700 transition cursor-pointer"
+                                                className="px-2.5 py-1 rounded bg-[var(--bg-dark)] text-[var(--text-primary)] border border-[var(--border-color)] disabled:opacity-40 hover:bg-[var(--bg-surface-hover)] transition cursor-pointer"
                                             >
                                                 Prev
                                             </button>
-                                            <span className="px-2 font-mono text-slate-300">
+                                            <span className="px-2 font-mono text-[var(--text-secondary)]">
                                                 {guardianPage} / {guardianTotalPages}
                                             </span>
                                             <button
                                                 type="button"
                                                 onClick={() => setGuardianPage(p => Math.min(guardianTotalPages, p + 1))}
                                                 disabled={guardianPage === guardianTotalPages || guardianTotalPages === 0}
-                                                className="px-2.5 py-1 rounded bg-slate-800 text-slate-200 disabled:opacity-40 hover:bg-slate-700 transition cursor-pointer"
+                                                className="px-2.5 py-1 rounded bg-[var(--bg-dark)] text-[var(--text-primary)] border border-[var(--border-color)] disabled:opacity-40 hover:bg-[var(--bg-surface-hover)] transition cursor-pointer"
                                             >
                                                 Next
                                             </button>
@@ -1104,11 +1104,11 @@ export default function FtdOperationsPage() {
                                 </div>
 
                                 {/* Table Container with Sticky Header */}
-                                <div className="overflow-auto max-h-[550px] rounded-2xl border border-slate-800 bg-slate-900/60 shadow-md relative">
+                                <div className="overflow-auto max-h-[550px] rounded-2xl border border-[var(--border-color)] bg-[var(--bg-surface)] shadow-md relative">
                                     <table className="w-full text-xs text-left border-collapse min-w-max">
-                                        <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] sticky top-0 z-10 shadow-sm border-b border-slate-800 tracking-wider">
+                                        <thead className="bg-[var(--bg-surface)] text-[var(--text-secondary)] uppercase text-[10px] sticky top-0 z-10 shadow-sm border-b border-[var(--border-color)] tracking-wider">
                                             <tr>
-                                                <th className="py-3 px-3 w-12 text-center select-none font-semibold">#</th>
+                                                <th className="py-3 px-3 w-12 text-center select-none font-semibold text-[var(--text-muted)]">#</th>
                                                 <th className="py-3 px-4 font-semibold">Action</th>
                                                 <th className="py-3 px-4 font-semibold">IP Address</th>
                                                 <th className="py-3 px-4 font-semibold">Reason / Details</th>
@@ -1117,30 +1117,30 @@ export default function FtdOperationsPage() {
                                                 <th className="py-3 px-4 font-semibold text-right">Fleet Action</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-800/60 font-mono">
+                                        <tbody className="divide-y divide-[var(--border-color)] font-mono">
                                             {loadingGuardian ? (
                                                 Array.from({ length: 6 }).map((_, i) => (
                                                     <tr key={i} className="animate-pulse">
-                                                        <td className="py-3 px-3 text-center"><div className="h-3 w-4 bg-slate-800 rounded mx-auto" /></td>
-                                                        <td className="py-3 px-4"><div className="h-4 w-20 bg-slate-800 rounded-full" /></td>
-                                                        <td className="py-3 px-4"><div className="h-4 w-28 bg-slate-800 rounded" /></td>
-                                                        <td className="py-3 px-4"><div className="h-4 w-40 bg-slate-800 rounded" /></td>
-                                                        <td className="py-3 px-4"><div className="h-4 w-24 bg-slate-800 rounded" /></td>
-                                                        <td className="py-3 px-4"><div className="h-4 w-24 bg-slate-800 rounded" /></td>
-                                                        <td className="py-3 px-4 text-right"><div className="h-4 w-16 bg-slate-800 rounded ml-auto" /></td>
+                                                        <td className="py-3 px-3 text-center"><div className="h-3 w-4 bg-[var(--border-color)]/50 rounded mx-auto" /></td>
+                                                        <td className="py-3 px-4"><div className="h-4 w-20 bg-[var(--border-color)]/50 rounded-full" /></td>
+                                                        <td className="py-3 px-4"><div className="h-4 w-28 bg-[var(--border-color)]/50 rounded" /></td>
+                                                        <td className="py-3 px-4"><div className="h-4 w-40 bg-[var(--border-color)]/50 rounded" /></td>
+                                                        <td className="py-3 px-4"><div className="h-4 w-24 bg-[var(--border-color)]/50 rounded" /></td>
+                                                        <td className="py-3 px-4"><div className="h-4 w-24 bg-[var(--border-color)]/50 rounded" /></td>
+                                                        <td className="py-3 px-4 text-right"><div className="h-4 w-16 bg-[var(--border-color)]/50 rounded ml-auto" /></td>
                                                     </tr>
                                                 ))
                                             ) : paginatedGuardianEvents.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan={7} className="py-12 text-center text-slate-500 font-sans">
+                                                    <td colSpan={7} className="py-12 text-center text-[var(--text-muted)] font-sans">
                                                         <SearchX className="w-8 h-8 mx-auto mb-2 opacity-40" />
                                                         <p>No Guardian events found matching filter.</p>
                                                     </td>
                                                 </tr>
                                             ) : (
                                                 paginatedGuardianEvents.map((ev, idx) => (
-                                                    <tr key={ev.id} className="odd:bg-transparent even:bg-slate-900/40 hover:bg-slate-800/50 transition">
-                                                        <td className="py-3 px-3 text-center text-slate-500 select-none text-[11px]">
+                                                    <tr key={ev.id} className="odd:bg-transparent even:bg-[var(--bg-surface-hover)]/30 hover:bg-[var(--bg-surface-hover)] transition">
+                                                        <td className="py-3 px-3 text-center text-[var(--text-muted)] select-none text-[11px]">
                                                             {(guardianPage - 1) * guardianLimit + idx + 1}
                                                         </td>
                                                         <td className="py-3 px-4 font-sans whitespace-nowrap">
@@ -1154,16 +1154,16 @@ export default function FtdOperationsPage() {
                                                                 {ev.action}
                                                             </span>
                                                         </td>
-                                                        <td className="py-3 px-4 font-bold text-white whitespace-nowrap">
+                                                        <td className="py-3 px-4 font-bold text-[var(--text-primary)] whitespace-nowrap">
                                                             {ev.ip}
                                                         </td>
-                                                        <td className="py-3 px-4 font-sans text-slate-300 max-w-xs truncate" title={ev.details || ev.reason}>
+                                                        <td className="py-3 px-4 font-sans text-[var(--text-secondary)] max-w-xs truncate" title={ev.details || ev.reason}>
                                                             {ev.details || ev.reason || "—"}
                                                         </td>
-                                                        <td className="py-3 px-4 font-sans text-slate-400 max-w-[200px] truncate" title={ev.companyName || ev.asn}>
+                                                        <td className="py-3 px-4 font-sans text-[var(--text-secondary)] max-w-[200px] truncate" title={ev.companyName || ev.asn}>
                                                             {ev.companyName || ev.asn || "—"}
                                                         </td>
-                                                        <td className="py-3 px-4 text-slate-500 text-[11px] whitespace-nowrap">
+                                                        <td className="py-3 px-4 text-[var(--text-muted)] text-[11px] whitespace-nowrap">
                                                             {new Date(ev.createdAt).toLocaleString()}
                                                         </td>
                                                         <td className="py-3 px-4 text-right font-sans whitespace-nowrap">
@@ -1174,7 +1174,7 @@ export default function FtdOperationsPage() {
                                                                     setActiveTab("audit");
                                                                     handleScanIp(ev.ip);
                                                                 }}
-                                                                className="text-blue-400 hover:text-blue-300 font-semibold cursor-pointer text-xs"
+                                                                className="text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] font-semibold cursor-pointer text-xs"
                                                             >
                                                                 Audit Fleet →
                                                             </button>
@@ -1187,7 +1187,7 @@ export default function FtdOperationsPage() {
                                 </div>
 
                                 {/* Bottom Sticky Pagination Bar */}
-                                <div className="bg-slate-900 p-3 rounded-2xl border border-slate-800 flex justify-between items-center text-xs text-slate-400 shadow-sm">
+                                <div className="bg-[var(--bg-surface)] p-3 rounded-2xl border border-[var(--border-color)] flex justify-between items-center text-xs text-[var(--text-secondary)] shadow-sm">
                                     <span>
                                         Showing {guardianEvents.length > 0 ? (guardianPage - 1) * guardianLimit + 1 : 0} to {Math.min(guardianPage * guardianLimit, guardianEvents.length)} of {guardianEvents.length} entries
                                     </span>
@@ -1196,18 +1196,18 @@ export default function FtdOperationsPage() {
                                             type="button"
                                             onClick={() => setGuardianPage(p => Math.max(1, p - 1))}
                                             disabled={guardianPage === 1}
-                                            className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-white disabled:opacity-40 transition cursor-pointer"
+                                            className="px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-dark)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] disabled:opacity-40 transition cursor-pointer"
                                         >
                                             Previous
                                         </button>
-                                        <span className="px-3 font-semibold text-blue-400">
+                                        <span className="px-3 font-semibold text-[var(--accent-primary)]">
                                             Page {guardianPage} of {guardianTotalPages}
                                         </span>
                                         <button
                                             type="button"
                                             onClick={() => setGuardianPage(p => Math.min(guardianTotalPages, p + 1))}
                                             disabled={guardianPage === guardianTotalPages || guardianTotalPages === 0}
-                                            className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-white disabled:opacity-40 transition cursor-pointer"
+                                            className="px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-dark)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] disabled:opacity-40 transition cursor-pointer"
                                         >
                                             Next
                                         </button>
@@ -1235,14 +1235,14 @@ export default function FtdOperationsPage() {
                         return (
                             <div className="space-y-4">
                                 {/* Add Monitored IP Card */}
-                                <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl shadow-md space-y-3">
+                                <div className="p-4 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-2xl shadow-md space-y-3">
                                     <div className="flex items-center gap-2">
-                                        <Plus className="w-4 h-4 text-blue-400" />
-                                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                                        <Plus className="w-4 h-4 text-[var(--accent-primary)]" />
+                                        <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
                                             Add IP to Guardian Monitored Watchlist
                                         </h4>
                                     </div>
-                                    <p className="text-xs text-slate-400">
+                                    <p className="text-xs text-[var(--text-secondary)]">
                                         Monitored IPs are actively inspected by the Guardian daemon on every pass across all 4 FTD firewalls to ensure authorized connectivity is safely maintained.
                                     </p>
 
@@ -1252,19 +1252,19 @@ export default function FtdOperationsPage() {
                                             value={newMonitoredIp}
                                             onChange={(e) => setNewMonitoredIp(e.target.value)}
                                             placeholder="IPv4 address (e.g. 198.51.100.25)..."
-                                            className="w-full sm:w-64 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                                            className="w-full sm:w-64 bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)]"
                                         />
                                         <input
                                             type="text"
                                             value={newMonitoredDesc}
                                             onChange={(e) => setNewMonitoredDesc(e.target.value)}
                                             placeholder="Purpose / Justification (e.g. Critical Partner Gateway)..."
-                                            className="w-full sm:flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                                            className="w-full sm:flex-1 bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)]"
                                         />
                                         <button
                                             type="submit"
                                             disabled={addingMonitored || !newMonitoredIp.trim()}
-                                            className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer whitespace-nowrap"
+                                            className="w-full sm:w-auto px-4 py-2 bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer whitespace-nowrap"
                                         >
                                             {addingMonitored ? "Adding..." : "Add to Watchlist"}
                                         </button>
@@ -1280,22 +1280,22 @@ export default function FtdOperationsPage() {
                                 </div>
 
                                 {/* Top Search and Pagination Bar */}
-                                <div className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 flex flex-col md:flex-row gap-3 items-center justify-between shadow-sm">
+                                <div className="bg-[var(--bg-surface)] p-3.5 rounded-2xl border border-[var(--border-color)] flex flex-col md:flex-row gap-3 items-center justify-between shadow-sm">
                                     <div className="relative w-full md:w-80">
-                                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                        <Search className="w-3.5 h-3.5 text-[var(--text-secondary)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                         <input
                                             type="text"
                                             value={monitoredSearch}
                                             onChange={(e) => { setMonitoredSearch(e.target.value); setMonitoredPage(1); }}
                                             placeholder="Filter monitored IPs or reasons..."
-                                            className="w-full bg-slate-950 border border-slate-800 rounded-full pl-10 pr-8 py-2 text-xs text-white focus:outline-none focus:border-blue-500 shadow-inner"
+                                            className="w-full bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-full pl-10 pr-8 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)] shadow-inner"
                                             style={{ paddingLeft: '2.5rem' }}
                                         />
                                         {monitoredSearch && (
                                             <button
                                                 type="button"
                                                 onClick={() => { setMonitoredSearch(""); setMonitoredPage(1); }}
-                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xs"
                                             >
                                                 ✕
                                             </button>
@@ -1303,16 +1303,16 @@ export default function FtdOperationsPage() {
                                     </div>
 
                                     {/* Top Pagination Controls */}
-                                    <div className="flex items-center gap-3 text-xs text-slate-400 w-full md:w-auto justify-between md:justify-end">
+                                    <div className="flex items-center gap-3 text-xs text-[var(--text-secondary)] w-full md:w-auto justify-between md:justify-end">
                                         <span>
-                                            Showing <span className="font-medium text-white">{filteredMonitored.length > 0 ? (monitoredPage - 1) * monitoredLimit + 1 : 0}</span> to <span className="font-medium text-white">{Math.min(monitoredPage * monitoredLimit, filteredMonitored.length)}</span> of <span className="font-medium text-white">{filteredMonitored.length}</span>
+                                            Showing <span className="font-medium text-[var(--text-primary)]">{filteredMonitored.length > 0 ? (monitoredPage - 1) * monitoredLimit + 1 : 0}</span> to <span className="font-medium text-[var(--text-primary)]">{Math.min(monitoredPage * monitoredLimit, filteredMonitored.length)}</span> of <span className="font-medium text-[var(--text-primary)]">{filteredMonitored.length}</span>
                                         </span>
                                         <div className="flex items-center gap-1.5">
                                             <span>Rows:</span>
                                             <select
                                                 value={monitoredLimit}
                                                 onChange={(e) => { setMonitoredLimit(Number(e.target.value)); setMonitoredPage(1); }}
-                                                className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white focus:outline-none"
+                                                className="bg-[var(--bg-dark)] border border-[var(--border-color)] rounded px-2 py-1 text-xs text-[var(--text-primary)] focus:outline-none cursor-pointer"
                                             >
                                                 {[10, 25, 50, 100].map(val => (
                                                     <option key={val} value={val}>{val}</option>
@@ -1324,18 +1324,18 @@ export default function FtdOperationsPage() {
                                                 type="button"
                                                 onClick={() => setMonitoredPage(p => Math.max(1, p - 1))}
                                                 disabled={monitoredPage === 1}
-                                                className="px-2.5 py-1 rounded bg-slate-800 text-slate-200 disabled:opacity-40 hover:bg-slate-700 transition cursor-pointer"
+                                                className="px-2.5 py-1 rounded bg-[var(--bg-dark)] text-[var(--text-primary)] border border-[var(--border-color)] disabled:opacity-40 hover:bg-[var(--bg-surface-hover)] transition cursor-pointer"
                                             >
                                                 Prev
                                             </button>
-                                            <span className="px-2 font-mono text-slate-300">
+                                            <span className="px-2 font-mono text-[var(--text-secondary)]">
                                                 {monitoredPage} / {monitoredTotalPages}
                                             </span>
                                             <button
                                                 type="button"
                                                 onClick={() => setMonitoredPage(p => Math.min(monitoredTotalPages, p + 1))}
                                                 disabled={monitoredPage === monitoredTotalPages || monitoredTotalPages === 0}
-                                                className="px-2.5 py-1 rounded bg-slate-800 text-slate-200 disabled:opacity-40 hover:bg-slate-700 transition cursor-pointer"
+                                                className="px-2.5 py-1 rounded bg-[var(--bg-dark)] text-[var(--text-primary)] border border-[var(--border-color)] disabled:opacity-40 hover:bg-[var(--bg-surface-hover)] transition cursor-pointer"
                                             >
                                                 Next
                                             </button>
@@ -1344,11 +1344,11 @@ export default function FtdOperationsPage() {
                                 </div>
 
                                 {/* Table Container with Sticky Header */}
-                                <div className="overflow-auto max-h-[550px] rounded-2xl border border-slate-800 bg-slate-900/60 shadow-md relative">
+                                <div className="overflow-auto max-h-[550px] rounded-2xl border border-[var(--border-color)] bg-[var(--bg-surface)] shadow-md relative">
                                     <table className="w-full text-xs text-left border-collapse min-w-max">
-                                        <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] sticky top-0 z-10 shadow-sm border-b border-slate-800 tracking-wider">
+                                        <thead className="bg-[var(--bg-surface)] text-[var(--text-secondary)] uppercase text-[10px] sticky top-0 z-10 shadow-sm border-b border-[var(--border-color)] tracking-wider">
                                             <tr>
-                                                <th className="py-3 px-3 w-12 text-center select-none font-semibold">#</th>
+                                                <th className="py-3 px-3 w-12 text-center select-none font-semibold text-[var(--text-muted)]">#</th>
                                                 <th className="py-3 px-4 font-semibold">Monitored IP</th>
                                                 <th className="py-3 px-4 font-semibold">Description / Purpose</th>
                                                 <th className="py-3 px-4 font-semibold">Configured By</th>
@@ -1356,41 +1356,41 @@ export default function FtdOperationsPage() {
                                                 <th className="py-3 px-4 font-semibold text-right">Actions</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-800/60 font-mono">
+                                        <tbody className="divide-y divide-[var(--border-color)] font-mono">
                                             {loadingMonitored ? (
                                                 Array.from({ length: 4 }).map((_, i) => (
                                                     <tr key={i} className="animate-pulse">
-                                                        <td className="py-3 px-3 text-center"><div className="h-3 w-4 bg-slate-800 rounded mx-auto" /></td>
-                                                        <td className="py-3 px-4"><div className="h-4 w-28 bg-slate-800 rounded" /></td>
-                                                        <td className="py-3 px-4"><div className="h-4 w-44 bg-slate-800 rounded" /></td>
-                                                        <td className="py-3 px-4"><div className="h-4 w-20 bg-slate-800 rounded" /></td>
-                                                        <td className="py-3 px-4"><div className="h-4 w-24 bg-slate-800 rounded" /></td>
-                                                        <td className="py-3 px-4 text-right"><div className="h-4 w-12 bg-slate-800 rounded ml-auto" /></td>
+                                                        <td className="py-3 px-3 text-center"><div className="h-3 w-4 bg-[var(--border-color)]/50 rounded mx-auto" /></td>
+                                                        <td className="py-3 px-4"><div className="h-4 w-28 bg-[var(--border-color)]/50 rounded" /></td>
+                                                        <td className="py-3 px-4"><div className="h-4 w-44 bg-[var(--border-color)]/50 rounded" /></td>
+                                                        <td className="py-3 px-4"><div className="h-4 w-20 bg-[var(--border-color)]/50 rounded" /></td>
+                                                        <td className="py-3 px-4"><div className="h-4 w-24 bg-[var(--border-color)]/50 rounded" /></td>
+                                                        <td className="py-3 px-4 text-right"><div className="h-4 w-12 bg-[var(--border-color)]/50 rounded ml-auto" /></td>
                                                     </tr>
                                                 ))
                                             ) : paginatedMonitored.length === 0 ? (
                                                 <tr>
-                                                    <td colSpan={6} className="py-12 text-center text-slate-500 font-sans">
+                                                    <td colSpan={6} className="py-12 text-center text-[var(--text-muted)] font-sans">
                                                         <SearchX className="w-8 h-8 mx-auto mb-2 opacity-40" />
                                                         <p>No monitored IPs on watchlist matching filter.</p>
                                                     </td>
                                                 </tr>
                                             ) : (
                                                 paginatedMonitored.map((item, idx) => (
-                                                    <tr key={item.ip} className="odd:bg-transparent even:bg-slate-900/40 hover:bg-slate-800/50 transition">
-                                                        <td className="py-3 px-3 text-center text-slate-500 select-none text-[11px]">
+                                                    <tr key={item.ip} className="odd:bg-transparent even:bg-[var(--bg-surface-hover)]/30 hover:bg-[var(--bg-surface-hover)] transition">
+                                                        <td className="py-3 px-3 text-center text-[var(--text-muted)] select-none text-[11px]">
                                                             {(monitoredPage - 1) * monitoredLimit + idx + 1}
                                                         </td>
-                                                        <td className="py-3 px-4 font-bold text-cyan-300 whitespace-nowrap">
+                                                        <td className="py-3 px-4 font-bold text-cyan-400 whitespace-nowrap">
                                                             {item.ip}
                                                         </td>
-                                                        <td className="py-3 px-4 font-sans text-slate-300">
+                                                        <td className="py-3 px-4 font-sans text-[var(--text-secondary)]">
                                                             {item.description || "—"}
                                                         </td>
-                                                        <td className="py-3 px-4 font-sans text-slate-400 whitespace-nowrap">
+                                                        <td className="py-3 px-4 font-sans text-[var(--text-secondary)] whitespace-nowrap">
                                                             {item.createdBy || "System"}
                                                         </td>
-                                                        <td className="py-3 px-4 text-slate-500 text-[11px] whitespace-nowrap">
+                                                        <td className="py-3 px-4 text-[var(--text-muted)] text-[11px] whitespace-nowrap">
                                                             {new Date(item.createdAt).toLocaleDateString()}
                                                         </td>
                                                         <td className="py-3 px-4 text-right font-sans whitespace-nowrap">
@@ -1402,7 +1402,7 @@ export default function FtdOperationsPage() {
                                                                         setActiveTab("audit");
                                                                         handleScanIp(item.ip);
                                                                     }}
-                                                                    className="text-blue-400 hover:text-blue-300 font-semibold cursor-pointer text-xs"
+                                                                    className="text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] font-semibold cursor-pointer text-xs"
                                                                 >
                                                                     Audit →
                                                                 </button>
@@ -1424,7 +1424,7 @@ export default function FtdOperationsPage() {
                                 </div>
 
                                 {/* Bottom Sticky Pagination Bar */}
-                                <div className="bg-slate-900 p-3 rounded-2xl border border-slate-800 flex justify-between items-center text-xs text-slate-400 shadow-sm">
+                                <div className="bg-[var(--bg-surface)] p-3 rounded-2xl border border-[var(--border-color)] flex justify-between items-center text-xs text-[var(--text-secondary)] shadow-sm">
                                     <span>
                                         Showing {filteredMonitored.length > 0 ? (monitoredPage - 1) * monitoredLimit + 1 : 0} to {Math.min(monitoredPage * monitoredLimit, filteredMonitored.length)} of {filteredMonitored.length} entries
                                     </span>
@@ -1433,18 +1433,18 @@ export default function FtdOperationsPage() {
                                             type="button"
                                             onClick={() => setMonitoredPage(p => Math.max(1, p - 1))}
                                             disabled={monitoredPage === 1}
-                                            className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-white disabled:opacity-40 transition cursor-pointer"
+                                            className="px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-dark)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] disabled:opacity-40 transition cursor-pointer"
                                         >
                                             Previous
                                         </button>
-                                        <span className="px-3 font-semibold text-blue-400">
+                                        <span className="px-3 font-semibold text-[var(--accent-primary)]">
                                             Page {monitoredPage} of {monitoredTotalPages}
                                         </span>
                                         <button
                                             type="button"
                                             onClick={() => setMonitoredPage(p => Math.min(monitoredTotalPages, p + 1))}
                                             disabled={monitoredPage === monitoredTotalPages || monitoredTotalPages === 0}
-                                            className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-white disabled:opacity-40 transition cursor-pointer"
+                                            className="px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-dark)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] disabled:opacity-40 transition cursor-pointer"
                                         >
                                             Next
                                         </button>
@@ -1478,37 +1478,37 @@ export default function FtdOperationsPage() {
                 return (
                     <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                            <p className="text-xs text-slate-400">
+                            <p className="text-xs text-[var(--text-secondary)]">
                                 Comprehensive audit log of interactive firewall queries, shun checks, Guardian blacklisting, and manual un-shun actions.
                             </p>
                             <button
                                 type="button"
                                 onClick={fetchHistoryLogs}
                                 disabled={loadingHistory}
-                                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition cursor-pointer"
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-surface)] text-[var(--text-primary)] text-xs font-semibold rounded-xl border border-[var(--border-color)] transition cursor-pointer"
                             >
-                                <RefreshCw className={`w-3.5 h-3.5 ${loadingHistory ? "animate-spin" : ""}`} />
+                                <RefreshCw className={`w-3.5 h-3.5 ${loadingHistory ? "animate-spin text-[var(--accent-primary)]" : ""}`} />
                                 <span>Refresh History</span>
                             </button>
                         </div>
 
                         {/* Top Search and Pagination Bar */}
-                        <div className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 flex flex-col md:flex-row gap-3 items-center justify-between shadow-sm">
+                        <div className="bg-[var(--bg-surface)] p-3.5 rounded-2xl border border-[var(--border-color)] flex flex-col md:flex-row gap-3 items-center justify-between shadow-sm">
                             <div className="relative w-full md:w-80">
-                                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                <Search className="w-3.5 h-3.5 text-[var(--text-secondary)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                 <input
                                     type="text"
                                     value={historySearch}
                                     onChange={(e) => { setHistorySearch(e.target.value); setHistoryPage(1); }}
                                     placeholder="Filter by IP, command, user, ASN..."
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-full pl-10 pr-8 py-2 text-xs text-white focus:outline-none focus:border-blue-500 shadow-inner"
+                                    className="w-full bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-full pl-10 pr-8 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)] shadow-inner"
                                     style={{ paddingLeft: '2.5rem' }}
                                 />
                                 {historySearch && (
                                     <button
                                         type="button"
                                         onClick={() => { setHistorySearch(""); setHistoryPage(1); }}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xs"
                                     >
                                         ✕
                                     </button>
@@ -1516,16 +1516,16 @@ export default function FtdOperationsPage() {
                             </div>
 
                             {/* Top Pagination Controls */}
-                            <div className="flex items-center gap-3 text-xs text-slate-400 w-full md:w-auto justify-between md:justify-end">
+                            <div className="flex items-center gap-3 text-xs text-[var(--text-secondary)] w-full md:w-auto justify-between md:justify-end">
                                 <span>
-                                    Showing <span className="font-medium text-white">{filteredHistory.length > 0 ? (historyPage - 1) * historyLimit + 1 : 0}</span> to <span className="font-medium text-white">{Math.min(historyPage * historyLimit, filteredHistory.length)}</span> of <span className="font-medium text-white">{filteredHistory.length}</span>
+                                    Showing <span className="font-medium text-[var(--text-primary)]">{filteredHistory.length > 0 ? (historyPage - 1) * historyLimit + 1 : 0}</span> to <span className="font-medium text-[var(--text-primary)]">{Math.min(historyPage * historyLimit, filteredHistory.length)}</span> of <span className="font-medium text-[var(--text-primary)]">{filteredHistory.length}</span>
                                 </span>
                                 <div className="flex items-center gap-1.5">
                                     <span>Rows:</span>
                                     <select
                                         value={historyLimit}
                                         onChange={(e) => { setHistoryLimit(Number(e.target.value)); setHistoryPage(1); }}
-                                        className="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-white focus:outline-none"
+                                        className="bg-[var(--bg-dark)] border border-[var(--border-color)] rounded px-2 py-1 text-xs text-[var(--text-primary)] focus:outline-none cursor-pointer"
                                     >
                                         {[25, 50, 100, 250].map(val => (
                                             <option key={val} value={val}>{val}</option>
@@ -1537,18 +1537,18 @@ export default function FtdOperationsPage() {
                                         type="button"
                                         onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
                                         disabled={historyPage === 1}
-                                        className="px-2.5 py-1 rounded bg-slate-800 text-slate-200 disabled:opacity-40 hover:bg-slate-700 transition cursor-pointer"
+                                        className="px-2.5 py-1 rounded bg-[var(--bg-dark)] text-[var(--text-primary)] border border-[var(--border-color)] disabled:opacity-40 hover:bg-[var(--bg-surface-hover)] transition cursor-pointer"
                                     >
                                         Prev
                                     </button>
-                                    <span className="px-2 font-mono text-slate-300">
+                                    <span className="px-2 font-mono text-[var(--text-secondary)]">
                                         {historyPage} / {historyTotalPages}
                                     </span>
                                     <button
                                         type="button"
                                         onClick={() => setHistoryPage(p => Math.min(historyTotalPages, p + 1))}
                                         disabled={historyPage === historyTotalPages || historyTotalPages === 0}
-                                        className="px-2.5 py-1 rounded bg-slate-800 text-slate-200 disabled:opacity-40 hover:bg-slate-700 transition cursor-pointer"
+                                        className="px-2.5 py-1 rounded bg-[var(--bg-dark)] text-[var(--text-primary)] border border-[var(--border-color)] disabled:opacity-40 hover:bg-[var(--bg-surface-hover)] transition cursor-pointer"
                                     >
                                         Next
                                     </button>
@@ -1557,11 +1557,11 @@ export default function FtdOperationsPage() {
                         </div>
 
                         {/* Table Container with Sticky Header */}
-                        <div className="overflow-auto max-h-[550px] rounded-2xl border border-slate-800 bg-slate-900/60 shadow-md relative">
+                        <div className="overflow-auto max-h-[550px] rounded-2xl border border-[var(--border-color)] bg-[var(--bg-surface)] shadow-md relative">
                             <table className="w-full text-xs text-left border-collapse min-w-max">
-                                <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] sticky top-0 z-10 shadow-sm border-b border-slate-800 tracking-wider">
+                                <thead className="bg-[var(--bg-surface)] text-[var(--text-secondary)] uppercase text-[10px] sticky top-0 z-10 shadow-sm border-b border-[var(--border-color)] tracking-wider">
                                     <tr>
-                                        <th className="py-3 px-3 w-12 text-center select-none font-semibold">#</th>
+                                        <th className="py-3 px-3 w-12 text-center select-none font-semibold text-[var(--text-muted)]">#</th>
                                         <th className="py-3 px-4 font-semibold">Action / Command</th>
                                         <th className="py-3 px-4 font-semibold">Target IP</th>
                                         <th className="py-3 px-4 font-semibold">Target Firewall</th>
@@ -1571,49 +1571,49 @@ export default function FtdOperationsPage() {
                                         <th className="py-3 px-4 font-semibold text-right">Audit</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-800/60 font-mono">
+                                <tbody className="divide-y divide-[var(--border-color)] font-mono">
                                     {loadingHistory ? (
                                         Array.from({ length: 6 }).map((_, i) => (
                                             <tr key={i} className="animate-pulse">
-                                                <td className="py-3 px-3 text-center"><div className="h-3 w-4 bg-slate-800 rounded mx-auto" /></td>
-                                                <td className="py-3 px-4"><div className="h-4 w-28 bg-slate-800 rounded" /></td>
-                                                <td className="py-3 px-4"><div className="h-4 w-28 bg-slate-800 rounded" /></td>
-                                                <td className="py-3 px-4"><div className="h-4 w-20 bg-slate-800 rounded" /></td>
-                                                <td className="py-3 px-4"><div className="h-4 w-16 bg-slate-800 rounded" /></td>
-                                                <td className="py-3 px-4"><div className="h-4 w-24 bg-slate-800 rounded" /></td>
-                                                <td className="py-3 px-4"><div className="h-4 w-24 bg-slate-800 rounded" /></td>
-                                                <td className="py-3 px-4 text-right"><div className="h-4 w-16 bg-slate-800 rounded ml-auto" /></td>
+                                                <td className="py-3 px-3 text-center"><div className="h-3 w-4 bg-[var(--border-color)]/50 rounded mx-auto" /></td>
+                                                <td className="py-3 px-4"><div className="h-4 w-28 bg-[var(--border-color)]/50 rounded" /></td>
+                                                <td className="py-3 px-4"><div className="h-4 w-28 bg-[var(--border-color)]/50 rounded" /></td>
+                                                <td className="py-3 px-4"><div className="h-4 w-20 bg-[var(--border-color)]/50 rounded" /></td>
+                                                <td className="py-3 px-4"><div className="h-4 w-16 bg-[var(--border-color)]/50 rounded" /></td>
+                                                <td className="py-3 px-4"><div className="h-4 w-24 bg-[var(--border-color)]/50 rounded" /></td>
+                                                <td className="py-3 px-4"><div className="h-4 w-24 bg-[var(--border-color)]/50 rounded" /></td>
+                                                <td className="py-3 px-4 text-right"><div className="h-4 w-16 bg-[var(--border-color)]/50 rounded ml-auto" /></td>
                                             </tr>
                                         ))
                                     ) : paginatedHistory.length === 0 ? (
                                         <tr>
-                                            <td colSpan={8} className="py-12 text-center text-slate-500 font-sans">
+                                            <td colSpan={8} className="py-12 text-center text-[var(--text-muted)] font-sans">
                                                 <SearchX className="w-8 h-8 mx-auto mb-2 opacity-40" />
                                                 <p>No recent operations recorded matching filter.</p>
                                             </td>
                                         </tr>
                                     ) : (
                                         paginatedHistory.map((h, idx) => (
-                                            <tr key={h.id} className="odd:bg-transparent even:bg-slate-900/40 hover:bg-slate-800/50 transition">
-                                                <td className="py-3 px-3 text-center text-slate-500 select-none text-[11px]">
+                                            <tr key={h.id} className="odd:bg-transparent even:bg-[var(--bg-surface-hover)]/30 hover:bg-[var(--bg-surface-hover)] transition">
+                                                <td className="py-3 px-3 text-center text-[var(--text-muted)] select-none text-[11px]">
                                                     {(historyPage - 1) * historyLimit + idx + 1}
                                                 </td>
-                                                <td className="py-3 px-4 font-sans font-semibold text-white whitespace-nowrap">
+                                                <td className="py-3 px-4 font-sans font-semibold text-[var(--text-primary)] whitespace-nowrap">
                                                     {h.command}
                                                 </td>
-                                                <td className="py-3 px-4 font-bold text-cyan-300 whitespace-nowrap">
+                                                <td className="py-3 px-4 font-bold text-cyan-400 whitespace-nowrap">
                                                     {h.targetIp}
                                                 </td>
-                                                <td className="py-3 px-4 font-sans text-slate-300 whitespace-nowrap">
+                                                <td className="py-3 px-4 font-sans text-[var(--text-secondary)] whitespace-nowrap">
                                                     {h.targetName || "Fleet"}
                                                 </td>
-                                                <td className="py-3 px-4 font-sans text-slate-400 whitespace-nowrap">
+                                                <td className="py-3 px-4 font-sans text-[var(--text-secondary)] whitespace-nowrap">
                                                     {h.user?.username || "Admin"}
                                                 </td>
-                                                <td className="py-3 px-4 font-sans text-slate-400 max-w-[200px] truncate" title={h.ipAsName || h.ipAsn}>
+                                                <td className="py-3 px-4 font-sans text-[var(--text-secondary)] max-w-[200px] truncate" title={h.ipAsName || h.ipAsn}>
                                                     {h.ipCountry ? `${h.ipCountry} · ` : ""}{h.ipAsName || h.ipAsn || "—"}
                                                 </td>
-                                                <td className="py-3 px-4 text-slate-500 text-[11px] whitespace-nowrap">
+                                                <td className="py-3 px-4 text-[var(--text-muted)] text-[11px] whitespace-nowrap">
                                                     {new Date(h.createdAt).toLocaleString()}
                                                 </td>
                                                 <td className="py-3 px-4 text-right font-sans whitespace-nowrap">
@@ -1624,7 +1624,7 @@ export default function FtdOperationsPage() {
                                                             setActiveTab("audit");
                                                             handleScanIp(h.targetIp);
                                                         }}
-                                                        className="text-blue-400 hover:text-blue-300 font-semibold cursor-pointer text-xs"
+                                                        className="text-[var(--accent-primary)] hover:text-[var(--accent-primary-hover)] font-semibold cursor-pointer text-xs"
                                                     >
                                                         Audit Fleet →
                                                     </button>
@@ -1637,7 +1637,7 @@ export default function FtdOperationsPage() {
                         </div>
 
                         {/* Bottom Sticky Pagination Bar */}
-                        <div className="bg-slate-900 p-3 rounded-2xl border border-slate-800 flex justify-between items-center text-xs text-slate-400 shadow-sm">
+                        <div className="bg-[var(--bg-surface)] p-3 rounded-2xl border border-[var(--border-color)] flex justify-between items-center text-xs text-[var(--text-secondary)] shadow-sm">
                             <span>
                                 Showing {filteredHistory.length > 0 ? (historyPage - 1) * historyLimit + 1 : 0} to {Math.min(historyPage * historyLimit, filteredHistory.length)} of {filteredHistory.length} entries
                             </span>
@@ -1646,18 +1646,18 @@ export default function FtdOperationsPage() {
                                     type="button"
                                     onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
                                     disabled={historyPage === 1}
-                                    className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-white disabled:opacity-40 transition cursor-pointer"
+                                    className="px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-dark)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] disabled:opacity-40 transition cursor-pointer"
                                 >
                                     Previous
                                 </button>
-                                <span className="px-3 font-semibold text-blue-400">
+                                <span className="px-3 font-semibold text-[var(--accent-primary)]">
                                     Page {historyPage} of {historyTotalPages}
                                 </span>
                                 <button
                                     type="button"
                                     onClick={() => setHistoryPage(p => Math.min(historyTotalPages, p + 1))}
                                     disabled={historyPage === historyTotalPages || historyTotalPages === 0}
-                                    className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-white disabled:opacity-40 transition cursor-pointer"
+                                    className="px-3 py-1.5 rounded-lg border border-[var(--border-color)] bg-[var(--bg-dark)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-primary)] disabled:opacity-40 transition cursor-pointer"
                                 >
                                     Next
                                 </button>

@@ -120,7 +120,7 @@ export function EnrichmentDetailsModal({ ip, onClose }: EnrichmentDetailsModalPr
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-auto bg-[#0d1117] relative p-6">
+                <div className="flex-1 overflow-auto bg-[var(--bg-dark)] relative p-6">
                     {loading ? (
                         <div className="flex flex-col items-center justify-center h-48 space-y-4">
                             <div className="w-8 h-8 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin"></div>
@@ -134,13 +134,13 @@ export function EnrichmentDetailsModal({ ip, onClose }: EnrichmentDetailsModalPr
                         <div className="relative group">
                             <button
                                 onClick={handleCopy}
-                                className="absolute right-0 top-0 p-2 bg-[#21262d] hover:bg-[#30363d] text-gray-300 rounded border border-[#30363d] shadow-sm transition-all flex items-center gap-2 opacity-0 group-hover:opacity-100"
+                                className="absolute right-0 top-0 p-2 bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-hover)] text-[var(--text-secondary)] rounded border border-[var(--border-color)] shadow-sm transition-all flex items-center gap-2 opacity-0 group-hover:opacity-100"
                                 title="Copy JSON"
                             >
                                 {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                                 <span className="text-xs font-medium">{copied ? "Copied" : "Copy"}</span>
                             </button>
-                            <pre className="text-sm font-mono text-gray-300 overflow-x-auto whitespace-pre-wrap break-all pr-12">
+                            <pre className="text-sm font-mono text-[var(--text-primary)] overflow-x-auto whitespace-pre-wrap break-all pr-12">
                                 {data}
                             </pre>
                         </div>
@@ -157,14 +157,14 @@ export function EnrichmentDetailsModal({ ip, onClose }: EnrichmentDetailsModalPr
                                     <h4 className="text-xs font-bold text-rose-300 uppercase tracking-wider">
                                         Confirm Guardian Do-Not-Unshun Blacklist ({confirmTarget.type})
                                     </h4>
-                                    <p className="text-[11px] text-slate-300">
+                                    <p className="text-[11px] text-[var(--text-secondary)]">
                                         Adding <span className="font-mono font-bold text-rose-300">{confirmTarget.target}</span> {confirmTarget.asnName ? `(${confirmTarget.asnName}) ` : ""}to the permanent Guardian safety list. The <span className="font-semibold text-rose-300">auto-unshun daemon will never automatically remove shuns</span> for this target.
                                     </p>
                                 </div>
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                <label className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider block">
                                     Audited Reason / Justification
                                 </label>
                                 <input
@@ -177,7 +177,7 @@ export function EnrichmentDetailsModal({ ip, onClose }: EnrichmentDetailsModalPr
                             </div>
 
                             <div className="flex items-center justify-between pt-1">
-                                <div className="text-xs font-medium text-slate-400">
+                                <div className="text-xs font-medium text-[var(--text-muted)]">
                                     {blacklistStatus && <span>{blacklistStatus}</span>}
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -185,7 +185,7 @@ export function EnrichmentDetailsModal({ ip, onClose }: EnrichmentDetailsModalPr
                                         type="button"
                                         onClick={() => setConfirmTarget(null)}
                                         disabled={isSubmitting}
-                                        className="px-3 py-1.5 text-xs text-slate-300 hover:text-white rounded-lg hover:bg-[var(--bg-surface-hover)] transition cursor-pointer"
+                                        className="px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-surface-hover)] transition cursor-pointer"
                                     >
                                         Cancel
                                     </button>
