@@ -267,6 +267,18 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                 <Network size={20} className="shrink-0" />
                                 <span className="nav-text">Vectra Time Machine</span>
                             </Link>
+                            <Link 
+                                href="/admin/firewall-v2" 
+                                onClick={closeMobile} 
+                                title={isCollapsed ? "FTD Operations (V2)" : undefined}
+                                className={`nav-link ${pathname === "/admin/firewall-v2" ? "active" : ""}`}
+                            >
+                                <Shield size={20} className="shrink-0 text-amber-400" />
+                                <span className="nav-text flex items-center justify-between w-full">
+                                    <span>FTD Operations</span>
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">V2</span>
+                                </span>
+                            </Link>
                         </>
                     )}
                 </nav>
