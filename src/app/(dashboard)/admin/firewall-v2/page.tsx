@@ -149,7 +149,7 @@ export default function FtdOperationsPage() {
             .catch(() => {});
     }, []);
 
-    // 2. Fetch fleet status
+    // 2. Fetch fleet status on-demand (saves to sessionStorage so navigating between tools is instant)
     const refreshFleetStatus = useCallback(async () => {
         setLoadingFleet(true);
         try {
@@ -157,7 +157,12 @@ export default function FtdOperationsPage() {
             const data = await res.json();
             if (data.results && Array.isArray(data.results)) {
                 setFleetStatuses(data.results);
-                setFleetLastUpdated(new Date().toLocaleTimeString());
+                const timeStr = new Date().toLocaleTimeString();
+                setFleetLastUpdated(timeStr);
+                try {
+                    sessionStorage.setItem("pane-o-glass.ftd-fleet-status", JSON.stringify(data.results));
+                    sessionStorage.setItem("pane-o-glass.ftd-fleet-time", timeStr);
+                } catch {}
             }
         } catch (e) {
             console.error("Failed to load fleet status", e);
@@ -166,9 +171,20 @@ export default function FtdOperationsPage() {
         }
     }, []);
 
+    // Restore cached fleet test from current session if available (never auto-query SSH on page load/switch!)
     useEffect(() => {
-        refreshFleetStatus();
-    }, [refreshFleetStatus]);
+        try {
+            const cached = sessionStorage.getItem("pane-o-glass.ftd-fleet-status");
+            const cachedTime = sessionStorage.getItem("pane-o-glass.ftd-fleet-time");
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setFleetStatuses(parsed);
+                    if (cachedTime) setFleetLastUpdated(cachedTime);
+                }
+            }
+        } catch {}
+    }, []);
 
     // 3. Scan specific IP across fleet
     const handleScanIp = async (targetIpOverride?: string) => {
@@ -366,7 +382,7 @@ export default function FtdOperationsPage() {
                         className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition cursor-pointer"
                     >
                         <RefreshCw className={`w-3.5 h-3.5 ${loadingFleet ? "animate-spin text-blue-400" : ""}`} />
-                        <span>Refresh Fleet</span>
+                        <span>{loadingFleet ? "Testing Fleet..." : fleetStatuses.length === 0 ? "Test Connectivity" : "Re-test Fleet"}</span>
                     </button>
                 </div>
             </div>
@@ -378,12 +394,17 @@ export default function FtdOperationsPage() {
                         <Server className="w-3.5 h-3.5 text-blue-400" />
                         Perimeter FTD Fleet Connectivity
                     </span>
-                    {fleetLastUpdated && <span>Last verified: {fleetLastUpdated}</span>}
+                    {fleetLastUpdated ? (
+                        <span>Last verified: {fleetLastUpdated}</span>
+                    ) : (
+                        <span className="text-slate-500 italic">Click &quot;Test Connectivity&quot; to verify live SSH links</span>
+                    )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {hosts.map((host) => {
                         const status = fleetStatuses.find(s => s.firewallId === host.id || s.ip === host.ip);
+                        const hasRun = status !== undefined;
                         const isConnected = status?.success;
                         const isChecking = loadingFleet;
 
@@ -403,22 +424,35 @@ export default function FtdOperationsPage() {
                                     </div>
                                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 ${
                                         isChecking
+                                            ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                                            : !hasRun
                                             ? "bg-slate-800 text-slate-400 border-slate-700"
                                             : isConnected
                                             ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
                                             : "bg-rose-500/10 text-rose-400 border-rose-500/30"
                                     }`}>
                                         <span className={`w-1.5 h-1.5 rounded-full ${
-                                            isChecking ? "bg-slate-400 animate-pulse" : isConnected ? "bg-emerald-400" : "bg-rose-400"
+                                            isChecking
+                                                ? "bg-blue-400 animate-pulse"
+                                                : !hasRun
+                                                ? "bg-slate-500"
+                                                : isConnected
+                                                ? "bg-emerald-400"
+                                                : "bg-rose-400"
                                         }`} />
-                                        {isChecking ? "Testing..." : isConnected ? "Online" : "Unreachable"}
+                                        {isChecking ? "Testing..." : !hasRun ? "Configured" : isConnected ? "Online" : "Unreachable"}
                                     </span>
                                 </div>
 
-                                {status?.prompt && (
+                                {status?.prompt ? (
                                     <div className="text-[10px] font-mono text-slate-400 pt-1 border-t border-slate-800/60 flex items-center justify-between">
                                         <span>Diagnostic CLI:</span>
                                         <span className="text-emerald-400 font-bold">{status.prompt}</span>
+                                    </div>
+                                ) : (
+                                    <div className="text-[10px] font-mono text-slate-500 pt-1 border-t border-slate-800/60 flex items-center justify-between">
+                                        <span>Status:</span>
+                                        <span>{hasRun ? (isConnected ? "Connected" : "Error") : "Ready"}</span>
                                     </div>
                                 )}
                                 {status?.error && (
