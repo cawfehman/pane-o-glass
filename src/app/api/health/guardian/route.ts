@@ -15,8 +15,10 @@ export async function GET() {
             where: { name: "Firewall Guardian" }
         });
 
-        const watchListRaw = process.env.WATCH_IP_LIST || "";
-        const watchList = watchListRaw.split(',').filter(ip => ip.trim() !== "");
+        const dbWatch = await prisma.guardianWatchIp.findMany({ select: { ip: true } });
+        const watchList = dbWatch.length > 0 
+            ? dbWatch.map(w => w.ip)
+            : (process.env.WATCH_IP_LIST || "").split(',').filter(ip => ip.trim() !== "");
 
         const isLive = guardianJob && (new Date().getTime() - new Date(guardianJob.lastRun).getTime() < 300000);
 

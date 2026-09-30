@@ -179,6 +179,16 @@ model GuardianAsnBlacklist {
   @@index([asn])
 }
 
+model GuardianWatchIp {
+  ip          String   @id
+  description String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([ip])
+}
+
 model ShunDatabaseIp {
   ip            String    @id
   

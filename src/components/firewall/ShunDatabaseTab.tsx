@@ -219,6 +219,7 @@ export function ShunDatabaseTab() {
                     <table className="w-full text-sm text-left border-collapse">
                         <thead className="bg-[var(--bg-surface)] text-[var(--text-secondary)] text-xs uppercase sticky top-0 z-10 shadow-sm border-b border-[var(--border-color)]">
                             <tr>
+                                <th className="px-3 py-3 font-semibold text-[var(--text-muted)] w-12 text-center select-none">#</th>
                                 {visibleColumns.status && (
                                     <th className="px-4 py-3 font-semibold cursor-pointer hover:bg-[var(--bg-surface-hover)] select-none group" onClick={() => handleSort('isActive')}>
                                         <div className="flex items-center gap-1">Status <span className={sortField==='isActive'?'text-[var(--accent-primary)]':'text-transparent group-hover:text-[var(--text-muted)]'}>{sortField==='isActive'&&sortDir==='asc'?'▲':'▼'}</span></div>
@@ -255,6 +256,7 @@ export function ShunDatabaseTab() {
                             {loading ? (
                                 Array.from({ length: 5 }).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
+                                        <td className="px-3 py-4 text-center"><div className="h-4 w-6 bg-[var(--border-color)] rounded mx-auto"></div></td>
                                         {visibleColumns.status && <td className="px-4 py-4"><div className="h-5 w-16 bg-[var(--border-color)] rounded-full"></div></td>}
                                         {visibleColumns.ip && <td className="px-4 py-4"><div className="h-4 w-32 bg-[var(--border-color)] rounded"></div></td>}
                                         {visibleColumns.lifecycle && <td className="px-4 py-4">
@@ -275,22 +277,25 @@ export function ShunDatabaseTab() {
                                 ))
                             ) : error ? (
                                 <tr>
-                                    <td colSpan={Object.values(visibleColumns).filter(Boolean).length || 1} className="px-4 py-16 text-center text-red-400">
+                                    <td colSpan={(Object.values(visibleColumns).filter(Boolean).length || 1) + 1} className="px-4 py-16 text-center text-red-400">
                                         <ShieldAlert className="w-12 h-12 mx-auto mb-4 opacity-50" />
                                         <p>{error}</p>
                                     </td>
                                 </tr>
                             ) : records.length === 0 ? (
                                 <tr>
-                                    <td colSpan={Object.values(visibleColumns).filter(Boolean).length || 1} className="px-4 py-20 text-center">
+                                    <td colSpan={(Object.values(visibleColumns).filter(Boolean).length || 1) + 1} className="px-4 py-20 text-center">
                                         <SearchX className="w-16 h-16 mx-auto mb-4 text-[var(--text-muted)] opacity-50" />
                                         <h3 className="text-lg font-medium text-[var(--text-primary)] mb-1">No IPs found</h3>
                                         <p className="text-sm text-[var(--text-secondary)]">Try adjusting your filters or wildcard patterns.</p>
                                     </td>
                                 </tr>
                             ) : (
-                                records.map((record) => (
-                                    <tr key={record.id} className="hover:bg-[var(--bg-surface-hover)] transition-colors">
+                                records.map((record, idx) => (
+                                    <tr key={record.id} className="odd:bg-transparent even:bg-[var(--bg-surface)]/30 hover:bg-[var(--bg-surface-hover)] transition-colors">
+                                        <td className="px-3 py-3 text-center text-xs font-mono text-[var(--text-muted)] select-none">
+                                            {(page - 1) * limit + idx + 1}
+                                        </td>
                                         {visibleColumns.status && (
                                             <td className="px-4 py-3 whitespace-nowrap">
                                                 <div className="flex flex-col gap-1.5">

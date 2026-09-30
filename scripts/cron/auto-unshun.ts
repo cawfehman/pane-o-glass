@@ -147,8 +147,20 @@ async function runAutoUnshun() {
     
     const isRecoveryMode = rangeSeconds !== "240";
 
-    const watchListStr = process.env.WATCH_IP_LIST! || "";
-    const watchList = watchListStr.split(',').map(ip => ip.trim()).filter(ip => ip !== "");
+    let watchList: string[] = [];
+    try {
+        const dbWatch = await prisma.guardianWatchIp.findMany({ select: { ip: true } });
+        if (dbWatch && dbWatch.length > 0) {
+            watchList = dbWatch.map(w => w.ip.trim()).filter(Boolean);
+        }
+    } catch (e: any) {
+        console.error("[GUARDIAN] Failed to load monitored IPs from database, checking .env fallback:", e.message);
+    }
+
+    if (watchList.length === 0) {
+        const watchListStr = process.env.WATCH_IP_LIST! || "";
+        watchList = watchListStr.split(',').map(ip => ip.trim()).filter(ip => ip !== "");
+    }
     
     const configStr = process.env.FIREWALL_CONFIG! || "[]";
     let firewalls = [];
