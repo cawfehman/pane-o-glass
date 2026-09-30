@@ -77,6 +77,18 @@ export async function POST(req: NextRequest) {
                 clientIp
             ).catch(() => {});
 
+            // Dual-audit to FirewallQueryHistory for Operations History tab visibility
+            await prisma.firewallQueryHistory.create({
+                data: {
+                    userId: session.user.id,
+                    command: "Blacklist ASN (Guardian)",
+                    targetIp: asnKey,
+                    targetName: asnName || "Guardian Safety List",
+                    ipAsn: asnKey,
+                    ipAsName: asnName || undefined
+                }
+            }).catch((err) => console.error("Failed to log blacklist ASN to firewallQueryHistory:", err));
+
             return NextResponse.json({ success: true, type: "ASN", entry });
         } else {
             // Treat as IP address
@@ -92,6 +104,16 @@ export async function POST(req: NextRequest) {
                 session.user.id,
                 clientIp
             ).catch(() => {});
+
+            // Dual-audit to FirewallQueryHistory for Operations History tab visibility
+            await prisma.firewallQueryHistory.create({
+                data: {
+                    userId: session.user.id,
+                    command: "Blacklist IP (Guardian)",
+                    targetIp: cleanTarget,
+                    targetName: "Guardian Safety List"
+                }
+            }).catch((err) => console.error("Failed to log blacklist IP to firewallQueryHistory:", err));
 
             return NextResponse.json({ success: true, type: "IP", entry });
         }
@@ -131,6 +153,17 @@ export async function DELETE(req: NextRequest) {
                 clientIp
             ).catch(() => {});
 
+            // Dual-audit to FirewallQueryHistory
+            await prisma.firewallQueryHistory.create({
+                data: {
+                    userId: session.user?.id,
+                    command: "Clear ASN (Guardian)",
+                    targetIp: asnKey,
+                    targetName: "Guardian Safety List",
+                    ipAsn: asnKey
+                }
+            }).catch((err) => console.error("Failed to log clear ASN to firewallQueryHistory:", err));
+
             return NextResponse.json({ success: true });
         }
 
@@ -145,6 +178,16 @@ export async function DELETE(req: NextRequest) {
                 session.user?.id,
                 clientIp
             ).catch(() => {});
+
+            // Dual-audit to FirewallQueryHistory
+            await prisma.firewallQueryHistory.create({
+                data: {
+                    userId: session.user?.id,
+                    command: "Clear IP (Guardian)",
+                    targetIp: ip,
+                    targetName: "Guardian Safety List"
+                }
+            }).catch((err) => console.error("Failed to log clear IP to firewallQueryHistory:", err));
 
             return NextResponse.json({ success: true });
         }

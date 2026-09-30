@@ -196,6 +196,16 @@ export async function POST(req: Request) {
             clientIp
         ).catch(() => {});
 
+        // Dual-audit to FirewallQueryHistory for Operations History tab visibility
+        await prisma.firewallQueryHistory.create({
+            data: {
+                userId: session.user?.id,
+                command: `${modeDesc} ${action.toUpperCase()}`,
+                targetIp: ip,
+                targetName: target === "fleet" ? "FTD Fleet (All 4 Nodes)" : target
+            }
+        }).catch((err) => console.error("Failed to log V2 mutation to firewallQueryHistory:", err));
+
         return NextResponse.json({
             success: true,
             action,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Copy, Check, FileJson } from "lucide-react";
+import { X, Copy, Check, FileJson, ShieldAlert } from "lucide-react";
 
 interface EnrichmentDetailsModalProps {
     ip: string;
@@ -45,34 +45,56 @@ export function EnrichmentDetailsModal({ ip, onClose }: EnrichmentDetailsModalPr
     };
 
     const [blacklistStatus, setBlacklistStatus] = useState<string | null>(null);
+    const [confirmTarget, setConfirmTarget] = useState<{
+        type: "IP" | "ASN";
+        target: string;
+        asnName?: string | null;
+    } | null>(null);
+    const [reason, setReason] = useState("");
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const parsedData = data ? (() => { try { return JSON.parse(data); } catch (e) { return null; } })() : null;
     const detectedAsn = parsedData?.asn?.asn || parsedData?.asn || null;
     const detectedAsnName = parsedData?.asn?.name || parsedData?.company?.name || null;
 
-    const handleBlacklistTarget = async (type: "IP" | "ASN") => {
+    const initiateBlacklist = (type: "IP" | "ASN") => {
         const target = type === "IP" ? ip : detectedAsn;
         if (!target) return;
-        setBlacklistStatus(`Adding ${type}...`);
+        setConfirmTarget({
+            type,
+            target,
+            asnName: type === "ASN" ? detectedAsnName : undefined
+        });
+        setReason(`Blacklisted from IP Enrichment Inspector (${ip})`);
+        setBlacklistStatus(null);
+    };
+
+    const executeBlacklist = async () => {
+        if (!confirmTarget) return;
+        setIsSubmitting(true);
+        setBlacklistStatus(`Enforcing ${confirmTarget.type} blacklist...`);
         try {
             const res = await fetch("/api/firewall/guardian/blacklist", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    type,
-                    target,
-                    reason: `Blacklisted from IP Enrichment Inspector (${ip})`,
-                    asnName: type === "ASN" ? detectedAsnName : undefined
+                    type: confirmTarget.type,
+                    target: confirmTarget.target,
+                    reason: reason.trim() || `Blacklisted from IP Enrichment Inspector (${ip})`,
+                    asnName: confirmTarget.asnName
                 })
             });
             const resData = await res.json();
             if (res.ok && resData.success) {
-                setBlacklistStatus(`✅ ${type} ${target} Blacklisted!`);
+                setBlacklistStatus(`✅ ${confirmTarget.type} ${confirmTarget.target} added to Guardian Do-Not-Unshun blacklist!`);
+                setConfirmTarget(null);
             } else {
                 setBlacklistStatus(`❌ ${resData.error || "Failed"}`);
             }
         } catch (err: any) {
             setBlacklistStatus(`❌ ${err.message || "Failed"}`);
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -125,27 +147,82 @@ export function EnrichmentDetailsModal({ ip, onClose }: EnrichmentDetailsModalPr
                     )}
                 </div>
 
-                {/* Footer Quick Action Buttons */}
-                <div className="px-6 py-3 border-t border-[var(--border-color)] bg-[var(--bg-surface)] flex items-center justify-between shrink-0">
-                    <div className="text-xs font-medium text-[var(--text-muted)]">
-                        {blacklistStatus && <span>{blacklistStatus}</span>}
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => handleBlacklistTarget("IP")}
-                            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-colors cursor-pointer"
-                        >
-                            Blacklist IP ({ip})
-                        </button>
-                        {detectedAsn && (
-                            <button
-                                onClick={() => handleBlacklistTarget("ASN")}
-                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 border border-purple-500/30 transition-colors cursor-pointer"
-                            >
-                                Blacklist ASN ({detectedAsn})
-                            </button>
-                        )}
-                    </div>
+                {/* Footer Quick Action / Confirmation */}
+                <div className="border-t border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0">
+                    {confirmTarget ? (
+                        <div className="p-4 bg-rose-950/20 border-b border-rose-900/30 space-y-3">
+                            <div className="flex items-start gap-2.5">
+                                <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                                <div className="space-y-1">
+                                    <h4 className="text-xs font-bold text-rose-300 uppercase tracking-wider">
+                                        Confirm Guardian Do-Not-Unshun Blacklist ({confirmTarget.type})
+                                    </h4>
+                                    <p className="text-[11px] text-slate-300">
+                                        Adding <span className="font-mono font-bold text-rose-300">{confirmTarget.target}</span> {confirmTarget.asnName ? `(${confirmTarget.asnName}) ` : ""}to the permanent Guardian safety list. The <span className="font-semibold text-rose-300">auto-unshun daemon will never automatically remove shuns</span> for this target.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                    Audited Reason / Justification
+                                </label>
+                                <input
+                                    type="text"
+                                    value={reason}
+                                    onChange={(e) => setReason(e.target.value)}
+                                    placeholder="Enter reason for audit record..."
+                                    className="w-full px-3 py-1.5 bg-[var(--bg-default)] border border-[var(--border-color)] rounded-lg text-xs text-[var(--text-primary)] focus:outline-none focus:border-rose-500"
+                                />
+                            </div>
+
+                            <div className="flex items-center justify-between pt-1">
+                                <div className="text-xs font-medium text-slate-400">
+                                    {blacklistStatus && <span>{blacklistStatus}</span>}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setConfirmTarget(null)}
+                                        disabled={isSubmitting}
+                                        className="px-3 py-1.5 text-xs text-slate-300 hover:text-white rounded-lg hover:bg-[var(--bg-surface-hover)] transition cursor-pointer"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={executeBlacklist}
+                                        disabled={isSubmitting || !reason.trim()}
+                                        className="px-3.5 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-md shadow-rose-900/30"
+                                    >
+                                        {isSubmitting ? "Enforcing..." : `Confirm Blacklist ${confirmTarget.type}`}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="px-6 py-3 flex items-center justify-between">
+                            <div className="text-xs font-medium text-[var(--text-muted)]">
+                                {blacklistStatus && <span>{blacklistStatus}</span>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => initiateBlacklist("IP")}
+                                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-colors cursor-pointer"
+                                >
+                                    Blacklist IP ({ip})
+                                </button>
+                                {detectedAsn && (
+                                    <button
+                                        onClick={() => initiateBlacklist("ASN")}
+                                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 border border-purple-500/30 transition-colors cursor-pointer"
+                                    >
+                                        Blacklist ASN ({detectedAsn})
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </>
