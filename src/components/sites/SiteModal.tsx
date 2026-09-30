@@ -1,5 +1,5 @@
 import React from 'react';
-import { Network, FolderTree, Building, MapPin, Tag, Trash2, Check, X } from 'lucide-react';
+import { Network, FolderTree, Building, MapPin, Tag, Trash2, Check, X, Plus } from 'lucide-react';
 
 interface SiteModalProps {
     isModalOpen: boolean;

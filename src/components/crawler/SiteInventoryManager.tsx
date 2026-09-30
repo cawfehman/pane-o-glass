@@ -57,6 +57,7 @@ interface SiteInventoryManagerProps {
     devices: any[];
     links: any[];
     siteDirectory?: Record<string, SiteMetadataLookup>;
+    folders?: string[];
     onReseedDevice: (dev: any) => void;
     onSelectDevice?: (dev: any) => void;
     onEditSite?: (siteCode: string) => void;
@@ -154,6 +155,7 @@ export default function SiteInventoryManager({
     devices = [],
     links = [],
     siteDirectory = {},
+    folders = [],
     onReseedDevice,
     onSelectDevice,
     onEditSite,
@@ -161,6 +163,27 @@ export default function SiteInventoryManager({
     onRefreshSnapshot,
     onNavigateToTopology
 }: SiteInventoryManagerProps) {
+    const [declaredFolders, setDeclaredFolders] = useState<string[]>(() => folders || []);
+
+    // Sync when folders prop updates
+    useEffect(() => {
+        if (Array.isArray(folders) && folders.length > 0) {
+            setDeclaredFolders(prev => Array.from(new Set([...prev, ...folders])).sort());
+        }
+    }, [folders]);
+
+    // Fetch site folders on initial mount to guarantee empty folders are loaded even if snapshot cache missed them
+    useEffect(() => {
+        fetch("/api/settings/sites")
+            .then(res => res.json())
+            .then(data => {
+                if (Array.isArray(data?.folders) && data.folders.length > 0) {
+                    setDeclaredFolders(prev => Array.from(new Set([...prev, ...data.folders])).sort());
+                }
+            })
+            .catch(() => {});
+    }, []);
+
     const [searchQuery, setSearchQuery] = useState("");
     const [roleFilter, setRoleFilter] = useState<string>("ALL");
     const [freshnessFilter, setFreshnessFilter] = useState<"ALL" | "FRESH" | "RECENT" | "STALE" | "UNCRAWLED" | "FAILED">("ALL");
@@ -329,6 +352,12 @@ export default function SiteInventoryManager({
             return curr;
         };
 
+        // 1. Ensure all declared folders exist in the tree even if they contain no sites
+        for (const f of declaredFolders) {
+            ensureFolder(f);
+        }
+
+        // 2. Assign sites to their respective folders
         for (const [siteCode, entry] of siteMap.entries()) {
             const folderPath = entry.siteLookup?.folderPath || "";
             const targetFolder = ensureFolder(folderPath);
@@ -336,7 +365,7 @@ export default function SiteInventoryManager({
         }
 
         return root;
-    }, [siteMap]);
+    }, [siteMap, declaredFolders]);
 
     // Auto-expand default items on initial load
     useEffect(() => {
@@ -468,6 +497,7 @@ export default function SiteInventoryManager({
                 throw new Error(data.error || "Failed to create group.");
             }
 
+            setDeclaredFolders(prev => Array.from(new Set([...prev, cleanPath, ...(data.folders || [])])).sort());
             setExpandedFolders(prev => ({ ...prev, [cleanPath]: true }));
             setSelectedEntity({ type: "folder", folderPath: cleanPath });
             setIsCreateFolderModalOpen(false);
@@ -501,6 +531,18 @@ export default function SiteInventoryManager({
             const data = await res.json();
             if (!res.ok || data.error) throw new Error(data.error || "Failed to rename group.");
 
+            if (Array.isArray(data.folders)) {
+                setDeclaredFolders(data.folders);
+            } else {
+                setDeclaredFolders(prev => 
+                    prev.map(f => {
+                        if (f === folderToRename) return cleanNew;
+                        if (f.startsWith(folderToRename + "/")) return cleanNew + f.slice(folderToRename.length);
+                        return f;
+                    }).sort()
+                );
+            }
+
             setSelectedEntity({ type: "folder", folderPath: cleanNew });
             setIsRenameFolderModalOpen(false);
             setFolderToRename(null);
@@ -531,6 +573,12 @@ export default function SiteInventoryManager({
             });
             const data = await res.json();
             if (!res.ok || data.error) throw new Error(data.error || "Failed to delete group.");
+
+            if (Array.isArray(data.folders)) {
+                setDeclaredFolders(data.folders);
+            } else {
+                setDeclaredFolders(prev => prev.filter(f => f !== folderPath && !f.startsWith(folderPath + "/")));
+            }
 
             setSelectedEntity({ type: "folder", folderPath: "Root" });
             setDndStatus({ loading: false, message: `Deleted group '${folderPath}'` });

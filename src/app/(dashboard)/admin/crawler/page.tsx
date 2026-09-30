@@ -239,12 +239,12 @@ export default function AdminCrawlerPage() {
     const links: any[] = currentSnapshotData?.links || [];
     const existingFolders = useMemo(() => {
         const dir = currentSnapshotData?.siteDirectory || {};
-        const set = new Set<string>();
+        const set = new Set<string>(currentSnapshotData?.folders || []);
         for (const s of Object.values(dir)) {
             if ((s as any)?.folderPath) set.add((s as any).folderPath);
         }
         return Array.from(set).sort();
-    }, [currentSnapshotData?.siteDirectory]);
+    }, [currentSnapshotData?.siteDirectory, currentSnapshotData?.folders]);
 
     const existingCategories = useMemo(() => {
         const dir = currentSnapshotData?.siteDirectory || {};
@@ -751,6 +751,7 @@ export default function AdminCrawlerPage() {
                         devices={devices}
                         links={links}
                         siteDirectory={currentSnapshotData?.siteDirectory}
+                        folders={existingFolders}
                         onReseedDevice={(d) => {
                             setReseedDevice(d);
                             setIsCrawlModalOpen(true);

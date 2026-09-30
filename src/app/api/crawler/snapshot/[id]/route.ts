@@ -169,6 +169,7 @@ export async function GET(
 
         // Load site directory to enrich site containers with facility names and reconcile verified devices
         let siteDirectory: Record<string, { name: string; address?: string; status?: string; notes?: string }> = {};
+        let snapshotFolders: string[] = [];
         try {
             const { ensureSitesExistFromDevices } = await import("@/lib/sites");
             const { siteMap } = await ensureSitesExistFromDevices(devices, session?.user as any);
@@ -184,6 +185,7 @@ export async function GET(
                     isHub: meta.isHub
                 };
             });
+            snapshotFolders = (siteMap as any).folders || [];
         } catch (e) {
             console.warn("Failed to load site directory for crawler:", e);
         }
@@ -474,6 +476,7 @@ export async function GET(
                 subnetCount: subnets.size
             },
             siteDirectory,
+            folders: snapshotFolders,
             devices: enrichedDevices,
             links: links || snapshot.links || []
         };

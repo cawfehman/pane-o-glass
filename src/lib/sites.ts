@@ -236,6 +236,7 @@ export async function getCurrentSiteMap(): Promise<Map<string, SiteMetadata>> {
         if (latest) {
             const sites = parseSiteCsv(latest.content);
             sites.forEach(s => map.set(s.code, s));
+            (map as any).folders = (sites as any).folders || [];
         }
     } catch (e) {
         console.error("[SITES-LIB] Failed to fetch site map from database. Table might be missing.", e);
@@ -389,7 +390,7 @@ export async function ensureSitesExistFromDevices(
 
     // Generate updated CSV and save as a new version
     const allSites = Array.from(siteMap.values());
-    const csvContent = stringifySiteCsv(allSites);
+    const csvContent = stringifySiteCsv(allSites, (siteMap as any).folders);
     const creator = sessionUser?.username || sessionUser?.email || "crawler-system";
 
     await saveSiteMap(csvContent, "crawler_auto_registered.csv", creator);
@@ -435,7 +436,7 @@ export async function removeDirectorySites(
 
     if (removedCount > 0) {
         const remaining = Array.from(siteMap.values());
-        const csv = stringifySiteCsv(remaining);
+        const csv = stringifySiteCsv(remaining, (siteMap as any).folders);
         const creator = sessionUser?.username || sessionUser?.email || "crawler-admin";
         await saveSiteMap(csv, "site_directory_cleanup.csv", creator);
 
