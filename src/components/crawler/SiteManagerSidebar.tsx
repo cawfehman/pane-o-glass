@@ -914,7 +914,8 @@ export default function SiteManagerSidebar({
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         placeholder="Filter sites, folders, cities..."
-                        className="w-full pl-8 pr-7 py-1.5 bg-black/60 border border-white/10 rounded-lg text-xs text-white placeholder:text-muted/60 focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary"
+                        className="w-full pl-10 pr-7 py-1.5 bg-black/60 border border-white/10 rounded-lg text-xs text-white placeholder:text-muted/60 focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary"
+                        style={{ paddingLeft: '2.5rem' }}
                     />
                     {searchQuery && (
                         <button

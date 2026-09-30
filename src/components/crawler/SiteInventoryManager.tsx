@@ -240,6 +240,7 @@ export default function SiteInventoryManager({
     } | null>(null);
     const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
     const [dndStatus, setDndStatus] = useState<{ loading: boolean; message: string; isError?: boolean } | null>(null);
+    const [localFolderOverrides, setLocalFolderOverrides] = useState<Record<string, string>>({});
 
     // Node Governance Override inline form
     const [editingNodeHost, setEditingNodeHost] = useState<string | null>(null);
@@ -273,9 +274,15 @@ export default function SiteInventoryManager({
         // Initialize sites from siteDirectory
         for (const [code, lookup] of Object.entries(siteDirectory)) {
             const upper = code.toUpperCase();
+            const overriddenFolder = localFolderOverrides[upper];
+            const effectiveLookup = lookup ? {
+                ...lookup,
+                folderPath: overriddenFolder !== undefined ? overriddenFolder : lookup.folderPath
+            } : null;
+
             sMap.set(upper, {
                 siteCode: upper,
-                siteLookup: lookup,
+                siteLookup: effectiveLookup,
                 idfs: new Map<string, any[]>(),
                 allDevices: []
             });
@@ -294,9 +301,21 @@ export default function SiteInventoryManager({
 
             let siteEntry = sMap.get(upperSite);
             if (!siteEntry) {
+                const overriddenFolder = localFolderOverrides[upperSite];
+                const baseLookup = siteDirectory[upperSite] || null;
+                const effectiveLookup = baseLookup ? {
+                    ...baseLookup,
+                    folderPath: overriddenFolder !== undefined ? overriddenFolder : baseLookup.folderPath
+                } : (overriddenFolder !== undefined ? {
+                    code: upperSite,
+                    name: `Site ${upperSite}`,
+                    folderPath: overriddenFolder,
+                    status: "Active"
+                } : null);
+
                 siteEntry = {
                     siteCode: upperSite,
-                    siteLookup: siteDirectory[upperSite] || null,
+                    siteLookup: effectiveLookup,
                     idfs: new Map<string, any[]>(),
                     allDevices: []
                 };
@@ -322,7 +341,7 @@ export default function SiteInventoryManager({
         });
 
         return { siteMap: sMap, unassignedDevices: unassigned, allIdfMap: idfLookup };
-    }, [devices, siteDirectory]);
+    }, [devices, siteDirectory, localFolderOverrides]);
 
     // Group sites into folders
     const folderTree = useMemo(() => {
@@ -356,6 +375,9 @@ export default function SiteInventoryManager({
         for (const f of declaredFolders) {
             ensureFolder(f);
         }
+        for (const f of Object.values(localFolderOverrides)) {
+            if (f) ensureFolder(f);
+        }
 
         // 2. Assign sites to their respective folders
         for (const [siteCode, entry] of siteMap.entries()) {
@@ -365,7 +387,7 @@ export default function SiteInventoryManager({
         }
 
         return root;
-    }, [siteMap, declaredFolders]);
+    }, [siteMap, declaredFolders, localFolderOverrides]);
 
     // Auto-expand default items on initial load
     useEffect(() => {
@@ -592,27 +614,43 @@ export default function SiteInventoryManager({
     // Move Site into Group / Folder via Drag & Drop
     const handleMoveSite = async (siteCode: string, targetFolderPath: string) => {
         const cleanTarget = targetFolderPath === "Root" || targetFolderPath === "Unassigned" ? "" : targetFolderPath.trim();
-        setDndStatus({ loading: true, message: `Moving site ${siteCode} to ${cleanTarget || "Root"}...` });
+        const upperCode = siteCode.toUpperCase();
+        const prevOverride = localFolderOverrides[upperCode];
+
+        // Optimistically update local state immediately for responsive drag and drop
+        setLocalFolderOverrides(prev => ({ ...prev, [upperCode]: cleanTarget }));
+        if (cleanTarget) {
+            setExpandedFolders(prev => ({ ...prev, [cleanTarget]: true }));
+        }
+
+        setDndStatus({ loading: true, message: `Moving site ${upperCode} to ${cleanTarget || "Root"}...` });
         try {
             const res = await fetch("/api/settings/sites", {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     action: "move_site",
-                    siteCode: siteCode.toUpperCase(),
+                    siteCode: upperCode,
                     folderPath: cleanTarget
                 })
             });
             const data = await res.json();
             if (!res.ok || data.error) throw new Error(data.error || "Failed to move site.");
 
-            if (cleanTarget) {
-                setExpandedFolders(prev => ({ ...prev, [cleanTarget]: true }));
-            }
-            setDndStatus({ loading: false, message: `Moved site ${siteCode} to ${cleanTarget || "Root"}` });
+            setDndStatus({ loading: false, message: `Moved site ${upperCode} to ${cleanTarget || "Root"}` });
             setTimeout(() => setDndStatus(null), 3500);
             if (onRefreshSnapshot) onRefreshSnapshot();
         } catch (e: any) {
+            // Revert optimistic update on failure
+            setLocalFolderOverrides(prev => {
+                const next = { ...prev };
+                if (prevOverride !== undefined) {
+                    next[upperCode] = prevOverride;
+                } else {
+                    delete next[upperCode];
+                }
+                return next;
+            });
             setDndStatus({ loading: false, message: e.message || "Failed to move site", isError: true });
             setTimeout(() => setDndStatus(null), 4500);
         }
@@ -1235,7 +1273,7 @@ export default function SiteInventoryManager({
     };
 
     return (
-        <div className="flex-1 min-h-0 flex flex-row overflow-hidden relative rounded-2xl border border-slate-800 bg-slate-950/70 shadow-xl">
+        <div className="flex-1 min-h-0 flex flex-row gap-4 lg:gap-5 overflow-hidden relative">
             {/* Floating Drag & Drop / Action Toast */}
             {dndStatus && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-2 duration-200 pointer-events-none">
@@ -1259,7 +1297,7 @@ export default function SiteInventoryManager({
             )}
 
             {/* Left Column: Asset Hierarchy Tree */}
-            <div className="w-80 md:w-96 border-r border-slate-800 flex flex-col bg-slate-900/60 shrink-0">
+            <div className="w-80 md:w-96 rounded-2xl border border-slate-800 flex flex-col bg-slate-900/60 shadow-xl shrink-0 overflow-hidden">
                 {/* Search & Actions Header */}
                 <div className="p-3 border-b border-slate-800 space-y-2.5 bg-slate-950/80">
                     <div className="flex items-center justify-between">
@@ -1308,13 +1346,14 @@ export default function SiteInventoryManager({
 
                     {/* Search Bar */}
                     <div className="relative">
-                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
                         <input
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="Filter sites, closets, hostnames, IPs..."
-                            className="w-full bg-slate-900 border border-slate-700/80 rounded-lg pl-8 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                            className="w-full bg-slate-900 border border-slate-700/80 rounded-lg pl-10 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                            style={{ paddingLeft: '2.5rem' }}
                         />
                         {searchQuery && (
                             <button
@@ -1370,7 +1409,7 @@ export default function SiteInventoryManager({
             </div>
 
             {/* Right Column: Command & Validation Workspace */}
-            <div className="flex-1 min-w-0 flex flex-col bg-slate-950/50 h-full overflow-hidden">
+            <div className="flex-1 min-w-0 rounded-2xl border border-slate-800 flex flex-col bg-slate-900/40 shadow-xl h-full overflow-hidden">
                 {/* 1. SITE VIEW */}
                 {selectedEntity.type === "site" && activeSite && (
                     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -2355,13 +2394,14 @@ export default function SiteInventoryManager({
                                         {/* Interface Search and Stack Filter Bar */}
                                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-900/60 p-3 rounded-xl border border-slate-800">
                                             <div className="relative flex-1">
-                                                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                                                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                                 <input
                                                     type="text"
                                                     value={interfaceSearch}
                                                     onChange={(e) => setInterfaceSearch(e.target.value)}
                                                     placeholder="Filter ports by name, IP, VLAN, description..."
-                                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-9 pr-8 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-10 pr-8 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                                                    style={{ paddingLeft: '2.5rem' }}
                                                 />
                                                 {interfaceSearch && (
                                                     <button
@@ -2586,13 +2626,14 @@ export default function SiteInventoryManager({
                                         {/* Search and Device Type Filter Pills */}
                                         <div className="space-y-2">
                                             <div className="relative">
-                                                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                                                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                                                 <input
                                                     type="text"
                                                     value={cdpSearchQuery}
                                                     onChange={(e) => setCdpSearchQuery(e.target.value)}
                                                     placeholder="Search host, platform, port, IP..."
-                                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-sans"
+                                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-10 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-sans"
+                                                    style={{ paddingLeft: '2.5rem' }}
                                                 />
                                                 {cdpSearchQuery && (
                                                     <button

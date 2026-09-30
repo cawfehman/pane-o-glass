@@ -1295,13 +1295,14 @@ export default function DeviceInspectorDrawer({
                         {/* Search and Device Type Filter Pills */}
                         <div className="space-y-2">
                             <div className="relative">
-                                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                                 <input
                                     type="text"
                                     value={cdpSearchQuery}
                                     onChange={(e) => setCdpSearchQuery(e.target.value)}
                                     placeholder="Search host, platform, port, IP..."
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-8 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-sans"
+                                    className="w-full bg-slate-950 border border-slate-700 rounded-lg pl-10 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-sans"
+                                    style={{ paddingLeft: '2.5rem' }}
                                 />
                                 {cdpSearchQuery && (
                                     <button

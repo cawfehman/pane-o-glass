@@ -478,7 +478,8 @@ export default function SiteInspectorDrawer({
                                 value={searchFilter}
                                 onChange={(e) => setSearchFilter(e.target.value)}
                                 placeholder="Filter switches by hostname, IP, role, or model..."
-                                className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+                                className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+                                style={{ paddingLeft: '2.5rem' }}
                             />
                         </div>
 

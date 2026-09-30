@@ -4400,13 +4400,14 @@ export default function TopologyGraph({
                     <div className="p-3 border-b border-slate-800/60 bg-slate-950/40 space-y-2">
                         {/* Search Input */}
                         <div className="relative">
-                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
                             <input
                                 type="text"
                                 value={managerSearch}
                                 onChange={(e) => setManagerSearch(e.target.value)}
                                 placeholder="Filter sites, floors, switches..."
-                                className="w-full bg-slate-900 border border-slate-700/80 rounded-lg pl-8 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                                className="w-full bg-slate-900 border border-slate-700/80 rounded-lg pl-10 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                                style={{ paddingLeft: '2.5rem' }}
                             />
                             {managerSearch && (
                                 <button

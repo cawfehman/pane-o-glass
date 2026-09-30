@@ -3266,12 +3266,6 @@
       background-color: color-mix(in oklab, var(--color-slate-950) 40%, transparent);
     }
   }
-  .bg-slate-950\/50 {
-    background-color: color-mix(in srgb, oklch(12.9% 0.042 264.695) 50%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-slate-950) 50%, transparent);
-    }
-  }
   .bg-slate-950\/60 {
     background-color: color-mix(in srgb, oklch(12.9% 0.042 264.695) 60%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -3727,6 +3721,9 @@
   }
   .pl-10 {
     padding-left: calc(var(--spacing) * 10);
+  }
+  .pl-12 {
+    padding-left: calc(var(--spacing) * 12);
   }
   .text-center {
     text-align: center;
@@ -6005,6 +6002,9 @@
     .lg\:items-center {
       align-items: center;
     }
+    .lg\:gap-5 {
+      gap: calc(var(--spacing) * 5);
+    }
   }
   @media (width >= 80rem) {
     .xl\:w-auto {
@@ -6075,10 +6075,10 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --shadow-glow: 0 0 15px var(--accent-glow);
 }
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
 }
 ::-webkit-scrollbar {
   width: 6px;

@@ -213,9 +213,21 @@ export async function PATCH(req: Request) {
             }
             const sIdx = sites.findIndex(s => s.code.toUpperCase() === targetCode);
             if (sIdx === -1) {
-                return NextResponse.json({ error: `Site ${targetCode} not found` }, { status: 404 });
+                // Auto-create discovered site so its folder placement persists
+                sites.push({
+                    code: targetCode,
+                    name: site?.name || `Site ${targetCode}`,
+                    address: site?.address || "",
+                    status: site?.status || "Active",
+                    notes: site?.notes || "Registered via NetCrawler Site Hierarchy",
+                    locationType: site?.locationType || undefined,
+                    city: site?.city || undefined,
+                    folderPath: targetFolder || undefined,
+                    isHub: site?.isHub !== undefined ? Boolean(site?.isHub) : false
+                });
+            } else {
+                sites[sIdx].folderPath = targetFolder;
             }
-            sites[sIdx].folderPath = targetFolder;
             if (targetFolder && !folders.includes(targetFolder)) {
                 folders.push(targetFolder);
                 folders.sort();

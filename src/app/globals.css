@@ -65,10 +65,10 @@
   --shadow-glow: 0 0 15px var(--accent-glow);
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
 }
 
 /* Custom Subtle Scrollbars */

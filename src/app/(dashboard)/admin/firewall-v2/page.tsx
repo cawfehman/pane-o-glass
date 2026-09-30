@@ -644,13 +644,14 @@ export default function FtdOperationsPage() {
                     <div className="p-5 bg-slate-900/70 border border-slate-800 rounded-2xl shadow-xl space-y-4">
                         <form onSubmit={(e) => { e.preventDefault(); handleScanIp(); }} className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
                             <div className="relative flex-1">
-                                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                                 <input
                                     type="text"
                                     value={searchIp}
                                     onChange={(e) => setSearchIp(e.target.value.trim())}
                                     placeholder="Enter public IPv4 address to audit across all 4 FTD firewalls (e.g. 198.51.100.42)..."
-                                    className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500"
+                                    className="w-full bg-slate-950 border border-slate-700/80 rounded-xl pl-12 pr-4 py-2.5 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-blue-500"
+                                    style={{ paddingLeft: '3rem' }}
                                 />
                             </div>
 
@@ -1029,14 +1030,15 @@ export default function FtdOperationsPage() {
                                 <div className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 flex flex-col md:flex-row gap-3 items-center justify-between shadow-sm">
                                     <div className="flex w-full md:w-auto items-center gap-2 flex-1 max-w-xl">
                                         <div className="relative flex-1">
-                                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                             <input
                                                 type="text"
                                                 value={guardianSearch}
                                                 onChange={(e) => { setGuardianSearch(e.target.value); setGuardianPage(1); }}
                                                 onKeyDown={(e) => e.key === "Enter" && fetchGuardianEvents()}
                                                 placeholder="Omnisearch: IP, Reason, ASN, Company..."
-                                                className="w-full bg-slate-950 border border-slate-800 rounded-full pl-9 pr-8 py-2 text-xs text-white focus:outline-none focus:border-blue-500 shadow-inner"
+                                                className="w-full bg-slate-950 border border-slate-800 rounded-full pl-10 pr-8 py-2 text-xs text-white focus:outline-none focus:border-blue-500 shadow-inner"
+                                                style={{ paddingLeft: '2.5rem' }}
                                             />
                                             {guardianSearch && (
                                                 <button
@@ -1280,13 +1282,14 @@ export default function FtdOperationsPage() {
                                 {/* Top Search and Pagination Bar */}
                                 <div className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 flex flex-col md:flex-row gap-3 items-center justify-between shadow-sm">
                                     <div className="relative w-full md:w-80">
-                                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                         <input
                                             type="text"
                                             value={monitoredSearch}
                                             onChange={(e) => { setMonitoredSearch(e.target.value); setMonitoredPage(1); }}
                                             placeholder="Filter monitored IPs or reasons..."
-                                            className="w-full bg-slate-950 border border-slate-800 rounded-full pl-9 pr-8 py-2 text-xs text-white focus:outline-none focus:border-blue-500 shadow-inner"
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-full pl-10 pr-8 py-2 text-xs text-white focus:outline-none focus:border-blue-500 shadow-inner"
+                                            style={{ paddingLeft: '2.5rem' }}
                                         />
                                         {monitoredSearch && (
                                             <button
@@ -1492,13 +1495,14 @@ export default function FtdOperationsPage() {
                         {/* Top Search and Pagination Bar */}
                         <div className="bg-slate-900 p-3.5 rounded-2xl border border-slate-800 flex flex-col md:flex-row gap-3 items-center justify-between shadow-sm">
                             <div className="relative w-full md:w-80">
-                                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                                 <input
                                     type="text"
                                     value={historySearch}
                                     onChange={(e) => { setHistorySearch(e.target.value); setHistoryPage(1); }}
                                     placeholder="Filter by IP, command, user, ASN..."
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-full pl-9 pr-8 py-2 text-xs text-white focus:outline-none focus:border-blue-500 shadow-inner"
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-full pl-10 pr-8 py-2 text-xs text-white focus:outline-none focus:border-blue-500 shadow-inner"
+                                    style={{ paddingLeft: '2.5rem' }}
                                 />
                                 {historySearch && (
                                     <button

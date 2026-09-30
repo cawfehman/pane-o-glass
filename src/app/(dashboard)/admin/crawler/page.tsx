@@ -774,7 +774,7 @@ export default function AdminCrawlerPage() {
                             setIsSiteModalOpen(true);
                         }}
                         onRefreshSnapshot={() => {
-                            if (selectedSnapshotId) fetchSnapshotDetails(selectedSnapshotId);
+                            if (selectedSnapshotId) fetchSnapshotDetails(selectedSnapshotId, true);
                         }}
                         onNavigateToTopology={(siteCode) => {
                             if (siteCode) {

@@ -273,7 +273,8 @@ export default function FailureInvestigationTable({
                             setSearch(e.target.value);
                             setPage(1);
                         }}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-red-500 transition"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-8 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-red-500 transition"
+                        style={{ paddingLeft: '2.5rem' }}
                     />
                     {search && (
                         <button
