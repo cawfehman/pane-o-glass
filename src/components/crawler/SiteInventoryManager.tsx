@@ -46,11 +46,13 @@ import {
     GripVertical,
     Trash2,
     Sparkles,
-    MoveRight
+    MoveRight,
+    Download
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 import { SiteMetadataLookup, parseDeviceSiteAndIdf, parseFloorFromIdf, detectSwitchStack } from "./TopologyGraph";
 import EditIdfModal from "./EditIdfModal";
+import ExportSitesModal from "./ExportSitesModal";
 import { formatFullVerifiedDate, getInterfaceStatus, classifyCdpNeighbor, CdpDeviceCategory, formatCredentialType } from "./DeviceInspectorDrawer";
 
 interface SiteInventoryManagerProps {
@@ -203,6 +205,7 @@ export default function SiteInventoryManager({
     });
 
     // Modal states
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [isEditIdfModalOpen, setIsEditIdfModalOpen] = useState(false);
     const [activeEditIdf, setActiveEditIdf] = useState<{ siteCode: string; idfCode: string; devices: any[] } | null>(null);
 
@@ -1331,6 +1334,15 @@ export default function SiteInventoryManager({
                                     <span>+ Site</span>
                                 </button>
                             )}
+                            <button
+                                type="button"
+                                onClick={() => setIsExportModalOpen(true)}
+                                title="Export Sites to CSV"
+                                className="flex items-center gap-1 px-2 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-[10px] font-bold transition shadow-sm cursor-pointer"
+                            >
+                                <Download className="w-3.5 h-3.5 text-slate-400" />
+                                <span>Export</span>
+                            </button>
                             <button
                                 type="button"
                                 onClick={() => {
@@ -2783,6 +2795,16 @@ export default function SiteInventoryManager({
                                 </div>
 
                                 <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsExportModalOpen(true)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition cursor-pointer"
+                                        title="Export sites in this group or all sites to CSV"
+                                    >
+                                        <Download className="w-3.5 h-3.5 text-slate-400" />
+                                        <span>Export CSV</span>
+                                    </button>
+
                                     {onAddSite && (
                                         <button
                                             type="button"
@@ -3287,6 +3309,17 @@ export default function SiteInventoryManager({
                     </div>
                 </div>
             )}
+
+            {/* Export Sites to CSV Modal */}
+            <ExportSitesModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                siteMap={siteMap}
+                currentFolder={selectedEntity.type === "folder" ? selectedEntity.folderPath : "All"}
+                searchQuery={searchQuery}
+                roleFilter={roleFilter}
+                freshnessFilter={freshnessFilter}
+            />
         </div>
     );
 }
