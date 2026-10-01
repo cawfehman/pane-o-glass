@@ -201,9 +201,9 @@ export default function FailureInvestigationTable({
     };
 
     return (
-        <div className="flex-1 h-full min-h-0 flex flex-col bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+        <div className="flex-1 h-full min-h-0 flex flex-col bg-slate-900/60 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
             {/* Header & Search Bar */}
-            <div className="p-4 border-b border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shrink-0 bg-slate-950/60 backdrop-blur-md">
+            <div className="p-4 border-b border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shrink-0 bg-slate-950/80 backdrop-blur-md">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                     <div className="flex items-center gap-3">
                         <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 shrink-0">

@@ -3572,7 +3572,9 @@ export default function TopologyGraph({
             className={`select-none overflow-hidden flex flex-col transition-all duration-150 ${
                 isFullscreen 
                     ? "fixed inset-0 z-40 w-screen h-screen bg-slate-950 rounded-none border-0 shadow-none m-0 p-0" 
-                    : `${className || "relative w-full flex-1 h-full min-h-[660px]"} bg-slate-950/70 rounded-2xl border border-slate-800/80 shadow-xl`
+                    : className
+                        ? `${className}`
+                        : "relative w-full flex-1 h-full min-h-[660px] bg-slate-900/40 rounded-2xl border border-slate-800 shadow-xl"
             }`}
         >
             {/* Top Control Bar Overlay */}

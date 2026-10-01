@@ -23,6 +23,9 @@ interface PathTracerPanelProps {
     onDestinationIpChange: (ip: string) => void;
     onPathDiscovered: (result: any) => void;
     onSelectDevice: (hostname: string) => void;
+    activeSnapshot?: any;
+    onOpenCrawlModal?: () => void;
+    className?: string;
 }
 
 export default function PathTracerPanel({
@@ -32,7 +35,10 @@ export default function PathTracerPanel({
     onSourceIpChange,
     onDestinationIpChange,
     onPathDiscovered,
-    onSelectDevice
+    onSelectDevice,
+    activeSnapshot,
+    onOpenCrawlModal,
+    className
 }: PathTracerPanelProps) {
     const [loading, setLoading] = useState(false);
     const [traceResult, setTraceResult] = useState<any | null>(null);
@@ -83,111 +89,142 @@ export default function PathTracerPanel({
     };
 
     return (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-5">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                    <div className="p-2 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400">
-                        <RouteIcon className="w-5 h-5" />
-                    </div>
+        <div className={`flex-1 min-h-0 flex flex-col h-full overflow-hidden ${className || ""}`}>
+            {/* Pinned Header */}
+            <div className="p-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/80 shrink-0">
+                <div className="flex items-center gap-2">
+                    <RouteIcon className="w-4 h-4 text-blue-400" />
                     <div>
-                        <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                            Hop-by-Hop Path Tracer
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                                Native LPM Engine
+                        <div className="flex items-center gap-1.5">
+                            <h2 className="text-xs font-bold text-white tracking-wide uppercase">Path Tracer</h2>
+                            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-mono">
+                                LPM
                             </span>
-                        </h2>
-                        <p className="text-xs text-slate-400">
-                            Simulate packet traversal, VLAN tags, and L3 longest prefix matching.
-                        </p>
+                        </div>
+                        <p className="text-[10px] text-slate-400">Simulate packet traversal & L3 matching</p>
                     </div>
                 </div>
 
                 {traceResult && (
                     <button
+                        type="button"
                         onClick={() => {
                             setTraceResult(null);
                             onPathDiscovered(null);
                         }}
-                        className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1"
+                        className="px-2 py-1 rounded-lg border border-slate-800 text-[11px] text-slate-400 hover:text-white hover:bg-slate-800/60 transition flex items-center gap-1 cursor-pointer"
                     >
-                        <RotateCcw className="w-3.5 h-3.5" />
+                        <RotateCcw className="w-3 h-3" />
                         Clear
                     </button>
                 )}
             </div>
 
-            {/* Inputs & Action */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                <div className="md:col-span-5 space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-300">Source Host / Gateway IP</label>
-                    <input
-                        type="text"
-                        placeholder="e.g. 10.10.10.50"
-                        value={sourceIp}
-                        onChange={(e) => onSourceIpChange(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition"
-                    />
-                </div>
+            {/* Scrollable Body */}
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-3.5 space-y-3.5">
+                {/* Discovery Profile Active Notice */}
+                {activeSnapshot?.crawlProfile === "DISCOVERY" && (
+                    <div className="p-3 bg-amber-950/40 border border-amber-800/80 rounded-xl flex items-start justify-between gap-3 text-xs text-amber-200">
+                        <div className="flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                            <div>
+                                <span className="font-bold text-white block text-[11px]">Discovery Profile Active</span>
+                                <p className="text-slate-300 text-[10px] leading-relaxed">
+                                    Routing tables bypassed. To simulate LPM routing, initiate Spider Intensive crawl.
+                                </p>
+                            </div>
+                        </div>
+                        {onOpenCrawlModal && (
+                            <button
+                                type="button"
+                                onClick={onOpenCrawlModal}
+                                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[10px] shrink-0 transition cursor-pointer"
+                            >
+                                Crawl
+                            </button>
+                        )}
+                    </div>
+                )}
 
-                <div className="md:col-span-5 space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-300">Destination IP</label>
-                    <input
-                        type="text"
-                        placeholder="e.g. 10.20.50.88"
-                        value={destinationIp}
-                        onChange={(e) => onDestinationIpChange(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition"
-                    />
-                </div>
+                {/* Form Inputs & Action */}
+                <div className="space-y-2.5 bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300">Source Host / Gateway IP</label>
+                        <input
+                            type="text"
+                            placeholder="e.g. 10.10.10.50"
+                            value={sourceIp}
+                            onChange={(e) => onSourceIpChange(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") runTrace(); }}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition"
+                        />
+                    </div>
 
-                <div className="md:col-span-2">
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-300">Destination IP</label>
+                        <input
+                            type="text"
+                            placeholder="e.g. 10.20.50.88"
+                            value={destinationIp}
+                            onChange={(e) => onDestinationIpChange(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") runTrace(); }}
+                            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white font-mono placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition"
+                        />
+                    </div>
+
                     <button
+                        type="button"
                         onClick={() => runTrace()}
                         disabled={loading}
-                        className="w-full h-[42px] bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800/60 text-white font-semibold text-sm rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 transition cursor-pointer disabled:cursor-not-allowed"
+                        className="w-full py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800/60 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-2 shadow-md shadow-blue-600/30 transition cursor-pointer disabled:cursor-not-allowed mt-1"
                     >
                         {loading ? (
                             <>
-                                <span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></span>
-                                Tracing...
+                                <span className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin"></span>
+                                <span>Tracing Packet Path...</span>
                             </>
                         ) : (
                             <>
-                                <Send className="w-4 h-4" />
-                                Trace
+                                <Send className="w-3.5 h-3.5" />
+                                <span>Trace Forwarding Path</span>
                             </>
                         )}
                     </button>
                 </div>
-            </div>
 
-            {/* Quick Presets */}
-            <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-slate-500 flex items-center gap-1 font-medium">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    Quick Presets:
-                </span>
-                <button
-                    onClick={() => handlePreset("10.10.10.50", "10.20.50.88")}
-                    className="px-2.5 py-1 bg-slate-800/70 hover:bg-slate-800 border border-slate-700/80 rounded-lg text-slate-300 font-mono transition flex items-center gap-1"
-                >
-                    Cross-Site: 10.10.10.50 <ArrowRight className="w-3 h-3 text-slate-500" /> 10.20.50.88
-                </button>
-                <button
-                    onClick={() => handlePreset("10.10.10.50", "10.10.20.100")}
-                    className="px-2.5 py-1 bg-slate-800/70 hover:bg-slate-800 border border-slate-700/80 rounded-lg text-slate-300 font-mono transition flex items-center gap-1"
-                >
-                    Inter-VLAN (Site 101): 10.10.10.50 <ArrowRight className="w-3 h-3 text-slate-500" /> 10.10.20.100
-                </button>
-            </div>
-
-            {/* Error banner */}
-            {error && (
-                <div className="p-3 bg-red-950/40 border border-red-800 rounded-xl text-xs text-red-300 flex items-center gap-2">
-                    <XCircle className="w-4 h-4 text-red-400 shrink-0" />
-                    <span>{error}</span>
+                {/* Quick Presets */}
+                <div className="space-y-1.5">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-amber-400" />
+                        Quick Test Presets
+                    </span>
+                    <div className="flex flex-col gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => handlePreset("10.10.10.50", "10.20.50.88")}
+                            className="w-full px-2.5 py-1.5 bg-slate-950/60 hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-300 text-[11px] font-mono transition flex items-center justify-between text-left cursor-pointer group"
+                        >
+                            <span className="text-slate-400 group-hover:text-white truncate">Cross-Site (10.10.10.50 &rarr; 10.20.50.88)</span>
+                            <ArrowRight className="w-3 h-3 text-blue-400 shrink-0 ml-1" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handlePreset("10.10.10.50", "10.10.20.100")}
+                            className="w-full px-2.5 py-1.5 bg-slate-950/60 hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-300 text-[11px] font-mono transition flex items-center justify-between text-left cursor-pointer group"
+                        >
+                            <span className="text-slate-400 group-hover:text-white truncate">Inter-VLAN (10.10.10.50 &rarr; 10.10.20.100)</span>
+                            <ArrowRight className="w-3 h-3 text-blue-400 shrink-0 ml-1" />
+                        </button>
+                    </div>
                 </div>
-            )}
+
+                {/* Error banner */}
+                {error && (
+                    <div className="p-3 bg-red-950/40 border border-red-800 rounded-xl text-xs text-red-300 flex items-center gap-2">
+                        <XCircle className="w-4 h-4 text-red-400 shrink-0" />
+                        <span>{error}</span>
+                    </div>
+                )}
 
             {/* Trace Results */}
             {traceResult && (() => {
@@ -306,6 +343,7 @@ export default function PathTracerPanel({
                     </div>
                 );
             })()}
+            </div>
         </div>
     );
 }

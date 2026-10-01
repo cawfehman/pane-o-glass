@@ -830,25 +830,25 @@ export default function SiteManagerSidebar({
             <button
                 type="button"
                 onClick={onToggle}
-                className="absolute top-16 left-3 z-30 flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900/90 border border-white/20 text-white hover:text-accent-primary shadow-[0_4px_20px_rgba(0,0,0,0.6)] backdrop-blur-md transition-all cursor-pointer group"
+                className="absolute top-20 left-4 z-30 flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700 text-white hover:text-blue-400 shadow-[0_4px_20px_rgba(0,0,0,0.6)] backdrop-blur-md transition-all cursor-pointer group"
                 title="Expand Site & Hierarchy Manager"
             >
-                <FolderTree className="w-4 h-4 text-accent-primary group-hover:scale-110 transition-transform" />
+                <FolderTree className="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform" />
                 <span className="text-xs font-bold tracking-tight">Site Directory</span>
-                <ChevronRight className="w-3.5 h-3.5 text-muted group-hover:text-white" />
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-white" />
             </button>
         );
     }
 
     return (
-        <aside className="w-80 h-full flex flex-col bg-slate-950/95 border-r border-white/10 backdrop-blur-xl shrink-0 z-30 shadow-2xl relative animate-in slide-in-from-left duration-200">
+        <aside className="w-80 md:w-96 h-full flex flex-col rounded-2xl border border-slate-800 bg-slate-900/60 shadow-xl shrink-0 overflow-hidden relative animate-in slide-in-from-left duration-200">
             {/* Header */}
-            <div className="p-3.5 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
+            <div className="p-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
                 <div className="flex items-center gap-2">
-                    <FolderTree className="w-4 h-4 text-accent-primary" />
+                    <FolderTree className="w-4 h-4 text-blue-400" />
                     <div>
                         <h2 className="text-xs font-black text-white tracking-wide uppercase">Site Hierarchy</h2>
-                        <p className="text-[10px] text-muted">{sites.length} sites provisioned</p>
+                        <p className="text-[10px] text-slate-400">{sites.length} sites provisioned</p>
                     </div>
                 </div>
 
@@ -858,7 +858,7 @@ export default function SiteManagerSidebar({
                         onClick={loadSites}
                         disabled={loading}
                         title="Reload Site Directory"
-                        className="p-1.5 rounded-lg border border-white/10 text-muted hover:text-white hover:bg-white/5 transition-all"
+                        className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all"
                     >
                         <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
                     </button>
@@ -866,7 +866,7 @@ export default function SiteManagerSidebar({
                         type="button"
                         onClick={onToggle}
                         title="Collapse Sidebar"
-                        className="p-1.5 rounded-lg border border-white/10 text-muted hover:text-white hover:bg-white/5 transition-all"
+                        className="p-1.5 rounded-lg border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800/60 transition-all"
                     >
                         <ChevronLeft className="w-4 h-4" />
                     </button>
@@ -874,11 +874,11 @@ export default function SiteManagerSidebar({
             </div>
 
             {/* Quick Actions Bar */}
-            <div className="p-2 border-b border-white/5 bg-white/[0.01] flex items-center gap-2">
+            <div className="p-2 border-b border-slate-800 bg-slate-950/40 flex items-center gap-2">
                 <button
                     type="button"
                     onClick={() => handleOpenAdd()}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-accent-primary/10 hover:bg-accent-primary/20 border border-accent-primary/30 text-accent-primary text-xs font-bold transition-all shadow-sm cursor-pointer"
+                    className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 text-xs font-bold transition-all shadow-sm cursor-pointer"
                 >
                     <Plus className="w-3.5 h-3.5" />
                     New Site
@@ -889,16 +889,16 @@ export default function SiteManagerSidebar({
                         setNewFolderParent(null);
                         setIsNewFolderOpen(true);
                     }}
-                    className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-semibold transition-all cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold transition-all cursor-pointer"
                     title="Create Root Group Folder"
                 >
-                    <FolderPlus className="w-3.5 h-3.5 text-sky-400" />
+                    <FolderPlus className="w-3.5 h-3.5 text-blue-400" />
                     New Group
                 </button>
                 <button
                     type="button"
                     onClick={handleExportCsv}
-                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-muted hover:text-white transition-all cursor-pointer"
+                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-white transition-all cursor-pointer"
                     title="Export Hierarchy CSV"
                 >
                     <Download className="w-3.5 h-3.5" />
@@ -906,22 +906,22 @@ export default function SiteManagerSidebar({
             </div>
 
             {/* Search Box */}
-            <div className="p-2.5 border-b border-white/5">
+            <div className="p-2.5 border-b border-slate-800 bg-slate-950/20">
                 <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted pointer-events-none" />
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500 pointer-events-none" />
                     <input
                         type="text"
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
                         placeholder="Filter sites, folders, cities..."
-                        className="w-full pl-10 pr-7 py-1.5 bg-black/60 border border-white/10 rounded-lg text-xs text-white placeholder:text-muted/60 focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary"
+                        className="w-full pl-10 pr-7 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                         style={{ paddingLeft: '2.5rem' }}
                     />
                     {searchQuery && (
                         <button
                             type="button"
                             onClick={() => setSearchQuery("")}
-                            className="absolute right-2 top-2 text-muted hover:text-white text-xs"
+                            className="absolute right-2 top-2 text-slate-400 hover:text-white text-xs"
                         >
                             &times;
                         </button>

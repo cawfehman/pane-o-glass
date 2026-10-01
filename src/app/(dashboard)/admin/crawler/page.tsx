@@ -787,7 +787,7 @@ export default function AdminCrawlerPage() {
                 )}
 
                 {activeTab === "topology" && (
-                    <div className="flex-1 h-full min-h-0 flex flex-row overflow-hidden relative rounded-2xl border border-slate-800 bg-slate-950/70 shadow-xl">
+                    <div className="flex-1 min-h-0 flex flex-row gap-4 lg:gap-5 overflow-hidden relative">
                         <SiteManagerSidebar
                             isOpen={isSiteSidebarOpen}
                             onToggle={() => setIsSiteSidebarOpen(!isSiteSidebarOpen)}
@@ -800,7 +800,7 @@ export default function AdminCrawlerPage() {
                             highlightedSiteCode={highlightedSiteCode}
                         />
 
-                        <div className="flex-1 h-full min-h-0 relative overflow-hidden flex flex-col">
+                        <div className="flex-1 min-w-0 rounded-2xl border border-slate-800 flex flex-col bg-slate-900/40 shadow-xl h-full overflow-hidden relative">
                             <TopologyGraph
                                 devices={devices}
                                 links={links}
@@ -820,67 +820,70 @@ export default function AdminCrawlerPage() {
                                 locateSiteCode={locateSiteCode}
                                 snapshotId={selectedSnapshotId}
                                 onEditSite={handleOpenEditSite}
-                                className="relative w-full flex-1 h-full min-h-[660px] border-0 rounded-none bg-transparent"
+                                className="relative w-full flex-1 h-full min-h-0 border-0 rounded-none bg-transparent"
                             />
                         </div>
                     </div>
                 )}
 
                 {activeTab === "tracer" && (
-                    <div className="space-y-6">
-                        {activeSnapshot?.crawlProfile === "DISCOVERY" && (
-                            <div className="p-4 bg-amber-950/40 border border-amber-800/80 rounded-2xl flex items-start justify-between gap-4 text-xs text-amber-200">
-                                <div className="flex items-start gap-3">
-                                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                                    <div className="space-y-1">
-                                        <span className="font-bold text-white block">Neighbor Discovery Profile Active</span>
-                                        <p className="text-slate-300 leading-relaxed">
-                                            This snapshot was captured in <strong>Discovery</strong> mode to test credentials and find adjacent switches quickly. Routing tables were bypassed for speed. To simulate packet routing with LPM, initiate a <strong>Spider Intensive</strong> crawl.
-                                        </p>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={() => setIsCrawlModalOpen(true)}
-                                    className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded-xl text-xs shrink-0 transition"
-                                >
-                                    Run Intensive Crawl
-                                </button>
-                            </div>
-                        )}
-
-                        <PathTracerPanel
-                            snapshotId={selectedSnapshotId}
-                            sourceIp={tracerSourceIp}
-                            destinationIp={tracerDestIp}
-                            onSourceIpChange={setTracerSourceIp}
-                            onDestinationIpChange={setTracerDestIp}
-                            onPathDiscovered={handlePathDiscovered}
-                            onSelectDevice={handleSelectDeviceByHostname}
-                        />
-
-                        {/* Also render topology map underneath path tracer so user immediately sees visually highlighted path */}
-                        <div className="space-y-2">
-                            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                                Visual Traversal Overlay
-                            </h3>
-                            <TopologyGraph
-                                devices={devices}
-                                links={links}
-                                siteDirectory={currentSnapshotData?.siteDirectory}
-                                selectedDevice={selectedDevice}
-                                onSelectDevice={(d) => setSelectedDevice(d)}
-                                onInspectSite={(siteCode) => setInspectedSiteCode(siteCode)}
-                                activeHopDevices={activeHopDevices}
-                                highlightedLinks={highlightedLinks}
-                                onReseedDevice={(d) => {
-                                    setReseedDevice(d);
-                                    setIsCrawlModalOpen(true);
-                                }}
-                                onRefreshSnapshot={() => {
-                                    if (selectedSnapshotId) fetchSnapshotDetails(selectedSnapshotId);
-                                }}
-                                className="relative w-full h-[620px] min-h-[500px]"
+                    <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 lg:gap-5 overflow-hidden relative">
+                        {/* Left Card: Path Tracer Controls, Inputs, Presets & Hops */}
+                        <div className="w-full lg:w-[420px] xl:w-[460px] rounded-2xl border border-slate-800 flex flex-col bg-slate-900/60 shadow-xl shrink-0 overflow-hidden">
+                            <PathTracerPanel
+                                snapshotId={selectedSnapshotId}
+                                sourceIp={tracerSourceIp}
+                                destinationIp={tracerDestIp}
+                                onSourceIpChange={setTracerSourceIp}
+                                onDestinationIpChange={setTracerDestIp}
+                                onPathDiscovered={handlePathDiscovered}
+                                onSelectDevice={handleSelectDeviceByHostname}
+                                activeSnapshot={activeSnapshot}
+                                onOpenCrawlModal={() => setIsCrawlModalOpen(true)}
                             />
+                        </div>
+
+                        {/* Right Card: Interactive Topology Map with Visual Traversal Overlay */}
+                        <div className="flex-1 min-w-0 rounded-2xl border border-slate-800 flex flex-col bg-slate-900/40 shadow-xl h-full overflow-hidden relative">
+                            {/* Card Header */}
+                            <div className="shrink-0 px-4 py-3 border-b border-slate-800 bg-slate-950/80 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <RouteIcon className="w-4 h-4 text-blue-400" />
+                                    <h3 className="text-xs font-bold text-white tracking-wide uppercase">
+                                        Visual Traversal Overlay
+                                    </h3>
+                                    {activeHopDevices.length > 0 && (
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                            {activeHopDevices.length} Hops Highlighted
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="text-[11px] text-slate-400 hidden sm:block">
+                                    Click any hop or switch to inspect details
+                                </div>
+                            </div>
+
+                            {/* Canvas */}
+                            <div className="flex-1 min-h-0 relative overflow-hidden flex flex-col">
+                                <TopologyGraph
+                                    devices={devices}
+                                    links={links}
+                                    siteDirectory={currentSnapshotData?.siteDirectory}
+                                    selectedDevice={selectedDevice}
+                                    onSelectDevice={(d) => setSelectedDevice(d)}
+                                    onInspectSite={(siteCode) => setInspectedSiteCode(siteCode)}
+                                    activeHopDevices={activeHopDevices}
+                                    highlightedLinks={highlightedLinks}
+                                    onReseedDevice={(d) => {
+                                        setReseedDevice(d);
+                                        setIsCrawlModalOpen(true);
+                                    }}
+                                    onRefreshSnapshot={() => {
+                                        if (selectedSnapshotId) fetchSnapshotDetails(selectedSnapshotId);
+                                    }}
+                                    className="relative w-full flex-1 h-full min-h-0 border-0 rounded-none bg-transparent"
+                                />
+                            </div>
                         </div>
                     </div>
                 )}
