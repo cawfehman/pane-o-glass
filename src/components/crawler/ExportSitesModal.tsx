@@ -81,6 +81,7 @@ export default function ExportSitesModal({
     isOpen,
     onClose,
     devices = [],
+    links = [],
     siteMap,
     currentFolder = "All",
     currentSite,
