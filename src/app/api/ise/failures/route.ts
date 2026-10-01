@@ -40,7 +40,7 @@ export async function GET(req: Request) {
             const queryIseAuth = async (formattedMac: string, seconds: number) => {
                 try {
                     const { data: xmlText } = await executeWithPanFailover(async (baseUrl) => {
-                        const endpoint = `${baseUrl}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/${seconds}/50/All`;
+                        const endpoint = `${baseUrl}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/${seconds}/250/All`;
                         console.log(`[ISE-HISTORY] Querying ${seconds}s window: ${endpoint}`);
                         const response = await axios.get(endpoint, {
                             headers: { 
@@ -256,13 +256,24 @@ export async function GET(req: Request) {
                 wlcTelemetry = await fetchWlcClientTelemetry(formattedQuery);
             } catch (e) {}
 
-            const events = enrichedResults.sort((a, b) => {
+            const events = enrichedResults.map((ev: any) => {
+                if (wlcTelemetry?.found) {
+                    if ((!ev.access_point_name || ev.access_point_name === "N/A") && wlcTelemetry.apName) {
+                        ev.access_point_name = wlcTelemetry.apName;
+                    }
+                    if ((!ev.wlan_ssid || ev.wlan_ssid === "N/A") && wlcTelemetry.ssid) {
+                        ev.wlan_ssid = wlcTelemetry.ssid;
+                    }
+                }
+                return ev;
+            }).sort((a, b) => {
                 const timeA = new Date(a.timestamp).getTime();
                 const timeB = new Date(b.timestamp).getTime();
                 return isNaN(timeB) ? -1 : (isNaN(timeA) ? 1 : timeB - timeA);
             });
+
             return NextResponse.json({ 
-                found: events.length > 0, 
+                found: events.length > 0 || Boolean(wlcTelemetry?.found), 
                 failures: events, 
                 searchType: "mac",
                 wlcTelemetry: wlcTelemetry?.found ? wlcTelemetry : null

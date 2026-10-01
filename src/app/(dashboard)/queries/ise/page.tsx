@@ -241,10 +241,37 @@ export default function CiscoIsePage() {
                     primarySession = historyData.failures[0];
                 }
 
-                // Merge WLC telemetry from history if session didn't have it
+                // If still no primarySession, but WLC telemetry discovered the device associated on a WLC:
+                const liveWlc = sessionData.wlcTelemetry || historyData.wlcTelemetry;
+                if (!primarySession && liveWlc?.found) {
+                    primarySession = {
+                        calling_station_id: isMac ? searchTerm : (liveWlc.clientIp || searchTerm),
+                        framed_ip_address: (liveWlc.clientIp && liveWlc.clientIp !== "0.0.0.0") ? liveWlc.clientIp : "Pending DHCP / No IP",
+                        nas_identifier: liveWlc.wlcName,
+                        nas_ip_address: liveWlc.wlcIp,
+                        access_point_name: liveWlc.apName || "N/A",
+                        ap_location: liveWlc.apLocation || "N/A",
+                        wlan_ssid: liveWlc.ssid || "N/A",
+                        endpoint_profile: "Wireless Client",
+                        status: true,
+                        timestamp: new Date().toISOString(),
+                        timestamp_label: "WLC ASSOCIATION",
+                        network_device_name: liveWlc.wlcName,
+                        is_wlc_live_only: true,
+                        wlcTelemetry: liveWlc
+                    };
+                }
+
+                // Merge WLC telemetry from history or session if session didn't have it
                 const enrichedSession = primarySession ? {
                     ...primarySession,
-                    wlcTelemetry: primarySession.wlcTelemetry || historyData.wlcTelemetry
+                    access_point_name: (primarySession.access_point_name && primarySession.access_point_name !== "N/A")
+                        ? primarySession.access_point_name
+                        : (liveWlc?.apName || primarySession.access_point_name || "N/A"),
+                    wlan_ssid: (primarySession.wlan_ssid && primarySession.wlan_ssid !== "N/A")
+                        ? primarySession.wlan_ssid
+                        : (liveWlc?.ssid || primarySession.wlan_ssid || "N/A"),
+                    wlcTelemetry: primarySession.wlcTelemetry || liveWlc
                 } : null;
 
                 setEndpointResult(enrichedSession);
@@ -776,6 +803,7 @@ export default function CiscoIsePage() {
                                     onSelectMac={(mac) => handleSearch(undefined, mac)}
                                     onSelectEvent={(ev) => setSelectedHistoricalEvent(ev)}
                                     selectedEventTimestamp={selectedHistoricalEvent?.timestamp}
+                                    wlcTelemetry={endpointResult?.wlcTelemetry || historyResult?.wlcTelemetry}
                                 />
                             </div>
                         ) : (
@@ -787,13 +815,14 @@ export default function CiscoIsePage() {
                                 {historyResult?.found && historyResult.failures?.length > 0 && (
                                     <div className="mt-6 text-left">
                                         <p className="text-xs text-accent-primary font-semibold mb-3 text-center">
-                                            Select any past authentication attempt below to reconstruct its forensic connection path:
+                                             Select any past authentication attempt below to reconstruct its forensic connection path:
                                         </p>
                                         <AuthHistoryTimeline 
                                             events={historyResult.failures} 
                                             onSelectMac={(mac) => handleSearch(undefined, mac)}
                                             onSelectEvent={(ev) => setSelectedHistoricalEvent(ev)}
                                             selectedEventTimestamp={selectedHistoricalEvent?.timestamp}
+                                            wlcTelemetry={endpointResult?.wlcTelemetry || historyResult?.wlcTelemetry}
                                         />
                                     </div>
                                 )}

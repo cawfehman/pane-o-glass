@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { fetchIseSession } from "@/lib/ise";
+import { fetchIseSession, normalizeMacAddress, getIseUrls, executeWithPanFailover } from "@/lib/ise";
 import { logAudit } from "@/lib/audit";
 import { hasPermission } from "@/app/actions/permissions";
 import { getUserDetails } from "@/lib/ldap";
 import { getVectraHosts } from "@/lib/vectra";
 import { fetchWlcClientTelemetry } from "@/lib/wlc";
+import https from "https";
+import axios from "axios";
 
 export async function GET(request: Request) {
     try {
@@ -31,7 +33,109 @@ export async function GET(request: Request) {
         // 2. Perform the base ISE lookup
         const result = await fetchIseSession(query);
 
-        if (!result.found || !result.sessions) {
+        if (!result.found || !result.sessions || result.sessions.length === 0) {
+            // Check if query is a MAC address or normalizable to MAC
+            const normalizedMac = normalizeMacAddress(query);
+            if (normalizedMac) {
+                // Query WLC real-time telemetry directly
+                let wlcTelemetry = null;
+                try {
+                    wlcTelemetry = await fetchWlcClientTelemetry(normalizedMac);
+                } catch (e) {
+                    console.warn(`[ISE-SESSION] Direct WLC telemetry fetch failed:`, e);
+                }
+
+                if (wlcTelemetry?.found) {
+                    // Endpoint profile enrichment from ERS
+                    let endpointProfile = "Wireless Client";
+                    let hardwareManufacturer = "";
+                    let hardwareModel = "";
+                    let osVersion = "";
+                    let deviceType = "";
+
+                    try {
+                        const { basicAuth } = getIseUrls();
+                        const agent = new https.Agent({ rejectUnauthorized: false });
+                        const { data: epRes } = await executeWithPanFailover(async (baseUrl) => {
+                            const res = await axios.get(`${baseUrl}/ers/config/endpoint/name/${normalizedMac}`, {
+                                headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
+                                httpsAgent: agent,
+                                timeout: 2500
+                            });
+                            return res.data;
+                        });
+
+                        const ep = epRes?.ERSEndPoint;
+                        if (ep) {
+                            if (ep.staticProfileAssignment || ep.profileId) {
+                                endpointProfile = ep.staticProfileAssignment || ep.profileId;
+                            }
+                            if (ep.mfcAttributes) {
+                                const mfc = ep.mfcAttributes;
+                                const getStr = (val: any) => Array.isArray(val) ? val.join('') : (val || "");
+                                hardwareManufacturer = getStr(mfc.mfcHardwareManufacturer);
+                                hardwareModel = getStr(mfc.mfcHardwareModel);
+                                osVersion = getStr(mfc.mfcOperatingSystem);
+                                deviceType = getStr(mfc.mfcDeviceType);
+
+                                const parts = [hardwareManufacturer, hardwareModel].filter(Boolean).join(' ');
+                                if (parts) endpointProfile = parts;
+                                else if (hardwareManufacturer || osVersion) endpointProfile = `${hardwareManufacturer || ""} ${osVersion || ""}`.trim();
+                            }
+                        }
+                    } catch (e) {}
+
+                    // Vectra security context
+                    let vectra = null;
+                    try {
+                        const searchVal = (wlcTelemetry.clientIp && wlcTelemetry.clientIp !== "0.0.0.0") ? wlcTelemetry.clientIp : normalizedMac;
+                        const vectraData = await getVectraHosts({ name: searchVal });
+                        if (vectraData.results && vectraData.results.length > 0) {
+                            const host = vectraData.results[0];
+                            vectra = {
+                                id: host.id,
+                                threat: host.threat,
+                                certainty: host.certainty,
+                                t_score: host.t_score,
+                                c_score: host.c_score,
+                                last_seen: host.last_seen
+                            };
+                        }
+                    } catch (e) {}
+
+                    const syntheticSession = {
+                        calling_station_id: normalizedMac,
+                        framed_ip_address: (wlcTelemetry.clientIp && wlcTelemetry.clientIp !== "0.0.0.0") ? wlcTelemetry.clientIp : "Pending DHCP / No IP",
+                        nas_identifier: wlcTelemetry.wlcName,
+                        nas_ip_address: wlcTelemetry.wlcIp,
+                        access_point_name: wlcTelemetry.apName || "N/A",
+                        ap_location: wlcTelemetry.apLocation || "N/A",
+                        wlan_ssid: wlcTelemetry.ssid || "N/A",
+                        endpoint_profile: endpointProfile,
+                        hardware_manufacturer: hardwareManufacturer,
+                        hardware_model: hardwareModel,
+                        os_version: osVersion,
+                        device_type: deviceType,
+                        status: true,
+                        timestamp: new Date().toISOString(),
+                        timestamp_label: "WLC ASSOCIATION",
+                        network_device_name: wlcTelemetry.wlcName,
+                        is_wlc_live_only: true,
+                        wlcTelemetry,
+                        enrichment: {
+                            ad: null,
+                            vectra
+                        }
+                    };
+
+                    return NextResponse.json({
+                        found: true,
+                        sessions: [syntheticSession],
+                        wlcTelemetry
+                    });
+                }
+            }
+
             return NextResponse.json(result);
         }
 
@@ -76,8 +180,18 @@ export async function GET(request: Request) {
                 } catch (e) {}
             }
 
+            const apName = (iseSession.access_point_name && iseSession.access_point_name !== "N/A") 
+                ? iseSession.access_point_name 
+                : (wlcTelemetry?.apName || iseSession.access_point_name || "N/A");
+
+            const ssid = (iseSession.wlan_ssid && iseSession.wlan_ssid !== "N/A")
+                ? iseSession.wlan_ssid
+                : (wlcTelemetry?.ssid || iseSession.wlan_ssid || "N/A");
+
             return {
                 ...iseSession,
+                access_point_name: apName,
+                wlan_ssid: ssid,
                 wlcTelemetry: wlcTelemetry?.found ? wlcTelemetry : null,
                 enrichment
             };
@@ -85,7 +199,8 @@ export async function GET(request: Request) {
 
         return NextResponse.json({
             ...result,
-            sessions: enrichedSessions
+            sessions: enrichedSessions,
+            wlcTelemetry: enrichedSessions.find((s: any) => s.wlcTelemetry)?.wlcTelemetry || null
         });
 
     } catch (error: any) {

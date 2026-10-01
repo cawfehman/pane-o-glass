@@ -8,19 +8,23 @@ export interface WlcClientTelemetry {
     status?: string; // Associated, Authenticated, Disassociated, Blacklisted, etc.
     statusRaw?: number;
     apName?: string;
+    apLocation?: string;
+    apMac?: string;
     ssid?: string;
     rssi?: number; // in dBm
     snr?: number; // in dB
     ipAddress?: string;
+    policyType?: string; // e.g. "8021X_REQD"
+    interface?: string; // e.g. "wifi_spc-2"
     excluded?: boolean;
     exclusionReason?: string;
     protocol?: string;
     latencyMs?: number;
 }
 
-// AireOS AIRESPACE-WIRELESS-MIB Mobile Station status definitions
+// AireOS AIRESPACE-WIRELESS-MIB Mobile Station status definitions (bsnMobileStationStatus .15)
 const AIREOS_STATUS_MAP: Record<number, string> = {
-    0: 'Idle',
+    0: 'Idle (Associated)',
     1: 'AAA Pending',
     2: 'Authenticated',
     3: 'Associated (RUN)',
@@ -45,7 +49,6 @@ function parseMacToOid(mac: string): number[] | null {
 function buildSnmpGetPacket(community: string, oidBytes: number[], reqIdVal: number = 0x01020304): Buffer {
     const commBuf = Buffer.from(community);
     
-    // OID encoding
     let encodedOid: number[] = [];
     if (oidBytes.length >= 2) {
         encodedOid.push(oidBytes[0] * 40 + oidBytes[1]);
@@ -130,46 +133,67 @@ async function snmpGet(ip: string, community: string, oidParts: number[], timeou
     });
 }
 
-function parseSnmpInteger(resBuf: Buffer): number | null {
-    try {
-        // Look for Integer tag (0x02) inside varbind response
-        // VarBindList starts after PDU headers
-        const pduIdx = resBuf.indexOf(0xa2); // Response-PDU
-        if (pduIdx === -1) return null;
-        
-        // Find 0x02 (INTEGER) near the end
-        for (let i = resBuf.length - 1; i > pduIdx + 10; i--) {
-            if (resBuf[i] === 0x02) {
-                const len = resBuf[i + 1];
-                if (len === 1) {
-                    return resBuf.readInt8(i + 2);
-                } else if (len === 2) {
-                    return resBuf.readInt16BE(i + 2);
-                } else if (len === 4) {
-                    return resBuf.readInt32BE(i + 2);
-                }
-            }
-        }
-    } catch (e) {}
-    return null;
-}
-
-function parseSnmpString(resBuf: Buffer): string | null {
+// Robust ASN.1 BER parser for Response-PDU VarBind value
+function parseVarBindValue(resBuf: Buffer): { type: number; val: any } | null {
     try {
         const pduIdx = resBuf.indexOf(0xa2);
         if (pduIdx === -1) return null;
-        
-        // Find 0x04 (OCTET STRING)
-        for (let i = resBuf.length - 1; i > pduIdx + 10; i--) {
-            if (resBuf[i] === 0x04) {
-                const len = resBuf[i + 1];
-                if (len > 0 && i + 2 + len <= resBuf.length) {
-                    return resBuf.slice(i + 2, i + 2 + len).toString('utf8');
-                }
+
+        const oidIdx = resBuf.indexOf(0x06, pduIdx);
+        if (oidIdx === -1) return null;
+        const oidLen = resBuf[oidIdx + 1];
+        const valTagIdx = oidIdx + 2 + oidLen;
+        if (valTagIdx >= resBuf.length) return null;
+
+        const valTag = resBuf[valTagIdx];
+        if (valTag >= 0x80) {
+            // SNMP Exception (noSuchObject / noSuchInstance / endOfMibView)
+            return null;
+        }
+
+        let valLen = resBuf[valTagIdx + 1];
+        let offset = valTagIdx + 2;
+
+        // Long form length handling
+        if (valLen > 128) {
+            const numLenBytes = valLen - 128;
+            valLen = 0;
+            for (let i = 0; i < numLenBytes; i++) {
+                valLen = (valLen << 8) | resBuf[offset++];
             }
         }
-    } catch (e) {}
-    return null;
+
+        const valBytes = resBuf.slice(offset, offset + valLen);
+
+        if (valTag === 0x02) { // INTEGER
+            if (valLen === 1) return { type: valTag, val: valBytes.readInt8(0) };
+            if (valLen === 2) return { type: valTag, val: valBytes.readInt16BE(0) };
+            if (valLen === 4) return { type: valTag, val: valBytes.readInt32BE(0) };
+            return { type: valTag, val: 0 };
+        } else if (valTag === 0x04) { // OCTET STRING
+            const isAscii = valBytes.every(b => (b >= 32 && b <= 126) || b === 10 || b === 13);
+            if (isAscii) {
+                return { type: valTag, val: valBytes.toString('utf8').trim() };
+            }
+            if (valBytes.length === 6) {
+                return { type: valTag, val: Array.from(valBytes).map(b => b.toString(16).padStart(2, '0')).join(':') };
+            }
+            return { type: valTag, val: valBytes.toString('hex') };
+        } else if (valTag === 0x40) { // IpAddress
+            return { type: valTag, val: Array.from(valBytes).join('.') };
+        } else if (valTag === 0x41 || valTag === 0x42) { // Counter32 or Gauge32
+            if (valLen === 1) return { type: valTag, val: valBytes.readUInt8(0) };
+            if (valLen === 2) return { type: valTag, val: valBytes.readUInt16BE(0) };
+            if (valLen === 4) return { type: valTag, val: valBytes.readUInt32BE(0) };
+            return { type: valTag, val: 0 };
+        } else if (valTag === 0x43) { // TimeTicks
+            return { type: valTag, val: valBytes.readUInt32BE(0) };
+        }
+
+        return { type: valTag, val: valBytes };
+    } catch {
+        return null;
+    }
 }
 
 export async function fetchWlcClientTelemetry(mac: string): Promise<WlcClientTelemetry> {
@@ -185,55 +209,83 @@ export async function fetchWlcClientTelemetry(mac: string): Promise<WlcClientTel
         { name: 'KEL-2MC-WLC-AMB', ip: clean(process.env.WLC_AMB_IP || '172.18.163.105') }
     ];
 
-    // OIDs for bsnMobileStationTable (1.3.6.1.4.1.14179.2.1.4.1)
-    // .1 = mac, .2 = ip, .4 = ssid, .7 = status, .25 = rssi, .26 = snr
+    // OIDs for AIRESPACE-WIRELESS-MIB bsnMobileStationTable (1.3.6.1.4.1.14179.2.1.4.1)
     const baseOid = [1, 3, 6, 1, 4, 1, 14179, 2, 1, 4, 1];
 
     for (const ctrl of controllers) {
         try {
-            // Check status first: bsnMobileStationStatus (1.3.6.1.4.1.14179.2.1.4.1.7.<mac>)
-            const statusOid = [...baseOid, 7, ...macBytes];
-            const statusRes = await snmpGet(ctrl.ip, community, statusOid, 1200);
+            // First check if MAC exists in bsnMobileStationTable via bsnMobileStationSsid (.7)
+            const ssidOid = [...baseOid, 7, ...macBytes];
+            const ssidRes = await snmpGet(ctrl.ip, community, ssidOid, 1200);
 
-            if (statusRes) {
-                const rawStatus = parseSnmpInteger(statusRes.buffer);
-                
-                // If the controller returned a status (e.g. 0 to 8)
-                if (rawStatus !== null && rawStatus >= 0 && rawStatus <= 8) {
-                    const statusStr = AIREOS_STATUS_MAP[rawStatus] || `State (${rawStatus})`;
-                    
-                    // Parallel pull for RSSI, SNR, and SSID
-                    const rssiOid = [...baseOid, 25, ...macBytes];
-                    const snrOid = [...baseOid, 26, ...macBytes];
-                    const ssidOid = [...baseOid, 4, ...macBytes];
+            if (ssidRes) {
+                const parsedSsid = parseVarBindValue(ssidRes.buffer);
+                if (parsedSsid && typeof parsedSsid.val === 'string' && parsedSsid.val.length > 0) {
+                    const ssid = parsedSsid.val;
 
-                    const [rssiRes, snrRes, ssidRes] = await Promise.all([
-                        snmpGet(ctrl.ip, community, rssiOid, 1000),
-                        snmpGet(ctrl.ip, community, snrOid, 1000),
-                        snmpGet(ctrl.ip, community, ssidOid, 1000)
+                    // Parallel query for remaining client fields:
+                    // .2 = IP, .4 = AP MAC, .15 = Status, .23 = Policy Type, .27 = Interface, .31 = RSSI
+                    const [ipRes, apMacRes, statusRes, policyRes, intfRes, rssiRes] = await Promise.all([
+                        snmpGet(ctrl.ip, community, [...baseOid, 2, ...macBytes], 1000),
+                        snmpGet(ctrl.ip, community, [...baseOid, 4, ...macBytes], 1000),
+                        snmpGet(ctrl.ip, community, [...baseOid, 15, ...macBytes], 1000),
+                        snmpGet(ctrl.ip, community, [...baseOid, 23, ...macBytes], 1000),
+                        snmpGet(ctrl.ip, community, [...baseOid, 27, ...macBytes], 1000),
+                        snmpGet(ctrl.ip, community, [...baseOid, 31, ...macBytes], 1000),
                     ]);
 
-                    const rssiVal = rssiRes ? parseSnmpInteger(rssiRes.buffer) : null;
-                    const snrVal = snrRes ? parseSnmpInteger(snrRes.buffer) : null;
-                    const ssidVal = ssidRes ? parseSnmpString(ssidRes.buffer) : null;
+                    const ipVal = ipRes ? parseVarBindValue(ipRes.buffer)?.val : undefined;
+                    const apMacRaw = apMacRes ? parseVarBindValue(apMacRes.buffer)?.val : undefined;
+                    const statusVal = statusRes ? parseVarBindValue(statusRes.buffer)?.val : 0;
+                    const policyVal = policyRes ? parseVarBindValue(policyRes.buffer)?.val : undefined;
+                    const intfVal = intfRes ? parseVarBindValue(intfRes.buffer)?.val : undefined;
+                    const rssiVal = rssiRes ? parseVarBindValue(rssiRes.buffer)?.val : undefined;
+
+                    let apName: string | undefined = undefined;
+                    let apLocation: string | undefined = undefined;
+                    const apMacString: string | undefined = typeof apMacRaw === 'string' ? apMacRaw : undefined;
+
+                    // Query bsnAPTable (1.3.6.1.4.1.14179.2.2.1.1) for AP Name (.3) and Location (.4)
+                    if (apMacString) {
+                        const apMacParts = parseMacToOid(apMacString);
+                        if (apMacParts) {
+                            const [apNameRes, apLocRes] = await Promise.all([
+                                snmpGet(ctrl.ip, community, [1, 3, 6, 1, 4, 1, 14179, 2, 2, 1, 1, 3, ...apMacParts], 1000),
+                                snmpGet(ctrl.ip, community, [1, 3, 6, 1, 4, 1, 14179, 2, 2, 1, 1, 4, ...apMacParts], 1000),
+                            ]);
+
+                            const pApName = apNameRes ? parseVarBindValue(apNameRes.buffer)?.val : undefined;
+                            const pApLoc = apLocRes ? parseVarBindValue(apLocRes.buffer)?.val : undefined;
+                            if (typeof pApName === 'string' && pApName) apName = pApName;
+                            if (typeof pApLoc === 'string' && pApLoc) apLocation = pApLoc;
+                        }
+                    }
+
+                    const rawStatusNum = typeof statusVal === 'number' ? statusVal : 0;
+                    const statusText = AIREOS_STATUS_MAP[rawStatusNum] || `State (${rawStatusNum})`;
 
                     return {
                         found: true,
                         wlcName: ctrl.name,
                         wlcIp: ctrl.ip,
                         mac,
-                        status: statusStr,
-                        statusRaw: rawStatus,
-                        ssid: ssidVal || undefined,
-                        rssi: rssiVal !== null ? rssiVal : undefined,
-                        snr: snrVal !== null ? snrVal : undefined,
-                        excluded: rawStatus === 8,
-                        exclusionReason: rawStatus === 8 ? 'WLC 802.11 Blacklist/Exclusion Threshold Triggered' : undefined,
-                        latencyMs: statusRes.rtt
+                        status: statusText,
+                        statusRaw: rawStatusNum,
+                        apName,
+                        apLocation,
+                        apMac: apMacString,
+                        ssid,
+                        policyType: typeof policyVal === 'string' ? policyVal : undefined,
+                        interface: typeof intfVal === 'string' ? intfVal : undefined,
+                        ipAddress: typeof ipVal === 'string' && ipVal !== '0.0.0.0' ? ipVal : undefined,
+                        rssi: typeof rssiVal === 'number' && rssiVal !== 0 ? rssiVal : undefined,
+                        excluded: rawStatusNum === 8,
+                        exclusionReason: rawStatusNum === 8 ? 'WLC 802.11 Blacklist/Exclusion Threshold Triggered' : undefined,
+                        latencyMs: ssidRes.rtt
                     };
                 }
             }
-        } catch (e) {
+        } catch {
             // Try next controller
         }
     }

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { CheckCircle2, XCircle, ChevronDown, ChevronRight, Stethoscope, Clock, Radio, Shield, Laptop, Layers } from "lucide-react";
+import { CheckCircle2, XCircle, ChevronDown, ChevronRight, Stethoscope, Clock, Radio, Shield, Laptop, Layers, Wifi, Info, AlertCircle } from "lucide-react";
 
 interface AuthEvent {
     timestamp: string;
@@ -45,17 +45,101 @@ interface AuthHistoryTimelineProps {
     onSelectMac?: (mac: string) => void;
     onSelectEvent?: (event: AuthEvent) => void;
     selectedEventTimestamp?: string;
+    wlcTelemetry?: any;
 }
 
 export default function AuthHistoryTimeline({ 
     events, 
     onSelectMac,
     onSelectEvent,
-    selectedEventTimestamp
+    selectedEventTimestamp,
+    wlcTelemetry
 }: AuthHistoryTimelineProps) {
     const [expandedRow, setExpandedRow] = useState<number | null>(null);
 
     if (!events || events.length === 0) {
+        if (wlcTelemetry && wlcTelemetry.found) {
+            return (
+                <div className="glass-card p-6 border-l-4 border-sky-400">
+                    <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center shrink-0 mt-0.5">
+                            <Radio size={22} />
+                        </div>
+                        <div className="flex-1">
+                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <h4 className="text-sm font-bold text-text-primary m-0 uppercase tracking-wider">
+                                    No Recent RADIUS Attempts in ISE MnT (Last 7 Days)
+                                </h4>
+                                <span className="px-2 py-0.5 rounded text-[0.65rem] font-extrabold uppercase bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                                    Live Layer 2 Associated
+                                </span>
+                            </div>
+                            <p className="text-xs text-text-secondary m-0 mb-4 leading-relaxed">
+                                While Cisco ISE has recorded 0 RADIUS authentication attempts or failure records in the last 7 days, 
+                                real-time SNMP query to <strong>{wlcTelemetry.wlcName}</strong> confirms this endpoint is actively associated at Layer 2 to the wireless infrastructure:
+                            </p>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 p-3.5 rounded-lg bg-black/30 border border-white/5 text-xs font-mono mb-4">
+                                <div>
+                                    <span className="text-text-muted text-[0.65rem] uppercase block">Access Point</span>
+                                    <strong className="text-text-primary">{wlcTelemetry.apName || "N/A"}</strong>
+                                    {wlcTelemetry.apLocation && (
+                                        <div className="text-[0.65rem] text-text-muted">{wlcTelemetry.apLocation}</div>
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-text-muted text-[0.65rem] uppercase block">SSID & 802.11 Policy</span>
+                                    <strong className="text-purple-300">{wlcTelemetry.ssid || "N/A"}</strong>
+                                    {wlcTelemetry.policyType && (
+                                        <div className="text-[0.65rem] text-text-muted">Policy: {wlcTelemetry.policyType}</div>
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-text-muted text-[0.65rem] uppercase block">WLC Controller</span>
+                                    <strong className="text-accent-primary">{wlcTelemetry.wlcName}</strong>
+                                    <div className="text-[0.65rem] text-text-muted">{wlcTelemetry.wlcIp}</div>
+                                </div>
+                                <div>
+                                    <span className="text-text-muted text-[0.65rem] uppercase block">Client 802.11 State</span>
+                                    <span className="font-bold text-emerald-400">{wlcTelemetry.status || "Associated"}</span>
+                                    {wlcTelemetry.interface && (
+                                        <div className="text-[0.65rem] text-text-muted">Interface: {wlcTelemetry.interface}</div>
+                                    )}
+                                </div>
+                                <div>
+                                    <span className="text-text-muted text-[0.65rem] uppercase block">RF Signal & Noise</span>
+                                    <span className="font-bold text-text-primary">
+                                        {wlcTelemetry.rssi !== undefined ? `${wlcTelemetry.rssi} dBm` : "N/A"}
+                                        {wlcTelemetry.snr !== undefined ? ` (SNR: ${wlcTelemetry.snr} dB)` : ""}
+                                    </span>
+                                    <div className="text-[0.65rem] text-text-muted">{wlcTelemetry.latencyMs}ms SNMP latency</div>
+                                </div>
+                                {wlcTelemetry.apMac && (
+                                    <div>
+                                        <span className="text-text-muted text-[0.65rem] uppercase block">AP Radio MAC</span>
+                                        <span className="text-text-secondary">{wlcTelemetry.apMac}</span>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="p-3 rounded-lg bg-white/[0.02] border border-white/5 text-xs text-text-secondary">
+                                <strong className="text-amber-300 flex items-center gap-1.5 mb-1 font-semibold">
+                                    <Info size={14} className="text-amber-400" />
+                                    Triage Diagnostic Context:
+                                </strong>
+                                The endpoint completed 802.11 association with radio <strong>{wlcTelemetry.apName}</strong>, but has not initiated or passed an 802.1X/RADIUS authentication handshake to Cisco ISE. Possible explanations:
+                                <ul className="mt-1 mb-0 pl-4 list-disc text-text-muted space-y-0.5">
+                                    <li>The device is currently in a pre-authentication or idle state and has not presented credentials or client certificate.</li>
+                                    <li>The WLAN or endpoint configuration is utilizing PSK or open network mode, bypassing AAA server transaction logs.</li>
+                                    <li>Fast BSS Transition (802.11r) or OKC roaming cached keying material without triggering a full AAA re-authentication.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="glass-card p-6 text-center text-text-muted text-sm">
                 No recent RADIUS authentication attempts logged in the last 7 days.

@@ -135,6 +135,11 @@ export default function EnrichedEndpointCard({
                                     <ShieldCheck size={12} className="text-sky-400" />
                                     Passive Identity (AD Logon)
                                 </span>
+                            ) : session.is_wlc_live_only ? (
+                                <span className="px-2.5 py-0.5 rounded text-[0.7rem] font-bold uppercase bg-sky-500/20 text-sky-300 border border-sky-500/40 flex items-center gap-1.5">
+                                    <Radio size={12} className="text-sky-400" />
+                                    Associated on WLC (802.1X Pre-Auth / Incomplete)
+                                </span>
                             ) : isHistoricalMode ? (
                                 <span className="px-2.5 py-0.5 rounded text-[0.7rem] font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5">
                                     <History size={12} className="text-amber-400" />
@@ -175,38 +180,54 @@ export default function EnrichedEndpointCard({
                             <span>{copied ? 'Copied Ticket Note!' : 'Copy Ticket Note'}</span>
                         </button>
 
-                        <div className="px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest" style={{ background: statusBg, color: statusColor }}>
-                            {isPass ? 'Authenticated' : 'Access Denied'}
+                        <div className="px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest" style={{ 
+                            background: session.is_wlc_live_only ? 'rgba(56, 189, 248, 0.15)' : statusBg, 
+                            color: session.is_wlc_live_only ? '#38bdf8' : statusColor 
+                        }}>
+                            {session.is_wlc_live_only ? 'WLC Associated' : isPass ? 'Authenticated' : 'Access Denied'}
                         </div>
                     </div>
                 </div>
 
                 {/* Real-Time WLC 8540 Live Telemetry Banner (If Available) */}
                 {wlc && wlc.found && (
-                    <div className="mb-6 p-3.5 rounded-xl border flex items-center justify-between" style={{
+                    <div className="mb-6 p-4 rounded-xl border flex flex-col md:flex-row md:items-center justify-between gap-4" style={{
                         background: wlc.excluded ? 'rgba(239, 68, 68, 0.1)' : 'rgba(56, 189, 248, 0.08)',
                         borderColor: wlc.excluded ? 'rgba(239, 68, 68, 0.3)' : 'rgba(56, 189, 248, 0.25)'
                     }}>
-                        <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{
+                        <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 mt-0.5" style={{
                                 background: wlc.excluded ? 'rgba(239, 68, 68, 0.2)' : 'rgba(56, 189, 248, 0.2)',
                                 color: wlc.excluded ? '#ef4444' : 'var(--accent-primary)'
                             }}>
-                                <Radio size={18} />
+                                <Radio size={20} />
                             </div>
                             <div>
-                                <div className="text-xs font-bold text-text-primary flex items-center gap-2">
+                                <div className="text-xs font-bold text-text-primary flex items-center gap-2 flex-wrap">
                                     <span>Live WLC Telemetry: {wlc.wlcName}</span>
                                     <span className="font-mono text-[0.7rem] text-text-muted">({wlc.wlcIp})</span>
+                                    {wlc.apName && (
+                                        <span className="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 font-mono text-[0.7rem] font-bold">
+                                            AP: {wlc.apName}
+                                        </span>
+                                    )}
+                                    {wlc.ssid && (
+                                        <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono text-[0.7rem]">
+                                            SSID: {wlc.ssid}
+                                        </span>
+                                    )}
                                 </div>
-                                <div className="text-[0.75rem] text-text-secondary">
-                                    802.11 State: <strong style={{ color: wlc.excluded ? '#ef4444' : '#10b981' }}>{wlc.status}</strong>
-                                    {wlc.exclusionReason && <span className="text-red-400 font-bold ml-2">[{wlc.exclusionReason}]</span>}
+                                <div className="text-[0.75rem] text-text-secondary mt-1 flex items-center gap-2 flex-wrap">
+                                    <span>802.11 State: <strong style={{ color: wlc.excluded ? '#ef4444' : '#10b981' }}>{wlc.status}</strong></span>
+                                    {wlc.policyType && <span className="text-text-muted">· Policy: <strong>{wlc.policyType}</strong></span>}
+                                    {wlc.interface && <span className="text-text-muted">· Interface: <strong>{wlc.interface}</strong></span>}
+                                    {wlc.apLocation && wlc.apLocation !== "default location" && <span className="text-text-muted">· Location: <strong>{wlc.apLocation}</strong></span>}
+                                    {wlc.exclusionReason && <span className="text-red-400 font-bold">[{wlc.exclusionReason}]</span>}
                                 </div>
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-4 text-xs font-mono">
+                        <div className="flex items-center gap-4 text-xs font-mono self-end md:self-auto shrink-0">
                             {wlc.rssi !== undefined && (
                                 <div className="text-right">
                                     <span className="text-text-muted text-[0.65rem] block">SIGNAL (RSSI)</span>

@@ -72,6 +72,13 @@ interface ConnectionPathProps {
             excluded?: boolean;
             exclusionReason?: string;
             latencyMs?: number;
+            apName?: string;
+            apLocation?: string;
+            apMac?: string;
+            ssid?: string;
+            policyType?: string;
+            interface?: string;
+            clientIp?: string;
         };
     };
     onNodeSelect?: (nodeId: string) => void;
@@ -227,17 +234,25 @@ export default function ConnectionPath({ session, onNodeSelect }: ConnectionPath
         ];
 
         if (isWireless) {
+            const apDisplay = (session.access_point_name && session.access_point_name !== "N/A") 
+                ? session.access_point_name 
+                : (wlc?.apName || "Wireless AP");
+
             nodes.push({
                 id: 'ap',
                 label: 'Access Point',
-                sub: session.access_point_name || "Wireless AP",
+                sub: apDisplay,
                 status: 'success',
                 icon: <Wifi className="w-5 h-5" />,
                 details: {
                     title: "Wireless Access Point & RF State",
                     items: [
-                        { label: "Access Point Name", value: session.access_point_name || "N/A" },
-                        { label: "SSID", value: session.wlan_ssid || "N/A" },
+                        { label: "Access Point Name", value: apDisplay },
+                        ...(wlc?.apLocation ? [{ label: "AP Physical Location", value: wlc.apLocation }] : []),
+                        ...(wlc?.apMac ? [{ label: "AP Radio MAC", value: wlc.apMac }] : []),
+                        { label: "SSID", value: (session.wlan_ssid && session.wlan_ssid !== "N/A") ? session.wlan_ssid : (wlc?.ssid || "N/A") },
+                        ...(wlc?.policyType ? [{ label: "802.11 Policy Type", value: wlc.policyType }] : []),
+                        ...(wlc?.interface ? [{ label: "WLC Interface", value: wlc.interface }] : []),
                         { label: "Facility Site Code", value: session.site_code || "N/A" },
                         { label: "Live RF Signal (RSSI)", value: signalLabel || "Telemetry unavailable" },
                         ...(wlc?.snr !== undefined ? [{ label: "Signal-to-Noise Ratio (SNR)", value: `${wlc.snr} dB` }] : [])
