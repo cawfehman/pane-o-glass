@@ -113,7 +113,10 @@ export async function GET(req: Request) {
         const failureCatalog = await getIseFailureCatalog();
 
         if (searchType === "mac") {
-            const nodes = await fetchAuthStatus(formattedQuery);
+            const [nodes, activeSessionData] = await Promise.all([
+                fetchAuthStatus(formattedQuery),
+                fetchIseSession(formattedQuery).catch(() => null)
+            ]);
             const mappedResults = nodes.map((node: any) => {
                 const val = (v: any) => v?._ || v || "";
 
@@ -260,13 +263,66 @@ export async function GET(req: Request) {
                 };
             }));
             
+            // Extract active sessions from ISE (if device is currently authenticated)
+            const activeEvents: any[] = [];
+            if (activeSessionData?.found && activeSessionData?.sessions) {
+                activeSessionData.sessions.forEach((s: any) => {
+                    if (!s.is_wlc_live_only) {
+                        activeEvents.push({
+                            timestamp: s.auth_acs_timestamp || s.timestamp || new Date().toISOString(),
+                            timestamp_label: "ACTIVE SESSION",
+                            user_name: s.user_name || "Unknown",
+                            calling_station_id: s.calling_station_id || formattedQuery,
+                            nas_ip_address: s.nas_ip_address || "Unknown",
+                            nas_port_id: s.nas_port_id || "Unknown",
+                            failure_reason: "Active 802.1X Session (Authenticated)",
+                            failure_id: "",
+                            insight: { 
+                                cause: "Active 802.1X RADIUS Session", 
+                                suggestion: "Endpoint is actively authenticated and connected." 
+                            },
+                            status: true,
+                            authentication_method: s.authentication_method || "dot1x",
+                            authentication_protocol: s.authentication_protocol || "PEAP (EAP-MSCHAPv2)",
+                            acs_server: s.acs_server || "ise-psn",
+                            nas_identifier: s.nas_identifier || "Unknown",
+                            endpoint_profile: s.endpoint_profile || "Unknown",
+                            hardware_manufacturer: s.hardware_manufacturer || "",
+                            hardware_model: s.hardware_model || "",
+                            os_version: s.os_version || "",
+                            device_type: s.device_type || "",
+                            identity_group: s.identity_group || "Unknown",
+                            authorization_rule: s.authorization_rule || "Unknown",
+                            auth_policy: s.auth_policy || "Unknown",
+                            wlan_ssid: s.wlan_ssid || "N/A",
+                            access_point_name: s.access_point_name || "N/A",
+                            site_code: s.site_code || "N/A",
+                            steps: s.steps || [],
+                            ad: s.enrichment?.ad || s.ad || null
+                        });
+                    }
+                });
+            }
+
+            // Combine active session event with historical logs (deduplicating if the same attempt is in both)
+            const combinedResults = [...activeEvents, ...enrichedResults];
+            const seenKeys = new Set<string>();
+            const deduplicatedResults = combinedResults.filter((ev: any) => {
+                const ts = ev.timestamp ? new Date(ev.timestamp).getTime() : 0;
+                const timeBucket = Math.floor(ts / 30000);
+                const key = `${timeBucket}_${ev.calling_station_id}_${ev.user_name}`;
+                if (seenKeys.has(key)) return false;
+                seenKeys.add(key);
+                return true;
+            });
+
             // Query WLC for real-time state of this MAC
             let wlcTelemetry = null;
             try {
                 wlcTelemetry = await fetchWlcClientTelemetry(formattedQuery);
             } catch (e) {}
 
-            const events = enrichedResults.map((ev: any) => {
+            const events = deduplicatedResults.map((ev: any) => {
                 if (wlcTelemetry?.found) {
                     if ((!ev.access_point_name || ev.access_point_name === "N/A") && wlcTelemetry.apName) {
                         ev.access_point_name = wlcTelemetry.apName;
