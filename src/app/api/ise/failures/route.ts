@@ -37,11 +37,10 @@ export async function GET(req: Request) {
         const agent = new https.Agent({ rejectUnauthorized: false });
 
         const fetchAuthStatus = async (mac: string) => {
-            const queryIseAuth = async (formattedMac: string, seconds: number) => {
+            const queryIseAuth = async (formattedMac: string) => {
                 try {
                     const { data: xmlText } = await executeWithPanFailover(async (baseUrl) => {
-                        const endpoint = `${baseUrl}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/${seconds}/250/All`;
-                        console.log(`[ISE-HISTORY] Querying ${seconds}s window: ${endpoint}`);
+                        const endpoint = `${baseUrl}/admin/API/mnt/AuthStatus/MACAddress/${formattedMac}/604800/250/All`;
                         const response = await axios.get(endpoint, {
                             headers: { 
                                 "Authorization": `Basic ${basicAuth}`, 
@@ -49,7 +48,7 @@ export async function GET(req: Request) {
                                 "X-ERS-Internal-User": "true"
                             },
                             httpsAgent: agent,
-                            timeout: 8000
+                            timeout: 4000
                         });
                         return response.data;
                     });
@@ -70,35 +69,14 @@ export async function GET(req: Request) {
 
                     return flattened;
                 } catch (err: any) {
-                    console.warn(`[ISE-HISTORY] Fetch with ${seconds}s for ${formattedMac} failed:`, err.message);
                     return [];
                 }
             };
 
-            const tryFormat = async (targetMac: string) => {
-                // Fetch 24-Hour window (high-fidelity detailed logs) and 7-Day window in parallel
-                const [dayRecords, weekRecords] = await Promise.all([
-                    queryIseAuth(targetMac, 86400),
-                    queryIseAuth(targetMac, 604800)
-                ]);
-
-                // Deduplicate attempts by unique attempt ID / timestamp
-                const seen = new Set<string>();
-                const combined: any[] = [];
-                for (const r of [...dayRecords, ...weekRecords]) {
-                    const id = r.id?._ || r.id || `${r.acs_timestamp?._ || r.acs_timestamp}_${r.user_name?._ || r.user_name}`;
-                    if (id && !seen.has(id)) {
-                        seen.add(id);
-                        combined.push(r);
-                    }
-                }
-                return combined;
-            };
-
-            let nodes = await tryFormat(mac);
+            let nodes = await queryIseAuth(mac);
             if (nodes.length === 0) {
-                const dashed = mac.replace(/:/g, "-");
-                nodes = await tryFormat(dashed);
+                const alt = mac.includes(':') ? mac.replace(/:/g, "-") : mac.replace(/-/g, ":");
+                nodes = await queryIseAuth(alt);
             }
             return nodes;
         };
@@ -350,7 +328,7 @@ export async function GET(req: Request) {
             const userHistoryPayloads: any[] = [];
             const passiveSessions: any[] = [];
             
-            const activeSessionData = await fetchIseSession(formattedQuery);
+            const activeSessionData = await fetchIseSession(formattedQuery).catch(() => ({ found: false, sessions: [] }));
             if (activeSessionData.found && activeSessionData.sessions) {
                 activeSessionData.sessions.forEach((s: any) => {
                     if (s.is_passive_identity) {
@@ -358,173 +336,162 @@ export async function GET(req: Request) {
                     } else {
                         const mac = s.calling_station_id?._ || s.calling_station_id || s.callingStationId;
                         if (mac && !/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(mac)) {
-                            macsToScan.add(mac);
+                            const cleanMac = normalizeMacAddress(mac) || mac.trim().toUpperCase();
+                            macsToScan.add(cleanMac);
+                            userHistoryPayloads.push(s);
                         }
                     }
                 });
             }
 
-            try {
-                const { data: xmlText } = await executeWithPanFailover(async (baseUrl) => {
-                    const endpoint = `${baseUrl}/admin/API/mnt/Session/UserName/${encodeURIComponent(formattedQuery)}`;
-                    const response = await axios.get(endpoint, {
-                        headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
-                        httpsAgent: agent,
-                        timeout: 5000
+            // If activeSessionData didn't find sessions, try direct UserName endpoint
+            if (macsToScan.size === 0 && passiveSessions.length === 0) {
+                try {
+                    const { data: xmlText } = await executeWithPanFailover(async (baseUrl) => {
+                        const endpoint = `${baseUrl}/admin/API/mnt/Session/UserName/${encodeURIComponent(formattedQuery)}`;
+                        const response = await axios.get(endpoint, {
+                            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
+                            httpsAgent: agent,
+                            timeout: 4000
+                        });
+                        return response.data;
                     });
-                    return response.data;
-                });
-                const data = await parseStringPromise(xmlText, { 
-                    explicitArray: false,
-                    tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
-                });
-                let nodes = data.sessionParameters || data.activeSession;
-                const nodesArr = Array.isArray(nodes) ? nodes : [nodes];
-                nodesArr.forEach((node: any) => {
-                    const mac = node.calling_station_id?._ || node.calling_station_id || node.callingStationId;
-                    if (mac && !/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(mac)) {
-                         macsToScan.add(mac);
-                         userHistoryPayloads.push(node);
-                    }
-                });
-            } catch (e) { }
-
-            // Always scan ActiveList to aggregate ALL concurrent client hardware MACs authenticated with this username
-            try {
-                const { data: activeListXml } = await executeWithPanFailover(async (baseUrl) => {
-                    const response = await axios.get(`${baseUrl}/admin/API/mnt/Session/ActiveList`, {
-                        headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
-                        httpsAgent: agent,
-                        timeout: 8000
+                    const data = await parseStringPromise(xmlText, { 
+                        explicitArray: false,
+                        tagNameProcessors: [ (name: string) => name.split(':').pop() || name ]
                     });
-                    return response.data;
-                });
-                const re = new RegExp('<activeSession>[\\s\\S]*?<user_name>' + formattedQuery + '<\\/user_name>[\\s\\S]*?<\\/activeSession>', 'gi');
-                const matches = activeListXml.match(re) || [];
-                for (const m of matches) {
-                    try {
-                        const parsed = await parseStringPromise(m, { explicitArray: false });
-                        const node = parsed.activeSession;
-                        if (node) {
-                            userHistoryPayloads.push(node);
-                            const mac = node.calling_station_id?._ || node.calling_station_id || node.callingStationId;
-                            if (mac && !/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(mac)) {
-                                macsToScan.add(mac.trim().toUpperCase());
-                            }
+                    let nodes = data.sessionParameters || data.activeSession;
+                    const nodesArr = Array.isArray(nodes) ? nodes : [nodes];
+                    nodesArr.forEach((node: any) => {
+                        const mac = node.calling_station_id?._ || node.calling_station_id || node.callingStationId;
+                        if (mac && !/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(mac)) {
+                             const cleanMac = normalizeMacAddress(mac) || mac.trim().toUpperCase();
+                             macsToScan.add(cleanMac);
+                             userHistoryPayloads.push(node);
                         }
-                    } catch (e) {
-                        const macMatch = m.match(/<calling_station_id>(.*?)<\/calling_station_id>/i);
-                        if (macMatch && macMatch[1]) {
-                            const foundMac = macMatch[1].trim().toUpperCase();
-                            if (!/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(foundMac)) {
-                                macsToScan.add(foundMac);
-                            }
-                        }
-                    }
-                }
-            } catch (e) {}
+                    });
+                } catch (e) { }
+            }
 
             if (macsToScan.size === 0 && passiveSessions.length === 0) {
                 return NextResponse.json({ found: false, failures: [], sessions: [] });
             }
 
+            const macList = Array.from(macsToScan).slice(0, 15);
             const summaryArray: any[] = [];
-            await Promise.allSettled(Array.from(macsToScan).map(async (mac) => {
-                const logs = await fetchAuthStatus(mac);
-                let latestLog = logs.length > 0 ? logs[0] : null;
-                
-                if (!latestLog) {
-                    latestLog = userHistoryPayloads.find(p => {
-                        const pMac = p.calling_station_id?._ || p.calling_station_id || p.callingStationId;
-                        return pMac === mac;
-                    });
-                }
 
-                // Analyze failure frequency and lockout risk across the 7-day window
-                let failCount = 0;
-                let badPasswordCount = 0;
-                let lastFailReason = "";
-                let lastFailTime = "";
-
-                logs.forEach((l: any) => {
-                    const passed = l.passed?._ || l.passed;
-                    const reason = l.failure_reason?._ || l.failure_reason;
-                    const fId = l.failure_id?._ || l.failure_id || l.failureId;
-                    const ts = l.acs_timestamp?._ || l.acs_timestamp || l.timestamp;
-
-                    if (passed === "false" || reason) {
-                        failCount++;
-                        if (!lastFailReason) {
-                            lastFailReason = reason || "Failed";
-                            lastFailTime = ts || "";
+            // Concurrency pool (limit 3) for fast, non-blocking telemetry enrichment
+            const poolLimit = 3;
+            let currentIdx = 0;
+            const workers = new Array(Math.min(poolLimit, macList.length)).fill(0).map(async () => {
+                while (currentIdx < macList.length) {
+                    const mac = macList[currentIdx++];
+                    try {
+                        const logs = await fetchAuthStatus(mac);
+                        let latestLog = logs.length > 0 ? logs[0] : null;
+                        
+                        if (!latestLog) {
+                            latestLog = userHistoryPayloads.find((p: any) => {
+                                const pMac = p.calling_station_id?._ || p.calling_station_id || p.callingStationId;
+                                return (normalizeMacAddress(pMac) || pMac) === mac;
+                            });
                         }
-                        if (fId === "24408" || fId === "22040" || fId === "24204" || (reason && reason.toLowerCase().includes("password"))) {
-                            badPasswordCount++;
-                        }
-                    }
-                });
 
-                // Pull Cloud MFC attributes for this MAC
-                let hardware_manufacturer = "";
-                let hardware_model = "";
-                let endpoint_profile = latestLog?.endpoint_profile?._ || latestLog?.endpoint_profile || "Unknown";
-                try {
-                    const { data: epRes } = await executeWithPanFailover(async (baseUrl) => {
-                        const ersRes = await axios.get(`${baseUrl}/ers/config/endpoint/name/${mac}`, {
-                            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
-                            httpsAgent: agent,
-                            timeout: 2000
+                        // Analyze failure frequency and lockout risk across the 7-day window
+                        let failCount = 0;
+                        let badPasswordCount = 0;
+                        let lastFailReason = "";
+                        let lastFailTime = "";
+
+                        logs.forEach((l: any) => {
+                            const passed = l.passed?._ || l.passed;
+                            const reason = l.failure_reason?._ || l.failure_reason;
+                            const fId = l.failure_id?._ || l.failure_id || l.failureId;
+                            const ts = l.acs_timestamp?._ || l.acs_timestamp || l.timestamp;
+
+                            if (passed === "false" || reason) {
+                                failCount++;
+                                if (!lastFailReason) {
+                                    lastFailReason = reason || "Failed";
+                                    lastFailTime = ts || "";
+                                }
+                                if (fId === "24408" || fId === "22040" || fId === "24204" || (reason && reason.toLowerCase().includes("password"))) {
+                                    badPasswordCount++;
+                                }
+                            }
                         });
-                        return ersRes.data;
-                    });
-                    const ep = epRes?.ERSEndPoint;
-                    if (ep?.mfcAttributes) {
-                        const mfc = ep.mfcAttributes;
-                        const getStr = (val: any) => Array.isArray(val) ? val.join('') : (val || "");
-                        hardware_manufacturer = getStr(mfc.mfcHardwareManufacturer);
-                        hardware_model = getStr(mfc.mfcHardwareModel);
-                        const parts = [hardware_manufacturer, hardware_model].filter(Boolean).join(' ');
-                        if (parts) endpoint_profile = parts;
-                    }
-                } catch (e) {}
 
-                // Pull WLC status
-                let wlcTelemetry = null;
-                try {
-                    wlcTelemetry = await fetchWlcClientTelemetry(mac);
-                } catch (e) {}
+                        // Reuse existing hardware info from active session if present; else lightweight ERS query
+                        let hardware_manufacturer = latestLog?.hardware_manufacturer || "";
+                        let hardware_model = latestLog?.hardware_model || "";
+                        let endpoint_profile = latestLog?.endpoint_profile?._ || latestLog?.endpoint_profile || "Unknown";
 
-                const val = (v: any) => v?._ || v || "";
-                const rawOther = val(latestLog?.other_attr_string);
-                const otherAttrs: Record<string, string> = {};
-                if (rawOther) {
-                    rawOther.split(':!:').forEach((pair: string) => {
-                        const [key, ...valParts] = pair.split('=');
-                        if (key && valParts.length > 0) otherAttrs[key.trim()] = valParts.join('=').trim();
-                    });
+                        if (!hardware_manufacturer && mac) {
+                            try {
+                                const { data: epRes } = await executeWithPanFailover(async (baseUrl) => {
+                                    const ersRes = await axios.get(`${baseUrl}/ers/config/endpoint/name/${mac}`, {
+                                        headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/json" },
+                                        httpsAgent: agent,
+                                        timeout: 1500
+                                    });
+                                    return ersRes.data;
+                                });
+                                const ep = epRes?.ERSEndPoint;
+                                if (ep?.mfcAttributes) {
+                                    const mfc = ep.mfcAttributes;
+                                    const getStr = (val: any) => Array.isArray(val) ? val.join('') : (val || "");
+                                    hardware_manufacturer = getStr(mfc.mfcHardwareManufacturer);
+                                    hardware_model = getStr(mfc.mfcHardwareModel);
+                                    const parts = [hardware_manufacturer, hardware_model].filter(Boolean).join(' ');
+                                    if (parts) endpoint_profile = parts;
+                                }
+                            } catch (e) {}
+                        }
+
+                        // Quick WLC status check with 1s timeout
+                        let wlcTelemetry = null;
+                        try {
+                            const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 1000));
+                            wlcTelemetry = await Promise.race([
+                                fetchWlcClientTelemetry(mac),
+                                timeoutPromise
+                            ]);
+                        } catch (e) {}
+
+                        const val = (v: any) => v?._ || v || "";
+                        const rawOther = val(latestLog?.other_attr_string);
+                        const otherAttrs: Record<string, string> = {};
+                        if (rawOther) {
+                            rawOther.split(':!:').forEach((pair: string) => {
+                                const [key, ...valParts] = pair.split('=');
+                                if (key && valParts.length > 0) otherAttrs[key.trim()] = valParts.join('=').trim();
+                            });
+                        }
+                        const calledStationId = otherAttrs['Called-Station-ID'] || val(latestLog?.calling_station_id) || "";
+                        const { ssid, apName, siteCode } = parseCalledStationId(calledStationId, val(latestLog?.network_device_name) || "N/A");
+
+                        summaryArray.push({
+                            calling_station_id: mac,
+                            timestamp: val(latestLog?.acs_timestamp) || val(latestLog?.last_accounting_update) || val(latestLog?.timestamp) || "Unknown",
+                            nas_identifier: val(latestLog?.nas_identifier) || "Unknown",
+                            endpoint_profile,
+                            hardware_manufacturer,
+                            hardware_model,
+                            framed_ip_address: val(latestLog?.framed_ip_address) || "N/A",
+                            wlan_ssid: val(latestLog?.wlan_ssid) || ssid,
+                            access_point_name: (wlcTelemetry?.apName) || apName,
+                            site_code: siteCode,
+                            fail_count: failCount,
+                            bad_password_count: badPasswordCount,
+                            last_failure_reason: lastFailReason,
+                            last_failure_time: lastFailTime,
+                            is_lockout_culprit: badPasswordCount >= 2 || failCount >= 5,
+                            wlcTelemetry: wlcTelemetry?.found ? wlcTelemetry : null
+                        });
+                    } catch (err) {}
                 }
-                const calledStationId = otherAttrs['Called-Station-ID'] || val(latestLog?.calling_station_id) || "";
-                const { ssid, apName, siteCode } = parseCalledStationId(calledStationId, val(latestLog?.network_device_name) || "N/A");
-
-                summaryArray.push({
-                    calling_station_id: mac,
-                    timestamp: val(latestLog?.acs_timestamp) || val(latestLog?.last_accounting_update) || "Unknown",
-                    nas_identifier: val(latestLog?.nas_identifier) || "Unknown",
-                    endpoint_profile,
-                    hardware_manufacturer,
-                    hardware_model,
-                    framed_ip_address: val(latestLog?.framed_ip_address) || "N/A",
-                    wlan_ssid: val(latestLog?.wlan_ssid) || ssid,
-                    access_point_name: apName,
-                    site_code: siteCode,
-                    fail_count: failCount,
-                    bad_password_count: badPasswordCount,
-                    last_failure_reason: lastFailReason,
-                    last_failure_time: lastFailTime,
-                    is_lockout_culprit: badPasswordCount >= 2 || failCount >= 5,
-                    wlcTelemetry: wlcTelemetry?.found ? wlcTelemetry : null
-                });
-            }));
+            });
+            await Promise.all(workers);
 
             // Add any Passive Identity sessions for this user
             passiveSessions.forEach((ps: any) => {

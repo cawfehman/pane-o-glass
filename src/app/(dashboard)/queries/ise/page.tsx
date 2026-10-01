@@ -149,6 +149,10 @@ export default function CiscoIsePage() {
             if (params.toString()) url += `?${params.toString()}`;
 
             const res = await fetch(url, { cache: 'no-store' });
+            if (!res.ok) {
+                setTriageData({ error: `ISE Connection Error (${res.status})` });
+                return;
+            }
             const data = await res.json();
             
             if (data.error) {
@@ -195,13 +199,36 @@ export default function CiscoIsePage() {
 
             // Fetch Live Session
             const sessionRes = await fetch(`/api/ise/session?query=${encodeURIComponent(searchTerm)}`);
-            const sessionData = await sessionRes.json();
+            let sessionData: any = { found: false, sessions: [] };
+            if (sessionRes.ok) {
+                try {
+                    sessionData = await sessionRes.json();
+                } catch {
+                    console.warn("Failed to parse session JSON");
+                }
+            } else {
+                console.warn(`Session query failed with status: ${sessionRes.status}`);
+            }
 
             // Fetch 7-Day History & Failure Intelligence
-            const searchVal = directTerm || sessionData.sessions?.[0]?.calling_station_id || searchTerm;
+            // If user typed a username (not MAC, not IP), searchVal MUST remain searchTerm to get multi-device summary!
+            const searchVal = directTerm || ((isMac || isIp) ? (sessionData.sessions?.[0]?.calling_station_id || searchTerm) : searchTerm);
             const historyRes = await fetch(`/api/ise/failures?query=${encodeURIComponent(searchVal)}`);
-            const historyData = await historyRes.json();
+            let historyData: any = { found: false, failures: [], sessions: [] };
+            if (historyRes.ok) {
+                try {
+                    historyData = await historyRes.json();
+                } catch {
+                    console.warn("Failed to parse history JSON");
+                }
+            } else {
+                console.warn(`History query failed with status: ${historyRes.status}`);
+            }
             setHistoryResult(historyData);
+
+            if (!sessionRes.ok && !historyRes.ok) {
+                throw new Error("ISE API Gateway request timed out or returned an error. Please retry.");
+            }
 
             // If boolean search or multiple devices correlated:
             if (!isMac && !isIp && historyData.searchType === "user_name" && historyData.sessions && historyData.sessions.length > 0 && !directTerm) {

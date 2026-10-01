@@ -140,25 +140,32 @@ export async function GET(request: Request) {
         }
 
         // 3. Enrich the sessions with AD Identity and Vectra Security Context
-        const enrichedSessions = await Promise.all(result.sessions.map(async (iseSession: any) => {
-            const enrichment: any = {
-                ad: null,
-                vectra: null
-            };
+        const adCache = new Map<string, any>();
+        const vectraCache = new Map<string, any>();
 
-            // LDAP Enrichment
-            if (iseSession.user_name) {
-                enrichment.ad = await getUserDetails(iseSession.user_name);
-            }
-
-            // Vectra Enrichment (Search by IP or MAC)
+        const getCachedAd = async (user: string) => {
+            if (!user || user === "Unknown") return null;
+            if (adCache.has(user)) return adCache.get(user);
             try {
-                const searchVal = iseSession.framed_ip_address || iseSession.calling_station_id;
-                if (searchVal) {
-                    const vectraData = await getVectraHosts({ name: searchVal });
-                    if (vectraData.results && vectraData.results.length > 0) {
+                const details = await getUserDetails(user);
+                adCache.set(user, details);
+                return details;
+            } catch {
+                adCache.set(user, null);
+                return null;
+            }
+        };
+
+        const getCachedVectra = async (val: string) => {
+            if (!val) return null;
+            if (vectraCache.has(val)) return vectraCache.get(val);
+            try {
+                const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 1500));
+                const fetchPromise = (async () => {
+                    const vectraData = await getVectraHosts({ name: val });
+                    if (vectraData?.results && vectraData.results.length > 0) {
                         const host = vectraData.results[0];
-                        enrichment.vectra = {
+                        return {
                             id: host.id,
                             threat: host.threat,
                             certainty: host.certainty,
@@ -167,16 +174,43 @@ export async function GET(request: Request) {
                             last_seen: host.last_seen
                         };
                     }
-                }
-            } catch (e) {
-                console.error("Vectra Enrichment Error:", e);
+                    return null;
+                })();
+                const res = await Promise.race([fetchPromise, timeoutPromise]);
+                vectraCache.set(val, res);
+                return res;
+            } catch {
+                vectraCache.set(val, null);
+                return null;
+            }
+        };
+
+        const enrichedSessions = await Promise.all(result.sessions.map(async (iseSession: any) => {
+            const enrichment: any = {
+                ad: null,
+                vectra: null
+            };
+
+            // LDAP Enrichment (Memoized)
+            if (iseSession.user_name) {
+                enrichment.ad = await getCachedAd(iseSession.user_name);
+            }
+
+            // Vectra Enrichment (Search by IP or MAC, Memoized)
+            const searchVal = iseSession.framed_ip_address || iseSession.calling_station_id;
+            if (searchVal) {
+                enrichment.vectra = await getCachedVectra(searchVal);
             }
 
             // WLC Real-Time Telemetry (AireOS 8540 SNMP - skip for PassiveID sessions)
             let wlcTelemetry = null;
             if (iseSession.calling_station_id && !iseSession.is_passive_identity) {
                 try {
-                    wlcTelemetry = await fetchWlcClientTelemetry(iseSession.calling_station_id);
+                    const timeoutPromise = new Promise<null>((r) => setTimeout(() => r(null), 1500));
+                    wlcTelemetry = await Promise.race([
+                        fetchWlcClientTelemetry(iseSession.calling_station_id),
+                        timeoutPromise
+                    ]);
                 } catch (e) {}
             }
 

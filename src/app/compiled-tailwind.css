@@ -628,6 +628,9 @@
   .-mb-\[1px\] {
     margin-bottom: calc(1px * -1);
   }
+  .mb-0 {
+    margin-bottom: 0px;
+  }
   .mb-0\.5 {
     margin-bottom: calc(var(--spacing) * 0.5);
   }
@@ -5943,6 +5946,9 @@
     }
     .md\:justify-end {
       justify-content: flex-end;
+    }
+    .md\:self-auto {
+      align-self: auto;
     }
     .md\:p-8 {
       padding: calc(var(--spacing) * 8);
