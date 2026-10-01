@@ -3314,8 +3314,11 @@ export default function SiteInventoryManager({
             <ExportSitesModal
                 isOpen={isExportModalOpen}
                 onClose={() => setIsExportModalOpen(false)}
+                devices={devices}
                 siteMap={siteMap}
                 currentFolder={selectedEntity.type === "folder" ? selectedEntity.folderPath : "All"}
+                currentSite={selectedEntity.type === "site" ? selectedEntity.siteCode : (selectedEntity.type === "idf" ? selectedEntity.siteCode : undefined)}
+                currentIdf={selectedEntity.type === "idf" ? selectedEntity.idfCode : undefined}
                 searchQuery={searchQuery}
                 roleFilter={roleFilter}
                 freshnessFilter={freshnessFilter}
