@@ -130,6 +130,9 @@ class Device(BaseModel):
     eigrp_neighbors: List[EIGRPNeighbor] = Field(default_factory=list)
     arp_table: List[ARPEntry] = Field(default_factory=list)
     alias_ips: List[str] = Field(default_factory=list)
+    is_legacy_ssh: bool = False
+    ssh_kex: Optional[str] = None
+    ssh_key: Optional[str] = None
 
 
 class TopologyLink(BaseModel):

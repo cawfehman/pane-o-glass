@@ -85,6 +85,66 @@ def validate_readonly_command(command: str, host: Optional[str] = None) -> None:
             raise ConfigModeForbiddenError(err_msg)
 
 
+def enable_legacy_ssh_support() -> None:
+    """
+    Dynamically register legacy Diffie-Hellman Key Exchange (KEX) algorithms and ssh-rsa
+    host keys into Paramiko.
+    
+    Modern Paramiko (v3.0+) deprecated 1024-bit Diffie-Hellman and SHA-1 KEX algorithms.
+    Older Cisco Catalyst switches (e.g. 2960, 3560, 3750, older IOS 12/15) only support:
+      - diffie-hellman-group14-sha1
+      - diffie-hellman-group-exchange-sha1
+      - diffie-hellman-group1-sha1
+      - ssh-rsa host keys
+    """
+    try:
+        import paramiko
+        from hashlib import sha1
+        from paramiko.kex_group14 import KexGroup14SHA256
+        from paramiko.kex_gex import KexGexSHA256
+
+        if "diffie-hellman-group14-sha1" in paramiko.Transport._kex_info:
+            return
+
+        class KexGroup14SHA1(KexGroup14SHA256):
+            name = "diffie-hellman-group14-sha1"
+            hash_algo = sha1
+
+        class KexGroup1SHA1(KexGroup14SHA256):
+            # RFC 2409 Oakley Group 2 (1024-bit MODP group)
+            P = int(
+                "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74"
+                "020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F1437"
+                "4FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED"
+                "EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF05"
+                "98DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB"
+                "9ED529077096966D670C354E4ABC9804F1746C08CA237327FFFFFFFFFFFFFFFF",
+                16,
+            )
+            G = 2
+            name = "diffie-hellman-group1-sha1"
+            hash_algo = sha1
+
+        class KexGexSHA1(KexGexSHA256):
+            name = "diffie-hellman-group-exchange-sha1"
+            hash_algo = sha1
+
+        paramiko.Transport._kex_info["diffie-hellman-group14-sha1"] = KexGroup14SHA1
+        paramiko.Transport._kex_info["diffie-hellman-group-exchange-sha1"] = KexGexSHA1
+        paramiko.Transport._kex_info["diffie-hellman-group1-sha1"] = KexGroup1SHA1
+
+        for kex in ("diffie-hellman-group14-sha1", "diffie-hellman-group-exchange-sha1", "diffie-hellman-group1-sha1"):
+            if kex not in paramiko.Transport._preferred_kex:
+                paramiko.Transport._preferred_kex += (kex,)
+
+        if "ssh-rsa" not in paramiko.Transport._preferred_keys:
+            paramiko.Transport._preferred_keys += ("ssh-rsa",)
+
+        logger.info("Enabled legacy SSH KEX and host-key algorithms (diffie-hellman-group14/1/gex-sha1, ssh-rsa).")
+    except Exception as e:
+        logger.warning("Could not register legacy SSH algorithms: %s", e)
+
+
 class CiscoSSHClient:
     """Manages secure, read-only SSH connections to Cisco IOS and NX-OS devices."""
     
@@ -108,6 +168,9 @@ class CiscoSSHClient:
         self.timeout = timeout
         self.device_type = device_type
         self.connection = None
+        self.is_legacy_ssh = False
+        self.negotiated_kex: Optional[str] = None
+        self.negotiated_key: Optional[str] = None
 
     def connect(self) -> Tuple[bool, Optional[str]]:
         """Establish SSH connection to Cisco IOS / NX-OS device with full audit tracking."""
@@ -145,6 +208,7 @@ class CiscoSSHClient:
                 device_params["use_keys"] = True
                 device_params["key_file"] = self.key_file
 
+            enable_legacy_ssh_support()
             try:
                 self.connection = ConnectHandler(**device_params)
             except Exception as initial_exc:
@@ -157,6 +221,29 @@ class CiscoSSHClient:
                     self.device_type = "cisco_nxos"
                 else:
                     raise
+
+            # Detect negotiated cryptographic algorithms from underlying Paramiko Transport
+            try:
+                raw_transport = getattr(getattr(self.connection, "remote_conn", None), "transport", None)
+                if not raw_transport:
+                    raw_client = getattr(self.connection, "remote_conn_pre", None)
+                    raw_transport = getattr(raw_client, "_transport", None) or getattr(raw_client, "transport", None)
+
+                if raw_transport:
+                    kex_engine = getattr(raw_transport, "kex_engine", None)
+                    if kex_engine and hasattr(kex_engine, "name"):
+                        self.negotiated_kex = str(kex_engine.name)
+                    remote_key = getattr(raw_transport, "host_key_type", None) or getattr(raw_transport, "remote_key", None)
+                    if remote_key:
+                        self.negotiated_key = str(remote_key)
+
+                    # Flag as legacy SSH if SHA-1 KEX, group1, or older ssh-rsa was negotiated
+                    if self.negotiated_kex and any(leg in self.negotiated_kex.lower() for leg in ["sha1", "group1", "diffie-hellman-group1-"]):
+                        self.is_legacy_ssh = True
+                    elif self.negotiated_key and "ssh-rsa" == self.negotiated_key.lower():
+                        self.is_legacy_ssh = True
+            except Exception as kex_diag_err:
+                logger.debug("Could not inspect SSH transport algorithms on %s: %s", self.host, kex_diag_err)
 
             # On NX-OS, login is direct privilege 15/network-admin; enable mode does not exist
             is_nxos = getattr(self.connection, "device_type", "") == "cisco_nxos" or self.device_type == "cisco_nxos"
@@ -175,7 +262,14 @@ class CiscoSSHClient:
                 event_type="SSH_CONNECT_SUCCESS",
                 severity="INFO",
                 device_ip=self.host,
-                details={"port": self.port, "user": self.username, "device_type": self.connection.device_type},
+                details={
+                    "port": self.port,
+                    "user": self.username,
+                    "device_type": self.connection.device_type,
+                    "is_legacy_ssh": self.is_legacy_ssh,
+                    "negotiated_kex": self.negotiated_kex,
+                    "negotiated_key": self.negotiated_key
+                },
             )
             return True, None
         except Exception as exc:

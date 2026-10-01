@@ -58,6 +58,7 @@ const DEVICE_COLUMNS: ColumnOption[] = [
     { id: "stackStatus", label: "Switch Stack Info", defaultChecked: false, getValue: (d) => d._stackLabel || "" },
     { id: "interfacesCount", label: "Monitored Ports", defaultChecked: false, getValue: (d) => Array.isArray(d.interfaces) ? d.interfaces.length : 0 },
     { id: "folderPath", label: "Network Group / Folder", defaultChecked: true, getValue: (d) => d._folderPath || "Unassigned" },
+    { id: "legacySsh", label: "SSH Crypto Status", defaultChecked: false, getValue: (d) => d.isLegacySsh ? `Legacy (${d.sshKex || "diffie-hellman-group14/1-sha1"})` : "Modern" },
     { id: "address", label: "Physical Address", defaultChecked: false, getValue: (d) => d._siteAddress || "" },
     { id: "city", label: "City", defaultChecked: false, getValue: (d) => d._siteCity || "" },
 ];

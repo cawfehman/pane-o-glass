@@ -421,7 +421,10 @@ async function persistLatestSnapshot(
                 routes: dev.routes || [],
                 vlans: dev.vlans || [],
                 cdpNeighbors: dev.cdp_neighbors || [],
-                arpTable: dev.arp_table || []
+                arpTable: dev.arp_table || [],
+                isLegacySsh: Boolean(dev.is_legacy_ssh),
+                sshKex: dev.ssh_kex || null,
+                sshKey: dev.ssh_key || null
             }
         });
     }

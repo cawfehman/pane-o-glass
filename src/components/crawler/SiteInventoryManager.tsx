@@ -47,7 +47,8 @@ import {
     Trash2,
     Sparkles,
     MoveRight,
-    Download
+    Download,
+    ShieldAlert
 } from "lucide-react";
 import { CrawlIcon } from "./CrawlIcon";
 import { SiteMetadataLookup, parseDeviceSiteAndIdf, parseFloorFromIdf, detectSwitchStack } from "./TopologyGraph";
@@ -2015,6 +2016,15 @@ export default function SiteInventoryManager({
                                                     <span className="px-2 py-0.5 text-[10px] font-bold rounded border bg-amber-500/10 text-amber-300 border-amber-500/40 flex items-center gap-1">
                                                         <Tag className="w-3 h-3 text-amber-400" />
                                                         Override
+                                                    </span>
+                                                )}
+                                                {Boolean(activeDevice.isLegacySsh) && (
+                                                    <span 
+                                                        className="px-2 py-0.5 text-[10px] font-bold rounded border bg-amber-950/80 text-amber-400 border-amber-600/70 flex items-center gap-1 cursor-help"
+                                                        title={`Legacy SSH Cryptography: Negotiated KEX '${activeDevice.sshKex || "diffie-hellman-group14/1-sha1"}' and key '${activeDevice.sshKey || "ssh-rsa"}'. Device firmware requires modern crypto upgrade.`}
+                                                    >
+                                                        <ShieldAlert className="w-3 h-3 text-amber-400" />
+                                                        Legacy SSH (Upgrade Candidate)
                                                     </span>
                                                 )}
                                             </div>

@@ -406,6 +406,9 @@ class NetworkCrawler:
             lldp_neighbors=lldp_neighbors,
             eigrp_neighbors=eigrp_neighbors,
             arp_table=arp_table,
+            is_legacy_ssh=getattr(client, "is_legacy_ssh", False),
+            ssh_kex=getattr(client, "negotiated_kex", None),
+            ssh_key=getattr(client, "negotiated_key", None),
         )
 
     def crawl(self) -> Tuple[List[Device], List[Device]]:
