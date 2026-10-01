@@ -64,8 +64,8 @@ export async function GET(req: Request) {
                     const nodesArray = Array.isArray(rawNodes) ? rawNodes : [rawNodes];
                     
                     const flattened = nodesArray.flatMap((n: any) => {
-                        const elements = n.authStatusElements || n;
-                        return Array.isArray(elements) ? elements : [elements];
+                        if (!n.authStatusElements) return [];
+                        return Array.isArray(n.authStatusElements) ? n.authStatusElements : [n.authStatusElements];
                     });
 
                     return flattened;
@@ -76,13 +76,23 @@ export async function GET(req: Request) {
             };
 
             const tryFormat = async (targetMac: string) => {
-                // Try standard 7 Days (604800s - Cisco ISE maximum AuthStatus window)
-                let nodes = await queryIseAuth(targetMac, 604800);
-                // Graceful fallback to 1 Day (86400s) if 7-day query returned empty or was rejected
-                if (nodes.length === 0) {
-                    nodes = await queryIseAuth(targetMac, 86400);
+                // Fetch 24-Hour window (high-fidelity detailed logs) and 7-Day window in parallel
+                const [dayRecords, weekRecords] = await Promise.all([
+                    queryIseAuth(targetMac, 86400),
+                    queryIseAuth(targetMac, 604800)
+                ]);
+
+                // Deduplicate attempts by unique attempt ID / timestamp
+                const seen = new Set<string>();
+                const combined: any[] = [];
+                for (const r of [...dayRecords, ...weekRecords]) {
+                    const id = r.id?._ || r.id || `${r.acs_timestamp?._ || r.acs_timestamp}_${r.user_name?._ || r.user_name}`;
+                    if (id && !seen.has(id)) {
+                        seen.add(id);
+                        combined.push(r);
+                    }
                 }
-                return nodes;
+                return combined;
             };
 
             let nodes = await tryFormat(mac);
