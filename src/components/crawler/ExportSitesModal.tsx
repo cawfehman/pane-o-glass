@@ -19,6 +19,7 @@ export interface ExportSitesModalProps {
     isOpen: boolean;
     onClose: () => void;
     devices?: any[];
+    links?: any[];
     siteMap: Map<string, {
         siteCode: string;
         siteLookup: any;
@@ -42,7 +43,7 @@ interface ColumnOption {
 
 const DEVICE_COLUMNS: ColumnOption[] = [
     { id: "hostname", label: "Hostname", defaultChecked: true, getValue: (d) => d.hostname || "" },
-    { id: "ip", label: "Management IP", defaultChecked: true, getValue: (d) => d.primaryIp || d.ip_address || d.ip || "" },
+    { id: "ip", label: "Management IP", defaultChecked: true, getValue: (d) => d._resolvedMgmtIp || "" },
     { id: "siteCode", label: "Site Code", defaultChecked: true, getValue: (d) => d._resolvedSite || "" },
     { id: "siteName", label: "Site Name", defaultChecked: true, getValue: (d) => d._siteName || "" },
     { id: "idf", label: "Closet (IDF)", defaultChecked: true, getValue: (d) => d._resolvedIdf || "" },
@@ -126,6 +127,45 @@ export default function ExportSitesModal({
         }
     };
 
+    // Index neighbor IPs discovered via CDP/LLDP or links for devices that don't have direct management IPs
+    const neighborIpMap = useMemo(() => {
+        const map = new Map<string, string>();
+        
+        // 1. Check CDP neighbors reported by other reachable devices
+        for (const d of devices) {
+            const rawCdp = d.cdpNeighbors || d.cdp_neighbors || [];
+            const nList: any[] = Array.isArray(rawCdp) ? rawCdp : Object.values(rawCdp);
+            for (const n of nList) {
+                if (!n || typeof n !== "object") continue;
+                const ip = n.management_ip || n.ipAddress || n.ip_address || n.ip;
+                if (!ip || typeof ip !== "string" || ip === "0.0.0.0") continue;
+                
+                const host = (n.destination_host || n.device_id || "").trim().toLowerCase();
+                if (host) {
+                    const short = host.split(".")[0].split("(")[0].trim();
+                    if (short && !map.has(short)) map.set(short, ip.trim());
+                    if (!map.has(host)) map.set(host, ip.trim());
+                }
+            }
+        }
+
+        // 2. Check snapshot links
+        if (Array.isArray(links)) {
+            for (const l of links) {
+                if (!l) continue;
+                const targetIp = l.targetIp || l.target_ip || l.ip;
+                const targetHost = (l.target || l.targetHost || l.targetDevice || "").trim().toLowerCase();
+                if (targetIp && targetHost) {
+                    const short = targetHost.split(".")[0].split("(")[0].trim();
+                    if (short && !map.has(short)) map.set(short, String(targetIp).trim());
+                    if (!map.has(targetHost)) map.set(targetHost, String(targetIp).trim());
+                }
+            }
+        }
+
+        return map;
+    }, [devices, links]);
+
     // Enrich all devices with resolved site, IDF, floor, stack, and freshness info
     const enrichedDevices = useMemo(() => {
         return devices.map(dev => {
@@ -141,10 +181,34 @@ export default function ExportSitesModal({
             const stackInfo = detectSwitchStack(dev);
             const freshness = getDeviceFreshness(dev);
 
+            // Determine Management IP using waterfall:
+            // 1. Direct device IP properties
+            // 2. First interface with an IP address (SVI / Loopback / routed port)
+            // 3. CDP / LLDP neighbor discovery table from peer switches
+            let resolvedMgmtIp = dev.primaryIp || dev.ipAddress || dev.ip_address || dev.ip || dev.mgmtIp || dev.management_ip || "";
+            if (!resolvedMgmtIp && dev.interfaces) {
+                let intfList: any[] = [];
+                if (Array.isArray(dev.interfaces)) {
+                    intfList = dev.interfaces;
+                } else if (typeof dev.interfaces === "object") {
+                    intfList = Object.values(dev.interfaces);
+                }
+                const foundIntf = intfList.find((i: any) => i && (i.ip_address || i.ipAddress || i.ip));
+                if (foundIntf) {
+                    resolvedMgmtIp = foundIntf.ip_address || foundIntf.ipAddress || foundIntf.ip || "";
+                }
+            }
+            if (!resolvedMgmtIp && dev.hostname) {
+                const normHost = dev.hostname.trim().toLowerCase();
+                const shortHost = normHost.split(".")[0].split("(")[0].trim();
+                resolvedMgmtIp = neighborIpMap.get(normHost) || neighborIpMap.get(shortHost) || "";
+            }
+
             return {
                 ...dev,
                 _resolvedSite: upperSite,
                 _resolvedIdf: upperIdf,
+                _resolvedMgmtIp: resolvedMgmtIp,
                 _floorLabel: floorInfo.floorLabel,
                 _siteName: siteEntry?.siteLookup?.name || upperSite,
                 _siteAddress: siteEntry?.siteLookup?.address || "",
@@ -157,7 +221,7 @@ export default function ExportSitesModal({
                     : "Standalone"
             };
         });
-    }, [devices, siteMap]);
+    }, [devices, siteMap, neighborIpMap]);
 
     // Candidate Devices to Export
     const exportedDevices = useMemo(() => {
@@ -178,7 +242,7 @@ export default function ExportSitesModal({
                 if (searchQuery) {
                     const q = searchQuery.toLowerCase();
                     const hostMatch = (dev.hostname || "").toLowerCase().includes(q);
-                    const ipMatch = (dev.primaryIp || dev.ip_address || dev.ip || "").toLowerCase().includes(q);
+                    const ipMatch = (dev._resolvedMgmtIp || "").toLowerCase().includes(q);
                     const siteMatch = dev._resolvedSite.toLowerCase().includes(q) || dev._siteName.toLowerCase().includes(q);
                     const idfMatch = dev._resolvedIdf.toLowerCase().includes(q);
                     const modelMatch = (dev.model || "").toLowerCase().includes(q);
