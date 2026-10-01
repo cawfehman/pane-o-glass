@@ -323,20 +323,30 @@ export async function GET(req: Request) {
                 });
             } catch (e) { }
 
-            // If no MACs found or only IP was returned (e.g. TACACS/VPN session), scan ActiveList for client hardware MACs
-            if (macsToScan.size === 0) {
-                try {
-                    const { data: activeListXml } = await executeWithPanFailover(async (baseUrl) => {
-                        const response = await axios.get(`${baseUrl}/admin/API/mnt/Session/ActiveList`, {
-                            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
-                            httpsAgent: agent,
-                            timeout: 8000
-                        });
-                        return response.data;
+            // Always scan ActiveList to aggregate ALL concurrent client hardware MACs authenticated with this username
+            try {
+                const { data: activeListXml } = await executeWithPanFailover(async (baseUrl) => {
+                    const response = await axios.get(`${baseUrl}/admin/API/mnt/Session/ActiveList`, {
+                        headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
+                        httpsAgent: agent,
+                        timeout: 8000
                     });
-                    const re = new RegExp('<activeSession>[\\s\\S]*?<user_name>' + formattedQuery + '<\\/user_name>[\\s\\S]*?<\\/activeSession>', 'gi');
-                    const matches = activeListXml.match(re) || [];
-                    for (const m of matches) {
+                    return response.data;
+                });
+                const re = new RegExp('<activeSession>[\\s\\S]*?<user_name>' + formattedQuery + '<\\/user_name>[\\s\\S]*?<\\/activeSession>', 'gi');
+                const matches = activeListXml.match(re) || [];
+                for (const m of matches) {
+                    try {
+                        const parsed = await parseStringPromise(m, { explicitArray: false });
+                        const node = parsed.activeSession;
+                        if (node) {
+                            userHistoryPayloads.push(node);
+                            const mac = node.calling_station_id?._ || node.calling_station_id || node.callingStationId;
+                            if (mac && !/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(mac)) {
+                                macsToScan.add(mac.trim().toUpperCase());
+                            }
+                        }
+                    } catch (e) {
                         const macMatch = m.match(/<calling_station_id>(.*?)<\/calling_station_id>/i);
                         if (macMatch && macMatch[1]) {
                             const foundMac = macMatch[1].trim().toUpperCase();
@@ -345,8 +355,8 @@ export async function GET(req: Request) {
                             }
                         }
                     }
-                } catch (e) {}
-            }
+                }
+            } catch (e) {}
 
             if (macsToScan.size === 0 && passiveSessions.length === 0) {
                 return NextResponse.json({ found: false, failures: [], sessions: [] });

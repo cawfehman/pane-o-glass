@@ -316,7 +316,9 @@ export async function fetchIseSession(query: string) {
                     }
                 }
             } else {
-                // Username - Direct surgical session lookup via ISE MnT (117ms)
+                // Username - Query direct endpoint AND ActiveList to aggregate all concurrent sessions
+                const sessionMap = new Map<string, any>();
+
                 try {
                     const endpoint = `${targetUrl}/admin/API/mnt/Session/UserName/${encodeURIComponent(formattedQuery)}`;
                     const res = await axios.get(endpoint, {
@@ -327,12 +329,43 @@ export async function fetchIseSession(query: string) {
                     const data = await parseStringPromise(res.data, { explicitArray: false });
                     const node = data.sessionParameters || data.activeSession;
                     if (node) {
-                        foundSessions = Array.isArray(node) ? node : [node];
+                        const arr = Array.isArray(node) ? node : [node];
+                        arr.forEach((s: any) => {
+                            const key = s.calling_station_id?._ || s.calling_station_id || s.framed_ip_address?._ || s.framed_ip_address;
+                            if (key) sessionMap.set(key.toUpperCase(), s);
+                        });
                     }
                 } catch (userErr: any) {
-                    // Fallback to ActiveList only if direct UserName query failed (e.g. 404)
                     console.warn(`[ISE-LIB] Direct UserName query yielded no active session: ${userErr.message}`);
                 }
+
+                // Query ActiveList to find all other concurrently active devices authenticated with this username
+                try {
+                    const alRes = await axios.get(`${targetUrl}/admin/API/mnt/Session/ActiveList`, {
+                        headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml" },
+                        httpsAgent: agent,
+                        timeout: 8000
+                    });
+                    const activeXml = alRes.data;
+                    const sessionRegex = new RegExp('<activeSession>[\\s\\S]*?<user_name>' + formattedQuery + '<\\/user_name>[\\s\\S]*?<\\/activeSession>', 'gi');
+                    const matches = activeXml.match(sessionRegex) || [];
+                    for (const m of matches) {
+                        try {
+                            const parsed = await parseStringPromise(m, { explicitArray: false });
+                            const sNode = parsed.activeSession;
+                            if (sNode) {
+                                const key = sNode.calling_station_id?._ || sNode.calling_station_id || sNode.framed_ip_address?._ || sNode.framed_ip_address;
+                                if (key && !sessionMap.has(key.toUpperCase())) {
+                                    sessionMap.set(key.toUpperCase(), sNode);
+                                }
+                            }
+                        } catch (pErr) {}
+                    }
+                } catch (alErr: any) {
+                    console.warn(`[ISE-LIB] ActiveList scan for user failed: ${alErr.message}`);
+                }
+
+                foundSessions = Array.from(sessionMap.values());
             }
 
             return foundSessions;
