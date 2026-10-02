@@ -107,7 +107,7 @@ export const DEFAULT_CITRIX_IOC_RULES: NetscalerIocRule[] = [
         description: "Flags administrative CLI and API commands executed from external or unexpected IPs.",
         severity: "HIGH",
         category: "ADMIN_PRIV",
-        query: 'message:"API CMD_EXECUTED" AND NOT (src_ip:172.16.* OR src_ip:172.17.* OR src_ip:172.18.* OR src_ip:10.* OR src_ip:127.0.0.1)'
+        query: '(message:"CMD_EXECUTED" OR message:"API CMD_EXECUTED") AND ((_exists_:ns_remote_ip AND NOT (ns_remote_ip:172.16.* OR ns_remote_ip:172.17.* OR ns_remote_ip:172.18.* OR ns_remote_ip:10.* OR ns_remote_ip:192.168.* OR ns_remote_ip:127.0.0.1)) OR (_exists_:src_ip AND NOT (src_ip:172.16.* OR src_ip:172.17.* OR src_ip:172.18.* OR src_ip:10.* OR src_ip:192.168.* OR src_ip:127.0.0.1)))'
     }
 ];
 
@@ -441,7 +441,7 @@ export class NetscalerGraylogClient {
 
         let eventType: NetscalerTimelineEvent["eventType"] = "OTHER";
         let username: string | undefined = msg.ns_username;
-        let clientIp: string | undefined = msg.src_ip;
+        let clientIp: string | undefined = msg.src_ip || msg.ns_remote_ip;
         let clientPort: string | undefined = msg.src_port;
         let sessionId: string | undefined = msg.ns_session_id;
         const deviceSerial: string | undefined = msg.ns_client_device_serial || (raw.match(/device_serial_number\s+(\d+)/i) || [])[1];
@@ -470,7 +470,8 @@ export class NetscalerGraylogClient {
 
         // Extract Client IP from message if not extracted by Graylog
         if (!clientIp) {
-            const ipMatch = raw.match(/Remote ip\s*=\s*([0-9\.]+)(?::(\d+))?/i) ||
+            const ipMatch = raw.match(/Remote_ip\s+([0-9\.]+)/i) ||
+                            raw.match(/Remote ip\s*=\s*([0-9\.]+)(?::(\d+))?/i) ||
                             raw.match(/clientip\s+([0-9\.]+)/i) ||
                             raw.match(/Source\s+([0-9\.]+)(?::(\d+))?/i);
             if (ipMatch) {
@@ -531,7 +532,7 @@ export class NetscalerGraylogClient {
                     range: rangeSeconds.toString(),
                     filter: `streams:${this.streamId}`,
                     limit: "5",
-                    fields: "src_ip,src_ip_country_code,ns_username,ns_http_method,ns_http_path,message,timestamp",
+                    fields: "src_ip,ns_remote_ip,src_ip_country_code,ns_username,ns_http_method,ns_http_path,message,timestamp",
                     sort: "timestamp:desc"
                 });
                 const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
@@ -545,16 +546,37 @@ export class NetscalerGraylogClient {
                     timeout: 15000
                 });
 
-                const total = res.data.total_results || 0;
-                const sampleEvents = (res.data.messages || []).map((m: any) => ({
-                    timestamp: m.message.timestamp,
-                    sourceIp: m.message.src_ip,
-                    username: m.message.ns_username,
-                    httpMethod: m.message.ns_http_method,
-                    httpPath: m.message.ns_http_path,
-                    countryCode: m.message.src_ip_country_code,
-                    message: m.message.message
-                }));
+                const isInternalIp = (ip?: string) => {
+                    if (!ip) return false;
+                    return /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.)/.test(ip);
+                };
+
+                let sampleEvents = (res.data.messages || []).map((m: any) => {
+                    const rawMsg = m.message.message || "";
+                    const ip = m.message.src_ip ||
+                               m.message.ns_remote_ip ||
+                               (rawMsg.match(/Remote_ip\s+([0-9\.]+)/i) || [])[1] ||
+                               (rawMsg.match(/Source\s+([0-9\.]+)/i) || [])[1];
+                    return {
+                        timestamp: m.message.timestamp,
+                        sourceIp: ip,
+                        username: m.message.ns_username,
+                        httpMethod: m.message.ns_http_method,
+                        httpPath: m.message.ns_http_path,
+                        countryCode: m.message.src_ip_country_code,
+                        message: rawMsg
+                    };
+                });
+
+                let total = res.data.total_results || 0;
+
+                // Post-filter safeguard: for external admin commands, ignore any false positives with internal IPs
+                if (rule.id === "external-admin-cmd") {
+                    sampleEvents = sampleEvents.filter(ev => !isInternalIp(ev.sourceIp));
+                    if (sampleEvents.length === 0 && total > 0) {
+                        total = 0;
+                    }
+                }
 
                 return {
                     rule,
