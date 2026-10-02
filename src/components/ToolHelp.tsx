@@ -584,6 +584,10 @@ export const helpData: Record<string, TooltipDetails> = {
                 detail: "Automatically unwraps SafeLinks, Cisco Security Proxy, and AWS Track URLs to expose the true unwrapped destination host and query string.",
                 tag: "URL Unwrapper"
             }
+        ],
+        colors: [
+            { name: "🔴 CRITICAL (+10.0 Boost)", meaning: "Fake M365 Login Portal or Typosquatted Auth Endpoint", rgb: "#ef4444" },
+            { name: "🟡 HIGH (+6.0 Boost)", meaning: "Abused Official Device-Code or OAuth Authorization Flow", rgb: "#f59e0b" }
         ]
     },
     etd: {
@@ -638,6 +642,46 @@ export const helpData: Record<string, TooltipDetails> = {
         backgroundJobs: [
             "Cisco ETD Service: Outbound polling to Cisco CMD/ETD API & internal Graylog retrospective stream parsing with double-URL decoding.",
             "2-Pass Envelope Correlation: Resolves alert MIDs to original threat gateway MIDs, real senders, target inboxes, and original subjects."
+        ]
+    },
+    netscaler: {
+        title: "NetScaler Gateway & ADC Telemetry",
+        version: "1.0.0",
+        category: "Citrix Gateway Auth & Remote Access Threat Hunting",
+        description: "Real-time Citrix Gateway authentication telemetry, foreign geo-access anomaly detection, and deep user/IP session tracing from the NetScaler Graylog stream.",
+        capabilities: [
+            {
+                title: "Gateway Telemetry & Volume Monitoring",
+                detail: "Tracks real-time stream volume, authentication flow, session delinks, and Citrix Virtual Apps & Desktops (HDX/ICA) channel updates.",
+                tag: "Telemetry Stream"
+            },
+            {
+                title: "Foreign Geo-Access & Anomaly Detection",
+                detail: "Flags all incoming gateway connection attempts originating outside the United States, providing geolocation (country, city), source IP, and target vserver.",
+                tag: "Threat Hunting"
+            },
+            {
+                title: "Deep User & IP Timeline Investigator",
+                detail: "Search by Active Directory username or external IP address to build a chronological timeline of authentication attempts, SSO tokens, HTTP requests, and session disconnects.",
+                tag: "Investigator"
+            },
+            {
+                title: "1-Click Firewall Shun Integration",
+                detail: "Quick pivot from suspicious foreign IP connections directly into the Cisco Firewall Shun management tool to check or apply immediate perimeter blocks.",
+                tag: "Firewall Pivot"
+            }
+        ],
+        colors: [
+            { name: "🟢 AUTH SUCCESS", meaning: "User successfully authenticated or completed single sign-on (SSO) to Citrix Gateway.", rgb: "#10b981" },
+            { name: "🔴 AUTH FAILED", meaning: "Authentication denied, invalid credentials, or locked user attempt.", rgb: "#ef4444" },
+            { name: "🔵 CITRIX ICA / HDX", meaning: "Active Citrix Virtual Apps and Desktops HDX session channel activity.", rgb: "#06b6d4" },
+            { name: "🟣 HTTP REQUEST", meaning: "HTTP request routed through NetScaler Gateway context.", rgb: "#6366f1" },
+            { name: "⚪ DISCONNECTED", meaning: "TCP connection delinked, terminated, or session logged out.", rgb: "#64748b" }
+        ],
+        shortcuts: [
+            "Use the time range pills (1h, 6h, 12h, 24h, 3d, 7d) to expand the analytics window.",
+            "In Foreign Geo Access tab, click [Shun] on any anomalous foreign IP to pivot directly to Cisco Firewall Shun.",
+            "In User & IP Investigator, enter a username (e.g. honeywell-samantha) or IP to view their full chronological audit timeline."
         ]
     }
 };

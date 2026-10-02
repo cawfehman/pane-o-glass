@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { 
     LayoutDashboard, Wrench, Shield, Server, Network, Lock, 
     ShieldAlert, ShieldCheck, Globe, Map, Users, Key, 
-    ClipboardList, Activity, MessageSquare, Mail, BellRing, FileText 
+    ClipboardList, Activity, MessageSquare, Mail, BellRing, FileText, Layers 
 } from "lucide-react";
 import packageJson from "../../package.json";
 import FeedbackModal from "./FeedbackModal";
@@ -183,6 +183,17 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                 >
                                     <ShieldAlert size={18} className="shrink-0 text-red-400" />
                                     <span className="nav-text">Cisco ETD Center</span>
+                                </Link>
+                            )}
+                            {hasPermission('netscaler') && (
+                                <Link 
+                                    href="/queries/netscaler" 
+                                    onClick={closeMobile}
+                                    title={isCollapsed ? "NetScaler Gateway & ADC" : undefined}
+                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/netscaler") ? "active" : ""}`}
+                                >
+                                    <Layers size={18} className="shrink-0 text-teal-400" />
+                                    <span className="nav-text">NetScaler Gateway</span>
                                 </Link>
                             )}
                             {hasPermission('notification-center') && (

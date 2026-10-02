@@ -1,0 +1,576 @@
+import https from "https";
+import axios from "axios";
+
+const httpsAgent = new https.Agent({
+    rejectUnauthorized: false,
+});
+
+export interface NetscalerHistogramData {
+    timestamp: number;
+    count: number;
+}
+
+export interface NetscalerForeignEvent {
+    timestamp: string;
+    sourceIp: string;
+    countryCode: string;
+    cityName: string;
+    vserverIp?: string;
+    vserverPort?: string;
+    message: string;
+    facility?: string;
+    level?: number;
+}
+
+export interface NetscalerTimelineEvent {
+    id: string;
+    timestamp: string;
+    eventType: "AUTH_SUCCESS" | "AUTH_FAILURE" | "HTTP_REQUEST" | "ICA_SESSION" | "CONN_TERMINATE" | "ADMIN_CMD" | "OTHER";
+    username?: string;
+    clientIp?: string;
+    clientPort?: string;
+    countryCode?: string;
+    cityName?: string;
+    sessionId?: string;
+    deviceSerial?: string;
+    action?: string;
+    httpMethod?: string;
+    httpPath?: string;
+    target?: string;
+    rawMessage: string;
+}
+
+export interface NetscalerIocRule {
+    id: string;
+    name: string;
+    description: string;
+    severity: "CRITICAL" | "HIGH" | "MEDIUM";
+    query: string;
+    category: "CITRIX_BLEED" | "RCE_WEBSHELL" | "NITRO_API" | "DTLS_CRASH" | "SESSION_HIJACK" | "ADMIN_PRIV" | "CUSTOM";
+    cve?: string;
+}
+
+export interface NetscalerIocFinding {
+    rule: NetscalerIocRule;
+    matchCount: number;
+    sampleEvents: {
+        timestamp: string;
+        sourceIp?: string;
+        username?: string;
+        httpMethod?: string;
+        httpPath?: string;
+        message: string;
+        countryCode?: string;
+    }[];
+}
+
+export const DEFAULT_CITRIX_IOC_RULES: NetscalerIocRule[] = [
+    {
+        id: "cve-2023-4966-bleed",
+        name: "Citrix Bleed Sensitive Memory Leak (CVE-2023-4966)",
+        description: "Checks for unauthenticated OpenID endpoint access used to bleed session tokens from NetScaler memory.",
+        severity: "CRITICAL",
+        category: "CITRIX_BLEED",
+        cve: "CVE-2023-4966",
+        query: 'ns_http_path:"*oauth/idp*" OR message:"/oauth/idp/.well-known/openid-configuration" OR message:"oauth/idp/oauth/token"'
+    },
+    {
+        id: "cve-2023-3519-rce",
+        name: "Citrix Unauthenticated RCE & Webshell Probes (CVE-2023-3519)",
+        description: "Detects path traversal and unauthorized script execution targeting NetScaler gateway paths.",
+        severity: "CRITICAL",
+        category: "RCE_WEBSHELL",
+        cve: "CVE-2023-3519",
+        query: 'ns_http_path:"*gwtest*" OR ns_http_path:"*.php*" OR ns_http_path:"*..*" OR message:"/gwtest/formssso" OR message:"flApp.xml" OR (message:"/vpn/" AND (message:".php" OR message:".."))'
+    },
+    {
+        id: "cve-2026-88771-dtls",
+        name: "Citrix Gateway DTLS Overflow & Daemon Crash (CVE-2026-88771/72)",
+        description: "Flags packet engine core dumps or crashes associated with memory corruption in DTLS processing.",
+        severity: "CRITICAL",
+        category: "DTLS_CRASH",
+        cve: "CVE-2026-88771",
+        query: 'message:"NSPPE crash" OR message:"Segmentation fault" OR message:"core dumped"'
+    },
+    {
+        id: "cve-2023-6548-nitro",
+        name: "NITRO Management API Exploitation (CVE-2023-6548)",
+        description: "Monitors for external access targeting the NITRO administrative configuration API.",
+        severity: "HIGH",
+        category: "NITRO_API",
+        cve: "CVE-2023-6548",
+        query: 'ns_http_path:"*nitro*" OR message:"/nitro/v1/config/"'
+    },
+    {
+        id: "external-admin-cmd",
+        name: "Untrusted / External Admin Command Execution",
+        description: "Flags administrative CLI and API commands executed from external or unexpected IPs.",
+        severity: "HIGH",
+        category: "ADMIN_PRIV",
+        query: 'message:"API CMD_EXECUTED" AND NOT (src_ip:172.16.* OR src_ip:172.17.* OR src_ip:172.18.* OR src_ip:10.* OR src_ip:127.0.0.1)'
+    }
+];
+
+export interface NetscalerStats {
+    rangeSeconds: number;
+    totalVolume: number;
+    totalVolumeChart: NetscalerHistogramData[];
+    authVolume: number;
+    authSuccessCount: number;
+    authFailureCount: number;
+    icaSessionCount: number;
+    foreignTrafficCount: number;
+    topForeignCountries: { country: string; count: number }[];
+    topUsers: { username: string; count: number }[];
+    recentForeignEvents: NetscalerForeignEvent[];
+}
+
+export class NetscalerGraylogClient {
+    private baseUrl: string;
+    private apiToken: string;
+    private streamId: string;
+
+    constructor() {
+        this.baseUrl = process.env.OG_GRAYLOG_URL || "https://graylog.cooperhealth.edu:9000";
+        this.apiToken = process.env.OG_GRAYLOG_API_TOKEN || "";
+        this.streamId = "5c055e3ab20902046cedcfcd";
+    }
+
+    private get authHeader() {
+        if (!this.apiToken) throw new Error("OG_GRAYLOG_API_TOKEN is not configured.");
+        return "Basic " + Buffer.from(this.apiToken + ":token").toString("base64");
+    }
+
+    /**
+     * Executes non-overlapping clock-aligned absolute search queries to construct a smooth time series.
+     */
+    async getHistogram(
+        query: string,
+        rangeSeconds: number = 86400
+    ): Promise<{ total: number; series: NetscalerHistogramData[] }> {
+        let bucketCount = 24;
+        if (rangeSeconds <= 3600) {
+            bucketCount = 12; // 5-minute resolution for 1h
+        } else if (rangeSeconds <= 21600) {
+            bucketCount = 24; // 15-minute resolution for 6h
+        } else if (rangeSeconds <= 43200) {
+            bucketCount = 24; // 30-minute resolution for 12h
+        } else if (rangeSeconds <= 86400) {
+            bucketCount = 24; // 1-hour resolution for 24h
+        } else if (rangeSeconds <= 259200) {
+            bucketCount = 36; // 2-hour resolution for 3d
+        } else {
+            bucketCount = 28; // 6-hour resolution for 7d
+        }
+
+        const bucketDurationMs = Math.floor((rangeSeconds * 1000) / bucketCount);
+        const endAnchorMs = Math.floor(Date.now() / bucketDurationMs) * bucketDurationMs;
+        const series: NetscalerHistogramData[] = [];
+        let total = 0;
+
+        const bucketPromises = [];
+
+        for (let i = bucketCount - 1; i >= 0; i--) {
+            const fromMs = endAnchorMs - i * bucketDurationMs;
+            const toMs = endAnchorMs - (i - 1) * bucketDurationMs;
+
+            const fromIso = new Date(fromMs).toISOString();
+            const toIso = new Date(toMs).toISOString();
+
+            const bParams = new URLSearchParams({
+                query: query,
+                from: fromIso,
+                to: toIso,
+                filter: `streams:${this.streamId}`,
+                limit: "1"
+            });
+
+            const bUrl = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/absolute?${bParams.toString()}`;
+
+            bucketPromises.push(
+                axios.get(bUrl, {
+                    httpsAgent,
+                    headers: {
+                        Authorization: this.authHeader,
+                        Accept: "application/json",
+                        "X-Requested-By": "pane-o-glass"
+                    },
+                    timeout: 10000
+                }).then(res => ({
+                    timestamp: fromMs,
+                    count: res.data.total_results || 0
+                })).catch(err => {
+                    console.warn(`[NetScaler Graylog] Histogram bucket error for ${fromIso}:`, err.message);
+                    return { timestamp: fromMs, count: 0 };
+                })
+            );
+        }
+
+        const results = await Promise.all(bucketPromises);
+        results.forEach(b => {
+            series.push(b);
+            total += b.count;
+        });
+
+        return { total, series };
+    }
+
+    /**
+     * Retrieves overall NetScaler telemetry overview statistics.
+     */
+    async getOverviewStats(rangeSeconds: number = 86400): Promise<NetscalerStats> {
+        // Query counts in parallel
+        const countQueries = [
+            { key: "total", q: "*" },
+            { key: "auth", q: "SSLVPN OR AAA" },
+            { key: "authSuccess", q: 'SSLVPN AND ("response-200" OR "LOGIN")' },
+            { key: "authFailure", q: 'SSLVPN AND (FAILURE OR FAILED OR INVALID OR DENIED OR "type 5")' },
+            { key: "ica", q: "ICA OR HDX" },
+            { key: "foreign", q: "NOT src_ip_country_code:US AND _exists_:src_ip_country_code" }
+        ];
+
+        const [
+            histogramRes,
+            authRes,
+            authSuccessRes,
+            authFailureRes,
+            icaRes,
+            foreignRes,
+            foreignEventsRes,
+            topUsersRes
+        ] = await Promise.all([
+            this.getHistogram("*", rangeSeconds),
+            this.queryCount("SSLVPN OR AAA", rangeSeconds),
+            this.queryCount('SSLVPN AND ("response-200" OR "LOGIN")', rangeSeconds),
+            this.queryCount('SSLVPN AND (FAILURE OR FAILED OR INVALID OR DENIED OR "type 5")', rangeSeconds),
+            this.queryCount("ICA OR HDX", rangeSeconds),
+            this.queryCount("NOT src_ip_country_code:US AND _exists_:src_ip_country_code", rangeSeconds),
+            this.getRecentForeignEvents(rangeSeconds, 150),
+            this.getTopUsers(rangeSeconds, 10)
+        ]);
+
+        // Aggregate top foreign countries
+        const countryMap: Record<string, number> = {};
+        foreignEventsRes.forEach(ev => {
+            if (ev.countryCode && ev.countryCode !== "US") {
+                countryMap[ev.countryCode] = (countryMap[ev.countryCode] || 0) + 1;
+            }
+        });
+
+        const topForeignCountries = Object.entries(countryMap)
+            .map(([country, count]) => ({ country, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+
+        return {
+            rangeSeconds,
+            totalVolume: histogramRes.total,
+            totalVolumeChart: histogramRes.series,
+            authVolume: authRes,
+            authSuccessCount: authSuccessRes,
+            authFailureCount: authFailureRes,
+            icaSessionCount: icaRes,
+            foreignTrafficCount: foreignRes,
+            topForeignCountries,
+            topUsers: topUsersRes,
+            recentForeignEvents: foreignEventsRes.slice(0, 50)
+        };
+    }
+
+    /**
+     * Retrieves top active Citrix users from extracted ns_username field.
+     */
+    async getTopUsers(rangeSeconds: number = 86400, limit: number = 10): Promise<{ username: string; count: number }[]> {
+        try {
+            const params = new URLSearchParams({
+                query: "_exists_:ns_username",
+                range: rangeSeconds.toString(),
+                filter: `streams:${this.streamId}`,
+                limit: "300",
+                fields: "ns_username"
+            });
+            const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
+            const res = await axios.get(url, {
+                httpsAgent,
+                headers: {
+                    Authorization: this.authHeader,
+                    Accept: "application/json",
+                    "X-Requested-By": "pane-o-glass"
+                },
+                timeout: 10000
+            });
+            const counts: Record<string, number> = {};
+            (res.data.messages || []).forEach((m: any) => {
+                const u = m.message.ns_username;
+                if (u && u !== "anonymous") {
+                    counts[u] = (counts[u] || 0) + 1;
+                }
+            });
+            return Object.entries(counts)
+                .map(([username, count]) => ({ username, count }))
+                .sort((a, b) => b.count - a.count)
+                .slice(0, limit);
+        } catch (err: any) {
+            console.error("[NetScaler Graylog] getTopUsers error:", err.message);
+            return [];
+        }
+    }
+
+    /**
+     * Quick query count helper using limit=1
+     */
+    async queryCount(query: string, rangeSeconds: number = 86400): Promise<number> {
+        try {
+            const params = new URLSearchParams({
+                query,
+                range: rangeSeconds.toString(),
+                filter: `streams:${this.streamId}`,
+                limit: "1"
+            });
+            const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
+            const res = await axios.get(url, {
+                httpsAgent,
+                headers: {
+                    Authorization: this.authHeader,
+                    Accept: "application/json",
+                    "X-Requested-By": "pane-o-glass"
+                },
+                timeout: 10000
+            });
+            return res.data.total_results || 0;
+        } catch (err: any) {
+            console.error(`[NetScaler Graylog] Count query failed for "${query}":`, err.message);
+            return 0;
+        }
+    }
+
+    /**
+     * Retrieves recent foreign connection events.
+     */
+    async getRecentForeignEvents(rangeSeconds: number = 86400, limit: number = 100): Promise<NetscalerForeignEvent[]> {
+        try {
+            const params = new URLSearchParams({
+                query: "NOT src_ip_country_code:US AND _exists_:src_ip_country_code",
+                range: rangeSeconds.toString(),
+                filter: `streams:${this.streamId}`,
+                limit: limit.toString(),
+                fields: "src_ip,src_ip_country_code,src_ip_city_name,vserver_ip,vserver_port,message,facility,level,timestamp",
+                sort: "timestamp:desc"
+            });
+            const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
+            const res = await axios.get(url, {
+                httpsAgent,
+                headers: {
+                    Authorization: this.authHeader,
+                    Accept: "application/json",
+                    "X-Requested-By": "pane-o-glass"
+                },
+                timeout: 15000
+            });
+
+            return (res.data.messages || []).map((m: any) => {
+                const msg = m.message;
+                return {
+                    timestamp: msg.timestamp,
+                    sourceIp: msg.src_ip || "",
+                    countryCode: msg.src_ip_country_code || "Unknown",
+                    cityName: msg.src_ip_city_name || "N/A",
+                    vserverIp: msg.vserver_ip || "",
+                    vserverPort: msg.vserver_port || "",
+                    message: msg.message || "",
+                    facility: msg.facility,
+                    level: msg.level
+                };
+            });
+        } catch (err: any) {
+            console.error("[NetScaler Graylog] getRecentForeignEvents error:", err.message);
+            return [];
+        }
+    }
+
+    /**
+     * Deep investigation search for a specific user, IP address, or session ID.
+     */
+    async investigate(searchTerm: string, rangeSeconds: number = 86400, limit: number = 150): Promise<NetscalerTimelineEvent[]> {
+        const cleanTerm = searchTerm.trim();
+        if (!cleanTerm) return [];
+
+        let query = cleanTerm;
+        // If it looks like an IP address, query src_ip specifically or broad
+        const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(cleanTerm);
+        if (isIp) {
+            query = `src_ip:${cleanTerm} OR "${cleanTerm}"`;
+        } else {
+            query = `ns_username:${cleanTerm} OR ns_session_id:${cleanTerm} OR ns_client_device_serial:${cleanTerm} OR "${cleanTerm}"`;
+        }
+
+        try {
+            const params = new URLSearchParams({
+                query,
+                range: rangeSeconds.toString(),
+                filter: `streams:${this.streamId}`,
+                limit: limit.toString(),
+                sort: "timestamp:desc"
+            });
+            const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
+            const res = await axios.get(url, {
+                httpsAgent,
+                headers: {
+                    Authorization: this.authHeader,
+                    Accept: "application/json",
+                    "X-Requested-By": "pane-o-glass"
+                },
+                timeout: 20000
+            });
+
+            const messages: any[] = res.data.messages || [];
+            return messages.map((m: any) => this.parseTimelineEvent(m.message));
+        } catch (err: any) {
+            console.error("[NetScaler Graylog] investigate error:", err.message);
+            throw err;
+        }
+    }
+
+    /**
+     * Helper to classify and extract fields from NetScaler messages.
+     */
+    private parseTimelineEvent(msg: any): NetscalerTimelineEvent {
+        const raw = msg.message || "";
+        const id = msg._id || Math.random().toString(36).substring(2);
+        const timestamp = msg.timestamp || new Date().toISOString();
+
+        let eventType: NetscalerTimelineEvent["eventType"] = "OTHER";
+        let username: string | undefined = msg.ns_username;
+        let clientIp: string | undefined = msg.src_ip;
+        let clientPort: string | undefined = msg.src_port;
+        let sessionId: string | undefined = msg.ns_session_id;
+        const deviceSerial: string | undefined = msg.ns_client_device_serial || (raw.match(/device_serial_number\s+(\d+)/i) || [])[1];
+        const action: string | undefined = msg.ns_action || msg.ns_event_type;
+        let target: string | undefined = msg.vserver_ip ? `${msg.vserver_ip}:${msg.vserver_port || "443"}` : undefined;
+
+        // Fallback extract Username if not in Graylog extracted field
+        if (!username) {
+            const userMatch = raw.match(/Username\s*=\s*([a-zA-Z0-9_\-\.@]+)/i) ||
+                              raw.match(/\buser\s+([a-zA-Z0-9_\-\.@]+)/i) ||
+                              raw.match(/Context\s+([a-zA-Z0-9_\-\.]+)(?:@|:)/i);
+            if (userMatch) {
+                username = userMatch[1].trim();
+            }
+        }
+
+        // Fallback extract Session ID if not in Graylog extracted field
+        if (!sessionId) {
+            const sessMatch = raw.match(/SessionId:\s*(\d+)/i) ||
+                              raw.match(/session-id-(\d+)/i) ||
+                              raw.match(/session_guid\s+([0-9a-fx]+)/i);
+            if (sessMatch) {
+                sessionId = sessMatch[1].trim();
+            }
+        }
+
+        // Extract Client IP from message if not extracted by Graylog
+        if (!clientIp) {
+            const ipMatch = raw.match(/Remote ip\s*=\s*([0-9\.]+)(?::(\d+))?/i) ||
+                            raw.match(/clientip\s+([0-9\.]+)/i) ||
+                            raw.match(/Source\s+([0-9\.]+)(?::(\d+))?/i);
+            if (ipMatch) {
+                clientIp = ipMatch[1];
+                if (ipMatch[2]) clientPort = ipMatch[2];
+            }
+        }
+
+        // Classify Event Type using extracted action or raw text
+        const actUpper = (action || "").toUpperCase();
+        if (actUpper.includes("CMD_EXECUTED") || raw.includes("CMD_EXECUTED") || raw.includes("API CMD")) {
+            eventType = "ADMIN_CMD";
+        } else if (raw.includes("response-200") || raw.includes("LOGIN") || (raw.includes("SSO") && !raw.includes("failed"))) {
+            eventType = "AUTH_SUCCESS";
+        } else if (raw.includes("FAILURE") || raw.includes("FAILED") || raw.includes("INVALID") || raw.includes("DENIED") || raw.includes("type 5") || raw.includes("Failed")) {
+            eventType = "AUTH_FAILURE";
+        } else if (actUpper.includes("HTTPREQUEST") || raw.includes("HTTPREQUEST") || raw.includes("HTTP")) {
+            eventType = "HTTP_REQUEST";
+        } else if (actUpper.includes("CHANNEL_UPDATE") || actUpper.includes("NETWORK_UPDATE") || raw.includes("ICA") || raw.includes("HDX") || raw.includes("CHANNEL_UPDATE")) {
+            eventType = "ICA_SESSION";
+        } else if (actUpper.includes("CONN_TERMINATE") || actUpper.includes("CONN_DELINK") || actUpper.includes("LOGOUT") || raw.includes("CONN_TERMINATE") || raw.includes("CONN_DELINK") || raw.includes("LOGOUT")) {
+            eventType = "CONN_TERMINATE";
+        }
+
+        const httpMethod = msg.ns_http_method || (raw.match(/:\s+(GET|POST|HEAD|PUT|DELETE)\s+/i) || [])[1];
+        const httpPath = msg.ns_http_path || (raw.match(/:\s+(?:GET|POST|HEAD|PUT|DELETE)\s+([^\s\?]+)/i) || [])[1];
+
+        return {
+            id,
+            timestamp,
+            eventType,
+            username,
+            clientIp,
+            clientPort,
+            countryCode: msg.src_ip_country_code,
+            cityName: msg.src_ip_city_name,
+            sessionId,
+            deviceSerial,
+            action,
+            httpMethod,
+            httpPath,
+            target,
+            rawMessage: raw
+        };
+    }
+
+    /**
+     * Executes parallel hunting scans across stream logs for known and custom Citrix IOC rules.
+     */
+    async scanIocs(
+        rules: NetscalerIocRule[] = DEFAULT_CITRIX_IOC_RULES,
+        rangeSeconds: number = 86400
+    ): Promise<NetscalerIocFinding[]> {
+        const scanPromises = rules.map(async (rule) => {
+            try {
+                const params = new URLSearchParams({
+                    query: rule.query,
+                    range: rangeSeconds.toString(),
+                    filter: `streams:${this.streamId}`,
+                    limit: "5",
+                    fields: "src_ip,src_ip_country_code,ns_username,ns_http_method,ns_http_path,message,timestamp",
+                    sort: "timestamp:desc"
+                });
+                const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
+                const res = await axios.get(url, {
+                    httpsAgent,
+                    headers: {
+                        Authorization: this.authHeader,
+                        Accept: "application/json",
+                        "X-Requested-By": "pane-o-glass"
+                    },
+                    timeout: 15000
+                });
+
+                const total = res.data.total_results || 0;
+                const sampleEvents = (res.data.messages || []).map((m: any) => ({
+                    timestamp: m.message.timestamp,
+                    sourceIp: m.message.src_ip,
+                    username: m.message.ns_username,
+                    httpMethod: m.message.ns_http_method,
+                    httpPath: m.message.ns_http_path,
+                    countryCode: m.message.src_ip_country_code,
+                    message: m.message.message
+                }));
+
+                return {
+                    rule,
+                    matchCount: total,
+                    sampleEvents
+                };
+            } catch (err: any) {
+                console.error(`[NetScaler Graylog] IOC scan error for "${rule.name}":`, err.message);
+                return {
+                    rule,
+                    matchCount: 0,
+                    sampleEvents: []
+                };
+            }
+        });
+
+        return await Promise.all(scanPromises);
+    }
+}
