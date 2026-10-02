@@ -1,6 +1,6 @@
 {
   "name": "pane-o-glass",
-  "version": "6.6.63",
+  "version": "6.6.64",
   "private": true,
   "scripts": {
     "dev": "next dev",
