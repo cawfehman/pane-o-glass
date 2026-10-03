@@ -1263,7 +1263,6 @@ export default function NetscalerDashboardClient() {
                         </div>
                     </div>
                 )}
-            </div>
 
             {/* QUICK PERIMETER SHUN MODAL */}
             {shunModalData && (
