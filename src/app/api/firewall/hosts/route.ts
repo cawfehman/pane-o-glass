@@ -27,10 +27,13 @@ export async function GET() {
             }, { status: 500 });
         }
 
-        const hosts = firewalls.map((fw: any) => ({
-            id: fw.id,
-            name: fw.name || fw.ip
-        }));
+        const hosts = [
+            { id: "all", name: "⚡ All Firewalls (Perimeter Fleet)" },
+            ...firewalls.map((fw: any) => ({
+                id: fw.id,
+                name: fw.name || fw.ip
+            }))
+        ];
 
         return NextResponse.json({ hosts });
     } catch (error) {

@@ -74,6 +74,54 @@ export default function NetscalerDashboardClient() {
     const [newRuleQuery, setNewRuleQuery] = useState("");
     const [newRuleSeverity, setNewRuleSeverity] = useState<"CRITICAL" | "HIGH" | "MEDIUM">("HIGH");
 
+    // Quick Perimeter Shun Modal State
+    const [shunModalData, setShunModalData] = useState<{
+        ip: string;
+        country?: string;
+        city?: string;
+        targetHost: string;
+        loading: boolean;
+        result: any | null;
+        error: string | null;
+    } | null>(null);
+    const [firewallHosts, setFirewallHosts] = useState<{ id: string; name: string }[]>([]);
+
+    useEffect(() => {
+        fetch("/api/firewall/hosts")
+            .then(res => res.json())
+            .then(data => {
+                if (data.hosts) setFirewallHosts(data.hosts);
+            })
+            .catch(() => {});
+    }, []);
+
+    const isPrivateIpCheck = (ip: string) => {
+        return /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.)/.test(ip);
+    };
+
+    const executeQuickShun = async () => {
+        if (!shunModalData) return;
+        setShunModalData(prev => prev ? { ...prev, loading: true, error: null, result: null } : null);
+        try {
+            const res = await fetch("/api/firewall/shun", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    ipAddress: shunModalData.ip,
+                    action: "add",
+                    targetHost: shunModalData.targetHost
+                })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || "Failed to execute shun on firewalls.");
+            }
+            setShunModalData(prev => prev ? { ...prev, loading: false, result: data } : null);
+        } catch (err: any) {
+            setShunModalData(prev => prev ? { ...prev, loading: false, error: err.message || "Execution error" } : null);
+        }
+    };
+
     // Load initial stats or respond to URL query params
     useEffect(() => {
         const queryParam = searchParams.get("query");
@@ -649,14 +697,22 @@ export default function NetscalerDashboardClient() {
                                                         >
                                                             Trace
                                                         </button>
-                                                        {/* Firewall Shun Pivot */}
-                                                        <Link
-                                                            href={`/queries/firewall?ip=${encodeURIComponent(ev.sourceIp)}`}
+                                                        {/* Firewall Shun Action */}
+                                                        <button
+                                                            onClick={() => setShunModalData({
+                                                                ip: ev.sourceIp,
+                                                                country: ev.countryCode,
+                                                                city: ev.cityName,
+                                                                targetHost: firewallHosts.length > 0 ? firewallHosts[0].id : "all",
+                                                                loading: false,
+                                                                result: null,
+                                                                error: null
+                                                            })}
                                                             className="px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs transition-colors flex items-center gap-1"
-                                                            title="Check or Add Cisco Shun"
+                                                            title="Apply Perimeter Shun on Cisco Firewalls"
                                                         >
                                                             <Shield size={11} /> Shun
-                                                        </Link>
+                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -1173,29 +1229,186 @@ export default function NetscalerDashboardClient() {
                                                                             >
                                                                                 Trace IP
                                                                             </button>
-                                                                            <Link
-                                                                                href={`/queries/firewall?ip=${encodeURIComponent(ev.sourceIp)}`}
-                                                                                className="px-2 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] flex items-center gap-1 transition-colors"
-                                                                            >
-                                                                                <Shield size={10} /> Shun IP
-                                                                            </Link>
-                                                                        </>
-                                                                    )}
+                                                                                <button
+                                                                                    onClick={() => setShunModalData({
+                                                                                        ip: ev.sourceIp!,
+                                                                                        country: ev.countryCode,
+                                                                                        targetHost: firewallHosts.length > 0 ? firewallHosts[0].id : "all",
+                                                                                        loading: false,
+                                                                                        result: null,
+                                                                                        error: null
+                                                                                    })}
+                                                                                    className="px-2 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] flex items-center gap-1 transition-colors"
+                                                                                    title="Apply Perimeter Shun on Cisco Firewalls"
+                                                                                >
+                                                                                    <Shield size={10} /> Shun IP
+                                                                                </button>
+                                                                            </>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="font-mono text-slate-300 bg-slate-900/60 p-2 rounded border border-slate-800/60 break-all select-all text-[11px]">
+                                                                    {ev.message}
                                                                 </div>
                                                             </div>
-
-                                                            <div className="font-mono text-slate-300 bg-slate-900/60 p-2 rounded border border-slate-800/60 break-all select-all text-[11px]">
-                                                                {ev.message}
-                                                            </div>
-                                                        </div>
-                                                    ))}
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* QUICK PERIMETER SHUN MODAL */}
+            {shunModalData && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+                    <div className="relative w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-6 flex flex-col gap-5 text-slate-200">
+                        {/* Header */}
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400">
+                                    <Shield size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-semibold text-white">Perimeter Firewall Shun</h3>
+                                    <p className="text-xs text-slate-400">Apply immediate block on Cisco ASA / Firepower firewalls</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShunModalData(null)}
+                                disabled={shunModalData.loading}
+                                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Target Information */}
+                        <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 flex flex-col gap-2">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs text-slate-400">Target Source IP</span>
+                                <span className="font-mono text-base font-bold text-rose-400">{shunModalData.ip}</span>
+                            </div>
+                            {(shunModalData.country || shunModalData.city) && (
+                                <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/60">
+                                    <span>Geolocation</span>
+                                    <span className="font-mono text-slate-300">
+                                        {shunModalData.country} {shunModalData.city && shunModalData.city !== "N/A" ? `• ${shunModalData.city}` : ""}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Target Firewall Selector */}
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-medium text-slate-300">Target Firewall Node</label>
+                            <select
+                                value={shunModalData.targetHost}
+                                onChange={(e) => setShunModalData({ ...shunModalData, targetHost: e.target.value })}
+                                disabled={shunModalData.loading || !!shunModalData.result}
+                                className="w-full p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-slate-200 text-xs focus:outline-none focus:border-rose-500 disabled:opacity-50"
+                            >
+                                {firewallHosts.map(h => (
+                                    <option key={h.id} value={h.id}>{h.name}</option>
+                                ))}
+                            </select>
+                            <span className="text-[11px] text-slate-500">
+                                {shunModalData.targetHost === "all"
+                                    ? "Will push perimeter shun across all primary and secondary firewall pairs simultaneously."
+                                    : "Will execute shun on the selected firewall node."}
+                            </span>
+                        </div>
+
+                        {/* Safety Warning */}
+                        {isPrivateIpCheck(shunModalData.ip) ? (
+                            <div className="p-3 rounded-lg bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-center gap-2">
+                                <AlertTriangle size={16} className="shrink-0 text-red-400" />
+                                <span>Safety Protection: Internal / RFC1918 private IP addresses cannot be shunned.</span>
+                            </div>
+                        ) : !shunModalData.result ? (
+                            <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-800/50 text-amber-300 text-xs flex items-start gap-2">
+                                <AlertTriangle size={16} className="shrink-0 text-amber-400 mt-0.5" />
+                                <span>Executing this shun will drop all active connections from this IP and block new traffic at the perimeter edge. Action is audited.</span>
+                            </div>
+                        ) : null}
+
+                        {/* Error Message */}
+                        {shunModalData.error && (
+                            <div className="p-3 rounded-lg bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-start gap-2">
+                                <AlertTriangle size={16} className="shrink-0 text-red-400 mt-0.5" />
+                                <span>{shunModalData.error}</span>
+                            </div>
                         )}
+
+                        {/* Result Display */}
+                        {shunModalData.result && (
+                            <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-800/60 text-emerald-200 text-xs flex flex-col gap-2">
+                                <div className="flex items-center gap-2 font-semibold">
+                                    <CheckCircle2 size={16} className="text-emerald-400" />
+                                    <span>Shun Successfully Applied on {shunModalData.result.target}</span>
+                                </div>
+                                {shunModalData.result.stdout && (
+                                    <pre className="font-mono text-[11px] bg-slate-950/80 p-2 rounded border border-slate-800/80 max-h-32 overflow-y-auto text-slate-300 whitespace-pre-wrap">
+                                        {shunModalData.result.stdout}
+                                    </pre>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-800">
+                            <Link
+                                href={`/queries/firewall?ip=${encodeURIComponent(shunModalData.ip)}`}
+                                target="_blank"
+                                className="text-xs text-slate-400 hover:text-teal-400 flex items-center gap-1 transition-colors"
+                            >
+                                <ExternalLink size={12} /> Open in Firewall Console
+                            </Link>
+
+                            <div className="flex items-center gap-2">
+                                {shunModalData.result ? (
+                                    <button
+                                        onClick={() => setShunModalData(null)}
+                                        className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition-colors"
+                                    >
+                                        Close
+                                    </button>
+                                ) : (
+                                    <>
+                                        <button
+                                            onClick={() => setShunModalData(null)}
+                                            disabled={shunModalData.loading}
+                                            className="px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 text-xs transition-colors disabled:opacity-50"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={executeQuickShun}
+                                            disabled={shunModalData.loading || isPrivateIpCheck(shunModalData.ip)}
+                                            className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-all shadow-md shadow-rose-900/30 flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
+                                        >
+                                            {shunModalData.loading ? (
+                                                <>
+                                                    <RefreshCw size={13} className="animate-spin" />
+                                                    Applying Shun...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Shield size={13} />
+                                                    Apply Perimeter Shun
+                                                </>
+                                            )}
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

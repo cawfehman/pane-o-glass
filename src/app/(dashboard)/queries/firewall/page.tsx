@@ -276,6 +276,16 @@ export default function CiscoFirewallPage() {
             }
         };
 
+        // Check URL parameters for pre-filling IP (e.g. from NetScaler or IronPort pivots)
+        if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            const ipParam = params.get("ip") || params.get("shunIp");
+            if (ipParam) {
+                setIpAddress(ipParam);
+                setActiveTab("manual");
+            }
+        }
+
         fetchHosts();
         fetchHistory();
         fetchGuardianStatus();
@@ -285,7 +295,7 @@ export default function CiscoFirewallPage() {
         return () => clearInterval(interval);
     }, []);
 
-    const handleAction = async (action: "show" | "remove") => {
+    const handleAction = async (action: "show" | "remove" | "add") => {
         setActionError("");
         setActionResult(null);
 
@@ -294,9 +304,13 @@ export default function CiscoFirewallPage() {
             return;
         }
 
+        const hostName = availableHosts.find(h => h.id === targetHost)?.name || targetHost;
+
         if (action === "remove") {
-            const hostName = availableHosts.find(h => h.id === targetHost)?.name || targetHost;
             const confirmed = window.confirm(`Are you sure you want to remove the shun for ${ipAddress} on ${hostName}?`);
+            if (!confirmed) return;
+        } else if (action === "add") {
+            const confirmed = window.confirm(`⚠️ Are you sure you want to SHUN and block IP ${ipAddress} on ${hostName}?\n\nThis will immediately drop all incoming and outgoing connections for this IP across perimeter firewalls.`);
             if (!confirmed) return;
         }
 
@@ -314,8 +328,8 @@ export default function CiscoFirewallPage() {
                 try {
                     const json = JSON.parse(text);
                     throw new Error(json.error || "Execution failed");
-                } catch (e) {
-                    throw new Error(text || "Execution failed");
+                } catch (e: any) {
+                    throw new Error(e.message && e.message !== "Execution failed" ? e.message : (text || "Execution failed"));
                 }
             }
 
@@ -334,7 +348,7 @@ export default function CiscoFirewallPage() {
             <div className="shrink-0 flex flex-col gap-4">
                 <QueryHeader
                     title="Cisco Firewall Utilities"
-                    description="Query or remove IP address shuns across your configured Cisco devices."
+                    description="Query, apply, or remove IP address shuns across your configured Cisco perimeter devices."
                     toolId="firewall"
                     icon={<Shield />}
                     actions={
@@ -457,10 +471,10 @@ export default function CiscoFirewallPage() {
                         )}
 
                         {!loadingHosts && !hostsError && (
-                            <div className="flex gap-2.5">
+                            <div className="flex gap-2.5 flex-wrap">
                                 <button
                                     type="button"
-                                    className="btn-primary flex-1 bg-bg-surface-hover border-border-color text-text-primary"
+                                    className="btn-primary flex-1 min-w-[120px] bg-bg-surface-hover border-border-color text-text-primary"
                                     onClick={() => handleAction("show")}
                                     disabled={actionLoading || !ipAddress}
                                 >
@@ -468,7 +482,16 @@ export default function CiscoFirewallPage() {
                                 </button>
                                 <button
                                     type="button"
-                                    className="btn-primary flex-1 bg-red-500 border-red-500"
+                                    className="btn-primary flex-1 min-w-[120px] bg-amber-600 hover:bg-amber-700 border-amber-600 text-white font-semibold"
+                                    onClick={() => handleAction("add")}
+                                    disabled={actionLoading || !ipAddress}
+                                    title="Issue 'shun <IP>' command on target firewall"
+                                >
+                                    {actionLoading ? "Processing..." : "Apply Shun"}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn-primary flex-1 min-w-[120px] bg-red-600 hover:bg-red-700 border-red-600 text-white"
                                     onClick={() => handleAction("remove")}
                                     disabled={actionLoading || !ipAddress}
                                 >
