@@ -66,12 +66,25 @@ export default function NetscalerDashboardClient() {
         if (typeof window !== "undefined") {
             const saved = localStorage.getItem("pane_netscaler_custom_iocs");
             if (saved) {
-                try { return JSON.parse(saved); } catch (e) {}
+                try {
+                    const parsed: NetscalerIocRule[] = JSON.parse(saved);
+                    const ruleMap = new Map<string, NetscalerIocRule>();
+                    DEFAULT_CITRIX_IOC_RULES.forEach(r => ruleMap.set(r.id, r));
+                    parsed.forEach(r => {
+                        if (r.category === "CUSTOM") {
+                            ruleMap.set(r.id, r);
+                        } else if (!ruleMap.has(r.id)) {
+                            ruleMap.set(r.id, r);
+                        }
+                    });
+                    return Array.from(ruleMap.values());
+                } catch (e) {}
             }
         }
         return DEFAULT_CITRIX_IOC_RULES;
     });
     const [iocFindings, setIocFindings] = useState<NetscalerIocFinding[]>([]);
+    const [iocFilterCve, setIocFilterCve] = useState<string>("ALL");
     const [iocLoading, setIocLoading] = useState(false);
     const [iocError, setIocError] = useState<string | null>(null);
     const [isAddRuleOpen, setIsAddRuleOpen] = useState(false);
@@ -297,6 +310,17 @@ export default function NetscalerDashboardClient() {
             ev.cityName.toLowerCase().includes(q) ||
             ev.message.toLowerCase().includes(q)
         );
+    });
+
+    const filteredIocFindings = iocFindings.filter(finding => {
+        if (iocFilterCve === "ALL") return true;
+        if (iocFilterCve === "2026") {
+            return finding.rule.cve === "CVE-2026-88771" || finding.rule.cve === "CVE-2026-88772" || finding.rule.id.includes("2026");
+        }
+        if (iocFilterCve === "4966") return finding.rule.cve === "CVE-2023-4966";
+        if (iocFilterCve === "3519") return finding.rule.cve === "CVE-2023-3519";
+        if (iocFilterCve === "CUSTOM") return finding.rule.category === "CUSTOM";
+        return true;
     });
 
     return (
@@ -1343,29 +1367,42 @@ export default function NetscalerDashboardClient() {
                                     Citrix Zero-Day Threat Hunter & IOC Scanner
                                 </h3>
                                 <span className="px-2 py-0.5 text-[10px] rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-mono font-semibold">
-                                    CVE-2023-4966 • CVE-2023-3519 • CVE-2026-88771
+                                    ⚡ CVE-2026-88771 • CVE-2026-88772 (CISA KEV Sigma) • CVE-2023-4966
                                 </span>
                             </div>
                             <p className="text-xs text-slate-400 max-w-3xl">
-                                Audits the NetScaler stream for memory bleed token theft, unauthenticated webshell injection, DTLS memory overflows, and untrusted administrative commands. Easily extendable with custom IOC rules for future zero-days.
+                                Audits the NetScaler stream against official CISA Sigma rules for zero-day command injection (Pitboss supervisor anomalies & shell evasion in CVE-2026-88771), DTLS memory overflows (CVE-2026-88772), WHIPSHOT/SLAPSHOT implants, and Citrix Bleed token theft.
                             </p>
                         </div>
 
                         <div className="flex items-center gap-2">
                             <button
+                                onClick={() => {
+                                    setIocFilterCve("2026");
+                                    const cisaRules = iocRules.filter(r => r.cve === "CVE-2026-88771" || r.cve === "CVE-2026-88772" || r.id.includes("2026"));
+                                    runIocScan(cisaRules.length > 0 ? cisaRules : iocRules, timeframe);
+                                }}
+                                disabled={iocLoading}
+                                className="px-3.5 py-2 rounded-lg bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border border-rose-800/80 text-xs font-semibold transition-all shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+                                title="Run specialized hunt for CISA CVE-2026-88771 and CVE-2026-88772 signatures"
+                            >
+                                <Zap size={14} className="text-rose-400" />
+                                {iocLoading ? "Hunting..." : "Hunt CISA CVE-2026-88771/72"}
+                            </button>
+                            <button
                                 onClick={() => setIsAddRuleOpen(!isAddRuleOpen)}
                                 className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-all flex items-center gap-1.5"
                             >
                                 <Plus size={14} className="text-teal-400" />
-                                Add Custom 0-Day Rule
+                                Add Custom Rule
                             </button>
                             <button
-                                onClick={() => runIocScan()}
+                                onClick={() => runIocScan(iocRules, timeframe)}
                                 disabled={iocLoading}
                                 className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-all shadow-sm disabled:opacity-50 flex items-center gap-1.5"
                             >
                                 <RefreshCw size={14} className={iocLoading ? "animate-spin" : ""} />
-                                {iocLoading ? "Scanning Stream..." : "Run Threat Scan"}
+                                {iocLoading ? "Scanning Stream..." : "Run All Threat Scans"}
                             </button>
                         </div>
                     </div>
@@ -1508,14 +1545,81 @@ export default function NetscalerDashboardClient() {
                         </div>
                     )}
 
+                    {/* Rule & CVE Scope Filter Tabs */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5 mr-1">
+                                <Filter size={13} className="text-teal-400" /> Filter Signatures:
+                            </span>
+                            <button
+                                onClick={() => setIocFilterCve("ALL")}
+                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                                    iocFilterCve === "ALL"
+                                        ? "bg-slate-800 text-teal-300 font-semibold shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                All Rules ({iocRules.length})
+                            </button>
+                            <button
+                                onClick={() => setIocFilterCve("2026")}
+                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                                    iocFilterCve === "2026"
+                                        ? "bg-rose-500/20 text-rose-300 font-semibold border border-rose-500/40 shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                ⚡ CVE-2026-88771/72 (Latest CISA KEV)
+                            </button>
+                            <button
+                                onClick={() => setIocFilterCve("4966")}
+                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                                    iocFilterCve === "4966"
+                                        ? "bg-slate-800 text-purple-300 font-semibold shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                CVE-2023-4966 (Bleed)
+                            </button>
+                            <button
+                                onClick={() => setIocFilterCve("3519")}
+                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                                    iocFilterCve === "3519"
+                                        ? "bg-slate-800 text-amber-300 font-semibold shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                CVE-2023-3519 (Webshell/RCE)
+                            </button>
+                            <button
+                                onClick={() => setIocFilterCve("CUSTOM")}
+                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                                    iocFilterCve === "CUSTOM"
+                                        ? "bg-slate-800 text-indigo-300 font-semibold shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                Custom ({iocRules.filter(r => r.category === "CUSTOM").length})
+                            </button>
+                        </div>
+
+                        <div className="text-[11px] text-slate-500 font-mono">
+                            {filteredIocFindings.length} of {iocRules.length} rules visible
+                        </div>
+                    </div>
+
                     {/* Rule Cards & Findings */}
                     <div className="space-y-4">
                         {iocLoading && iocFindings.length === 0 ? (
                             <div className="p-12 text-center text-slate-500 bg-slate-900/40 rounded-xl border border-slate-800 text-xs">
                                 Scanning NetScaler stream for zero-day threat patterns...
                             </div>
+                        ) : filteredIocFindings.length === 0 ? (
+                            <div className="p-12 text-center text-slate-500 bg-slate-900/40 rounded-xl border border-slate-800 text-xs">
+                                No IOC signatures match the selected category filter.
+                            </div>
                         ) : (
-                            iocFindings.map((finding) => {
+                            filteredIocFindings.map((finding) => {
                                 const hasMatches = finding.matchCount > 0;
                                 return (
                                     <div

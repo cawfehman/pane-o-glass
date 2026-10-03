@@ -91,6 +91,42 @@ export interface NetscalerIocFinding {
 
 export const DEFAULT_CITRIX_IOC_RULES: NetscalerIocRule[] = [
     {
+        id: "cve-2026-88771-pitboss",
+        name: "CISA Sigma: NetScaler Pitboss Crash & Anomaly (CVE-2026-88771)",
+        description: "Detects abnormal Pitboss supervisor crashes and NSPPE deaths triggered by pre-auth command injection (CISA KEV / ByteRay SIGMA rule).",
+        severity: "CRITICAL",
+        category: "RCE_WEBSHELL",
+        cve: "CVE-2026-88771",
+        query: 'message:"pitboss" AND (message:"missed too many heartbeats" OR message:"unexpectedly died" OR message:"exited on signal" OR message:"signal 11" OR message:"signal 6" OR message:"abnormal exit" OR message:"ns_monuploadd_err.pl")'
+    },
+    {
+        id: "cve-2026-88771-cmd-injection",
+        name: "CISA Sigma: NetScaler Command Injection & Shell Evasion (CVE-2026-88771)",
+        description: "Monitors for shell metacharacters, evasion techniques (${IFS}, base64, b64decode, INDEX:), and unexpected script execution attempting to exploit CVE-2026-88771.",
+        severity: "CRITICAL",
+        category: "RCE_WEBSHELL",
+        cve: "CVE-2026-88771",
+        query: 'message:"${IFS}" OR message:"b64decode" OR message:"INDEX:" OR (message:"base64" AND (message:"decode" OR message:"-d")) OR message:"ns_monuploadd_err.pl" OR (message:"pitboss" AND (message:"/bin/sh" OR message:"/bin/bash"))'
+    },
+    {
+        id: "cve-2026-88772-dtls-overflow",
+        name: "CISA Sigma: NetScaler DTLS Memory Overflow & Crash (CVE-2026-88772)",
+        description: "Detects packet processing engine memory faults, segmentation faults, and core dumps triggered by DTLS datagram overflows on VPN virtual servers.",
+        severity: "CRITICAL",
+        category: "DTLS_CRASH",
+        cve: "CVE-2026-88772",
+        query: '(message:"DTLS" OR message:"dtls") AND (message:"crash" OR message:"overflow" OR message:"Segmentation fault" OR message:"core dumped" OR message:"failed to decrypt" OR message:"record length") OR (message:"NSPPE crash" AND (message:"DTLS" OR message:"dtls"))'
+    },
+    {
+        id: "cve-2026-88771-whipshot-slapshot",
+        name: "Citrix Post-Exploit Implants: WHIPSHOT & SLAPSHOT (CVE-2026-88771/72)",
+        description: "Hunts for post-exploitation backdoors observed in CVE-2026-88771/72 intrusions, including WHIPSHOT PHP webshells and SLAPSHOT Python network tunnelers.",
+        severity: "CRITICAL",
+        category: "RCE_WEBSHELL",
+        cve: "CVE-2026-88771",
+        query: '(message:".php" AND (message:"/vpn/" OR message:"/ns_gui/" OR message:"/epa/" OR message:"WHIPSHOT" OR message:"eval(" OR message:"base64_decode")) OR (message:"SLAPSHOT" OR (message:"python" AND (message:"socket" OR message:"connect") AND message:"/var/vpn/")) OR (message:"httpd.conf" AND message:"AddType application/x-httpd-php")'
+    },
+    {
         id: "cve-2023-4966-bleed",
         name: "Citrix Bleed Sensitive Memory Leak (CVE-2023-4966)",
         description: "Checks for unauthenticated OpenID endpoint access used to bleed session tokens from NetScaler memory.",
@@ -107,15 +143,6 @@ export const DEFAULT_CITRIX_IOC_RULES: NetscalerIocRule[] = [
         category: "RCE_WEBSHELL",
         cve: "CVE-2023-3519",
         query: 'ns_http_path:"*gwtest*" OR ns_http_path:"*.php*" OR ns_http_path:"*..*" OR message:"/gwtest/formssso" OR message:"flApp.xml" OR (message:"/vpn/" AND (message:".php" OR message:".."))'
-    },
-    {
-        id: "cve-2026-88771-dtls",
-        name: "Citrix Gateway DTLS Overflow & Daemon Crash (CVE-2026-88771/72)",
-        description: "Flags packet engine core dumps or crashes associated with memory corruption in DTLS processing.",
-        severity: "CRITICAL",
-        category: "DTLS_CRASH",
-        cve: "CVE-2026-88771",
-        query: 'message:"NSPPE crash" OR message:"Segmentation fault" OR message:"core dumped"'
     },
     {
         id: "cve-2023-6548-nitro",
