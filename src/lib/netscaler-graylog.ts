@@ -461,6 +461,73 @@ export class NetscalerGraylogClient {
     }
 
     /**
+     * Quick query count helper using limit=1
+     */
+    async queryCount(query: string, rangeSeconds: number = 86400): Promise<number> {
+        try {
+            const params = new URLSearchParams({
+                query,
+                range: rangeSeconds.toString(),
+                filter: `streams:${this.streamId}`,
+                limit: "1"
+            });
+            const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
+            const res = await axios.get(url, {
+                httpsAgent,
+                headers: {
+                    Authorization: this.authHeader,
+                    Accept: "application/json",
+                    "X-Requested-By": "pane-o-glass"
+                },
+                timeout: 10000
+            });
+            return res.data.total_results || 0;
+        } catch (err: any) {
+            console.error(`[NetScaler Graylog] Count query failed for "${query}":`, err.message);
+            return 0;
+        }
+    }
+
+    /**
+     * Retrieves top active Citrix users from extracted ns_username field.
+     */
+    async getTopUsers(rangeSeconds: number = 86400, limit: number = 10): Promise<{ username: string; count: number }[]> {
+        try {
+            const params = new URLSearchParams({
+                query: "_exists_:ns_username",
+                range: rangeSeconds.toString(),
+                filter: `streams:${this.streamId}`,
+                limit: "300",
+                fields: "ns_username"
+            });
+            const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
+            const res = await axios.get(url, {
+                httpsAgent,
+                headers: {
+                    Authorization: this.authHeader,
+                    Accept: "application/json",
+                    "X-Requested-By": "pane-o-glass"
+                },
+                timeout: 10000
+            });
+            const counts: Record<string, number> = {};
+            (res.data.messages || []).forEach((m: any) => {
+                const u = m.message.ns_username;
+                if (u && u !== "anonymous") {
+                    counts[u] = (counts[u] || 0) + 1;
+                }
+            });
+            return Object.entries(counts)
+                .map(([username, count]) => ({ username, count }))
+                .sort((a, b) => b.count - a.count)
+                .slice(0, limit);
+        } catch (err: any) {
+            console.error("[NetScaler Graylog] getTopUsers error:", err.message);
+            return [];
+        }
+    }
+
+    /**
      * Retrieves recent authentication failure events.
      */
     async getRecentFailureEvents(rangeSeconds: number = 86400, limit: number = 250): Promise<NetscalerGeoEvent[]> {
