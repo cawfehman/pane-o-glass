@@ -18,9 +18,10 @@ import {
 } from "@/lib/netscaler-graylog";
 
 const COUNTRY_COLORS: Record<string, string> = {
+    US: "#3b82f6",
     DE: "#6366f1",
     BR: "#10b981",
-    CA: "#3b82f6",
+    CA: "#0ea5e9",
     AU: "#f59e0b",
     MX: "#ec4899",
     GB: "#8b5cf6",
@@ -43,6 +44,10 @@ export default function NetscalerDashboardClient() {
 
     // Active tab
     const [activeTab, setActiveTab] = useState<"overview" | "foreign" | "investigate" | "iocs">("overview");
+
+    // Geo Access & Location Intel state
+    const [geoScope, setGeoScope] = useState<"all" | "foreign" | "us">("all");
+    const [geoBreakdownView, setGeoBreakdownView] = useState<"countries" | "us_cities" | "foreign">("countries");
 
     // Investigation state
     const [searchQuery, setSearchQuery] = useState("");
@@ -277,7 +282,11 @@ export default function NetscalerDashboardClient() {
         return ev.eventType === timelineFilter;
     });
 
-    const filteredForeignEvents = (stats?.recentForeignEvents || []).filter(ev => {
+    const allGeoEvents = stats?.recentGeoEvents || stats?.recentForeignEvents || [];
+    const filteredGeoEvents = allGeoEvents.filter(ev => {
+        if (geoScope === "foreign" && ev.countryCode === "US") return false;
+        if (geoScope === "us" && ev.countryCode !== "US") return false;
+
         if (!foreignFilter.trim()) return true;
         const q = foreignFilter.toLowerCase();
         return (
@@ -314,10 +323,10 @@ export default function NetscalerDashboardClient() {
                         }`}
                     >
                         <span className="flex items-center gap-2">
-                            <Globe size={16} /> Foreign Geo Access
-                            {stats?.foreignTrafficCount ? (
+                            <Globe size={16} /> Geo Access & Location Intel
+                            {stats?.geoTrafficCount ? (
                                 <span className="px-1.5 py-0.5 text-xs rounded-full bg-amber-500/30 text-amber-200 font-mono">
-                                    {stats.foreignTrafficCount > 1000 ? `${(stats.foreignTrafficCount / 1000).toFixed(1)}k` : stats.foreignTrafficCount}
+                                    {stats.geoTrafficCount > 1000 ? `${(stats.geoTrafficCount / 1000).toFixed(1)}k` : stats.geoTrafficCount}
                                 </span>
                             ) : null}
                         </span>
@@ -449,15 +458,18 @@ export default function NetscalerDashboardClient() {
                             <div className="text-xs text-slate-500 mt-1">Citrix app & desktop sessions</div>
                         </div>
 
-                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
-                            <div className="flex items-center justify-between text-slate-400 mb-2">
-                                <span className="text-xs font-medium uppercase tracking-wider">Foreign Access</span>
-                                <Globe size={17} className="text-rose-400" />
+                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">
+                            <div className="flex items-center justify-between text-slate-400 mb-1">
+                                <span className="text-xs font-medium uppercase tracking-wider">Geo Access Intel</span>
+                                <Globe size={17} className="text-blue-400" />
                             </div>
-                            <div className="text-2xl font-bold font-mono text-rose-300">
-                                {loading ? "..." : (stats?.foreignTrafficCount ?? 0).toLocaleString()}
+                            <div className="text-2xl font-bold font-mono text-blue-300">
+                                {loading ? "..." : (stats?.geoTrafficCount ?? 0).toLocaleString()}
                             </div>
-                            <div className="text-xs text-slate-500 mt-1">Non-US connection points</div>
+                            <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+                                <span>🇺🇸 US: {(stats?.usTrafficCount ?? 0).toLocaleString()}</span>
+                                <span>🌐 Non-US: {(stats?.foreignTrafficCount ?? 0).toLocaleString()}</span>
+                            </div>
                         </div>
                     </div>
 
@@ -519,53 +531,154 @@ export default function NetscalerDashboardClient() {
                             </div>
                         </div>
 
-                        {/* Top Foreign Source Countries */}
+                        {/* Location Intelligence Breakdown */}
                         <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col">
-                            <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center justify-between mb-3">
                                 <div>
-                                    <h3 className="text-sm font-semibold text-slate-200">Foreign Access Breakdown</h3>
-                                    <p className="text-xs text-slate-400">Top non-US countries connected</p>
+                                    <h3 className="text-sm font-semibold text-slate-200">Location Intelligence</h3>
+                                    <p className="text-xs text-slate-400">Domestic & global access points</p>
                                 </div>
                                 <button 
                                     onClick={() => setActiveTab("foreign")}
                                     className="text-xs text-teal-400 hover:underline flex items-center gap-1"
                                 >
-                                    View all <ChevronRight size={14} />
+                                    Explore all <ChevronRight size={14} />
+                                </button>
+                            </div>
+
+                            {/* View selector pills */}
+                            <div className="flex items-center gap-1.5 p-1 rounded-lg bg-slate-950/70 border border-slate-800 mb-3 text-[11px]">
+                                <button
+                                    onClick={() => setGeoBreakdownView("countries")}
+                                    className={`px-2 py-0.5 rounded transition-all ${
+                                        geoBreakdownView === "countries"
+                                            ? "bg-slate-800 text-teal-300 font-semibold shadow-sm"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    All Countries
+                                </button>
+                                <button
+                                    onClick={() => setGeoBreakdownView("us_cities")}
+                                    className={`px-2 py-0.5 rounded transition-all ${
+                                        geoBreakdownView === "us_cities"
+                                            ? "bg-slate-800 text-blue-300 font-semibold shadow-sm"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    Top US Cities
+                                </button>
+                                <button
+                                    onClick={() => setGeoBreakdownView("foreign")}
+                                    className={`px-2 py-0.5 rounded transition-all ${
+                                        geoBreakdownView === "foreign"
+                                            ? "bg-slate-800 text-rose-300 font-semibold shadow-sm"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    Foreign Only
                                 </button>
                             </div>
 
                             <div className="flex-1 flex flex-col justify-center">
                                 {loading ? (
-                                    <div className="text-xs text-center text-slate-500">Loading countries...</div>
-                                ) : (stats?.topForeignCountries && stats.topForeignCountries.length > 0) ? (
-                                    <div className="space-y-3">
-                                        {stats.topForeignCountries.map((c) => (
-                                            <div key={c.country} className="flex items-center justify-between text-xs">
-                                                <div className="flex items-center gap-2">
-                                                    <span 
-                                                        className="w-2.5 h-2.5 rounded-full" 
-                                                        style={{ backgroundColor: COUNTRY_COLORS[c.country] || "#94a3b8" }} 
-                                                    />
-                                                    <span className="font-mono font-medium text-slate-300">{c.country}</span>
+                                    <div className="text-xs text-center text-slate-500">Loading location intel...</div>
+                                ) : geoBreakdownView === "us_cities" ? (
+                                    (stats?.topUsCities && stats.topUsCities.length > 0) ? (
+                                        <div className="space-y-2.5">
+                                            {stats.topUsCities.map((c) => (
+                                                <div key={c.city} className="flex items-center justify-between text-xs">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                                                        <span className="font-mono font-medium text-slate-300">{c.city}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-slate-400 font-mono">{c.count.toLocaleString()} hits</span>
+                                                        <button
+                                                            onClick={() => {
+                                                                setForeignFilter(c.city);
+                                                                setGeoScope("us");
+                                                                setActiveTab("foreign");
+                                                            }}
+                                                            className="text-slate-500 hover:text-slate-300"
+                                                            title={`Filter ${c.city}`}
+                                                        >
+                                                            <Search size={12} />
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-center gap-3">
-                                                    <span className="text-slate-400 font-mono">{c.count.toLocaleString()} hits</span>
-                                                    <button
-                                                        onClick={() => {
-                                                            setForeignFilter(c.country);
-                                                            setActiveTab("foreign");
-                                                        }}
-                                                        className="text-slate-500 hover:text-slate-300"
-                                                        title="Filter this country"
-                                                    >
-                                                        <Search size={12} />
-                                                    </button>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-center text-slate-500">No US cities resolved.</div>
+                                    )
+                                ) : geoBreakdownView === "countries" ? (
+                                    (stats?.topCountries && stats.topCountries.length > 0) ? (
+                                        <div className="space-y-2.5">
+                                            {stats.topCountries.map((c) => (
+                                                <div key={c.country} className="flex items-center justify-between text-xs">
+                                                    <div className="flex items-center gap-2">
+                                                        <span 
+                                                            className="w-2.5 h-2.5 rounded-full" 
+                                                            style={{ backgroundColor: COUNTRY_COLORS[c.country] || "#94a3b8" }} 
+                                                        />
+                                                        <span className="font-mono font-medium text-slate-300">
+                                                            {c.country === "US" ? "🇺🇸 United States (US)" : c.country}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-slate-400 font-mono">{c.count.toLocaleString()} hits</span>
+                                                        <button
+                                                            onClick={() => {
+                                                                setForeignFilter(c.country);
+                                                                if (c.country === "US") setGeoScope("us");
+                                                                else setGeoScope("foreign");
+                                                                setActiveTab("foreign");
+                                                            }}
+                                                            className="text-slate-500 hover:text-slate-300"
+                                                            title={`Filter ${c.country}`}
+                                                        >
+                                                            <Search size={12} />
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-center text-slate-500">No country events logged.</div>
+                                    )
                                 ) : (
-                                    <div className="text-xs text-center text-slate-500">No foreign traffic logged.</div>
+                                    (stats?.topForeignCountries && stats.topForeignCountries.length > 0) ? (
+                                        <div className="space-y-2.5">
+                                            {stats.topForeignCountries.map((c) => (
+                                                <div key={c.country} className="flex items-center justify-between text-xs">
+                                                    <div className="flex items-center gap-2">
+                                                        <span 
+                                                            className="w-2.5 h-2.5 rounded-full" 
+                                                            style={{ backgroundColor: COUNTRY_COLORS[c.country] || "#94a3b8" }} 
+                                                        />
+                                                        <span className="font-mono font-medium text-slate-300">{c.country}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-slate-400 font-mono">{c.count.toLocaleString()} hits</span>
+                                                        <button
+                                                            onClick={() => {
+                                                                setForeignFilter(c.country);
+                                                                setGeoScope("foreign");
+                                                                setActiveTab("foreign");
+                                                            }}
+                                                            className="text-slate-500 hover:text-slate-300"
+                                                            title={`Filter ${c.country}`}
+                                                        >
+                                                            <Search size={12} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-center text-slate-500">No foreign traffic logged.</div>
+                                    )
                                 )}
                             </div>
                         </div>
@@ -608,43 +721,92 @@ export default function NetscalerDashboardClient() {
                 </div>
             )}
 
-            {/* TAB 2: FOREIGN GEO ACCESS THREAT HUNT */}
+            {/* TAB 2: GEO ACCESS & LOCATION INTELLIGENCE */}
             {activeTab === "foreign" && (
                 <div className="flex flex-col gap-4">
                     <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-slate-900/60 border border-slate-800">
                         <div>
-                            <h3 className="text-sm font-semibold text-slate-200">Foreign Access Threat Hunter</h3>
+                            <h3 className="text-sm font-semibold text-slate-200">Geo Access & Location Intelligence</h3>
                             <p className="text-xs text-slate-400">
-                                Live NetScaler connections from outside the United States. Investigate anomalies or pivot to Firewall Shun.
+                                Live NetScaler connections across domestic United States and international locations. Filter by region, investigate anomalies, or apply perimeter shuns.
                             </p>
                         </div>
-                        <div className="relative w-72">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                            <input
-                                type="text"
-                                placeholder="Filter IP, country, city, message..."
-                                value={foreignFilter}
-                                onChange={(e) => setForeignFilter(e.target.value)}
-                                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg bg-slate-950/70 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500"
-                            />
-                            {foreignFilter && (
+
+                        {/* Search & Scope Filters */}
+                        <div className="flex flex-wrap items-center gap-3">
+                            {/* Region Scope Pills */}
+                            <div className="flex items-center rounded-lg bg-slate-950/70 p-1 border border-slate-800 text-xs">
                                 <button
-                                    onClick={() => setForeignFilter("")}
-                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                                    onClick={() => setGeoScope("all")}
+                                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                                        geoScope === "all"
+                                            ? "bg-slate-800 text-teal-300 shadow-sm"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
                                 >
-                                    <X size={13} />
+                                    All Locations
+                                    <span className="ml-1.5 px-1.5 py-0.2 rounded text-[10px] bg-slate-900 text-slate-400">
+                                        {(stats?.geoTrafficCount || 0).toLocaleString()}
+                                    </span>
                                 </button>
-                            )}
+                                <button
+                                    onClick={() => setGeoScope("us")}
+                                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                                        geoScope === "us"
+                                            ? "bg-slate-800 text-blue-300 shadow-sm"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    🇺🇸 US Domestic
+                                    <span className="ml-1.5 px-1.5 py-0.2 rounded text-[10px] bg-slate-900 text-slate-400">
+                                        {(stats?.usTrafficCount || 0).toLocaleString()}
+                                    </span>
+                                </button>
+                                <button
+                                    onClick={() => setGeoScope("foreign")}
+                                    className={`px-3 py-1 rounded-md font-medium transition-all ${
+                                        geoScope === "foreign"
+                                            ? "bg-slate-800 text-rose-300 shadow-sm"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    🌐 Foreign Only
+                                    <span className="ml-1.5 px-1.5 py-0.2 rounded text-[10px] bg-slate-900 text-slate-400">
+                                        {(stats?.foreignTrafficCount || 0).toLocaleString()}
+                                    </span>
+                                </button>
+                            </div>
+
+                            {/* Search box */}
+                            <div className="relative w-64">
+                                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                                <input
+                                    type="text"
+                                    placeholder="Filter city, country, IP, message..."
+                                    value={foreignFilter}
+                                    onChange={(e) => setForeignFilter(e.target.value)}
+                                    className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg bg-slate-950/70 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-teal-500"
+                                />
+                                {foreignFilter && (
+                                    <button
+                                        onClick={() => setForeignFilter("")}
+                                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                                    >
+                                        <X size={13} />
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
 
-                    {/* Foreign Events Table */}
+                    {/* Events Table */}
                     <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
                         <div className="overflow-x-auto">
                             <table className="w-full text-left text-xs">
                                 <thead className="bg-slate-950/70 text-slate-400 font-semibold border-b border-slate-800">
                                     <tr>
                                         <th className="py-3 px-4">Timestamp</th>
+                                        <th className="py-3 px-4">Region Scope</th>
                                         <th className="py-3 px-4">Country & City</th>
                                         <th className="py-3 px-4">Source IP</th>
                                         <th className="py-3 px-4">Target VServer</th>
@@ -653,70 +815,84 @@ export default function NetscalerDashboardClient() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-800/60 text-slate-300">
-                                    {filteredForeignEvents.length === 0 ? (
+                                    {filteredGeoEvents.length === 0 ? (
                                         <tr>
-                                            <td colSpan={6} className="py-8 text-center text-slate-500">
-                                                {loading ? "Loading foreign telemetry..." : "No foreign events match the criteria."}
+                                            <td colSpan={7} className="py-8 text-center text-slate-500">
+                                                {loading ? "Loading connection telemetry..." : "No connection events match the selected criteria."}
                                             </td>
                                         </tr>
                                     ) : (
-                                        filteredForeignEvents.map((ev, idx) => (
-                                            <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
-                                                <td className="py-3 px-4 whitespace-nowrap font-mono text-slate-400">
-                                                    {formatFullTime(ev.timestamp)}
-                                                </td>
-                                                <td className="py-3 px-4 whitespace-nowrap">
-                                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-xs bg-slate-800 border border-slate-700 text-slate-200">
-                                                        <span 
-                                                            className="w-2 h-2 rounded-full" 
-                                                            style={{ backgroundColor: COUNTRY_COLORS[ev.countryCode] || "#94a3b8" }} 
-                                                        />
-                                                        {ev.countryCode} {ev.cityName && ev.cityName !== "N/A" ? `• ${ev.cityName}` : ""}
-                                                    </span>
-                                                </td>
-                                                <td className="py-3 px-4 font-mono font-medium text-slate-200">
-                                                    {ev.sourceIp}
-                                                </td>
-                                                <td className="py-3 px-4 font-mono text-slate-400">
-                                                    {ev.vserverIp ? `${ev.vserverIp}:${ev.vserverPort || "443"}` : "-"}
-                                                </td>
-                                                <td className="py-3 px-4 max-w-md truncate text-slate-400" title={ev.message}>
-                                                    {ev.message}
-                                                </td>
-                                                <td className="py-3 px-4 text-right whitespace-nowrap">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        {/* Investigate Pivot */}
-                                                        <button
-                                                            onClick={() => {
-                                                                setSearchQuery(ev.sourceIp);
-                                                                setActiveTab("investigate");
-                                                                runInvestigation(ev.sourceIp, timeframe);
-                                                            }}
-                                                            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-colors"
-                                                            title="Investigate this IP"
-                                                        >
-                                                            Trace
-                                                        </button>
-                                                        {/* Firewall Shun Action */}
-                                                        <button
-                                                            onClick={() => setShunModalData({
-                                                                ip: ev.sourceIp,
-                                                                country: ev.countryCode,
-                                                                city: ev.cityName,
-                                                                targetHost: firewallHosts.length > 0 ? firewallHosts[0].id : "all",
-                                                                loading: false,
-                                                                result: null,
-                                                                error: null
-                                                            })}
-                                                            className="px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs transition-colors flex items-center gap-1"
-                                                            title="Apply Perimeter Shun on Cisco Firewalls"
-                                                        >
-                                                            <Shield size={11} /> Shun
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))
+                                        filteredGeoEvents.map((ev, idx) => {
+                                            const isUs = ev.countryCode === "US";
+                                            return (
+                                                <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
+                                                    <td className="py-3 px-4 whitespace-nowrap font-mono text-slate-400">
+                                                        {formatFullTime(ev.timestamp)}
+                                                    </td>
+                                                    <td className="py-3 px-4 whitespace-nowrap">
+                                                        {isUs ? (
+                                                            <span className="px-2 py-0.5 rounded font-mono text-[10px] bg-blue-500/10 border border-blue-500/30 text-blue-300 font-semibold">
+                                                                🇺🇸 US Domestic
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-2 py-0.5 rounded font-mono text-[10px] bg-rose-500/10 border border-rose-500/30 text-rose-300 font-semibold">
+                                                                🌐 Foreign
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3 px-4 whitespace-nowrap">
+                                                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded font-mono text-xs bg-slate-800 border border-slate-700 text-slate-200">
+                                                            <span 
+                                                                className="w-2 h-2 rounded-full" 
+                                                                style={{ backgroundColor: COUNTRY_COLORS[ev.countryCode] || (isUs ? "#3b82f6" : "#94a3b8") }} 
+                                                            />
+                                                            {ev.countryCode} {ev.cityName && ev.cityName !== "N/A" ? `• ${ev.cityName}` : ""}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3 px-4 font-mono font-medium text-slate-200">
+                                                        {ev.sourceIp}
+                                                    </td>
+                                                    <td className="py-3 px-4 font-mono text-slate-400">
+                                                        {ev.vserverIp ? `${ev.vserverIp}:${ev.vserverPort || "443"}` : "-"}
+                                                    </td>
+                                                    <td className="py-3 px-4 max-w-md truncate text-slate-400" title={ev.message}>
+                                                        {ev.message}
+                                                    </td>
+                                                    <td className="py-3 px-4 text-right whitespace-nowrap">
+                                                        <div className="flex items-center justify-end gap-2">
+                                                            {/* Investigate Pivot */}
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSearchQuery(ev.sourceIp);
+                                                                    setActiveTab("investigate");
+                                                                    runInvestigation(ev.sourceIp, timeframe);
+                                                                }}
+                                                                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition-colors"
+                                                                title="Investigate this IP"
+                                                            >
+                                                                Trace
+                                                            </button>
+                                                            {/* Firewall Shun Action */}
+                                                            <button
+                                                                onClick={() => setShunModalData({
+                                                                    ip: ev.sourceIp,
+                                                                    country: ev.countryCode,
+                                                                    city: ev.cityName,
+                                                                    targetHost: firewallHosts.length > 0 ? firewallHosts[0].id : "all",
+                                                                    loading: false,
+                                                                    result: null,
+                                                                    error: null
+                                                                })}
+                                                                className="px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs transition-colors flex items-center gap-1"
+                                                                title="Apply Perimeter Shun on Cisco Firewalls"
+                                                            >
+                                                                <Shield size={11} /> Shun
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
                                     )}
                                 </tbody>
                             </table>

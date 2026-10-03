@@ -21,11 +21,12 @@ export async function GET(req: Request) {
 
         const rangeSeconds = rangeParam ? parseInt(rangeParam, 10) : 86400;
         const limit = limitParam ? Math.min(parseInt(limitParam, 10), 300) : 100;
+        const filter = (searchParams.get("filter") || "all") as "all" | "foreign" | "us";
 
         const client = new NetscalerGraylogClient();
-        const events = await client.getRecentForeignEvents(rangeSeconds, limit);
+        const events = await client.getRecentGeoEvents(rangeSeconds, limit, filter);
 
-        return NextResponse.json({ events });
+        return NextResponse.json({ events, filter });
     } catch (error: any) {
         console.error("NetScaler Foreign API Error:", error);
         return NextResponse.json(

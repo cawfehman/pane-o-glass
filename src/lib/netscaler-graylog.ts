@@ -10,7 +10,7 @@ export interface NetscalerHistogramData {
     count: number;
 }
 
-export interface NetscalerForeignEvent {
+export interface NetscalerGeoEvent {
     timestamp: string;
     sourceIp: string;
     countryCode: string;
@@ -21,6 +21,8 @@ export interface NetscalerForeignEvent {
     facility?: string;
     level?: number;
 }
+
+export type NetscalerForeignEvent = NetscalerGeoEvent;
 
 export interface NetscalerTimelineEvent {
     id: string;
@@ -119,9 +121,14 @@ export interface NetscalerStats {
     authSuccessCount: number;
     authFailureCount: number;
     icaSessionCount: number;
+    geoTrafficCount: number;
+    usTrafficCount: number;
     foreignTrafficCount: number;
+    topCountries: { country: string; count: number }[];
+    topUsCities: { city: string; count: number }[];
     topForeignCountries: { country: string; count: number }[];
     topUsers: { username: string; count: number }[];
+    recentGeoEvents: NetscalerGeoEvent[];
     recentForeignEvents: NetscalerForeignEvent[];
 }
 
@@ -235,8 +242,9 @@ export class NetscalerGraylogClient {
             authSuccessRes,
             authFailureRes,
             icaRes,
+            usRes,
             foreignRes,
-            foreignEventsRes,
+            geoEventsRes,
             topUsersRes
         ] = await Promise.all([
             this.getHistogram("*", rangeSeconds),
@@ -244,23 +252,44 @@ export class NetscalerGraylogClient {
             this.queryCount('SSLVPN AND ("response-200" OR "LOGIN")', rangeSeconds),
             this.queryCount('SSLVPN AND (FAILURE OR FAILED OR INVALID OR DENIED OR "type 5")', rangeSeconds),
             this.queryCount("ICA OR HDX", rangeSeconds),
+            this.queryCount("src_ip_country_code:US", rangeSeconds),
             this.queryCount("NOT src_ip_country_code:US AND _exists_:src_ip_country_code", rangeSeconds),
-            this.getRecentForeignEvents(rangeSeconds, 150),
+            this.getRecentGeoEvents(rangeSeconds, 200, "all"),
             this.getTopUsers(rangeSeconds, 10)
         ]);
 
-        // Aggregate top foreign countries
+        // Aggregate top countries, foreign countries, and US cities
         const countryMap: Record<string, number> = {};
-        foreignEventsRes.forEach(ev => {
-            if (ev.countryCode && ev.countryCode !== "US") {
+        const foreignCountryMap: Record<string, number> = {};
+        const usCityMap: Record<string, number> = {};
+
+        geoEventsRes.forEach(ev => {
+            if (ev.countryCode) {
                 countryMap[ev.countryCode] = (countryMap[ev.countryCode] || 0) + 1;
+                if (ev.countryCode !== "US") {
+                    foreignCountryMap[ev.countryCode] = (foreignCountryMap[ev.countryCode] || 0) + 1;
+                } else if (ev.cityName && ev.cityName !== "N/A") {
+                    usCityMap[ev.cityName] = (usCityMap[ev.cityName] || 0) + 1;
+                }
             }
         });
 
-        const topForeignCountries = Object.entries(countryMap)
+        const topCountries = Object.entries(countryMap)
             .map(([country, count]) => ({ country, count }))
             .sort((a, b) => b.count - a.count)
             .slice(0, 10);
+
+        const topForeignCountries = Object.entries(foreignCountryMap)
+            .map(([country, count]) => ({ country, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+
+        const topUsCities = Object.entries(usCityMap)
+            .map(([city, count]) => ({ city, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+
+        const foreignEventsOnly = geoEventsRes.filter(ev => ev.countryCode !== "US");
 
         return {
             rangeSeconds,
@@ -270,10 +299,15 @@ export class NetscalerGraylogClient {
             authSuccessCount: authSuccessRes,
             authFailureCount: authFailureRes,
             icaSessionCount: icaRes,
+            geoTrafficCount: usRes + foreignRes,
+            usTrafficCount: usRes,
             foreignTrafficCount: foreignRes,
+            topCountries,
+            topUsCities,
             topForeignCountries,
             topUsers: topUsersRes,
-            recentForeignEvents: foreignEventsRes.slice(0, 50)
+            recentGeoEvents: geoEventsRes.slice(0, 100),
+            recentForeignEvents: foreignEventsOnly.slice(0, 50)
         };
     }
 
@@ -345,12 +379,23 @@ export class NetscalerGraylogClient {
     }
 
     /**
-     * Retrieves recent foreign connection events.
+     * Retrieves recent geo-enriched connection events (US, foreign, or all).
      */
-    async getRecentForeignEvents(rangeSeconds: number = 86400, limit: number = 100): Promise<NetscalerForeignEvent[]> {
+    async getRecentGeoEvents(
+        rangeSeconds: number = 86400,
+        limit: number = 100,
+        filter: "all" | "foreign" | "us" = "all"
+    ): Promise<NetscalerGeoEvent[]> {
+        let query = "_exists_:src_ip_country_code";
+        if (filter === "foreign") {
+            query = "NOT src_ip_country_code:US AND _exists_:src_ip_country_code";
+        } else if (filter === "us") {
+            query = "src_ip_country_code:US";
+        }
+
         try {
             const params = new URLSearchParams({
-                query: "NOT src_ip_country_code:US AND _exists_:src_ip_country_code",
+                query,
                 range: rangeSeconds.toString(),
                 filter: `streams:${this.streamId}`,
                 limit: limit.toString(),
@@ -383,9 +428,16 @@ export class NetscalerGraylogClient {
                 };
             });
         } catch (err: any) {
-            console.error("[NetScaler Graylog] getRecentForeignEvents error:", err.message);
+            console.error("[NetScaler Graylog] getRecentGeoEvents error:", err.message);
             return [];
         }
+    }
+
+    /**
+     * Retrieves recent foreign connection events (backward compatibility helper).
+     */
+    async getRecentForeignEvents(rangeSeconds: number = 86400, limit: number = 100): Promise<NetscalerGeoEvent[]> {
+        return this.getRecentGeoEvents(rangeSeconds, limit, "foreign");
     }
 
     /**
