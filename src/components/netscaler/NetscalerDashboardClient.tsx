@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { 
     Layers, ShieldAlert, Globe, Search, Clock, User, Server, 
     Activity, CheckCircle2, AlertTriangle, ExternalLink, RefreshCw, 
-    X, Lock, Shield, ArrowUpRight, Filter, ChevronRight, Terminal, Laptop, Plus, Bug, Zap
+    X, Lock, Shield, ArrowUpRight, Filter, ChevronRight, Terminal, Laptop, Plus, Bug, Zap,
+    AlertOctagon, UserX, Flame
 } from "lucide-react";
 import { 
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -48,6 +49,7 @@ export default function NetscalerDashboardClient() {
     // Geo Access & Location Intel state
     const [geoScope, setGeoScope] = useState<"all" | "foreign" | "us">("all");
     const [geoBreakdownView, setGeoBreakdownView] = useState<"countries" | "us_cities" | "foreign">("countries");
+    const [failureScope, setFailureScope] = useState<"foreign" | "us">("foreign");
 
     // Investigation state
     const [searchQuery, setSearchQuery] = useState("");
@@ -795,6 +797,243 @@ export default function NetscalerDashboardClient() {
                                         <X size={13} />
                                     </button>
                                 )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* TOP 10 SECURITY TELEMETRY CARDS (OPTION A) */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        {/* CARD 1: Top 10 Auth Failures by Location */}
+                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">
+                            <div>
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <AlertOctagon size={16} className="text-rose-400 shrink-0" />
+                                        <h4 className="text-xs font-semibold text-slate-200">Top 10 Auth Failures by Location</h4>
+                                    </div>
+                                    <div className="flex items-center rounded-md bg-slate-950/80 p-0.5 border border-slate-800 text-[10px]">
+                                        <button
+                                            onClick={() => setFailureScope("foreign")}
+                                            className={`px-2 py-0.5 rounded transition-all ${
+                                                failureScope === "foreign"
+                                                    ? "bg-slate-800 text-rose-300 font-semibold shadow-sm"
+                                                    : "text-slate-400 hover:text-slate-200"
+                                            }`}
+                                        >
+                                            🌐 Foreign
+                                        </button>
+                                        <button
+                                            onClick={() => setFailureScope("us")}
+                                            className={`px-2 py-0.5 rounded transition-all ${
+                                                failureScope === "us"
+                                                    ? "bg-slate-800 text-blue-300 font-semibold shadow-sm"
+                                                    : "text-slate-400 hover:text-slate-200"
+                                            }`}
+                                        >
+                                            🇺🇸 US Cities
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="max-h-56 overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
+                                    {loading ? (
+                                        <div className="text-xs text-center py-6 text-slate-500">Loading failure intel...</div>
+                                    ) : failureScope === "foreign" ? (
+                                        (stats?.topFailureForeignCountries && stats.topFailureForeignCountries.length > 0) ? (
+                                            stats.topFailureForeignCountries.slice(0, 10).map((item, idx) => (
+                                                <div key={item.name} className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg bg-slate-950/40 border border-slate-800/60 hover:border-slate-700 transition-colors">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <span className="text-[10px] font-mono text-slate-500 w-3.5 shrink-0">{idx + 1}.</span>
+                                                        <span
+                                                            className="w-2 h-2 rounded-full shrink-0"
+                                                            style={{ backgroundColor: COUNTRY_COLORS[item.name] || "#ef4444" }}
+                                                        />
+                                                        <span className="font-mono text-slate-200 font-medium">{item.name}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 shrink-0">
+                                                        <span className="font-mono text-rose-400 font-semibold text-[11px] px-1.5 py-0.5 rounded bg-rose-500/10 border border-rose-500/20">
+                                                            {item.count.toLocaleString()} fails
+                                                        </span>
+                                                        <button
+                                                            onClick={() => {
+                                                                setForeignFilter(item.name);
+                                                                setGeoScope("foreign");
+                                                            }}
+                                                            className="text-slate-500 hover:text-slate-300 p-0.5"
+                                                            title={`Filter table for ${item.name}`}
+                                                        >
+                                                            <Search size={11} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="text-xs text-center py-6 text-slate-500">No foreign auth failures logged in timeframe.</div>
+                                        )
+                                    ) : (
+                                        (stats?.topFailureUsCities && stats.topFailureUsCities.length > 0) ? (
+                                            stats.topFailureUsCities.slice(0, 10).map((item, idx) => (
+                                                <div key={item.name} className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg bg-slate-950/40 border border-slate-800/60 hover:border-slate-700 transition-colors">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <span className="text-[10px] font-mono text-slate-500 w-3.5 shrink-0">{idx + 1}.</span>
+                                                        <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                                                        <span className="font-mono text-slate-200 font-medium truncate max-w-[140px]">{item.name}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 shrink-0">
+                                                        <span className="font-mono text-amber-400 font-semibold text-[11px] px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                                                            {item.count.toLocaleString()} fails
+                                                        </span>
+                                                        <button
+                                                            onClick={() => {
+                                                                setForeignFilter(item.name);
+                                                                setGeoScope("us");
+                                                            }}
+                                                            className="text-slate-500 hover:text-slate-300 p-0.5"
+                                                            title={`Filter table for ${item.name}`}
+                                                        >
+                                                            <Search size={11} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="text-xs text-center py-6 text-slate-500">No US domestic auth failures logged.</div>
+                                        )
+                                    )}
+                                </div>
+                            </div>
+                            <div className="mt-3 pt-2 border-t border-slate-800/60 text-[11px] text-slate-500 flex justify-between">
+                                <span>Failed authentication attempts</span>
+                                <span>Click search icon to filter</span>
+                            </div>
+                        </div>
+
+                        {/* CARD 2: Top 10 Aggressive Remote IPs */}
+                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">
+                            <div>
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <Flame size={16} className="text-amber-400 shrink-0" />
+                                        <h4 className="text-xs font-semibold text-slate-200">Top 10 Aggressive Remote IPs</h4>
+                                    </div>
+                                    <span className="text-[10px] font-mono text-slate-500">Fails / Hit Rate</span>
+                                </div>
+                                <div className="max-h-56 overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
+                                    {loading ? (
+                                        <div className="text-xs text-center py-6 text-slate-500">Evaluating IP velocity...</div>
+                                    ) : (stats?.topAggressiveIps && stats.topAggressiveIps.length > 0) ? (
+                                        stats.topAggressiveIps.slice(0, 10).map((item, idx) => (
+                                            <div key={item.ip} className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg bg-slate-950/40 border border-slate-800/60 hover:border-slate-700 transition-colors">
+                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                    <span className="text-[10px] font-mono text-slate-500 w-3.5 shrink-0">{idx + 1}.</span>
+                                                    <span 
+                                                        className="w-1.5 h-1.5 rounded-full shrink-0" 
+                                                        style={{ backgroundColor: COUNTRY_COLORS[item.countryCode] || "#94a3b8" }} 
+                                                    />
+                                                    <button
+                                                        onClick={() => setForeignFilter(item.ip)}
+                                                        className="font-mono text-slate-200 hover:text-teal-400 truncate text-left font-medium"
+                                                        title={`Filter table for ${item.ip}`}
+                                                    >
+                                                        {item.ip}
+                                                    </button>
+                                                    <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                                                        ({item.countryCode}{item.cityName && item.cityName !== "N/A" ? `•${item.cityName}` : ""})
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                                        item.failureCount > 0
+                                                            ? "bg-rose-500/10 text-rose-300 border border-rose-500/20"
+                                                            : "bg-slate-800 text-slate-400"
+                                                    }`}>
+                                                        {item.failureCount > 0 ? `${item.failureCount} fails (${item.failureRate}%)` : `${item.totalHits} hits`}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => setShunModalData({
+                                                            ip: item.ip,
+                                                            country: item.countryCode,
+                                                            city: item.cityName,
+                                                            targetHost: firewallHosts.length > 0 ? firewallHosts[0].id : "all",
+                                                            loading: false,
+                                                            result: null,
+                                                            error: null
+                                                        })}
+                                                        className="px-1.5 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] transition-colors flex items-center gap-1"
+                                                        title="Perimeter Shun on Cisco Firewalls"
+                                                    >
+                                                        <Shield size={10} /> Shun
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-xs text-center py-6 text-slate-500">No aggressive IPs detected.</div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="mt-3 pt-2 border-t border-slate-800/60 text-[11px] text-slate-500 flex justify-between">
+                                <span>High-velocity & failure sources</span>
+                                <span>1-click perimeter shun</span>
+                            </div>
+                        </div>
+
+                        {/* CARD 3: Top 10 Targeted User Accounts */}
+                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">
+                            <div>
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-2">
+                                        <UserX size={16} className="text-teal-400 shrink-0" />
+                                        <h4 className="text-xs font-semibold text-slate-200">Top 10 Targeted User Accounts</h4>
+                                    </div>
+                                    <span className="text-[10px] font-mono text-slate-500">Origins</span>
+                                </div>
+                                <div className="max-h-56 overflow-y-auto pr-1 space-y-1.5 custom-scrollbar">
+                                    {loading ? (
+                                        <div className="text-xs text-center py-6 text-slate-500">Scanning targeted accounts...</div>
+                                    ) : (stats?.topTargetedUsers && stats.topTargetedUsers.length > 0) ? (
+                                        stats.topTargetedUsers.slice(0, 10).map((item, idx) => (
+                                            <div key={item.username} className="flex items-center justify-between text-xs py-1.5 px-2.5 rounded-lg bg-slate-950/40 border border-slate-800/60 hover:border-slate-700 transition-colors">
+                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                    <span className="text-[10px] font-mono text-slate-500 w-3.5 shrink-0">{idx + 1}.</span>
+                                                    <span className="font-mono text-slate-200 font-medium truncate max-w-[110px]" title={item.username}>
+                                                        {item.username}
+                                                    </span>
+                                                    {item.topOrigins.length > 0 && (
+                                                        <span className="text-[9px] px-1 py-0.2 rounded bg-slate-800/80 text-slate-400 font-mono truncate max-w-[85px]" title={item.topOrigins.join(", ")}>
+                                                            {item.topOrigins.join(", ")}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                                        item.failureCount > 0
+                                                            ? "bg-rose-500/10 text-rose-300 border border-rose-500/20"
+                                                            : "bg-slate-800 text-slate-400"
+                                                    }`}>
+                                                        {item.failureCount > 0 ? `${item.failureCount} fails` : `${item.totalHits} hits`}
+                                                    </span>
+                                                    <button
+                                                        onClick={() => {
+                                                            setSearchQuery(item.username);
+                                                            setActiveTab("investigate");
+                                                            runInvestigation(item.username, timeframe);
+                                                        }}
+                                                        className="p-1 text-slate-500 hover:text-teal-400 transition-colors"
+                                                        title={`Investigate ${item.username} session history`}
+                                                    >
+                                                        <Search size={11} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="text-xs text-center py-6 text-slate-500">No targeted user telemetry logged.</div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="mt-3 pt-2 border-t border-slate-800/60 text-[11px] text-slate-500 flex justify-between">
+                                <span>Targeted usernames & origins</span>
+                                <span>Click search to investigate</span>
                             </div>
                         </div>
                     </div>

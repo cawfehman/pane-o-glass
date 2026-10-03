@@ -10,6 +10,27 @@ export interface NetscalerHistogramData {
     count: number;
 }
 
+export interface NetscalerGeoFailureLocation {
+    name: string;
+    count: number;
+}
+
+export interface NetscalerAggressiveIp {
+    ip: string;
+    countryCode: string;
+    cityName: string;
+    totalHits: number;
+    failureCount: number;
+    failureRate: number;
+}
+
+export interface NetscalerTargetedUser {
+    username: string;
+    totalHits: number;
+    failureCount: number;
+    topOrigins: string[];
+}
+
 export interface NetscalerGeoEvent {
     timestamp: string;
     sourceIp: string;
@@ -17,9 +38,11 @@ export interface NetscalerGeoEvent {
     cityName: string;
     vserverIp?: string;
     vserverPort?: string;
+    username?: string;
     message: string;
     facility?: string;
     level?: number;
+    isFailure?: boolean;
 }
 
 export type NetscalerForeignEvent = NetscalerGeoEvent;
@@ -128,6 +151,10 @@ export interface NetscalerStats {
     topUsCities: { city: string; count: number }[];
     topForeignCountries: { country: string; count: number }[];
     topUsers: { username: string; count: number }[];
+    topFailureForeignCountries: NetscalerGeoFailureLocation[];
+    topFailureUsCities: NetscalerGeoFailureLocation[];
+    topAggressiveIps: NetscalerAggressiveIp[];
+    topTargetedUsers: NetscalerTargetedUser[];
     recentGeoEvents: NetscalerGeoEvent[];
     recentForeignEvents: NetscalerForeignEvent[];
 }
@@ -245,6 +272,7 @@ export class NetscalerGraylogClient {
             usRes,
             foreignRes,
             geoEventsRes,
+            failureEventsRes,
             topUsersRes
         ] = await Promise.all([
             this.getHistogram("*", rangeSeconds),
@@ -254,7 +282,8 @@ export class NetscalerGraylogClient {
             this.queryCount("ICA OR HDX", rangeSeconds),
             this.queryCount("src_ip_country_code:US", rangeSeconds),
             this.queryCount("NOT src_ip_country_code:US AND _exists_:src_ip_country_code", rangeSeconds),
-            this.getRecentGeoEvents(rangeSeconds, 200, "all"),
+            this.getRecentGeoEvents(rangeSeconds, 250, "all"),
+            this.getRecentFailureEvents(rangeSeconds, 250),
             this.getTopUsers(rangeSeconds, 10)
         ]);
 
@@ -289,6 +318,122 @@ export class NetscalerGraylogClient {
             .sort((a, b) => b.count - a.count)
             .slice(0, 10);
 
+        // TOP 10 OPTION A TELEMETRY:
+        // Combined pool of events for Failures, Aggressive IPs, and Targeted Users
+        const combinedEvents = [...geoEventsRes, ...failureEventsRes];
+        const failForeignMap: Record<string, number> = {};
+        const failUsCityMap: Record<string, number> = {};
+        const ipStatsMap: Record<string, { countryCode: string; cityName: string; totalHits: number; failureCount: number }> = {};
+        const userTargetMap: Record<string, { totalHits: number; failureCount: number; origins: Set<string> }> = {};
+        const seenEvents = new Set<string>();
+
+        combinedEvents.forEach(ev => {
+            const eventKey = `${ev.timestamp}-${ev.sourceIp}-${(ev.message || "").substring(0, 35)}`;
+            const isFirst = !seenEvents.has(eventKey);
+            seenEvents.add(eventKey);
+
+            const isFail = ev.isFailure || /(?:FAILURE|FAILED|INVALID|DENIED|type 5)/i.test(ev.message);
+
+            // Failure locations
+            if (isFail && isFirst) {
+                if (ev.countryCode && ev.countryCode !== "US" && ev.countryCode !== "Unknown") {
+                    failForeignMap[ev.countryCode] = (failForeignMap[ev.countryCode] || 0) + 1;
+                } else if (ev.countryCode === "US" && ev.cityName && ev.cityName !== "N/A") {
+                    failUsCityMap[ev.cityName] = (failUsCityMap[ev.cityName] || 0) + 1;
+                }
+            }
+
+            // Aggressive IPs
+            if (ev.sourceIp) {
+                if (!ipStatsMap[ev.sourceIp]) {
+                    ipStatsMap[ev.sourceIp] = {
+                        countryCode: ev.countryCode || "Unknown",
+                        cityName: ev.cityName || "N/A",
+                        totalHits: 0,
+                        failureCount: 0
+                    };
+                }
+                if (isFirst) {
+                    ipStatsMap[ev.sourceIp].totalHits += 1;
+                    if (isFail) {
+                        ipStatsMap[ev.sourceIp].failureCount += 1;
+                    }
+                }
+                if (ev.countryCode && ev.countryCode !== "Unknown") {
+                    ipStatsMap[ev.sourceIp].countryCode = ev.countryCode;
+                }
+                if (ev.cityName && ev.cityName !== "N/A") {
+                    ipStatsMap[ev.sourceIp].cityName = ev.cityName;
+                }
+            }
+
+            // Targeted Users
+            const u = ev.username;
+            if (u && u !== "anonymous" && u.length > 1) {
+                if (!userTargetMap[u]) {
+                    userTargetMap[u] = {
+                        totalHits: 0,
+                        failureCount: 0,
+                        origins: new Set<string>()
+                    };
+                }
+                if (isFirst) {
+                    userTargetMap[u].totalHits += 1;
+                    if (isFail) {
+                        userTargetMap[u].failureCount += 1;
+                    }
+                }
+                const originLabel = ev.countryCode === "US"
+                    ? (ev.cityName && ev.cityName !== "N/A" ? `${ev.cityName}, US` : "US")
+                    : (ev.countryCode || "Unknown");
+                if (originLabel !== "Unknown") {
+                    userTargetMap[u].origins.add(originLabel);
+                }
+            }
+        });
+
+        const topFailureForeignCountries = Object.entries(failForeignMap)
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+
+        const topFailureUsCities = Object.entries(failUsCityMap)
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 10);
+
+        const topAggressiveIps = Object.entries(ipStatsMap)
+            .map(([ip, data]) => ({
+                ip,
+                countryCode: data.countryCode,
+                cityName: data.cityName,
+                totalHits: data.totalHits,
+                failureCount: data.failureCount,
+                failureRate: data.totalHits > 0 ? Math.round((data.failureCount / data.totalHits) * 100) : 0
+            }))
+            .sort((a, b) => {
+                if (b.failureCount !== a.failureCount) {
+                    return b.failureCount - a.failureCount;
+                }
+                return b.totalHits - a.totalHits;
+            })
+            .slice(0, 10);
+
+        const topTargetedUsers = Object.entries(userTargetMap)
+            .map(([username, data]) => ({
+                username,
+                totalHits: data.totalHits,
+                failureCount: data.failureCount,
+                topOrigins: Array.from(data.origins).slice(0, 3)
+            }))
+            .sort((a, b) => {
+                if (b.failureCount !== a.failureCount) {
+                    return b.failureCount - a.failureCount;
+                }
+                return b.totalHits - a.totalHits;
+            })
+            .slice(0, 10);
+
         const foreignEventsOnly = geoEventsRes.filter(ev => ev.countryCode !== "US");
 
         return {
@@ -306,60 +451,28 @@ export class NetscalerGraylogClient {
             topUsCities,
             topForeignCountries,
             topUsers: topUsersRes,
+            topFailureForeignCountries,
+            topFailureUsCities,
+            topAggressiveIps,
+            topTargetedUsers,
             recentGeoEvents: geoEventsRes.slice(0, 100),
             recentForeignEvents: foreignEventsOnly.slice(0, 50)
         };
     }
 
     /**
-     * Retrieves top active Citrix users from extracted ns_username field.
+     * Retrieves recent authentication failure events.
      */
-    async getTopUsers(rangeSeconds: number = 86400, limit: number = 10): Promise<{ username: string; count: number }[]> {
-        try {
-            const params = new URLSearchParams({
-                query: "_exists_:ns_username",
-                range: rangeSeconds.toString(),
-                filter: `streams:${this.streamId}`,
-                limit: "300",
-                fields: "ns_username"
-            });
-            const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
-            const res = await axios.get(url, {
-                httpsAgent,
-                headers: {
-                    Authorization: this.authHeader,
-                    Accept: "application/json",
-                    "X-Requested-By": "pane-o-glass"
-                },
-                timeout: 10000
-            });
-            const counts: Record<string, number> = {};
-            (res.data.messages || []).forEach((m: any) => {
-                const u = m.message.ns_username;
-                if (u && u !== "anonymous") {
-                    counts[u] = (counts[u] || 0) + 1;
-                }
-            });
-            return Object.entries(counts)
-                .map(([username, count]) => ({ username, count }))
-                .sort((a, b) => b.count - a.count)
-                .slice(0, limit);
-        } catch (err: any) {
-            console.error("[NetScaler Graylog] getTopUsers error:", err.message);
-            return [];
-        }
-    }
-
-    /**
-     * Quick query count helper using limit=1
-     */
-    async queryCount(query: string, rangeSeconds: number = 86400): Promise<number> {
+    async getRecentFailureEvents(rangeSeconds: number = 86400, limit: number = 250): Promise<NetscalerGeoEvent[]> {
+        const query = 'SSLVPN AND (FAILURE OR FAILED OR INVALID OR DENIED OR "type 5")';
         try {
             const params = new URLSearchParams({
                 query,
                 range: rangeSeconds.toString(),
                 filter: `streams:${this.streamId}`,
-                limit: "1"
+                limit: limit.toString(),
+                fields: "src_ip,ns_remote_ip,src_ip_country_code,src_ip_city_name,vserver_ip,vserver_port,ns_username,ns_action,ns_event_type,message,facility,level,timestamp",
+                sort: "timestamp:desc"
             });
             const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
             const res = await axios.get(url, {
@@ -369,12 +482,41 @@ export class NetscalerGraylogClient {
                     Accept: "application/json",
                     "X-Requested-By": "pane-o-glass"
                 },
-                timeout: 10000
+                timeout: 15000
             });
-            return res.data.total_results || 0;
+
+            return (res.data.messages || []).map((m: any) => {
+                const msg = m.message;
+                const raw = msg.message || "";
+                let sourceIp = msg.ns_remote_ip || msg.src_ip || "";
+                if (!sourceIp) {
+                    const ipMatch = raw.match(/(?:Remote_ip|Remote ip\s*=|clientip|Source)\s*[:=]?\s*([0-9\.]+)/i);
+                    if (ipMatch) sourceIp = ipMatch[1];
+                }
+
+                let username = msg.ns_username || "";
+                if (!username) {
+                    const userMatch = raw.match(/(?:Username\s*=\s*|\buser\s+|Context\s+)([a-zA-Z0-9_\-\.@]+)/i);
+                    if (userMatch) username = userMatch[1].trim();
+                }
+
+                return {
+                    timestamp: msg.timestamp,
+                    sourceIp,
+                    countryCode: msg.src_ip_country_code || "Unknown",
+                    cityName: msg.src_ip_city_name || "N/A",
+                    vserverIp: msg.vserver_ip || "",
+                    vserverPort: msg.vserver_port || "",
+                    username,
+                    message: raw,
+                    facility: msg.facility,
+                    level: msg.level,
+                    isFailure: true
+                };
+            });
         } catch (err: any) {
-            console.error(`[NetScaler Graylog] Count query failed for "${query}":`, err.message);
-            return 0;
+            console.error("[NetScaler Graylog] getRecentFailureEvents error:", err.message);
+            return [];
         }
     }
 
@@ -399,7 +541,7 @@ export class NetscalerGraylogClient {
                 range: rangeSeconds.toString(),
                 filter: `streams:${this.streamId}`,
                 limit: limit.toString(),
-                fields: "src_ip,src_ip_country_code,src_ip_city_name,vserver_ip,vserver_port,message,facility,level,timestamp",
+                fields: "src_ip,ns_remote_ip,src_ip_country_code,src_ip_city_name,vserver_ip,vserver_port,ns_username,ns_action,ns_event_type,message,facility,level,timestamp",
                 sort: "timestamp:desc"
             });
             const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
@@ -415,16 +557,33 @@ export class NetscalerGraylogClient {
 
             return (res.data.messages || []).map((m: any) => {
                 const msg = m.message;
+                const raw = msg.message || "";
+                let sourceIp = msg.ns_remote_ip || msg.src_ip || "";
+                if (!sourceIp) {
+                    const ipMatch = raw.match(/(?:Remote_ip|Remote ip\s*=|clientip|Source)\s*[:=]?\s*([0-9\.]+)/i);
+                    if (ipMatch) sourceIp = ipMatch[1];
+                }
+
+                let username = msg.ns_username || "";
+                if (!username) {
+                    const userMatch = raw.match(/(?:Username\s*=\s*|\buser\s+|Context\s+)([a-zA-Z0-9_\-\.@]+)/i);
+                    if (userMatch) username = userMatch[1].trim();
+                }
+
+                const isFailure = /(?:FAILURE|FAILED|INVALID|DENIED|type 5)/i.test(raw);
+
                 return {
                     timestamp: msg.timestamp,
-                    sourceIp: msg.src_ip || "",
+                    sourceIp,
                     countryCode: msg.src_ip_country_code || "Unknown",
                     cityName: msg.src_ip_city_name || "N/A",
                     vserverIp: msg.vserver_ip || "",
                     vserverPort: msg.vserver_port || "",
-                    message: msg.message || "",
+                    username,
+                    message: raw,
                     facility: msg.facility,
-                    level: msg.level
+                    level: msg.level,
+                    isFailure
                 };
             });
         } catch (err: any) {
