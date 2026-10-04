@@ -1155,7 +1155,7 @@ export default function BecDashboardClient() {
                                             </span>
                                         </td>
                                         <td className="py-3.5 px-4 text-center font-mono font-bold text-amber-400 text-sm">
-                                            +{item.impersonationBoost.toFixed(1)}
+                                            +{(item.impersonationBoost ?? 0).toFixed(1)}
                                         </td>
                                         <td className="py-3.5 px-4 text-right whitespace-nowrap">
                                             <a
