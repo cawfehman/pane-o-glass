@@ -75,9 +75,20 @@ export interface NetscalerIocRule {
     cve?: string;
 }
 
+export interface NetscalerMatchedIp {
+    ip: string;
+    count: number;
+    countryCode?: string;
+    cityName?: string;
+    firstSeen?: string;
+    lastSeen?: string;
+    sampleMessage?: string;
+}
+
 export interface NetscalerIocFinding {
     rule: NetscalerIocRule;
     matchCount: number;
+    matchedExternalIps: NetscalerMatchedIp[];
     sampleEvents: {
         timestamp: string;
         sourceIp?: string;
@@ -830,14 +841,20 @@ export class NetscalerGraylogClient {
         rules: NetscalerIocRule[] = DEFAULT_CITRIX_IOC_RULES,
         rangeSeconds: number = 86400
     ): Promise<NetscalerIocFinding[]> {
+        const isInternalIp = (ip?: string) => {
+            if (!ip) return false;
+            return /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.)/.test(ip);
+        };
+
         const scanPromises = rules.map(async (rule) => {
             try {
+                // Fetch up to 200 matching messages to extract all involved external IPs
                 const params = new URLSearchParams({
                     query: rule.query,
                     range: rangeSeconds.toString(),
                     filter: `streams:${this.streamId}`,
-                    limit: "5",
-                    fields: "src_ip,ns_remote_ip,src_ip_country_code,ns_username,ns_http_method,ns_http_path,message,timestamp",
+                    limit: "200",
+                    fields: "src_ip,ns_remote_ip,src_ip_country_code,src_ip_city_name,ns_username,ns_http_method,ns_http_path,message,timestamp",
                     sort: "timestamp:desc"
                 });
                 const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
@@ -848,17 +865,59 @@ export class NetscalerGraylogClient {
                         Accept: "application/json",
                         "X-Requested-By": "pane-o-glass"
                     },
-                    timeout: 15000
+                    timeout: 20000
                 });
 
-                const isInternalIp = (ip?: string) => {
-                    if (!ip) return false;
-                    return /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.)/.test(ip);
-                };
+                const messages: any[] = res.data.messages || [];
+                let total = res.data.total_results || 0;
 
-                let sampleEvents = (res.data.messages || []).map((m: any) => {
+                // Extract all unique external IPs across all matching messages
+                const ipMap = new Map<string, NetscalerMatchedIp>();
+
+                messages.forEach((m: any) => {
                     const rawMsg = m.message.message || "";
-                    const ip = m.message.src_ip ||
+                    let ip = m.message.ns_remote_ip || m.message.src_ip;
+                    if (!ip) {
+                        const mMatch = rawMsg.match(/(?:Remote_ip|Remote ip\s*=|clientip|Source)\s*[:=]?\s*([0-9\.]+)/i);
+                        if (mMatch) ip = mMatch[1];
+                    }
+                    if (!ip) {
+                        // General IPv4 search in message if it's a command/shell event
+                        const anyIp = rawMsg.match(/\b((?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-5])\.(?:\d{1,3}\.){2}(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-5]))\b/);
+                        if (anyIp && !isInternalIp(anyIp[1])) ip = anyIp[1];
+                    }
+
+                    if (ip && !isInternalIp(ip)) {
+                        const existing = ipMap.get(ip);
+                        const ts = m.message.timestamp;
+                        const country = m.message.src_ip_country_code || existing?.countryCode;
+                        const city = m.message.src_ip_city_name || existing?.cityName;
+
+                        if (existing) {
+                            existing.count += 1;
+                            if (ts && (!existing.lastSeen || ts > existing.lastSeen)) existing.lastSeen = ts;
+                            if (ts && (!existing.firstSeen || ts < existing.firstSeen)) existing.firstSeen = ts;
+                            if (country) existing.countryCode = country;
+                            if (city && city !== "N/A") existing.cityName = city;
+                        } else {
+                            ipMap.set(ip, {
+                                ip,
+                                count: 1,
+                                countryCode: country || undefined,
+                                cityName: city && city !== "N/A" ? city : undefined,
+                                firstSeen: ts,
+                                lastSeen: ts,
+                                sampleMessage: rawMsg.substring(0, 150)
+                            });
+                        }
+                    }
+                });
+
+                const matchedExternalIps = Array.from(ipMap.values()).sort((a, b) => b.count - a.count);
+
+                let sampleEvents = messages.slice(0, 5).map((m: any) => {
+                    const rawMsg = m.message.message || "";
+                    let ip = m.message.src_ip ||
                                m.message.ns_remote_ip ||
                                (rawMsg.match(/Remote_ip\s+([0-9\.]+)/i) || [])[1] ||
                                (rawMsg.match(/Source\s+([0-9\.]+)/i) || [])[1];
@@ -873,8 +932,6 @@ export class NetscalerGraylogClient {
                     };
                 });
 
-                let total = res.data.total_results || 0;
-
                 // Post-filter safeguard: for external admin commands, ignore any false positives with internal IPs
                 if (rule.id === "external-admin-cmd") {
                     sampleEvents = sampleEvents.filter(ev => !isInternalIp(ev.sourceIp));
@@ -886,6 +943,7 @@ export class NetscalerGraylogClient {
                 return {
                     rule,
                     matchCount: total,
+                    matchedExternalIps,
                     sampleEvents
                 };
             } catch (err: any) {
@@ -893,11 +951,93 @@ export class NetscalerGraylogClient {
                 return {
                     rule,
                     matchCount: 0,
+                    matchedExternalIps: [],
                     sampleEvents: []
                 };
             }
         });
 
         return await Promise.all(scanPromises);
+    }
+
+    /**
+     * Deep extraction of all unique external IPs for a specific threat rule query.
+     */
+    async getRuleMatchedExternalIps(
+        ruleQuery: string,
+        rangeSeconds: number = 86400,
+        limit: number = 500
+    ): Promise<NetscalerMatchedIp[]> {
+        const isInternalIp = (ip?: string) => {
+            if (!ip) return false;
+            return /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.)/.test(ip);
+        };
+
+        try {
+            const params = new URLSearchParams({
+                query: ruleQuery,
+                range: rangeSeconds.toString(),
+                filter: `streams:${this.streamId}`,
+                limit: limit.toString(),
+                fields: "src_ip,ns_remote_ip,src_ip_country_code,src_ip_city_name,ns_username,message,timestamp",
+                sort: "timestamp:desc"
+            });
+            const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
+            const res = await axios.get(url, {
+                httpsAgent,
+                headers: {
+                    Authorization: this.authHeader,
+                    Accept: "application/json",
+                    "X-Requested-By": "pane-o-glass"
+                },
+                timeout: 25000
+            });
+
+            const messages: any[] = res.data.messages || [];
+            const ipMap = new Map<string, NetscalerMatchedIp>();
+
+            messages.forEach((m: any) => {
+                const rawMsg = m.message.message || "";
+                let ip = m.message.ns_remote_ip || m.message.src_ip;
+                if (!ip) {
+                    const mMatch = rawMsg.match(/(?:Remote_ip|Remote ip\s*=|clientip|Source)\s*[:=]?\s*([0-9\.]+)/i);
+                    if (mMatch) ip = mMatch[1];
+                }
+                if (!ip) {
+                    const anyIp = rawMsg.match(/\b((?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-5])\.(?:\d{1,3}\.){2}(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-5]))\b/);
+                    if (anyIp && !isInternalIp(anyIp[1])) ip = anyIp[1];
+                }
+
+                if (ip && !isInternalIp(ip)) {
+                    const existing = ipMap.get(ip);
+                    const ts = m.message.timestamp;
+                    const country = m.message.src_ip_country_code || existing?.countryCode;
+                    const city = m.message.src_ip_city_name || existing?.cityName;
+
+                    if (existing) {
+                        existing.count += 1;
+                        if (ts && (!existing.lastSeen || ts > existing.lastSeen)) existing.lastSeen = ts;
+                        if (ts && (!existing.firstSeen || ts < existing.firstSeen)) existing.firstSeen = ts;
+                        if (country) existing.countryCode = country;
+                        if (city && city !== "N/A") existing.cityName = city;
+                    } else {
+                        ipMap.set(ip, {
+                            ip,
+                            count: 1,
+                            countryCode: country || undefined,
+                            cityName: city && city !== "N/A" ? city : undefined,
+                            firstSeen: ts,
+                            lastSeen: ts,
+                            sampleMessage: rawMsg.substring(0, 150)
+                        });
+                    }
+                }
+            });
+
+            return Array.from(ipMap.values()).sort((a, b) => b.count - a.count);
+        } catch (err: any) {
+            console.error("[NetScaler Graylog] getRuleMatchedExternalIps error:", err.message);
+            return [];
+        }
     }
 }

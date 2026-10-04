@@ -5,7 +5,7 @@ import {
     Layers, ShieldAlert, Globe, Search, Clock, User, Server, 
     Activity, CheckCircle2, AlertTriangle, ExternalLink, RefreshCw, 
     X, Lock, Shield, ArrowUpRight, Filter, ChevronRight, Terminal, Laptop, Plus, Bug, Zap,
-    AlertOctagon, UserX, Flame
+    AlertOctagon, UserX, Flame, Copy, Download, Check
 } from "lucide-react";
 import { 
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -15,7 +15,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { 
     NetscalerStats, NetscalerForeignEvent, NetscalerTimelineEvent,
-    NetscalerIocRule, NetscalerIocFinding, DEFAULT_CITRIX_IOC_RULES 
+    NetscalerIocRule, NetscalerIocFinding, NetscalerMatchedIp, DEFAULT_CITRIX_IOC_RULES 
 } from "@/lib/netscaler-graylog";
 
 const COUNTRY_COLORS: Record<string, string> = {
@@ -94,9 +94,15 @@ export default function NetscalerDashboardClient() {
     const [newRuleQuery, setNewRuleQuery] = useState("");
     const [newRuleSeverity, setNewRuleSeverity] = useState<"CRITICAL" | "HIGH" | "MEDIUM">("HIGH");
 
-    // Quick Perimeter Shun Modal State
+    // Matched Threat IPs state
+    const [copiedIp, setCopiedIp] = useState<string | null>(null);
+    const [expandedIpsRuleId, setExpandedIpsRuleId] = useState<string | null>(null);
+
+    // Quick Perimeter Shun Modal State (Supports Single IP and Batch IPs)
     const [shunModalData, setShunModalData] = useState<{
-        ip: string;
+        ip?: string;
+        ips?: string[];
+        ruleName?: string;
         country?: string;
         city?: string;
         targetHost: string;
@@ -115,19 +121,51 @@ export default function NetscalerDashboardClient() {
             .catch(() => {});
     }, []);
 
-    const isPrivateIpCheck = (ip: string) => {
+    const isPrivateIpCheck = (ip?: string) => {
+        if (!ip) return false;
         return /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.)/.test(ip);
+    };
+
+    const copyToClipboard = (text: string, id: string = "all") => {
+        if (typeof navigator !== "undefined" && navigator.clipboard) {
+            navigator.clipboard.writeText(text);
+            setCopiedIp(id);
+            setTimeout(() => setCopiedIp(null), 2500);
+        }
+    };
+
+    const exportIpsCsv = (ipsList: NetscalerMatchedIp[], filename = "netscaler-threat-ips.csv") => {
+        if (!ipsList || ipsList.length === 0) return;
+        const headers = "IP,Hits,Country,City,First Seen,Last Seen\n";
+        const rows = ipsList.map(m => `"${m.ip}",${m.count},"${m.countryCode || ''}","${m.cityName || ''}","${m.firstSeen || ''}","${m.lastSeen || ''}"`).join("\n");
+        const blob = new Blob([headers + rows], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     const executeQuickShun = async () => {
         if (!shunModalData) return;
         setShunModalData(prev => prev ? { ...prev, loading: true, error: null, result: null } : null);
         try {
+            const ipsToShun = shunModalData.ips && shunModalData.ips.length > 0
+                ? shunModalData.ips.filter(ip => !isPrivateIpCheck(ip))
+                : (shunModalData.ip && !isPrivateIpCheck(shunModalData.ip) ? [shunModalData.ip] : []);
+
+            if (ipsToShun.length === 0) {
+                throw new Error("No valid external IP addresses specified to shun (private/RFC1918 IPs cannot be shunned).");
+            }
+
             const res = await fetch("/api/firewall/shun", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    ipAddress: shunModalData.ip,
+                    ipAddress: ipsToShun.length === 1 ? ipsToShun[0] : undefined,
+                    ipAddresses: ipsToShun.length > 1 ? ipsToShun : undefined,
                     action: "add",
                     targetHost: shunModalData.targetHost
                 })
@@ -322,6 +360,20 @@ export default function NetscalerDashboardClient() {
         if (iocFilterCve === "CUSTOM") return finding.rule.category === "CUSTOM";
         return true;
     });
+
+    // Aggregation of all unique external threat IPs across all matching findings
+    const allUniqueMatchedIpsMap = new Map<string, NetscalerMatchedIp>();
+    iocFindings.forEach(f => {
+        (f.matchedExternalIps || []).forEach(m => {
+            const existing = allUniqueMatchedIpsMap.get(m.ip);
+            if (existing) {
+                existing.count += m.count;
+            } else {
+                allUniqueMatchedIpsMap.set(m.ip, { ...m });
+            }
+        });
+    });
+    const allUniqueMatchedIps = Array.from(allUniqueMatchedIpsMap.values()).sort((a, b) => b.count - a.count);
 
     return (
         <div className="flex flex-col gap-6">
@@ -1545,6 +1597,135 @@ export default function NetscalerDashboardClient() {
                         </div>
                     )}
 
+                    {/* Master External Threat Actors Discovered Deck */}
+                    {allUniqueMatchedIps.length > 0 && (
+                        <div className="p-5 rounded-xl bg-gradient-to-r from-rose-950/40 via-slate-900/80 to-slate-900/60 border border-rose-500/40 shadow-lg flex flex-col gap-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                                        <ShieldAlert size={20} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-sm font-bold text-white tracking-wide">
+                                                Discovered External Threat Actors
+                                            </h3>
+                                            <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse">
+                                                {allUniqueMatchedIps.length} Unique Public IPs
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-slate-400">
+                                            Deduplicated external IPs surfaced across active zero-day and threat hunt detections. Ready for bulk fleet perimeter shunning.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => copyToClipboard(allUniqueMatchedIps.map(x => x.ip).join("\n"), "master-all")}
+                                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 flex items-center gap-1.5 transition-colors"
+                                        title="Copy all discovered IPs to clipboard (newline separated)"
+                                    >
+                                        {copiedIp === "master-all" ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                                        <span>{copiedIp === "master-all" ? "Copied!" : `Copy All (${allUniqueMatchedIps.length})`}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => exportIpsCsv(allUniqueMatchedIps, `netscaler-threat-ips-${Date.now()}.csv`)}
+                                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 flex items-center gap-1.5 transition-colors"
+                                        title="Download CSV export with geolocation and hit counts"
+                                    >
+                                        <Download size={14} />
+                                        <span>Export CSV</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShunModalData({
+                                            ips: allUniqueMatchedIps.map(x => x.ip),
+                                            ruleName: `All Threat Detections (${allUniqueMatchedIps.length} IPs)`,
+                                            targetHost: firewallHosts.length > 0 ? firewallHosts[0].id : "all",
+                                            loading: false,
+                                            result: null,
+                                            error: null
+                                        })}
+                                        className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-950 flex items-center gap-1.5 transition-all"
+                                    >
+                                        <Shield size={14} />
+                                        <span>⚡ Bulk Shun All ({allUniqueMatchedIps.length}) IPs</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Preview table of all unique IPs */}
+                            <div className="overflow-x-auto max-h-48 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/70">
+                                <table className="w-full text-left text-xs">
+                                    <thead className="bg-slate-900/90 text-[11px] text-slate-400 font-medium uppercase tracking-wider sticky top-0 border-b border-slate-800">
+                                        <tr>
+                                            <th className="py-2 px-3">IP Address</th>
+                                            <th className="py-2 px-3">Hits</th>
+                                            <th className="py-2 px-3">Origin Geo</th>
+                                            <th className="py-2 px-3">First Seen</th>
+                                            <th className="py-2 px-3">Last Seen</th>
+                                            <th className="py-2 px-3 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                                        {allUniqueMatchedIps.map(item => (
+                                            <tr key={item.ip} className="hover:bg-slate-900/50 transition-colors">
+                                                <td className="py-1.5 px-3 font-semibold text-rose-300 select-all">
+                                                    {item.ip}
+                                                </td>
+                                                <td className="py-1.5 px-3">
+                                                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200">
+                                                        {item.count}
+                                                    </span>
+                                                </td>
+                                                <td className="py-1.5 px-3 text-slate-300 font-sans">
+                                                    {item.countryCode || "N/A"} {item.cityName && item.cityName !== "N/A" ? `• ${item.cityName}` : ""}
+                                                </td>
+                                                <td className="py-1.5 px-3 text-slate-400">
+                                                    {formatFullTime(item.firstSeen)}
+                                                </td>
+                                                <td className="py-1.5 px-3 text-slate-400">
+                                                    {formatFullTime(item.lastSeen)}
+                                                </td>
+                                                <td className="py-1.5 px-3 text-right font-sans">
+                                                    <div className="flex items-center justify-end gap-1.5">
+                                                        <button
+                                                            onClick={() => {
+                                                                setSearchQuery(item.ip);
+                                                                setActiveTab("investigate");
+                                                                runInvestigation(item.ip, timeframe);
+                                                            }}
+                                                            className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] transition-colors"
+                                                        >
+                                                            Trace
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setShunModalData({
+                                                                ip: item.ip,
+                                                                country: item.countryCode,
+                                                                city: item.cityName,
+                                                                targetHost: firewallHosts.length > 0 ? firewallHosts[0].id : "all",
+                                                                loading: false,
+                                                                result: null,
+                                                                error: null
+                                                            })}
+                                                            className="px-2 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] flex items-center gap-1 transition-colors"
+                                                        >
+                                                            <Shield size={10} /> Shun
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Rule & CVE Scope Filter Tabs */}
                     <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs">
                         <div className="flex flex-wrap items-center gap-2">
@@ -1695,6 +1876,120 @@ export default function NetscalerDashboardClient() {
                                             <span className="text-slate-500">Query: </span>{finding.rule.query}
                                         </div>
 
+                                        {/* Extracted Threat Source IPs for this rule */}
+                                        {hasMatches && finding.matchedExternalIps && finding.matchedExternalIps.length > 0 && (
+                                            <div className="mt-3 pt-3 border-t border-slate-800/80 flex flex-col gap-2">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <ShieldAlert size={14} className="text-rose-400" />
+                                                        <span className="text-xs font-semibold text-rose-300">
+                                                            Extracted Threat Source IPs ({finding.matchedExternalIps.length} Unique Public IPs)
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => copyToClipboard(finding.matchedExternalIps.map(x => x.ip).join("\n"), finding.rule.id)}
+                                                            className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 transition-colors"
+                                                            title="Copy IPs for this rule to clipboard"
+                                                        >
+                                                            {copiedIp === finding.rule.id ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                                                            <span>{copiedIp === finding.rule.id ? "Copied" : "Copy IPs"}</span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => exportIpsCsv(finding.matchedExternalIps, `${finding.rule.id}-threat-ips.csv`)}
+                                                            className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1 transition-colors"
+                                                            title="Export CSV for this rule"
+                                                        >
+                                                            <Download size={12} />
+                                                            <span>CSV</span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setShunModalData({
+                                                                ips: finding.matchedExternalIps.map(x => x.ip),
+                                                                ruleName: finding.rule.name,
+                                                                targetHost: firewallHosts.length > 0 ? firewallHosts[0].id : "all",
+                                                                loading: false,
+                                                                result: null,
+                                                                error: null
+                                                            })}
+                                                            className="px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-medium flex items-center gap-1 transition-colors"
+                                                        >
+                                                            <Shield size={12} />
+                                                            <span>⚡ Shun All ({finding.matchedExternalIps.length}) IPs</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Table of rule IPs */}
+                                                <div className="overflow-x-auto max-h-40 overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/80">
+                                                    <table className="w-full text-left text-xs">
+                                                        <thead className="bg-slate-900/90 text-[10px] text-slate-400 font-medium uppercase sticky top-0 border-b border-slate-800">
+                                                            <tr>
+                                                                <th className="py-1.5 px-3">IP Address</th>
+                                                                <th className="py-1.5 px-3">Hits</th>
+                                                                <th className="py-1.5 px-3">Origin Geo</th>
+                                                                <th className="py-1.5 px-3">Last Seen</th>
+                                                                <th className="py-1.5 px-3 text-right">Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                                                            {finding.matchedExternalIps.map(m => (
+                                                                <tr key={m.ip} className="hover:bg-slate-900/40">
+                                                                    <td className="py-1.5 px-3 font-semibold text-rose-300 select-all">
+                                                                        {m.ip}
+                                                                    </td>
+                                                                    <td className="py-1.5 px-3">
+                                                                        <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200">
+                                                                            {m.count}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="py-1.5 px-3 text-slate-300 font-sans">
+                                                                        {m.countryCode || "N/A"} {m.cityName && m.cityName !== "N/A" ? `• ${m.cityName}` : ""}
+                                                                    </td>
+                                                                    <td className="py-1.5 px-3 text-slate-400">
+                                                                        {formatFullTime(m.lastSeen)}
+                                                                    </td>
+                                                                    <td className="py-1.5 px-3 text-right font-sans">
+                                                                        <div className="flex items-center justify-end gap-1.5">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setSearchQuery(m.ip);
+                                                                                    setActiveTab("investigate");
+                                                                                    runInvestigation(m.ip, timeframe);
+                                                                                }}
+                                                                                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] transition-colors"
+                                                                            >
+                                                                                Trace
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setShunModalData({
+                                                                                    ip: m.ip,
+                                                                                    country: m.countryCode,
+                                                                                    city: m.cityName,
+                                                                                    targetHost: firewallHosts.length > 0 ? firewallHosts[0].id : "all",
+                                                                                    loading: false,
+                                                                                    result: null,
+                                                                                    error: null
+                                                                                })}
+                                                                                className="px-2 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] flex items-center gap-1 transition-colors"
+                                                                            >
+                                                                                <Shield size={10} /> Shun
+                                                                            </button>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {/* Sample Detections Table */}
                                         {hasMatches && finding.sampleEvents.length > 0 && (
                                             <div className="mt-3 pt-3 border-t border-slate-800/80 space-y-2">
@@ -1784,152 +2079,215 @@ export default function NetscalerDashboardClient() {
                 )}
 
             {/* QUICK PERIMETER SHUN MODAL */}
-            {shunModalData && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-                    <div className="relative w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-6 flex flex-col gap-5 text-slate-200">
-                        {/* Header */}
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                            <div className="flex items-center gap-2.5">
-                                <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400">
-                                    <Shield size={20} />
-                                </div>
-                                <div>
-                                    <h3 className="text-base font-semibold text-white">Perimeter Firewall Shun</h3>
-                                    <p className="text-xs text-slate-400">Apply immediate block on Cisco ASA / Firepower firewalls</p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => setShunModalData(null)}
-                                disabled={shunModalData.loading}
-                                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
+            {shunModalData && (() => {
+                const isBatch = Boolean(shunModalData.ips && shunModalData.ips.length > 0);
+                const targetIps = isBatch ? shunModalData.ips! : (shunModalData.ip ? [shunModalData.ip] : []);
+                const validExternalCount = targetIps.filter(ip => !isPrivateIpCheck(ip)).length;
+                const privateCount = targetIps.filter(isPrivateIpCheck).length;
+                const hasPrivateOnly = targetIps.length > 0 && validExternalCount === 0;
 
-                        {/* Target Information */}
-                        <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 flex flex-col gap-2">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs text-slate-400">Target Source IP</span>
-                                <span className="font-mono text-base font-bold text-rose-400">{shunModalData.ip}</span>
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+                        <div className="relative w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-6 flex flex-col gap-5 text-slate-200">
+                            {/* Header */}
+                            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400">
+                                        <Shield size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-semibold text-white">
+                                            {isBatch ? `Batch Perimeter Firewall Shun (${targetIps.length} IPs)` : "Perimeter Firewall Shun"}
+                                        </h3>
+                                        <p className="text-xs text-slate-400">Apply immediate block on Cisco ASA / Firepower firewalls</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShunModalData(null)}
+                                    disabled={shunModalData.loading}
+                                    className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                >
+                                    <X size={18} />
+                                </button>
                             </div>
-                            {(shunModalData.country || shunModalData.city) && (
-                                <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/60">
-                                    <span>Geolocation</span>
-                                    <span className="font-mono text-slate-300">
-                                        {shunModalData.country} {shunModalData.city && shunModalData.city !== "N/A" ? `• ${shunModalData.city}` : ""}
-                                    </span>
+
+                            {/* Target Information */}
+                            {isBatch ? (
+                                <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 flex flex-col gap-2.5">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-slate-400">Target Threat Scope</span>
+                                        <span className="text-xs font-semibold text-rose-300 font-mono">
+                                            {targetIps.length} External IP Addresses
+                                        </span>
+                                    </div>
+                                    {shunModalData.ruleName && (
+                                        <div className="text-xs text-slate-400 flex items-center justify-between pt-1 border-t border-slate-800/60">
+                                            <span>Threat Context</span>
+                                            <span className="text-slate-200 font-medium truncate max-w-xs">{shunModalData.ruleName}</span>
+                                        </div>
+                                    )}
+                                    <div className="mt-1 pt-2 border-t border-slate-800/60">
+                                        <div className="text-[11px] text-slate-400 mb-1.5 flex items-center justify-between">
+                                            <span>Discovered IPs to be shunned in batch:</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => copyToClipboard(targetIps.join("\n"), "modal-ips")}
+                                                className="text-slate-400 hover:text-slate-200 flex items-center gap-1 text-[10px]"
+                                            >
+                                                {copiedIp === "modal-ips" ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} />}
+                                                <span>{copiedIp === "modal-ips" ? "Copied" : "Copy List"}</span>
+                                            </button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1.5 rounded bg-slate-900 border border-slate-800">
+                                            {targetIps.map(ip => {
+                                                const isPriv = isPrivateIpCheck(ip);
+                                                return (
+                                                    <span
+                                                        key={ip}
+                                                        className={`px-2 py-0.5 rounded text-[11px] font-mono border ${
+                                                            isPriv
+                                                                ? "bg-amber-950/40 text-amber-300 border-amber-800/60 line-through"
+                                                                : "bg-rose-950/40 text-rose-300 border-rose-800/60"
+                                                        }`}
+                                                        title={isPriv ? "Private IP will be skipped for safety" : "Valid external threat IP"}
+                                                    >
+                                                        {ip}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 flex flex-col gap-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs text-slate-400">Target Source IP</span>
+                                        <span className="font-mono text-base font-bold text-rose-400">{shunModalData.ip}</span>
+                                    </div>
+                                    {(shunModalData.country || shunModalData.city) && (
+                                        <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/60">
+                                            <span>Geolocation</span>
+                                            <span className="font-mono text-slate-300">
+                                                {shunModalData.country} {shunModalData.city && shunModalData.city !== "N/A" ? `• ${shunModalData.city}` : ""}
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             )}
-                        </div>
 
-                        {/* Target Firewall Selector */}
-                        <div className="flex flex-col gap-1.5">
-                            <label className="text-xs font-medium text-slate-300">Target Firewall Node</label>
-                            <select
-                                value={shunModalData.targetHost}
-                                onChange={(e) => setShunModalData({ ...shunModalData, targetHost: e.target.value })}
-                                disabled={shunModalData.loading || !!shunModalData.result}
-                                className="w-full p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-slate-200 text-xs focus:outline-none focus:border-rose-500 disabled:opacity-50"
-                            >
-                                {firewallHosts.map(h => (
-                                    <option key={h.id} value={h.id}>{h.name}</option>
-                                ))}
-                            </select>
-                            <span className="text-[11px] text-slate-500">
-                                {shunModalData.targetHost === "all"
-                                    ? "Will push perimeter shun across all primary and secondary firewall pairs simultaneously."
-                                    : "Will execute shun on the selected firewall node."}
-                            </span>
-                        </div>
-
-                        {/* Safety Warning */}
-                        {isPrivateIpCheck(shunModalData.ip) ? (
-                            <div className="p-3 rounded-lg bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-center gap-2">
-                                <AlertTriangle size={16} className="shrink-0 text-red-400" />
-                                <span>Safety Protection: Internal / RFC1918 private IP addresses cannot be shunned.</span>
+                            {/* Target Firewall Selector */}
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-xs font-medium text-slate-300">Target Firewall Node</label>
+                                <select
+                                    value={shunModalData.targetHost}
+                                    onChange={(e) => setShunModalData({ ...shunModalData, targetHost: e.target.value })}
+                                    disabled={shunModalData.loading || !!shunModalData.result}
+                                    className="w-full p-2.5 rounded-lg bg-slate-950/80 border border-slate-800 text-slate-200 text-xs focus:outline-none focus:border-rose-500 disabled:opacity-50"
+                                >
+                                    {firewallHosts.map(h => (
+                                        <option key={h.id} value={h.id}>{h.name}</option>
+                                    ))}
+                                </select>
+                                <span className="text-[11px] text-slate-500">
+                                    {shunModalData.targetHost === "all"
+                                        ? "Will push perimeter shun across all primary and secondary firewall pairs simultaneously."
+                                        : "Will execute shun on the selected firewall node."}
+                                </span>
                             </div>
-                        ) : !shunModalData.result ? (
-                            <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-800/50 text-amber-300 text-xs flex items-start gap-2">
-                                <AlertTriangle size={16} className="shrink-0 text-amber-400 mt-0.5" />
-                                <span>Executing this shun will drop all active connections from this IP and block new traffic at the perimeter edge. Action is audited.</span>
-                            </div>
-                        ) : null}
 
-                        {/* Error Message */}
-                        {shunModalData.error && (
-                            <div className="p-3 rounded-lg bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-start gap-2">
-                                <AlertTriangle size={16} className="shrink-0 text-red-400 mt-0.5" />
-                                <span>{shunModalData.error}</span>
-                            </div>
-                        )}
-
-                        {/* Result Display */}
-                        {shunModalData.result && (
-                            <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-800/60 text-emerald-200 text-xs flex flex-col gap-2">
-                                <div className="flex items-center gap-2 font-semibold">
-                                    <CheckCircle2 size={16} className="text-emerald-400" />
-                                    <span>Shun Successfully Applied on {shunModalData.result.target}</span>
+                            {/* Safety Warning */}
+                            {hasPrivateOnly ? (
+                                <div className="p-3 rounded-lg bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-center gap-2">
+                                    <AlertTriangle size={16} className="shrink-0 text-red-400" />
+                                    <span>Safety Protection: All selected IP addresses are internal/RFC1918 private spaces and cannot be shunned.</span>
                                 </div>
-                                {shunModalData.result.stdout && (
-                                    <pre className="font-mono text-[11px] bg-slate-950/80 p-2 rounded border border-slate-800/80 max-h-32 overflow-y-auto text-slate-300 whitespace-pre-wrap">
-                                        {shunModalData.result.stdout}
-                                    </pre>
-                                )}
-                            </div>
-                        )}
+                            ) : privateCount > 0 ? (
+                                <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-800/50 text-amber-300 text-xs flex items-start gap-2">
+                                    <AlertTriangle size={16} className="shrink-0 text-amber-400 mt-0.5" />
+                                    <span>Notice: {privateCount} RFC1918 private IP(s) will be automatically skipped. Only {validExternalCount} external IP(s) will be shunned.</span>
+                                </div>
+                            ) : !shunModalData.result ? (
+                                <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-800/50 text-amber-300 text-xs flex items-start gap-2">
+                                    <AlertTriangle size={16} className="shrink-0 text-amber-400 mt-0.5" />
+                                    <span>Executing this shun will drop all active connections from these IPs and block new traffic at the perimeter edge. Action is audited.</span>
+                                </div>
+                            ) : null}
 
-                        {/* Action Buttons */}
-                        <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-800">
-                            <Link
-                                href={`/queries/firewall?ip=${encodeURIComponent(shunModalData.ip)}`}
-                                target="_blank"
-                                className="text-xs text-slate-400 hover:text-teal-400 flex items-center gap-1 transition-colors"
-                            >
-                                <ExternalLink size={12} /> Open in Firewall Console
-                            </Link>
+                            {/* Error Message */}
+                            {shunModalData.error && (
+                                <div className="p-3 rounded-lg bg-red-950/50 border border-red-800 text-red-300 text-xs flex items-start gap-2">
+                                    <AlertTriangle size={16} className="shrink-0 text-red-400 mt-0.5" />
+                                    <span>{shunModalData.error}</span>
+                                </div>
+                            )}
 
-                            <div className="flex items-center gap-2">
-                                {shunModalData.result ? (
-                                    <button
-                                        onClick={() => setShunModalData(null)}
-                                        className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition-colors"
-                                    >
-                                        Close
-                                    </button>
-                                ) : (
-                                    <>
+                            {/* Result Display */}
+                            {shunModalData.result && (
+                                <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-800/60 text-emerald-200 text-xs flex flex-col gap-2">
+                                    <div className="flex items-center gap-2 font-semibold">
+                                        <CheckCircle2 size={16} className="text-emerald-400" />
+                                        <span>Shun Successfully Applied on {shunModalData.result.target}</span>
+                                    </div>
+                                    {shunModalData.result.stdout && (
+                                        <pre className="font-mono text-[11px] bg-slate-950/80 p-2 rounded border border-slate-800/80 max-h-32 overflow-y-auto text-slate-300 whitespace-pre-wrap">
+                                            {shunModalData.result.stdout}
+                                        </pre>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-800">
+                                <Link
+                                    href={shunModalData.ip ? `/queries/firewall?ip=${encodeURIComponent(shunModalData.ip)}` : "/queries/firewall"}
+                                    target="_blank"
+                                    className="text-xs text-slate-400 hover:text-teal-400 flex items-center gap-1 transition-colors"
+                                >
+                                    <ExternalLink size={12} /> Open in Firewall Console
+                                </Link>
+
+                                <div className="flex items-center gap-2">
+                                    {shunModalData.result ? (
                                         <button
                                             onClick={() => setShunModalData(null)}
-                                            disabled={shunModalData.loading}
-                                            className="px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 text-xs transition-colors disabled:opacity-50"
+                                            className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition-colors"
                                         >
-                                            Cancel
+                                            Close
                                         </button>
-                                        <button
-                                            onClick={executeQuickShun}
-                                            disabled={shunModalData.loading || isPrivateIpCheck(shunModalData.ip)}
-                                            className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-all shadow-md shadow-rose-900/30 flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
-                                        >
-                                            {shunModalData.loading ? (
-                                                <>
-                                                    <RefreshCw size={13} className="animate-spin" />
-                                                    Applying Shun...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Shield size={13} />
-                                                    Apply Perimeter Shun
-                                                </>
-                                            )}
-                                        </button>
-                                    </>
-                                )}
+                                    ) : (
+                                        <>
+                                            <button
+                                                onClick={() => setShunModalData(null)}
+                                                disabled={shunModalData.loading}
+                                                className="px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 text-xs transition-colors disabled:opacity-50"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={executeQuickShun}
+                                                disabled={shunModalData.loading || hasPrivateOnly || validExternalCount === 0}
+                                                className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-all shadow-md shadow-rose-900/30 flex items-center gap-1.5 disabled:opacity-50 disabled:pointer-events-none"
+                                            >
+                                                {shunModalData.loading ? (
+                                                    <>
+                                                        <RefreshCw size={13} className="animate-spin" />
+                                                        Applying Shun...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Shield size={13} />
+                                                        {isBatch ? `Apply Batch Shun (${validExternalCount} IPs)` : "Apply Perimeter Shun"}
+                                                    </>
+                                                )}
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
         </div>
     );
 }

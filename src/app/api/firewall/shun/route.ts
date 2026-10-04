@@ -123,20 +123,29 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { ipAddress, action, targetHost } = body;
+        const { ipAddress, ipAddresses, action, targetHost } = body;
 
         // Requester IP for audit
         const forwardedFor = req.headers.get("x-forwarded-for");
         const clientIp = forwardedFor ? forwardedFor.split(',')[0] : 'unknown';
 
-        if (!ipAddress || !action || !targetHost) {
-            return new NextResponse("Missing required parameters (ipAddress, action, targetHost)", { status: 400 });
+        let rawList: string[] = [];
+        if (Array.isArray(ipAddresses) && ipAddresses.length > 0) {
+            rawList = ipAddresses;
+        } else if (ipAddress) {
+            rawList = [ipAddress];
+        }
+
+        if (rawList.length === 0 || !action || !targetHost) {
+            return new NextResponse("Missing required parameters (ipAddress or ipAddresses, action, targetHost)", { status: 400 });
         }
 
         // Basic IPv4 validation
         const ipv4Regex = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-        if (!ipv4Regex.test(ipAddress)) {
-            return new NextResponse("Invalid IPv4 address format", { status: 400 });
+        const validIps = Array.from(new Set(rawList.map(ip => String(ip).trim()))).filter(ip => ipv4Regex.test(ip));
+
+        if (validIps.length === 0) {
+            return new NextResponse("No valid IPv4 addresses provided", { status: 400 });
         }
 
         const allowedActions = ["show", "remove", "add", "shun"];
@@ -145,11 +154,16 @@ export async function POST(req: Request) {
         }
 
         // Safety Guardrail: Do not shun private or loopback IP spaces
-        if ((action === "add" || action === "shun") && isPrivateIp(ipAddress)) {
+        const externalIps = validIps.filter(ip => !isPrivateIp(ip));
+        const skippedPrivateIps = validIps.filter(ip => isPrivateIp(ip));
+
+        if (externalIps.length === 0 && (action === "add" || action === "shun")) {
             return NextResponse.json({
                 error: "Safety Block: Cannot shun private/RFC1918 or loopback IP address spaces on perimeter firewalls."
             }, { status: 400 });
         }
+
+        const targetIps = (action === "add" || action === "shun") ? externalIps : validIps;
 
         // Parse FIREWALL_CONFIG
         const configStr = process.env.FIREWALL_CONFIG || "[]";
@@ -175,16 +189,16 @@ export async function POST(req: Request) {
             targetLabel = single.name || single.ip;
         }
 
-        // Determine CLI command
-        let command = `show shun ${ipAddress}`;
-        if (action === "remove") {
-            command = `no shun ${ipAddress}`;
-        } else if (action === "add" || action === "shun") {
-            command = `shun ${ipAddress}`;
-        }
+        // Determine CLI command (batch newline separated)
+        const commandLines = targetIps.map(ip => {
+            if (action === "remove") return `no shun ${ip}`;
+            if (action === "add" || action === "shun") return `shun ${ip}`;
+            return `show shun ${ip}`;
+        });
+        const command = commandLines.join("\n");
 
-        // Fetch IP geolocation/enrichment in parallel
-        const ipInfo = await getIpInfoLite(ipAddress).catch(() => null);
+        // Fetch IP geolocation/enrichment in parallel for first IP if single
+        const ipInfo = targetIps.length === 1 ? await getIpInfoLite(targetIps[0]).catch(() => null) : null;
 
         // Execute command across target firewall(s)
         const executionResults: FwExecutionResult[] = await Promise.all(
@@ -202,14 +216,15 @@ export async function POST(req: Request) {
 
         // Audit Logging
         if (overallSuccess) {
+            const ipLabel = targetIps.length === 1 ? targetIps[0] : `${targetIps.length} IPs (${targetIps.slice(0, 3).join(", ")}${targetIps.length > 3 ? "..." : ""})`;
             let auditAction = "FIREWALL_SHUN_SHOW";
-            let auditDesc = `Checked shun for ${ipAddress} on ${targetLabel}`;
+            let auditDesc = `Checked shun for ${ipLabel} on ${targetLabel}`;
             if (action === "remove") {
                 auditAction = "FIREWALL_SHUN_REMOVE";
-                auditDesc = `Removed shun for ${ipAddress} on ${targetLabel}`;
+                auditDesc = `Removed shun for ${ipLabel} on ${targetLabel}`;
             } else if (action === "add" || action === "shun") {
                 auditAction = "FIREWALL_SHUN_ADD";
-                auditDesc = `Applied perimeter shun for ${ipAddress} on ${targetLabel}`;
+                auditDesc = `Applied perimeter shun for ${ipLabel} on ${targetLabel}`;
             }
 
             await logAudit(
@@ -223,12 +238,12 @@ export async function POST(req: Request) {
             if (action === "remove") {
                 try {
                     const result = await prisma.guardianBlacklist.deleteMany({
-                        where: { ip: ipAddress }
+                        where: { ip: { in: targetIps } }
                     });
                     if (result.count > 0) {
                         await logAudit(
                             "GUARDIAN_BLACKLIST_CLEAR",
-                            `IP ${ipAddress} was automatically removed from the Guardian blacklist as part of manual shun removal.`,
+                            `${result.count} IP(s) removed from Guardian blacklist as part of shun removal.`,
                             session.user?.id,
                             clientIp
                         );
@@ -245,21 +260,23 @@ export async function POST(req: Request) {
             if (action === "remove") historyCmd = "Remove Shun";
             else if (action === "add" || action === "shun") historyCmd = "Apply Shun";
 
-            await prisma.firewallQueryHistory.create({
-                data: {
-                    userId: session.user?.id,
-                    command: historyCmd,
-                    targetIp: ipAddress,
-                    targetName: targetLabel,
-                    ipAsn: ipInfo?.asn,
-                    ipAsName: ipInfo?.as_name,
-                    ipAsDomain: ipInfo?.as_domain,
-                    ipCountry: ipInfo?.country,
-                    ipCountryCode: ipInfo?.country_code
-                }
-            });
-        } catch (e) {
-            console.error("Failed to log firewall query to history:", e);
+            for (const ip of targetIps.slice(0, 10)) {
+                await prisma.firewallQueryHistory.create({
+                    data: {
+                        userId: session.user?.id,
+                        command: historyCmd,
+                        targetIp: ip,
+                        targetName: targetLabel,
+                        ipAsn: ipInfo?.asn,
+                        ipAsName: ipInfo?.as_name,
+                        ipAsDomain: ipInfo?.as_domain,
+                        ipCountry: ipInfo?.country,
+                        ipCountryCode: ipInfo?.country_code
+                    }
+                }).catch(() => {});
+            }
+        } catch (e: any) {
+            console.error("Dual audit to FirewallQueryHistory failed:", e.message);
         }
 
         return NextResponse.json({
