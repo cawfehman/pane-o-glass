@@ -5,7 +5,7 @@ import {
     Layers, ShieldAlert, Globe, Search, Clock, User, Server, 
     Activity, CheckCircle2, AlertTriangle, ExternalLink, RefreshCw, 
     X, Lock, Shield, ArrowUpRight, Filter, ChevronRight, Terminal, Laptop, Plus, Bug, Zap,
-    AlertOctagon, UserX, Flame, Copy, Download, Check
+    AlertOctagon, UserX, Flame, Copy, Download, Check, Play, Pause, RotateCcw, FileText, Radio
 } from "lucide-react";
 import { 
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -44,7 +44,28 @@ export default function NetscalerDashboardClient() {
     const [timeframe, setTimeframe] = useState<number>(86400);
 
     // Active tab
-    const [activeTab, setActiveTab] = useState<"overview" | "foreign" | "investigate" | "iocs">("overview");
+    const [activeTab, setActiveTab] = useState<"overview" | "foreign" | "investigate" | "iocs" | "cve-shuns">("overview");
+
+    // CVE-2026 Auto-Shun & Dedicated Tracking State
+    const [cveShuns, setCveShuns] = useState<any[]>([]);
+    const [cveStats, setCveStats] = useState<{
+        totalTracked: number;
+        activeCount: number;
+        removedCount: number;
+        cve88771Count: number;
+        cve88772Count: number;
+        lastCycleTime: string | null;
+        lastCycleStatus: string;
+        lastCycleMessage: string | null;
+        autoShunEnabled: boolean;
+    } | null>(null);
+    const [cveLoading, setCveLoading] = useState(false);
+    const [cveSearch, setCveSearch] = useState("");
+    const [cveFilter, setCveFilter] = useState<"ALL" | "88771" | "88772">("ALL");
+    const [cveStatusFilter, setCveStatusFilter] = useState<"ALL" | "ACTIVE" | "REMOVED">("ALL");
+    const [cveActionLoading, setCveActionLoading] = useState<string | null>(null);
+    const [cycleRunning, setCycleRunning] = useState(false);
+    const [selectedPayloadSample, setSelectedPayloadSample] = useState<{ ip: string; payload: string; rule: string; cve: string } | null>(null);
 
     // Geo Access & Location Intel state
     const [geoScope, setGeoScope] = useState<"all" | "foreign" | "us">("all");
@@ -143,6 +164,152 @@ export default function NetscalerDashboardClient() {
         const link = document.createElement("a");
         link.setAttribute("href", url);
         link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    // Fetch CVE Stats on initial mount
+    useEffect(() => {
+        fetch("/api/netscaler/cve-shuns?limit=1")
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.stats) setCveStats(data.stats);
+            })
+            .catch(() => {});
+    }, []);
+
+    // Fetch CVE Shuns when activeTab is cve-shuns
+    const fetchCveShuns = async () => {
+        setCveLoading(true);
+        try {
+            const params = new URLSearchParams();
+            if (cveSearch) params.set("search", cveSearch);
+            if (cveFilter !== "ALL") params.set("cve", cveFilter);
+            if (cveStatusFilter !== "ALL") params.set("status", cveStatusFilter);
+
+            const res = await fetch(`/api/netscaler/cve-shuns?${params.toString()}`);
+            const data = await res.json();
+            if (data.success) {
+                setCveShuns(data.shuns || []);
+                if (data.stats) setCveStats(data.stats);
+            }
+        } catch (e) {
+            console.error("Failed to load CVE shuns:", e);
+        } finally {
+            setCveLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === "cve-shuns") {
+            fetchCveShuns();
+        }
+    }, [activeTab, cveFilter, cveStatusFilter]);
+
+    const triggerAutoShunCycle = async () => {
+        setCycleRunning(true);
+        try {
+            const res = await fetch("/api/netscaler/cve-shuns", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "run_cycle", range: timeframe })
+            });
+            const data = await res.json();
+            if (data.success) {
+                if (data.stats) setCveStats(data.stats);
+                await fetchCveShuns();
+            }
+        } catch (e) {
+            console.error("Failed to run auto-shun cycle:", e);
+        } finally {
+            setCycleRunning(false);
+        }
+    };
+
+    const toggleAutoShunProtection = async () => {
+        if (!cveStats) return;
+        const target = !cveStats.autoShunEnabled;
+        try {
+            const res = await fetch("/api/netscaler/cve-shuns", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "toggle_auto_shun", enabled: target })
+            });
+            const data = await res.json();
+            if (data.success && data.stats) {
+                setCveStats(data.stats);
+            }
+        } catch (e) {
+            console.error("Failed to toggle auto shun:", e);
+        }
+    };
+
+    const handleUnshunIp = async (ip: string) => {
+        if (!confirm(`Are you sure you want to remove the perimeter firewall shun for ${ip}? This will re-allow traffic from this IP.`)) return;
+        setCveActionLoading(ip);
+        try {
+            const res = await fetch("/api/netscaler/cve-shuns", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "unshun", ip })
+            });
+            const data = await res.json();
+            if (data.success) {
+                await fetchCveShuns();
+            } else {
+                alert(data.error || "Failed to remove shun");
+            }
+        } catch (e: any) {
+            alert(`Error: ${e.message}`);
+        } finally {
+            setCveActionLoading(null);
+        }
+    };
+
+    const handleReshunIp = async (ip: string) => {
+        setCveActionLoading(ip);
+        try {
+            const res = await fetch("/api/netscaler/cve-shuns", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "reshun", ip })
+            });
+            const data = await res.json();
+            if (data.success) {
+                await fetchCveShuns();
+            } else {
+                alert(data.error || "Failed to re-apply shun");
+            }
+        } catch (e: any) {
+            alert(`Error: ${e.message}`);
+        } finally {
+            setCveActionLoading(null);
+        }
+    };
+
+    const exportCveShunsCsv = () => {
+        if (cveShuns.length === 0) return;
+        const headers = "IP,Status,CVE,Signature,Hits,Origin Country,City,Shunned At,Last Seen,Removed At,Sample Exploit\n";
+        const rows = cveShuns.map(s => [
+            `"${s.ip}"`,
+            `"${s.status}"`,
+            `"${s.cve}"`,
+            `"${(s.ruleName || '').replace(/"/g, '""')}"`,
+            s.matchCount,
+            `"${s.countryCode || ''}"`,
+            `"${s.cityName || ''}"`,
+            `"${s.shunnedAt}"`,
+            `"${s.lastSeenAt}"`,
+            `"${s.removedAt || ''}"`,
+            `"${(s.samplePayload || '').slice(0, 200).replace(/"/g, '""')}"`
+        ].join(",")).join("\n");
+
+        const blob = new Blob([headers + rows], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `netscaler-cve-2026-shuns-${Date.now()}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -434,6 +601,26 @@ export default function NetscalerDashboardClient() {
                     >
                         <span className="flex items-center gap-2">
                             <ShieldAlert size={16} className="text-rose-400" /> Zero-Day & Threat Hunt
+                        </span>
+                    </button>
+                    <button
+                        onClick={() => {
+                            setActiveTab("cve-shuns");
+                            fetchCveShuns();
+                        }}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            activeTab === "cve-shuns"
+                                ? "bg-red-600/20 text-red-300 border border-red-500/40 shadow-sm"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                        }`}
+                    >
+                        <span className="flex items-center gap-2">
+                            <Shield size={16} className="text-rose-400" /> CVE-2026 Auto-Shun Tracker
+                            {cveStats?.activeCount ? (
+                                <span className="px-1.5 py-0.5 text-xs rounded-full bg-rose-500/30 text-rose-200 font-mono font-bold animate-pulse">
+                                    {cveStats.activeCount}
+                                </span>
+                            ) : null}
                         </span>
                     </button>
                 </div>
@@ -1597,6 +1784,30 @@ export default function NetscalerDashboardClient() {
                         </div>
                     )}
 
+                    {/* Dedicated CVE-2026 Auto-Shun Guard Banner */}
+                    <div className="p-3.5 rounded-xl bg-gradient-to-r from-red-950/40 via-slate-900 to-slate-900 border border-rose-500/30 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2.5">
+                            <Shield size={18} className="text-rose-400 shrink-0" />
+                            <div>
+                                <span className="font-semibold text-white">Automated Zero-Day Protection: </span>
+                                <span className="text-slate-300">
+                                    Continuous auto-shunning is {cveStats?.autoShunEnabled ? "ACTIVE" : "PAUSED"} for CVE-2026-88771 & 88772 ({cveStats?.activeCount || 0} external attacker IPs currently quarantined).
+                                </span>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setActiveTab("cve-shuns");
+                                fetchCveShuns();
+                            }}
+                            className="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 font-medium transition-colors flex items-center gap-1 shrink-0"
+                        >
+                            <span>Open Auto-Shun Tracker</span>
+                            <ChevronRight size={14} />
+                        </button>
+                    </div>
+
                     {/* Master External Threat Actors Discovered Deck */}
                     {allUniqueMatchedIps.length > 0 && (
                         <div className="p-5 rounded-xl bg-gradient-to-r from-rose-950/40 via-slate-900/80 to-slate-900/60 border border-rose-500/40 shadow-lg flex flex-col gap-3">
@@ -2077,6 +2288,434 @@ export default function NetscalerDashboardClient() {
                         </div>
                     </div>
                 )}
+
+            {/* CVE-2026 AUTO-SHUN & DEDICATED TRACKING TAB */}
+            {activeTab === "cve-shuns" && (
+                <div className="flex flex-col gap-6 animate-fadeIn">
+                    {/* Header Banner */}
+                    <div className="p-5 rounded-2xl bg-gradient-to-r from-red-950/60 via-slate-900 to-slate-900 border border-rose-500/30 flex flex-wrap items-center justify-between gap-4 shadow-xl">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                                <Shield size={24} />
+                            </div>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-base font-bold text-white tracking-wide">
+                                        CVE-2026-88771 & CVE-2026-88772 Auto-Shun Protection
+                                    </h3>
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                                        CISA KEV Dedicated Guard
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-400">
+                                    Autonomous zero-day detection, perimeter firewall quarantining, and lifecycle tracking specifically for CVE-2026-88771 (Supervisor crash & command injection) and CVE-2026-88772 (DTLS overflow).
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2.5">
+                            {/* Protection Status Toggle */}
+                            <button
+                                type="button"
+                                onClick={toggleAutoShunProtection}
+                                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 border transition-all ${
+                                    cveStats?.autoShunEnabled
+                                        ? "bg-emerald-950/40 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900/40"
+                                        : "bg-amber-950/40 text-amber-300 border-amber-500/40 hover:bg-amber-900/40"
+                                }`}
+                                title="Click to toggle automated shunning protection"
+                            >
+                                <span className={`w-2 h-2 rounded-full ${
+                                    cveStats?.autoShunEnabled ? "bg-emerald-400 animate-pulse" : "bg-amber-400"
+                                }`} />
+                                <span>{cveStats?.autoShunEnabled ? "Auto-Shun: ACTIVE" : "Auto-Shun: PAUSED"}</span>
+                            </button>
+
+                            {/* Manual Scan Cycle */}
+                            <button
+                                type="button"
+                                onClick={triggerAutoShunCycle}
+                                disabled={cycleRunning}
+                                className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-md shadow-rose-950 flex items-center gap-1.5 transition-all disabled:opacity-50"
+                            >
+                                <RefreshCw size={13} className={cycleRunning ? "animate-spin" : ""} />
+                                <span>{cycleRunning ? "Running Cycle..." : "Run Detection & Shun Cycle Now"}</span>
+                            </button>
+
+                            {/* Export CSV */}
+                            <button
+                                type="button"
+                                onClick={exportCveShunsCsv}
+                                disabled={cveShuns.length === 0}
+                                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                                title="Download CSV of all tracked CVE-2026 shuns"
+                            >
+                                <Download size={13} />
+                                <span>Export CSV</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* KPI Summary Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
+                            <div className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Active Perimeter Shuns</div>
+                            <div className={`text-2xl font-bold font-mono ${
+                                (cveStats?.activeCount || 0) > 0 ? "text-rose-400" : "text-emerald-400"
+                            }`}>
+                                {cveStats?.activeCount ?? 0}
+                            </div>
+                            <div className="text-xs text-slate-500 mt-1">Adversary IPs currently dropped on Cisco firewalls</div>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
+                            <div className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">CVE-2026-88771 Detections</div>
+                            <div className="text-2xl font-bold font-mono text-amber-300">
+                                {cveStats?.cve88771Count ?? 0}
+                            </div>
+                            <div className="text-xs text-slate-500 mt-1">Pitboss supervisor crash & cmd injection probes</div>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
+                            <div className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">CVE-2026-88772 Detections</div>
+                            <div className="text-2xl font-bold font-mono text-purple-300">
+                                {cveStats?.cve88772Count ?? 0}
+                            </div>
+                            <div className="text-xs text-slate-500 mt-1">DTLS memory buffer overflow attempts</div>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
+                            <div className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">Protection Engine Health</div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                                <span className={`w-2.5 h-2.5 rounded-full ${
+                                    cveStats?.lastCycleStatus === "SUCCESS" ? "bg-emerald-400" : cveStats?.lastCycleStatus === "FAILURE" ? "bg-rose-400" : "bg-slate-400"
+                                }`} />
+                                <span className="text-sm font-semibold text-slate-200">
+                                    {cveStats?.lastCycleStatus || "STANDBY"}
+                                </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-1 truncate" title={cveStats?.lastCycleMessage || ""}>
+                                {cveStats?.lastCycleTime ? `Last Scan: ${formatFullTime(cveStats.lastCycleTime)}` : "Awaiting first cycle"}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Filter & Search Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1 mr-1">
+                                <Filter size={13} className="text-teal-400" /> Filter:
+                            </span>
+                            <button
+                                onClick={() => setCveFilter("ALL")}
+                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                                    cveFilter === "ALL"
+                                        ? "bg-slate-800 text-teal-300 font-semibold shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                All Signatures ({cveStats?.totalTracked || 0})
+                            </button>
+                            <button
+                                onClick={() => setCveFilter("88771")}
+                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                                    cveFilter === "88771"
+                                        ? "bg-rose-500/20 text-rose-300 font-semibold border border-rose-500/40 shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                ⚡ CVE-2026-88771 ({cveStats?.cve88771Count || 0})
+                            </button>
+                            <button
+                                onClick={() => setCveFilter("88772")}
+                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                                    cveFilter === "88772"
+                                        ? "bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/40 shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                ⚡ CVE-2026-88772 ({cveStats?.cve88772Count || 0})
+                            </button>
+
+                            <div className="h-4 w-[1px] bg-slate-800 mx-1" />
+
+                            <button
+                                onClick={() => setCveStatusFilter("ALL")}
+                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                                    cveStatusFilter === "ALL"
+                                        ? "bg-slate-800 text-slate-200 font-semibold shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                All Statuses
+                            </button>
+                            <button
+                                onClick={() => setCveStatusFilter("ACTIVE")}
+                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                                    cveStatusFilter === "ACTIVE"
+                                        ? "bg-rose-500/20 text-rose-300 font-semibold border border-rose-500/40 shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                Active Shuns ({cveStats?.activeCount || 0})
+                            </button>
+                            <button
+                                onClick={() => setCveStatusFilter("REMOVED")}
+                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                                    cveStatusFilter === "REMOVED"
+                                        ? "bg-slate-800 text-slate-400 font-semibold shadow-sm"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                Released ({cveStats?.removedCount || 0})
+                            </button>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <div className="relative">
+                                <Search size={13} className="absolute left-2.5 top-2.5 text-slate-500" />
+                                <input
+                                    type="text"
+                                    placeholder="Search IP, country, rule, payload..."
+                                    value={cveSearch}
+                                    onChange={(e) => setCveSearch(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === "Enter") fetchCveShuns(); }}
+                                    className="pl-8 pr-3 py-1.5 text-xs rounded-lg bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-rose-500 w-56"
+                                />
+                            </div>
+                            <button
+                                onClick={fetchCveShuns}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700"
+                            >
+                                Search
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Dedicated Tracking Table */}
+                    <div className="rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden shadow-lg">
+                        {cveLoading ? (
+                            <div className="p-12 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
+                                <RefreshCw size={14} className="animate-spin text-rose-400" />
+                                <span>Loading CVE-2026 auto-shun tracking records...</span>
+                            </div>
+                        ) : cveShuns.length === 0 ? (
+                            <div className="p-12 text-center text-slate-500 text-xs flex flex-col items-center justify-center gap-2">
+                                <CheckCircle2 size={24} className="text-emerald-400 mb-1" />
+                                <span className="text-sm font-semibold text-slate-300">No matching CVE-2026 shuns found</span>
+                                <span className="text-slate-500 max-w-md">
+                                    No external IP addresses match the active filter criteria. To perform a live telemetry sweep, click "Run Detection & Shun Cycle Now".
+                                </span>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-xs">
+                                    <thead className="bg-slate-950/80 text-[11px] text-slate-400 font-medium uppercase tracking-wider border-b border-slate-800">
+                                        <tr>
+                                            <th className="py-2.5 px-3.5">Status</th>
+                                            <th className="py-2.5 px-3.5">Adversary IP</th>
+                                            <th className="py-2.5 px-3.5">Vulnerability</th>
+                                            <th className="py-2.5 px-3.5">Triggering Signature</th>
+                                            <th className="py-2.5 px-3.5">Hits</th>
+                                            <th className="py-2.5 px-3.5">Origin Geo</th>
+                                            <th className="py-2.5 px-3.5">Shunned At</th>
+                                            <th className="py-2.5 px-3.5">Last Seen</th>
+                                            <th className="py-2.5 px-3.5">Exploit Sample</th>
+                                            <th className="py-2.5 px-3.5 text-right">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
+                                        {cveShuns.map(shun => {
+                                            const isActive = shun.status === "ACTIVE";
+                                            return (
+                                                <tr key={shun.id} className="hover:bg-slate-900/60 transition-colors">
+                                                    {/* Status */}
+                                                    <td className="py-2.5 px-3.5 font-sans">
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono flex items-center gap-1 w-fit ${
+                                                            isActive
+                                                                ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                                                                : "bg-slate-800 text-slate-400 border border-slate-700"
+                                                        }`}>
+                                                            {isActive ? <Shield size={10} /> : <RotateCcw size={10} />}
+                                                            {shun.status}
+                                                        </span>
+                                                    </td>
+
+                                                    {/* IP */}
+                                                    <td className="py-2.5 px-3.5 font-semibold text-rose-300 select-all font-mono">
+                                                        {shun.ip}
+                                                    </td>
+
+                                                    {/* CVE */}
+                                                    <td className="py-2.5 px-3.5">
+                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${
+                                                            shun.cve.includes("88772")
+                                                                ? "bg-purple-950/60 text-purple-300 border border-purple-800/60"
+                                                                : "bg-rose-950/60 text-rose-300 border border-rose-800/60"
+                                                        }`}>
+                                                            {shun.cve}
+                                                        </span>
+                                                    </td>
+
+                                                    {/* Rule Name */}
+                                                    <td className="py-2.5 px-3.5 font-sans max-w-xs">
+                                                        <span className="text-slate-300 font-medium truncate block" title={shun.ruleName}>
+                                                            {shun.ruleName}
+                                                        </span>
+                                                    </td>
+
+                                                    {/* Hits */}
+                                                    <td className="py-2.5 px-3.5">
+                                                        <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200">
+                                                            {shun.matchCount}
+                                                        </span>
+                                                    </td>
+
+                                                    {/* Geo */}
+                                                    <td className="py-2.5 px-3.5 font-sans text-slate-300">
+                                                        {shun.countryCode || "N/A"} {shun.cityName && shun.cityName !== "N/A" ? `• ${shun.cityName}` : ""}
+                                                    </td>
+
+                                                    {/* Shunned At */}
+                                                    <td className="py-2.5 px-3.5 text-slate-400 font-sans">
+                                                        {formatFullTime(shun.shunnedAt)}
+                                                    </td>
+
+                                                    {/* Last Seen */}
+                                                    <td className="py-2.5 px-3.5 text-slate-400 font-sans">
+                                                        {formatFullTime(shun.lastSeenAt)}
+                                                    </td>
+
+                                                    {/* Sample */}
+                                                    <td className="py-2.5 px-3.5 font-sans">
+                                                        {shun.samplePayload ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSelectedPayloadSample({
+                                                                    ip: shun.ip,
+                                                                    payload: shun.samplePayload!,
+                                                                    rule: shun.ruleName,
+                                                                    cve: shun.cve
+                                                                })}
+                                                                className="px-2 py-0.5 rounded text-[10px] bg-slate-800 hover:bg-slate-700 text-teal-300 flex items-center gap-1 border border-slate-700 transition-colors"
+                                                            >
+                                                                <FileText size={10} /> Inspect
+                                                            </button>
+                                                        ) : (
+                                                            <span className="text-slate-600">None</span>
+                                                        )}
+                                                    </td>
+
+                                                    {/* Actions */}
+                                                    <td className="py-2.5 px-3.5 text-right font-sans">
+                                                        <div className="flex items-center justify-end gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setSearchQuery(shun.ip);
+                                                                    setActiveTab("investigate");
+                                                                    runInvestigation(shun.ip, timeframe);
+                                                                }}
+                                                                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] transition-colors"
+                                                            >
+                                                                Trace
+                                                            </button>
+
+                                                            {isActive ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleUnshunIp(shun.ip)}
+                                                                    disabled={cveActionLoading === shun.ip}
+                                                                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-300 text-[10px] border border-slate-700 hover:border-rose-700 transition-colors disabled:opacity-50"
+                                                                    title="Remove shun on firewalls and mark as REMOVED"
+                                                                >
+                                                                    {cveActionLoading === shun.ip ? "Working..." : "Un-Shun"}
+                                                                </button>
+                                                            ) : (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleReshunIp(shun.ip)}
+                                                                    disabled={cveActionLoading === shun.ip}
+                                                                    className="px-2 py-0.5 rounded bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 text-[10px] border border-rose-500/40 transition-colors disabled:opacity-50"
+                                                                    title="Re-apply perimeter shun on firewalls"
+                                                                >
+                                                                    {cveActionLoading === shun.ip ? "Working..." : "Re-Shun"}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Exploit Sample Modal */}
+                    {selectedPayloadSample && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+                            <div className="relative w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-6 flex flex-col gap-4 text-slate-200">
+                                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                                    <div className="flex items-center gap-2">
+                                        <Bug size={18} className="text-rose-400" />
+                                        <h3 className="text-sm font-semibold text-white">
+                                            Exploit Telemetry Payload Sample
+                                        </h3>
+                                    </div>
+                                    <button
+                                        onClick={() => setSelectedPayloadSample(null)}
+                                        className="p-1 rounded text-slate-400 hover:text-white"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3 text-xs bg-slate-950/60 p-3 rounded-lg border border-slate-800">
+                                    <div>
+                                        <span className="text-slate-500">Adversary IP: </span>
+                                        <span className="font-mono font-semibold text-rose-300">{selectedPayloadSample.ip}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-slate-500">Vulnerability: </span>
+                                        <span className="font-mono text-teal-300">{selectedPayloadSample.cve}</span>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <span className="text-slate-500">Signature: </span>
+                                        <span className="text-slate-200">{selectedPayloadSample.rule}</span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className="text-[11px] text-slate-400 mb-1 flex items-center justify-between">
+                                        <span>Raw Graylog Telemetry Log Line:</span>
+                                        <button
+                                            onClick={() => copyToClipboard(selectedPayloadSample.payload, "modal-sample")}
+                                            className="text-slate-400 hover:text-slate-200 text-[10px] flex items-center gap-1"
+                                        >
+                                            {copiedIp === "modal-sample" ? <Check size={10} className="text-emerald-400" /> : <Copy size={10} />}
+                                            <span>{copiedIp === "modal-sample" ? "Copied" : "Copy Log Line"}</span>
+                                        </button>
+                                    </div>
+                                    <pre className="p-3 rounded-lg bg-slate-950 border border-slate-800 font-mono text-[11px] text-slate-300 max-h-64 overflow-y-auto whitespace-pre-wrap select-all">
+                                        {selectedPayloadSample.payload}
+                                    </pre>
+                                </div>
+
+                                <div className="flex justify-end pt-2 border-t border-slate-800">
+                                    <button
+                                        onClick={() => setSelectedPayloadSample(null)}
+                                        className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* QUICK PERIMETER SHUN MODAL */}
             {shunModalData && (() => {

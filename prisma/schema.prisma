@@ -499,4 +499,37 @@ model CrawlerSavedView {
   @@index([snapshotId])
 }
 
+model NetscalerCveShun {
+  id              String   @id @default(cuid())
+  ip              String   @unique
+  cve             String   // e.g. "CVE-2026-88771", "CVE-2026-88772", or "CVE-2026-88771/72"
+  ruleId          String   // e.g. "cve-2026-88771-cmd-injection"
+  ruleName        String
+  matchCount      Int      @default(1)
+  countryCode     String?
+  cityName        String?
+  samplePayload   String?  // Sample matched log line / payload
+  targetFirewalls String?  // e.g. "All Firewalls (Perimeter Fleet)"
+  status          String   @default("ACTIVE") // "ACTIVE", "REMOVED"
+  shunnedAt       DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+  removedAt       DateTime?
+  removedBy       String?
+  notes           String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([cve])
+  @@index([status])
+  @@index([shunnedAt])
+  @@index([ip])
+}
+
+model NetscalerCveSetting {
+  key             String   @id
+  value           String
+  updatedAt       DateTime @updatedAt
+}
+
 

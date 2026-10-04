@@ -9,6 +9,7 @@
     "build:scripts": "npx esbuild scripts/cron/*.ts scripts/utils/*.ts --outdir=dist-scripts --platform=node --format=cjs --bundle --packages=external --alias:@=./src",
     "build": "npm run clean && npx prisma generate && npm run build:css && npm run build:scripts && next build",
     "cron:crawl": "node dist-scripts/cron/crawl-network.js",
+    "cron:cve-shun": "node dist-scripts/cron/monitor-cve-2026-netscaler.js",
     "start": "next start",
     "lint": "next lint",
     "deploy": "git push origin main --follow-tags && git push production main --follow-tags",
