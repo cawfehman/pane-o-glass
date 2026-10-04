@@ -160,10 +160,10 @@ export async function isAutoShunEnabled(): Promise<boolean> {
         const setting = await prisma.netscalerCveSetting.findUnique({
             where: { key: "AUTO_SHUN_ENABLED" }
         });
-        if (!setting) return true; // Default to enabled
+        if (!setting) return false;
         return setting.value.toLowerCase() === "true";
     } catch {
-        return true;
+        return false;
     }
 }
 

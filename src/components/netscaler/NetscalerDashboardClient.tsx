@@ -67,7 +67,7 @@ export default function NetscalerDashboardClient() {
         lastCycleTime: null,
         lastCycleStatus: "READY",
         lastCycleMessage: null,
-        autoShunEnabled: true
+        autoShunEnabled: false
     });
     const [cveLoading, setCveLoading] = useState(false);
     const [cveSearch, setCveSearch] = useState("");
