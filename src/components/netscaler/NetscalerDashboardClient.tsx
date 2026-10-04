@@ -58,7 +58,17 @@ export default function NetscalerDashboardClient() {
         lastCycleStatus: string;
         lastCycleMessage: string | null;
         autoShunEnabled: boolean;
-    } | null>(null);
+    }>({
+        totalTracked: 0,
+        activeCount: 0,
+        removedCount: 0,
+        cve88771Count: 0,
+        cve88772Count: 0,
+        lastCycleTime: null,
+        lastCycleStatus: "READY",
+        lastCycleMessage: null,
+        autoShunEnabled: true
+    });
     const [cveLoading, setCveLoading] = useState(false);
     const [cveSearch, setCveSearch] = useState("");
     const [cveFilter, setCveFilter] = useState<"ALL" | "88771" | "88772">("ALL");
