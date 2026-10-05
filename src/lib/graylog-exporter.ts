@@ -179,6 +179,31 @@ export function checkDiskSpace(targetPath?: string): { freeBytes: number; totalB
     }
 }
 
+function createConcurrencyLimiter(limit: number) {
+    let running = 0;
+    const queue: (() => void)[] = [];
+
+    const next = () => {
+        running--;
+        if (queue.length > 0) {
+            const resolve = queue.shift();
+            if (resolve) resolve();
+        }
+    };
+
+    return async function run<T>(fn: () => Promise<T>): Promise<T> {
+        if (running >= limit) {
+            await new Promise<void>(resolve => queue.push(resolve));
+        }
+        running++;
+        try {
+            return await fn();
+        } finally {
+            next();
+        }
+    };
+}
+
 /**
  * Adaptive recursive time-bisection planner.
  * Dynamically subdivides time windows until every slice contains <= 10,000 events.
@@ -198,9 +223,10 @@ export async function planExportSlices(params: {
 
     const maxPerSlice = 9800; // conservative buffer below 10,000 hard limit
     const rawSlices: { from: Date; to: Date; hits: number }[] = [];
+    const limiter = createConcurrencyLimiter(4);
 
     async function bisectWindow(windowFrom: Date, windowTo: Date, depth: number) {
-        const hits = await countHits(cluster, query, windowFrom, windowTo, streamId);
+        const hits = await limiter(() => countHits(cluster, query, windowFrom, windowTo, streamId));
 
         const durationMs = windowTo.getTime() - windowFrom.getTime();
 
@@ -218,8 +244,10 @@ export async function planExportSlices(params: {
         const midTime = windowFrom.getTime() + Math.floor(durationMs / 2);
         const midDate = new Date(midTime);
 
-        await bisectWindow(windowFrom, midDate, depth + 1);
-        await bisectWindow(midDate, windowTo, depth + 1);
+        await Promise.all([
+            bisectWindow(windowFrom, midDate, depth + 1),
+            bisectWindow(midDate, windowTo, depth + 1)
+        ]);
     }
 
     await bisectWindow(from, to, 0);

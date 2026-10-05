@@ -148,7 +148,7 @@ export default function NetscalerDashboardClient() {
         open: boolean;
         title: string;
         query: string;
-        timeframeMode: "scan" | "24h" | "3d" | "7d" | "custom";
+        timeframeMode: "scan" | "24h" | "3d" | "7d" | "30d" | "custom";
         customFrom: string;
         customTo: string;
     } | null>(null);
@@ -3152,10 +3152,24 @@ export default function NetscalerDashboardClient() {
 
                         {/* Investigation Context & Query */}
                         <div className="flex flex-col gap-2">
-                            <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-                                <span>Target Graylog Query</span>
-                                <span className="text-[11px] text-slate-400 font-mono">Stream: NetScaler ADC (5c055e3a...)</span>
-                            </label>
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-semibold text-slate-300">
+                                    Target Graylog Query
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() => setCveExportModal({
+                                        ...cveExportModal,
+                                        query: "*",
+                                        title: "[NUCLEAR DUMP] Entire NetScaler ADC Stream"
+                                    })}
+                                    className="text-[10px] px-2 py-0.5 rounded bg-rose-500/15 border border-rose-500/40 text-rose-300 hover:bg-rose-500/25 flex items-center gap-1 font-semibold transition-all shadow-sm"
+                                    title="Nuclear Option: Export all raw events in the NetScaler stream without any filters (*)"
+                                >
+                                    <span>☢️</span>
+                                    <span>Nuclear: Dump Entire Stream (*)</span>
+                                </button>
+                            </div>
                             <input
                                 type="text"
                                 value={cveExportModal.query}
@@ -3180,7 +3194,7 @@ export default function NetscalerDashboardClient() {
                                 </span>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                 {/* Option 1: Current Scan Window */}
                                 <button
                                     type="button"
@@ -3192,12 +3206,12 @@ export default function NetscalerDashboardClient() {
                                     }`}
                                 >
                                     <div className="flex items-center justify-between">
-                                        <span className="text-xs font-semibold">Current Scan Window</span>
+                                        <span className="text-xs font-semibold">Scan Window</span>
                                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300">
                                             {timeframe >= 86400 ? `${Math.round(timeframe / 86400)}d` : `${Math.round(timeframe / 3600)}h`}
                                         </span>
                                     </div>
-                                    <p className="text-[11px] text-slate-500 mt-1">Export only what is shown in current scan duration</p>
+                                    <p className="text-[11px] text-slate-500 mt-1">Export only current scan duration</p>
                                 </button>
 
                                 {/* Option 2: Past 24 Hours */}
@@ -3234,7 +3248,7 @@ export default function NetscalerDashboardClient() {
                                         <span className="text-xs font-semibold">Past 3 Days</span>
                                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300">72h</span>
                                     </div>
-                                    <p className="text-[11px] text-slate-500 mt-1">Multi-day campaign analysis & lateral movement</p>
+                                    <p className="text-[11px] text-slate-500 mt-1">Multi-day campaign analysis & movement</p>
                                 </button>
 
                                 {/* Option 4: Past 7 Days */}
@@ -3251,7 +3265,24 @@ export default function NetscalerDashboardClient() {
                                         <span className="text-xs font-semibold">Past 7 Days</span>
                                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300">168h</span>
                                     </div>
-                                    <p className="text-[11px] text-slate-500 mt-1">Full dwell-time history and persistence verification</p>
+                                    <p className="text-[11px] text-slate-500 mt-1">Full dwell-time history & persistence</p>
+                                </button>
+
+                                {/* Option 5: Past 30 Days */}
+                                <button
+                                    type="button"
+                                    onClick={() => setCveExportModal({ ...cveExportModal, timeframeMode: "30d" })}
+                                    className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                                        cveExportModal.timeframeMode === "30d"
+                                            ? "bg-cyan-950/50 border-cyan-500/80 text-white shadow-sm shadow-cyan-500/10"
+                                            : "bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-semibold">Past 30 Days</span>
+                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300">1 Month</span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 mt-1">Extended monthly compliance & deep dump</p>
                                 </button>
                             </div>
 

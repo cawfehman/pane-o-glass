@@ -7,7 +7,7 @@ import {
     FileArchive, HardDrive, RefreshCw, Trash2, X, FileText, 
     Layers, Server, Shield, FileSpreadsheet, ChevronDown, ChevronRight, 
     Calendar, ArrowRight, Info, AlertCircle, Ban, Search, Check, Globe,
-    Zap, ShieldAlert, Flame
+    Zap, ShieldAlert, Flame, AlertOctagon, Radio
 } from "lucide-react";
 
 interface ClusterConfig {
@@ -228,6 +228,17 @@ export default function GraylogExporterClient() {
     const [loadingDynamicShuns, setLoadingDynamicShuns] = useState(false);
     const [dynamicShunNotice, setDynamicShunNotice] = useState<string | null>(null);
 
+    // Nuclear Export State
+    const [showNuclearModal, setShowNuclearModal] = useState(false);
+    const [nuclearScope, setNuclearScope] = useState<"stream" | "source">("stream");
+    const [nuclearSourceInput, setNuclearSourceInput] = useState("");
+    const [nuclearCluster, setNuclearCluster] = useState<"OG_GRAYLOG" | "NEW_GRAYLOG">("OG_GRAYLOG");
+    const [nuclearStreamId, setNuclearStreamId] = useState<string>("all");
+    const [nuclearTimePreset, setNuclearTimePreset] = useState<string>("24h");
+    const [nuclearFormat, setNuclearFormat] = useState<"csv" | "ndjson">("ndjson");
+    const [nuclearCustomFrom, setNuclearCustomFrom] = useState<string>("");
+    const [nuclearCustomTo, setNuclearCustomTo] = useState<string>("");
+
     // Initialize or populate from URL search parameters (e.g. from CVE Hunter)
     useEffect(() => {
         if (!searchParams) {
@@ -371,6 +382,12 @@ export default function GraylogExporterClient() {
             case "7d":
                 past = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
                 break;
+            case "14d":
+                past = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+                break;
+            case "30d":
+                past = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                break;
             default:
                 return;
         }
@@ -383,6 +400,52 @@ export default function GraylogExporterClient() {
 
         setFromTime(toLocalIso(past));
         setToTime(toLocalIso(now));
+    }
+
+    function armNuclearExport(launchImmediately = false) {
+        setSelectedCluster(nuclearCluster);
+        setSelectedStreamId(nuclearStreamId);
+        setExportFormat(nuclearFormat);
+
+        const clusterObj = clusters.find(c => c.id === nuclearCluster);
+        const streamObj = clusterObj?.streams.find(s => s.id === nuclearStreamId);
+        const streamName = streamObj?.title || nuclearStreamId;
+
+        if (nuclearScope === "stream") {
+            setQuery("*");
+            const targetTitle = nuclearStreamId === "all"
+                ? `[NUCLEAR DUMP] Cluster-Wide All Streams (${clusterObj?.name || nuclearCluster})`
+                : `[NUCLEAR DUMP] Stream: ${streamName}`;
+            setJobTitle(targetTitle);
+        } else {
+            const target = nuclearSourceInput.trim();
+            if (!target) {
+                alert("Please enter a target source hostname or IP address.");
+                return;
+            }
+            setQuery(`source:"${target}" OR gl2_remote_ip:"${target}"`);
+            const targetTitle = nuclearStreamId === "all"
+                ? `[NUCLEAR DUMP] Source: ${target} (Cluster-Wide)`
+                : `[NUCLEAR DUMP] Source: ${target} (${streamName})`;
+            setJobTitle(targetTitle);
+        }
+
+        if (nuclearTimePreset === "custom") {
+            setTimePreset("custom");
+            setFromTime(nuclearCustomFrom);
+            setToTime(nuclearCustomTo);
+        } else {
+            applyTimePreset(nuclearTimePreset);
+        }
+
+        setShowNuclearModal(false);
+        setActiveTab("new");
+
+        if (launchImmediately) {
+            setTimeout(() => {
+                runPreflightAnalysis();
+            }, 100);
+        }
     }
 
     function loadThreatPreset(preset: ThreatPreset) {
@@ -615,6 +678,16 @@ export default function GraylogExporterClient() {
                                 {jobs.filter(j => j.status === "COMPLETED" && j.hasFiles).length}
                             </span>
                         )}
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setShowNuclearModal(true)}
+                        className="px-3.5 py-2 rounded-lg font-semibold text-xs flex items-center gap-2 transition-all bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 hover:border-rose-500/70 shadow-sm shadow-rose-950/40"
+                        title="Nuclear Option: Export all logs from a dedicated source or entire stream"
+                    >
+                        <span className="text-base leading-none">☢️</span>
+                        <span>Nuclear Export (Full Source / Stream)</span>
                     </button>
                 </div>
 
@@ -896,7 +969,7 @@ export default function GraylogExporterClient() {
                                 placeholder="e.g. action:DROP OR client_ip:10.10.* OR mail_sender:*@domain.com"
                                 className="w-full bg-card/60 border border-border/40 rounded-lg p-3 text-sm text-text-primary font-mono focus:outline-none focus:border-accent-primary transition-all"
                             />
-                            <div className="flex flex-wrap gap-2 mt-1">
+                            <div className="flex flex-wrap gap-2 mt-1 items-center">
                                 <span className="text-[11px] text-text-muted">Quick filters:</span>
                                 {["*", 'level:3 OR level:2', 'action:DROP', 'facility:local0', 'client_ip:*'].map((qExample) => (
                                     <button
@@ -908,6 +981,15 @@ export default function GraylogExporterClient() {
                                         {qExample}
                                     </button>
                                 ))}
+                                <button
+                                    type="button"
+                                    onClick={() => setShowNuclearModal(true)}
+                                    className="text-[11px] px-2.5 py-0.5 rounded bg-rose-500/15 border border-rose-500/40 text-rose-300 hover:bg-rose-500/25 font-semibold transition-all flex items-center gap-1 shadow-sm"
+                                    title="Open Nuclear Dump configuration modal"
+                                >
+                                    <span>☢️</span>
+                                    <span>Nuclear Dump</span>
+                                </button>
                             </div>
                         </div>
 
@@ -925,6 +1007,8 @@ export default function GraylogExporterClient() {
                                     { id: "24h", label: "Past 24h" },
                                     { id: "3d", label: "Past 3d" },
                                     { id: "7d", label: "Past 7d" },
+                                    { id: "14d", label: "Past 14d" },
+                                    { id: "30d", label: "Past 30d" },
                                     { id: "custom", label: "Custom Range" },
                                 ].map((p) => (
                                     <button
@@ -1604,6 +1688,291 @@ export default function GraylogExporterClient() {
                             >
                                 Close
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* NUCLEAR DUMP MODAL */}
+            {showNuclearModal && (
+                <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+                    <div className="bg-[#141720] border border-rose-500/40 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl shadow-rose-950/40 overflow-hidden text-slate-200">
+                        {/* Modal Header */}
+                        <div className="p-5 border-b border-border/40 flex items-center justify-between bg-gradient-to-r from-rose-950/40 via-card/40 to-transparent">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/40 text-xl leading-none">
+                                    ☢️
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-bold text-base text-white">Nuclear Log Exporter</h3>
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                                            FULL SOURCE / STREAM DUMP
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-400">
+                                        Exhaustive, unfiltered log extraction across high-volume streams or dedicated hardware appliances
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowNuclearModal(false)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+                            >
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-6 overflow-y-auto custom-scrollbar flex flex-col gap-5">
+                            {/* Step 1: Dump Scope Toggle */}
+                            <div className="flex flex-col gap-2">
+                                <label className="text-xs font-semibold text-slate-200 flex items-center justify-between">
+                                    <span>Target Dump Scope</span>
+                                    <span className="text-[11px] text-rose-400 font-mono">Bypasses query filters</span>
+                                </label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setNuclearScope("stream")}
+                                        className={`p-3.5 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                                            nuclearScope === "stream"
+                                                ? "bg-rose-500/15 border-rose-500/80 text-white shadow-md shadow-rose-950/30"
+                                                : "bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                                                <Layers size={14} className="text-rose-400" />
+                                                Entire Log Stream
+                                            </span>
+                                            <input
+                                                type="radio"
+                                                checked={nuclearScope === "stream"}
+                                                onChange={() => setNuclearScope("stream")}
+                                                className="text-rose-500 focus:ring-0"
+                                            />
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 mt-2">
+                                            Dumps every event inside the selected stream (unfiltered query: <code className="font-mono text-rose-300">*</code>)
+                                        </p>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setNuclearScope("source")}
+                                        className={`p-3.5 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                                            nuclearScope === "source"
+                                                ? "bg-rose-500/15 border-rose-500/80 text-white shadow-md shadow-rose-950/30"
+                                                : "bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                                                <Server size={14} className="text-rose-400" />
+                                                Specific Source Host / Appliance
+                                            </span>
+                                            <input
+                                                type="radio"
+                                                checked={nuclearScope === "source"}
+                                                onChange={() => setNuclearScope("source")}
+                                                className="text-rose-500 focus:ring-0"
+                                            />
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 mt-2">
+                                            Dumps all logs emitted by a specific IP or Hostname (e.g. firewall, ironport, domain controller)
+                                        </p>
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Source Target Input (if source mode) */}
+                            {nuclearScope === "source" && (
+                                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 flex flex-col gap-2">
+                                    <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                                        <span>Source Appliance Identifier (Hostname or IP)</span>
+                                        <span className="text-[11px] text-slate-500">Matches source:* or gl2_remote_ip:*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={nuclearSourceInput}
+                                        onChange={(e) => setNuclearSourceInput(e.target.value)}
+                                        placeholder="e.g. 10.10.20.1, infosecutil02, ironport01.chsmail.root.cooperhealth.edu"
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none focus:border-rose-400"
+                                    />
+                                </div>
+                            )}
+
+                            {/* Cluster & Stream Picker */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs font-medium text-slate-300">Target Graylog Cluster</label>
+                                    <select
+                                        value={nuclearCluster}
+                                        onChange={(e) => {
+                                            setNuclearCluster(e.target.value as any);
+                                            setNuclearStreamId("all");
+                                        }}
+                                        className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-400"
+                                    >
+                                        {clusters.map((c) => (
+                                            <option key={c.id} value={c.id}>
+                                                {c.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-xs font-medium text-slate-300">
+                                        {nuclearScope === "stream" ? "Target Stream to Dump" : "Stream Scope"}
+                                    </label>
+                                    <select
+                                        value={nuclearStreamId}
+                                        onChange={(e) => setNuclearStreamId(e.target.value)}
+                                        className="bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-rose-400"
+                                    >
+                                        <option value="all">
+                                            {nuclearScope === "stream" ? "Cluster-Wide All Streams" : "Across All Streams (Cluster-Wide)"}
+                                        </option>
+                                        {(clusters.find(c => c.id === nuclearCluster)?.streams || []).map((s) => (
+                                            <option key={s.id} value={s.id}>
+                                                {s.title}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Time Window Selector */}
+                            <div className="flex flex-col gap-2 pt-1 border-t border-slate-800">
+                                <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                                    <span className="flex items-center gap-1.5">
+                                        <Clock size={14} className="text-rose-400" />
+                                        Nuclear Extraction Timeframe
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 font-mono">Bisection subdivides into &le; 9.8k slices</span>
+                                </label>
+                                <div className="flex flex-wrap gap-2">
+                                    {[
+                                        { id: "1h", label: "Past 1h" },
+                                        { id: "6h", label: "Past 6h" },
+                                        { id: "24h", label: "Past 24h (1 Day)" },
+                                        { id: "3d", label: "Past 3 Days" },
+                                        { id: "7d", label: "Past 7 Days (1 Week)" },
+                                        { id: "14d", label: "Past 14 Days" },
+                                        { id: "30d", label: "Past 30 Days (1 Month)" },
+                                        { id: "custom", label: "Custom Range" },
+                                    ].map((t) => (
+                                        <button
+                                            key={t.id}
+                                            type="button"
+                                            onClick={() => setNuclearTimePreset(t.id)}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                                nuclearTimePreset === t.id
+                                                    ? "bg-rose-600 text-white font-semibold shadow-md shadow-rose-950/40"
+                                                    : "bg-slate-900/60 border border-slate-800 text-slate-400 hover:text-slate-200"
+                                            }`}
+                                        >
+                                            {t.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {nuclearTimePreset === "custom" && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2 p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-[11px] text-slate-400">Start Timestamp</label>
+                                            <input
+                                                type="datetime-local"
+                                                value={nuclearCustomFrom}
+                                                onChange={(e) => setNuclearCustomFrom(e.target.value)}
+                                                className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono focus:outline-none focus:border-rose-400"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-[11px] text-slate-400">End Timestamp</label>
+                                            <input
+                                                type="datetime-local"
+                                                value={nuclearCustomTo}
+                                                onChange={(e) => setNuclearCustomTo(e.target.value)}
+                                                className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono focus:outline-none focus:border-rose-400"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Format Selection */}
+                            <div className="flex flex-col gap-2 pt-1 border-t border-slate-800">
+                                <label className="text-xs font-semibold text-slate-300">Packaging Format</label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div
+                                        onClick={() => setNuclearFormat("ndjson")}
+                                        className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                                            nuclearFormat === "ndjson"
+                                                ? "bg-rose-500/15 border-rose-500/70 text-white"
+                                                : "bg-slate-900/50 border-slate-800 text-slate-400"
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs font-bold text-white">NDJSON (Newline JSON)</span>
+                                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-mono">RECOMMENDED</span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 mt-1">Preserves all 100% raw fields without requiring predefined schema columns</p>
+                                    </div>
+                                    <div
+                                        onClick={() => setNuclearFormat("csv")}
+                                        className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                                            nuclearFormat === "csv"
+                                                ? "bg-rose-500/15 border-rose-500/70 text-white"
+                                                : "bg-slate-900/50 border-slate-800 text-slate-400"
+                                        }`}
+                                    >
+                                        <span className="text-xs font-bold text-white">CSV (Excel Compatible)</span>
+                                        <p className="text-[11px] text-slate-400 mt-1">Spreadsheet tabular export with sanitized formula safety protection</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Safety Callout */}
+                            <div className="p-3.5 rounded-xl bg-rose-950/30 border border-rose-500/30 text-rose-200 text-xs flex items-start gap-2.5">
+                                <AlertTriangle size={16} className="text-rose-400 shrink-0 mt-0.5" />
+                                <div>
+                                    <span className="font-bold text-rose-300">Pre-Flight Sizing Protection: </span>
+                                    Nuclear dumps can involve hundreds of thousands or millions of logs. Sizing estimation verifies local disk headroom on <code className="font-mono text-rose-300">infosecutil02</code> and partitions the export into safe compressed ZIP packages.
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer Actions */}
+                        <div className="p-4 border-t border-border/40 flex items-center justify-between bg-card/40">
+                            <button
+                                type="button"
+                                onClick={() => setShowNuclearModal(false)}
+                                className="px-4 py-2 rounded-xl bg-card border border-border/40 text-xs text-slate-300 hover:text-white"
+                            >
+                                Cancel
+                            </button>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => armNuclearExport(false)}
+                                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition-colors"
+                                    title="Pre-populate the main form for manual adjustment"
+                                >
+                                    Populate Main Form
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => armNuclearExport(true)}
+                                    className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-rose-950/60 transition-all hover:scale-105"
+                                >
+                                    <span>☢️</span>
+                                    <span>Arm & Run Sizing Pre-Flight →</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
