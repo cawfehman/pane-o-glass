@@ -683,6 +683,51 @@ export const helpData: Record<string, TooltipDetails> = {
             "In Foreign Geo Access tab, click [Shun] on any anomalous foreign IP to pivot directly to Cisco Firewall Shun.",
             "In User & IP Investigator, enter a username (e.g. honeywell-samantha) or IP to view their full chronological audit timeline."
         ]
+    },
+    "graylog-exporter": {
+        title: "Graylog Bulk Results Exporter",
+        version: "1.0.0",
+        category: "Bulk Data Extraction & Adaptive Elastic Slicing",
+        description: "Bypasses Graylog & Elasticsearch 10,000-record query limitations via intelligent adaptive time-bisection slicing, streaming archive packaging, disk space safeguarding, and Excel DDE formula injection sanitization.",
+        capabilities: [
+            {
+                title: "Adaptive Time-Bisection Slicing",
+                detail: "Automatically inspects hit counts across the query window. If hits exceed Graylog's 10,000-record window limit, it bisects the window recursively until every slice contains <= 9,800 events.",
+                tag: "Bisection Engine"
+            },
+            {
+                title: "Mandatory Pre-Flight Sizing Analysis",
+                detail: "Simulates slice counts, estimates total hits, and projects uncompressed and compressed archive sizes against server disk space before triggering execution.",
+                tag: "Pre-Flight Guard"
+            },
+            {
+                title: "All-in-One Compressed ZIP & Merged Output",
+                detail: "Generates an All-in-One ZIP package containing individual time slices, an export manifest, and a master concatenated dataset for instant ingestion.",
+                tag: "Packager"
+            },
+            {
+                title: "Configurable Retention Policy & Audit Logging",
+                detail: "Default 24-hour auto-purge retention with options up to 7 days maximum. Extensions beyond 24 hours require mandatory business justification logged in the security audit log.",
+                tag: "Retention & Compliance"
+            },
+            {
+                title: "Excel DDE Formula Injection Sanitization",
+                detail: "Sanitizes fields starting with '=', '+', '-', or '@' in CSV output to neutralize CSV/Excel Formula Injection attacks when analysts open files in Excel.",
+                tag: "Security Sanitizer"
+            }
+        ],
+        colors: [
+            { name: "🟦 PLANNING", meaning: "Calculating time slices and pre-flight metadata.", rgb: "#3b82f6" },
+            { name: "🟨 RUNNING", meaning: "Actively fetching slices with Graylog concurrency throttling.", rgb: "#eab308" },
+            { name: "🟩 COMPLETED", meaning: "Archive generated and ready for download.", rgb: "#10b981" },
+            { name: "🟥 EXPIRED", meaning: "Past retention period; storage purged from disk.", rgb: "#ef4444" }
+        ],
+        shortcuts: [
+            "Select cluster and stream or choose 'All Streams' to broaden query scope.",
+            "Use field presets (Syslog, Email, Firewall, NetScaler) or enter custom field lists.",
+            "Run mandatory Pre-Flight Analysis before clicking Confirm & Launch.",
+            "Check 'Export History & Storage Management' to download past exports or purge disk space immediately."
+        ]
     }
 };
 

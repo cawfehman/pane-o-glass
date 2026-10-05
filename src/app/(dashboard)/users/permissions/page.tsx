@@ -25,6 +25,7 @@ const TOOLS = [
     { id: 'crawler', name: 'Netcrawler & Site Hierarchy' },
     { id: 'threat-intel', name: 'Threat Intelligence reputation' },
     { id: 'notification-center', name: 'Breach Notification Center' },
+    { id: 'graylog-exporter', name: 'Graylog Bulk Exporter' },
 ];
 
 const ROLES = ["ADMIN", "ANALYST", "NETWORK", "DESKTOP", "SYSTEMS", "USER"];
@@ -44,7 +45,8 @@ const DEFAULT_PERMISSIONS_MAP: Record<string, Record<string, boolean>> = {
     'vectra': { ADMIN: true, ANALYST: true, NETWORK: false, DESKTOP: false, SYSTEMS: false, USER: false },
     'crawler': { ADMIN: true, ANALYST: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
     'threat-intel': { ADMIN: true, ANALYST: true, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
-    'notification-center': { ADMIN: true, ANALYST: true, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false }
+    'notification-center': { ADMIN: true, ANALYST: true, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
+    'graylog-exporter': { ADMIN: true, ANALYST: true, NETWORK: false, DESKTOP: false, SYSTEMS: false, USER: false }
 };
 
 export default function PermissionsPage() {

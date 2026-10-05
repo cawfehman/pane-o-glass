@@ -29,7 +29,34 @@ async function cleanup() {
             where: { snapshotDate: { lt: ninetyDaysAgo } }
         });
 
-        const msg = `System Retention Cleanup: Deleted ${auditResult.count} audit logs (30d), ${becResult.count} BEC raw URLs (14d), ${healthResult.count} health probes (30d), ${shunSnapshotResult.count} shun snapshots (90d).`;
+        // 5. Expired Graylog Exports Retention Cleanup
+        const fs = await import("fs");
+        const path = await import("path");
+        const exportsBasePath = path.join(process.cwd(), "exports", "graylog");
+        let expiredExportsDeleted = 0;
+
+        const expiredJobs = await prisma.graylogExportJob.findMany({
+            where: {
+                expiresAt: { lte: new Date() },
+                status: { not: "EXPIRED" }
+            }
+        });
+
+        for (const job of expiredJobs) {
+            const jobDir = path.join(exportsBasePath, job.id);
+            if (fs.existsSync(jobDir)) {
+                try {
+                    fs.rmSync(jobDir, { recursive: true, force: true });
+                } catch {}
+            }
+            await prisma.graylogExportJob.update({
+                where: { id: job.id },
+                data: { status: "EXPIRED" }
+            });
+            expiredExportsDeleted++;
+        }
+
+        const msg = `System Retention Cleanup: Deleted ${auditResult.count} audit logs (30d), ${becResult.count} BEC raw URLs (14d), ${healthResult.count} health probes (30d), ${shunSnapshotResult.count} shun snapshots (90d), ${expiredExportsDeleted} expired Graylog export bundles.`;
         console.log(`[${new Date().toISOString()}] ${msg}`);
         
         await prisma.backgroundJob.upsert({

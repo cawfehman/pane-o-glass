@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import { 
     LayoutDashboard, Wrench, Shield, Server, Network, Lock, 
     ShieldAlert, ShieldCheck, Globe, Map, Users, Key, 
-    ClipboardList, Activity, MessageSquare, Mail, BellRing, FileText, Layers 
+    ClipboardList, Activity, MessageSquare, Mail, BellRing, FileText, Layers,
+    DownloadCloud
 } from "lucide-react";
 import packageJson from "../../package.json";
 import FeedbackModal from "./FeedbackModal";
@@ -219,6 +220,21 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                 </Link>
                             )}
                         </div>
+                    )}
+
+                    {(isAdmin || hasPermission('graylog-exporter')) && (
+                        <>
+                            <div className="nav-section mt-4">Utilities</div>
+                            <Link 
+                                href="/utilities/graylog-exporter" 
+                                onClick={closeMobile} 
+                                title={isCollapsed ? "Graylog Exporter" : undefined}
+                                className={`nav-link ${pathname.startsWith("/utilities/graylog-exporter") ? "active" : ""}`}
+                            >
+                                <DownloadCloud size={20} className="shrink-0 text-cyan-400" />
+                                <span className="nav-text">Graylog Exporter</span>
+                            </Link>
+                        </>
                     )}
 
                     {isAdmin && (

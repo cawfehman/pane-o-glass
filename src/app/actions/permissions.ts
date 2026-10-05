@@ -87,7 +87,17 @@ export async function getPermissionsForRole(role: string) {
         const permissions = await prisma.toolPermission.findMany({
             where: { role: String(role).toUpperCase(), isEnabled: true }
         });
-        return permissions.map((p: any) => p.toolId as string);
+        const list = permissions.map((p: any) => p.toolId as string);
+        const roleUpper = String(role).toUpperCase();
+        if ((roleUpper === 'ADMIN' || roleUpper === 'ANALYST') && !list.includes('graylog-exporter')) {
+            const explicitlyDisabled = await prisma.toolPermission.findFirst({
+                where: { role: roleUpper, toolId: 'graylog-exporter', isEnabled: false }
+            });
+            if (!explicitlyDisabled) {
+                list.push('graylog-exporter');
+            }
+        }
+        return list;
     } catch (error) {
         logInternalError(`Error fetching permissions for role ${role}`, error);
         return [];
@@ -118,6 +128,14 @@ export async function hasPermission(role: string, toolId: string) {
                     isEnabled: true
                 }
             });
+        }
+
+        // Fallback for graylog-exporter: if no explicit entry exists, default to true for ANALYST and ADMIN
+        if (!permission && toolId === 'graylog-exporter') {
+            const roleUpper = String(role).toUpperCase();
+            if (roleUpper === 'ADMIN' || roleUpper === 'ANALYST') {
+                return true;
+            }
         }
 
         return !!permission;
@@ -215,6 +233,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'etd', role: 'ADMIN', isEnabled: true },
             { toolId: 'crawler', role: 'ADMIN', isEnabled: true },
             { toolId: 'netscaler', role: 'ADMIN', isEnabled: true },
+            { toolId: 'graylog-exporter', role: 'ADMIN', isEnabled: true },
 
             { toolId: 'firewall', role: 'ANALYST', isEnabled: true },
             { toolId: 'ise', role: 'ANALYST', isEnabled: true },
@@ -229,6 +248,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'etd', role: 'ANALYST', isEnabled: true },
             { toolId: 'crawler', role: 'ANALYST', isEnabled: false },
             { toolId: 'netscaler', role: 'ANALYST', isEnabled: true },
+            { toolId: 'graylog-exporter', role: 'ANALYST', isEnabled: true },
 
             { toolId: 'firewall', role: 'USER', isEnabled: false },
             { toolId: 'ise', role: 'USER', isEnabled: false },
@@ -243,6 +263,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'etd', role: 'USER', isEnabled: false },
             { toolId: 'crawler', role: 'USER', isEnabled: false },
             { toolId: 'netscaler', role: 'USER', isEnabled: false },
+            { toolId: 'graylog-exporter', role: 'USER', isEnabled: false },
 
             { toolId: 'firewall', role: 'NETWORK', isEnabled: true },
             { toolId: 'ise', role: 'NETWORK', isEnabled: true },
@@ -257,6 +278,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'etd', role: 'NETWORK', isEnabled: false },
             { toolId: 'crawler', role: 'NETWORK', isEnabled: true },
             { toolId: 'netscaler', role: 'NETWORK', isEnabled: true },
+            { toolId: 'graylog-exporter', role: 'NETWORK', isEnabled: false },
 
             { toolId: 'firewall', role: 'DESKTOP', isEnabled: true },
             { toolId: 'ise', role: 'DESKTOP', isEnabled: false },
@@ -270,6 +292,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'netscaler', role: 'DESKTOP', isEnabled: false },
             { toolId: 'etd', role: 'DESKTOP', isEnabled: false },
             { toolId: 'crawler', role: 'DESKTOP', isEnabled: false },
+            { toolId: 'graylog-exporter', role: 'DESKTOP', isEnabled: false },
 
             { toolId: 'firewall', role: 'SYSTEMS', isEnabled: false },
             { toolId: 'ise', role: 'SYSTEMS', isEnabled: false },
@@ -282,6 +305,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'bec', role: 'SYSTEMS', isEnabled: true },
             { toolId: 'etd', role: 'SYSTEMS', isEnabled: true },
             { toolId: 'crawler', role: 'SYSTEMS', isEnabled: false },
+            { toolId: 'graylog-exporter', role: 'SYSTEMS', isEnabled: false },
 
             { toolId: 'vectra', role: 'ADMIN', isEnabled: true },
             { toolId: 'vectra', role: 'ANALYST', isEnabled: true },

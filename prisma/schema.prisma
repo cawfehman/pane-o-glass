@@ -532,4 +532,40 @@ model NetscalerCveSetting {
   updatedAt       DateTime @updatedAt
 }
 
+model GraylogExportJob {
+  id                String    @id @default(cuid())
+  title             String
+  query             String
+  cluster           String    // "OG_GRAYLOG" | "NEW_GRAYLOG"
+  streamId          String?
+  streamName        String?
+  from              DateTime
+  to                DateTime
+  fields            String    // JSON string of fields array
+  format            String    @default("csv") // "csv" | "ndjson"
+  status            String    @default("PENDING") // "PLANNING", "RUNNING", "COMPLETED", "FAILED", "EXPIRED", "CANCELLED"
+  progress          Float     @default(0) // 0 to 100
+  processedSlices   Int       @default(0)
+  totalSlices       Int       @default(0)
+  totalEvents       Int       @default(0)
+  uncompressedBytes Float     @default(0)
+  compressedBytes   Float     @default(0)
+  storageDir        String    // relative or absolute path on disk
+  zipFileName       String?
+  retentionHours    Int       @default(24) // 24 up to 168 (7 days)
+  retentionReason   String?
+  expiresAt         DateTime
+  errorMessage      String?
+  createdBy         String    // username
+  createdAt         DateTime  @default(now())
+  completedAt       DateTime?
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status])
+  @@index([expiresAt])
+  @@index([createdAt])
+  @@index([createdBy])
+}
+
+
 
