@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
-import { getS2sConfig, saveS2sConfig, clearS2sConfig } from "@/lib/s2s-config";
+import { getS2sConfig, setSessionConfig, clearSessionConfig } from "@/lib/s2s-config";
 import { FmcClient } from "@/lib/fmc-client";
 import { logAudit } from "@/lib/audit";
 
@@ -60,9 +60,9 @@ export async function POST(req: Request) {
         const { action = "save", fmc, ftds, activeMode = "fmc", save = true } = body;
 
         if (action === "clear") {
-            clearS2sConfig();
-            await logAudit("VPN_S2S_CONFIG_CLEARED", "Cleared persistent S2S VPN configuration", session.user.id);
-            return NextResponse.json({ success: true, message: "Configuration cleared." });
+            clearSessionConfig();
+            await logAudit("VPN_S2S_CONFIG_CLEARED", "Cleared in-memory S2S VPN session configuration", session.user.id);
+            return NextResponse.json({ success: true, message: "Session configuration cleared." });
         }
 
         if (action === "test_fmc") {
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
             return NextResponse.json(res);
         }
 
-        // Validate and save
+        // Validate and apply to ephemeral session memory
         const { config: existing } = getS2sConfig();
 
         const updatedFmc = fmc ? {
@@ -98,23 +98,21 @@ export async function POST(req: Request) {
             secret: f.secret || ""
         })) : existing.ftds;
 
-        if (save) {
-            saveS2sConfig({
-                fmc: updatedFmc,
-                ftds: updatedFtds,
-                activeMode
-            }, session.user.name || (session.user as any)?.username || "admin");
+        setSessionConfig({
+            fmc: updatedFmc,
+            ftds: updatedFtds,
+            activeMode
+        }, session.user.name || (session.user as any)?.username || "admin");
 
-            await logAudit(
-                "VPN_S2S_CONFIG_SAVED",
-                `Saved S2S VPN configuration: Mode=${activeMode}, FMC Host=${updatedFmc?.url || 'none'}, FTDs count=${updatedFtds?.length || 0}`,
-                session.user.id
-            );
-        }
+        await logAudit(
+            "VPN_S2S_CONFIG_APPLIED",
+            `Applied S2S VPN session config in memory (zero disk writes): Mode=${activeMode}, FMC Host=${updatedFmc?.url || 'none'}, FTDs count=${updatedFtds?.length || 0}`,
+            session.user.id
+        );
 
         return NextResponse.json({
             success: true,
-            message: "Configuration successfully saved and applied.",
+            message: "Configuration successfully applied in active session memory.",
             activeMode,
             fmcConfigured: Boolean(updatedFmc?.url),
             ftdsCount: updatedFtds?.length || 0

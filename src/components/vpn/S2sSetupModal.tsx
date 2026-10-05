@@ -256,7 +256,7 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                                 )}
                             </h2>
                             <p className="text-xs text-text-secondary mt-0.5">
-                                Specify your target Firepower Management Center or FTD IP addresses and credentials to begin monitoring S2S VPN tunnels.
+                                Specify your target Firepower Management Center (Web GUI / REST API) or FTD Gateway (SSH CLI) connection.
                             </p>
                         </div>
                     </div>
@@ -269,12 +269,25 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                     </button>
                 </div>
 
+                {/* Ephemeral In-Memory Security Notice */}
+                <div className="p-3.5 rounded-xl border border-cyan-500/30 bg-cyan-950/20 text-cyan-200 text-xs flex items-start gap-2.5">
+                    <Lock size={17} className="shrink-0 text-cyan-400 mt-0.5" />
+                    <div className="space-y-1">
+                        <div className="font-semibold text-cyan-300">
+                            🔒 Zero Disk Persistence (In-Memory Session Only)
+                        </div>
+                        <p className="text-[11px] text-text-secondary leading-relaxed">
+                            Passwords and credentials entered here are <strong className="text-cyan-300">never written to disk or stored in JSON files</strong>. They are held strictly in temporary server memory for the active session. If the server restarts, session credentials are cleared. Use <strong className="text-cyan-300">&quot;Copy as .env format&quot;</strong> below if you prefer to configure permanent server environment variables.
+                        </p>
+                    </div>
+                </div>
+
                 {/* Banner if initial prompt */}
                 {isInitialPrompt && (
                     <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-950/20 text-amber-200 text-xs flex items-center gap-2.5">
                         <AlertCircle size={18} className="shrink-0 text-amber-400" />
                         <div>
-                            <strong>No S2S credentials found in environment (.env).</strong> Please provide the FMC connection or FTD IP addresses below. You can save them securely or copy the .env format.
+                            <strong>No S2S credentials found in environment (.env).</strong> Configure FMC Web GUI or FTD CLI credentials below to begin live VPN troubleshooting.
                         </div>
                     </div>
                 )}
@@ -290,7 +303,7 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                         }`}
                     >
                         <Server size={15} />
-                        <span>Cisco FMC Integration (Recommended)</span>
+                        <span>FMC Web GUI / REST API (HTTPS: 443)</span>
                     </button>
                     <button
                         onClick={() => setActiveTab("ftd")}
@@ -300,16 +313,20 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                                 : "text-text-secondary hover:text-text-primary"
                         }`}
                     >
-                        <Shield size={15} />
-                        <span>Direct FTD Firewalls (Lina SSH)</span>
+                        <Terminal size={15} />
+                        <span>FTD Device CLI / SSH (Port: 22)</span>
                     </button>
                 </div>
 
-                {/* Tab A: FMC Integration */}
+                {/* Tab A: FMC Web GUI / REST API */}
                 {activeTab === "fmc" && (
                     <div className="space-y-4">
                         <div className="p-3.5 rounded-xl bg-bg-surface-hover/30 border border-border-color text-xs text-text-secondary leading-relaxed">
-                            Connect to your Firepower Management Center REST API. The tool will auto-discover all managed S2S FTD devices, endpoints, cryptographic profiles, and operational tunnel states.
+                            <strong className="text-cyan-400">Target: Cisco FMC Management Server (Web GUI / REST API)</strong><br />
+                            Uses FMC HTTPS (Port 443) REST tokens to discover high-level Site-to-Site VPN topologies, crypto policies, endpoint nodes, and traffic selector subnets.
+                            <div className="mt-1 text-[11px] text-amber-300/90 font-medium">
+                                💡 Note: Enter your FMC Web/API login account (this is typically separate from FTD device CLI passwords).
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
@@ -328,7 +345,7 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="font-semibold text-text-primary">API Username</label>
+                                <label className="font-semibold text-text-primary">FMC Web / API Username</label>
                                 <input
                                     type="text"
                                     placeholder="api_admin or fmc_user"
@@ -339,11 +356,11 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                             </div>
 
                             <div className="space-y-1.5">
-                                <label className="font-semibold text-text-primary">Password</label>
+                                <label className="font-semibold text-text-primary">FMC Web / API Password</label>
                                 <div className="relative">
                                     <input
                                         type={showFmcPass ? "text" : "password"}
-                                        placeholder={currentConfig?.fmc?.hasPassword ? "•••••••• (Saved)" : "Enter FMC password"}
+                                        placeholder={currentConfig?.fmc?.hasPassword ? "•••••••• (Saved in Session)" : "Enter FMC web password"}
                                         value={fmcPass}
                                         onChange={(e) => setFmcPass(e.target.value)}
                                         className="w-full px-3 py-2 pr-9 rounded-lg bg-bg-surface border border-border-color text-text-primary outline-none focus:border-cyan-400 text-xs"
@@ -403,7 +420,11 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                 {activeTab === "ftd" && (
                     <div className="space-y-4">
                         <div className="p-3.5 rounded-xl bg-bg-surface-hover/30 border border-border-color text-xs text-text-secondary leading-relaxed">
-                            Specify individual Cisco FTD perimeter firewalls that terminate your Site-to-Site VPN tunnels. The tool will execute live read-only diagnostic commands via Lina SSH.
+                            <strong className="text-cyan-400">Target: FTD Firewall Management IPs (SSH: 22)</strong><br />
+                            Uses device administrative CLI access to execute read-only Lina crypto diagnostics (`show crypto ikev2 sa`, `show crypto ipsec sa`, packet captures, tunnel bounces).
+                            <div className="mt-1 text-[11px] text-amber-300/90 font-medium">
+                                💡 Note: Enter device SSH or TACACS+ credentials (usually different from FMC web credentials).
+                            </div>
                         </div>
 
                         <div className="space-y-3">
@@ -412,7 +433,7 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                                     <div className="flex items-center justify-between">
                                         <div className="font-semibold text-text-primary flex items-center gap-2">
                                             <Shield size={14} className="text-cyan-400" />
-                                            <span>Gateway #{idx + 1}</span>
+                                            <span>FTD Gateway #{idx + 1}</span>
                                         </div>
                                         {ftds.length > 1 && (
                                             <button
@@ -427,7 +448,7 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
 
                                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
                                         <div className="space-y-1">
-                                            <label className="text-[11px] text-text-secondary">Name</label>
+                                            <label className="text-[11px] text-text-secondary">Gateway Name / Label</label>
                                             <input
                                                 type="text"
                                                 placeholder="e.g. Camden S2S Primary"
@@ -438,7 +459,7 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                                         </div>
 
                                         <div className="space-y-1">
-                                            <label className="text-[11px] text-text-secondary">Management IP</label>
+                                            <label className="text-[11px] text-text-secondary">Device IP (Port 22)</label>
                                             <input
                                                 type="text"
                                                 placeholder="10.x.x.x"
@@ -449,7 +470,7 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                                         </div>
 
                                         <div className="space-y-1">
-                                            <label className="text-[11px] text-text-secondary">SSH User</label>
+                                            <label className="text-[11px] text-text-secondary">SSH / TACACS+ User</label>
                                             <input
                                                 type="text"
                                                 placeholder="admin"
@@ -460,7 +481,7 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                                         </div>
 
                                         <div className="space-y-1">
-                                            <label className="text-[11px] text-text-secondary">Password / Secret</label>
+                                            <label className="text-[11px] text-text-secondary">SSH Password / Secret</label>
                                             <input
                                                 type="password"
                                                 placeholder="••••••••"
@@ -503,6 +524,7 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                         type="button"
                         onClick={copyEnvTemplate}
                         className="flex items-center gap-1.5 text-xs text-text-secondary hover:text-text-primary transition-all"
+                        title="Copy configuration as environment variables for permanent .env deployment"
                     >
                         {copiedEnv ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
                         <span>{copiedEnv ? "Copied .env format!" : "Copy as .env format"}</span>
@@ -521,9 +543,10 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                             onClick={handleSaveConfig}
                             disabled={saving}
                             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-accent-primary hover:bg-accent-primary/90 text-white text-xs font-bold transition-all shadow-md active:scale-95 disabled:opacity-50"
+                            title="Applies in active server memory only (never written to disk)"
                         >
                             {saving ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
-                            <span>{saving ? "Saving..." : "Save & Connect"}</span>
+                            <span>{saving ? "Applying..." : "Apply (In-Memory Session)"}</span>
                         </button>
                     </div>
                 </div>

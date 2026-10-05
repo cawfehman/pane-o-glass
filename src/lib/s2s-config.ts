@@ -1,6 +1,3 @@
-import fs from "fs";
-import path from "path";
-
 export interface S2sFtdDeviceConfig {
     id: string;
     name: string;
@@ -25,33 +22,28 @@ export interface S2sGlobalConfig {
     activeMode: "fmc" | "ftd_direct" | "hybrid";
 }
 
-const CONFIG_FILE_PATH = path.join(process.cwd(), "data", "s2s-config.json");
+// In-Memory Ephemeral Storage (Per-process lifecycle, NEVER written to disk)
+let inMemoryConfig: S2sGlobalConfig | null = null;
 
 export function getS2sConfig(): {
     config: S2sGlobalConfig;
     isConfigured: boolean;
-    source: "env" | "file" | "none";
+    source: "env" | "session_memory" | "none";
 } {
-    // 1. Check persistent config file in data/
-    try {
-        if (fs.existsSync(CONFIG_FILE_PATH)) {
-            const raw = fs.readFileSync(CONFIG_FILE_PATH, "utf-8");
-            const parsed: S2sGlobalConfig = JSON.parse(raw);
-            const hasFmc = Boolean(parsed.fmc?.url && parsed.fmc?.username && parsed.fmc?.password);
-            const hasFtds = Boolean(Array.isArray(parsed.ftds) && parsed.ftds.length > 0 && parsed.ftds[0].ip);
-            if (hasFmc || hasFtds) {
-                return {
-                    config: parsed,
-                    isConfigured: true,
-                    source: "file"
-                };
-            }
+    // 1. Check ephemeral in-memory session configuration
+    if (inMemoryConfig) {
+        const hasFmc = Boolean(inMemoryConfig.fmc?.url && inMemoryConfig.fmc?.username && inMemoryConfig.fmc?.password);
+        const hasFtds = Boolean(Array.isArray(inMemoryConfig.ftds) && inMemoryConfig.ftds.length > 0 && inMemoryConfig.ftds[0].ip);
+        if (hasFmc || hasFtds) {
+            return {
+                config: inMemoryConfig,
+                isConfigured: true,
+                source: "session_memory"
+            };
         }
-    } catch (e) {
-        console.warn("[S2S-CONFIG] Error reading s2s-config.json:", e);
     }
 
-    // 2. Check environment variables
+    // 2. Check environment variables (.env)
     const envFmcUrl = process.env.FMC_URL?.trim();
     const envFmcUser = process.env.FMC_USER?.trim();
     const envFmcPass = process.env.FMC_PASSWORD?.trim();
@@ -86,7 +78,7 @@ export function getS2sConfig(): {
         };
     }
 
-    // 3. Unconfigured / blank
+    // 3. Unconfigured / blank in .env
     return {
         config: {
             activeMode: "fmc",
@@ -97,26 +89,17 @@ export function getS2sConfig(): {
     };
 }
 
-export function saveS2sConfig(newConfig: Partial<S2sGlobalConfig>, username?: string): S2sGlobalConfig {
-    const dir = path.dirname(CONFIG_FILE_PATH);
-    if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-    }
-
-    const { config: existing } = getS2sConfig();
-    const updated: S2sGlobalConfig = {
+export function setSessionConfig(newConfig: Partial<S2sGlobalConfig>, username?: string): S2sGlobalConfig {
+    const existing = getS2sConfig().config;
+    inMemoryConfig = {
         ...existing,
         ...newConfig,
         configuredAt: new Date().toISOString(),
-        configuredBy: username || existing.configuredBy || "administrator"
+        configuredBy: username || existing.configuredBy || "operator"
     };
-
-    fs.writeFileSync(CONFIG_FILE_PATH, JSON.stringify(updated, null, 2), "utf-8");
-    return updated;
+    return inMemoryConfig;
 }
 
-export function clearS2sConfig(): void {
-    if (fs.existsSync(CONFIG_FILE_PATH)) {
-        fs.unlinkSync(CONFIG_FILE_PATH);
-    }
+export function clearSessionConfig(): void {
+    inMemoryConfig = null;
 }
