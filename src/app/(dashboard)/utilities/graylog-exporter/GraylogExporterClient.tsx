@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useTransition } from "react";
+import React, { useState, useEffect, useRef, useTransition } from "react";
 import { 
     DownloadCloud, Play, AlertTriangle, CheckCircle2, Clock, 
     FileArchive, HardDrive, RefreshCw, Trash2, X, FileText, 
     Layers, Server, Shield, FileSpreadsheet, ChevronDown, ChevronRight, 
-    Calendar, ArrowRight, Info, AlertCircle, Ban
+    Calendar, ArrowRight, Info, AlertCircle, Ban, Search, Check, Globe
 } from "lucide-react";
 
 interface ClusterConfig {
@@ -111,6 +111,10 @@ export default function GraylogExporterClient() {
     // Form State
     const [selectedCluster, setSelectedCluster] = useState<"OG_GRAYLOG" | "NEW_GRAYLOG">("OG_GRAYLOG");
     const [selectedStreamId, setSelectedStreamId] = useState<string>("all");
+    const [isStreamDropdownOpen, setIsStreamDropdownOpen] = useState(false);
+    const [streamSearchQuery, setStreamSearchQuery] = useState("");
+    const streamDropdownRef = useRef<HTMLDivElement>(null);
+
     const [query, setQuery] = useState<string>("*");
     const [timePreset, setTimePreset] = useState<string>("24h");
     const [fromTime, setFromTime] = useState<string>("");
@@ -146,6 +150,17 @@ export default function GraylogExporterClient() {
     // Initialize default time range
     useEffect(() => {
         applyTimePreset("24h");
+    }, []);
+
+    // Close stream dropdown on click outside
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (streamDropdownRef.current && !streamDropdownRef.current.contains(event.target as Node)) {
+                setIsStreamDropdownOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
     // Load Cluster & Stream Configurations
@@ -391,6 +406,12 @@ export default function GraylogExporterClient() {
     }
 
     const currentClusterObj = clusters.find(c => c.id === selectedCluster);
+    const availableStreams = currentClusterObj?.streams || [];
+    const filteredStreams = availableStreams.filter(s => 
+        s.title.toLowerCase().includes(streamSearchQuery.toLowerCase()) || 
+        (s.description && s.description.toLowerCase().includes(streamSearchQuery.toLowerCase()))
+    );
+    const selectedStreamObj = availableStreams.find(s => s.id === selectedStreamId);
 
     return (
         <div className="flex flex-col gap-6">
@@ -508,21 +529,124 @@ export default function GraylogExporterClient() {
                             ))}
                         </div>
 
-                        {/* Stream Picker */}
-                        <div className="flex flex-col gap-1.5 mt-2">
-                            <label className="text-xs font-medium text-text-secondary">Stream Filter</label>
-                            <select
-                                value={selectedStreamId}
-                                onChange={(e) => setSelectedStreamId(e.target.value)}
-                                className="w-full bg-card/60 border border-border/40 rounded-lg p-2.5 text-sm text-text-primary focus:outline-none focus:border-accent-primary transition-all"
+                        {/* Stream Picker (Custom Dark Searchable Dropdown) */}
+                        <div className="flex flex-col gap-1.5 mt-2 relative" ref={streamDropdownRef}>
+                            <label className="text-xs font-medium text-text-secondary flex items-center justify-between">
+                                <span>Stream Filter</span>
+                                {availableStreams.length > 0 && (
+                                    <span className="text-[11px] text-text-muted">{availableStreams.length} streams in cluster</span>
+                                )}
+                            </label>
+                            
+                            {/* Trigger Button */}
+                            <button
+                                type="button"
+                                onClick={() => setIsStreamDropdownOpen(!isStreamDropdownOpen)}
+                                className="w-full bg-[#14171f] border border-border/60 hover:border-accent-primary/60 rounded-lg p-2.5 text-sm text-text-primary flex items-center justify-between transition-all text-left shadow-sm focus:outline-none focus:border-accent-primary"
                             >
-                                <option value="all">🌐 All Streams (Cluster-Wide Index Search)</option>
-                                {currentClusterObj?.streams.map((s) => (
-                                    <option key={s.id} value={s.id}>
-                                        {s.title} {s.description ? `— ${s.description}` : ""}
-                                    </option>
-                                ))}
-                            </select>
+                                <div className="flex items-center gap-2.5 truncate">
+                                    {selectedStreamId === "all" ? (
+                                        <>
+                                            <Globe size={16} className="text-accent-primary shrink-0" />
+                                            <span className="font-medium text-text-primary">All Streams (Cluster-Wide Index Search)</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Layers size={16} className="text-cyan-400 shrink-0" />
+                                            <div className="truncate">
+                                                <span className="font-medium text-text-primary">{selectedStreamObj?.title || selectedStreamId}</span>
+                                                {selectedStreamObj?.description && (
+                                                    <span className="text-xs text-text-muted ml-2 truncate">({selectedStreamObj.description})</span>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                                <ChevronDown size={16} className={`text-text-muted shrink-0 transition-transform ${isStreamDropdownOpen ? "rotate-180" : ""}`} />
+                            </button>
+
+                            {/* Custom Dark Dropdown Popover */}
+                            {isStreamDropdownOpen && (
+                                <div className="absolute top-[calc(100%+4px)] left-0 right-0 z-30 bg-[#161a23] border border-border/80 rounded-xl shadow-2xl overflow-hidden flex flex-col animate-scale-in">
+                                    {/* Search Input */}
+                                    <div className="p-2 border-b border-border/40 bg-[#12141a]">
+                                        <div className="relative flex items-center">
+                                            <Search size={14} className="absolute left-3 text-text-muted" />
+                                            <input
+                                                type="text"
+                                                value={streamSearchQuery}
+                                                onChange={(e) => setStreamSearchQuery(e.target.value)}
+                                                placeholder="Search streams by name or description..."
+                                                autoFocus
+                                                className="w-full bg-[#1a1d26] border border-border/40 rounded-lg pl-8 pr-3 py-1.5 text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent-primary font-sans"
+                                            />
+                                            {streamSearchQuery && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setStreamSearchQuery("")}
+                                                    className="absolute right-2.5 text-text-muted hover:text-text-primary"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Options List */}
+                                    <div className="max-h-64 overflow-y-auto custom-scrollbar p-1 flex flex-col gap-0.5 text-xs">
+                                        {/* All Streams Option */}
+                                        <button
+                                            type="button"
+                                            onClick={() => { setSelectedStreamId("all"); setIsStreamDropdownOpen(false); setStreamSearchQuery(""); }}
+                                            className={`w-full p-2.5 rounded-lg text-left flex items-center justify-between transition-colors ${
+                                                selectedStreamId === "all"
+                                                    ? "bg-accent-primary/15 text-accent-primary font-semibold"
+                                                    : "hover:bg-white/5 text-text-secondary hover:text-text-primary"
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <Globe size={15} className="shrink-0 text-accent-primary" />
+                                                <div>
+                                                    <div className="font-medium text-text-primary">All Streams (Cluster-Wide Index Search)</div>
+                                                    <div className="text-[11px] text-text-muted">Searches across all streams within cluster</div>
+                                                </div>
+                                            </div>
+                                            {selectedStreamId === "all" && <Check size={14} className="text-accent-primary shrink-0" />}
+                                        </button>
+
+                                        {/* Filtered Streams */}
+                                        {filteredStreams.map((s) => (
+                                            <button
+                                                key={s.id}
+                                                type="button"
+                                                onClick={() => { setSelectedStreamId(s.id); setIsStreamDropdownOpen(false); setStreamSearchQuery(""); }}
+                                                className={`w-full p-2.5 rounded-lg text-left flex items-center justify-between transition-colors ${
+                                                    selectedStreamId === s.id
+                                                        ? "bg-accent-primary/15 text-accent-primary font-semibold"
+                                                        : "hover:bg-white/5 text-text-secondary hover:text-text-primary"
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-2 truncate">
+                                                    <Layers size={14} className="shrink-0 text-cyan-400" />
+                                                    <div className="truncate">
+                                                        <div className="font-medium text-text-primary truncate">{s.title}</div>
+                                                        {s.description && (
+                                                            <div className="text-[11px] text-text-muted truncate">{s.description}</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                {selectedStreamId === s.id && <Check size={14} className="text-accent-primary shrink-0" />}
+                                            </button>
+                                        ))}
+
+                                        {filteredStreams.length === 0 && streamSearchQuery && (
+                                            <div className="p-4 text-center text-text-muted text-xs">
+                                                No streams matching "{streamSearchQuery}"
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -599,8 +723,9 @@ export default function GraylogExporterClient() {
                                 <input
                                     type="datetime-local"
                                     value={fromTime}
+                                    style={{ colorScheme: "dark" }}
                                     onChange={(e) => { setFromTime(e.target.value); setTimePreset("custom"); }}
-                                    className="bg-card/60 border border-border/40 rounded-lg p-2.5 text-sm text-text-primary focus:outline-none focus:border-accent-primary transition-all font-mono"
+                                    className="bg-[#14171f] border border-border/60 rounded-lg p-2.5 text-sm text-text-primary focus:outline-none focus:border-accent-primary transition-all font-mono"
                                 />
                             </div>
                             <div className="flex flex-col gap-1.5">
@@ -611,8 +736,9 @@ export default function GraylogExporterClient() {
                                 <input
                                     type="datetime-local"
                                     value={toTime}
+                                    style={{ colorScheme: "dark" }}
                                     onChange={(e) => { setToTime(e.target.value); setTimePreset("custom"); }}
-                                    className="bg-card/60 border border-border/40 rounded-lg p-2.5 text-sm text-text-primary focus:outline-none focus:border-accent-primary transition-all font-mono"
+                                    className="bg-[#14171f] border border-border/60 rounded-lg p-2.5 text-sm text-text-primary focus:outline-none focus:border-accent-primary transition-all font-mono"
                                 />
                             </div>
                         </div>

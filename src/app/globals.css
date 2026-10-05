@@ -99,10 +99,25 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+html {
+  color-scheme: dark;
+}
+
+select {
+  color-scheme: dark;
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+select option {
+  background-color: #161a23;
+  color: #e2e8f0;
+}
+
+input[type="datetime-local"],
+input[type="date"],
+input[type="time"] {
+  color-scheme: dark;
 }
 
 body {
