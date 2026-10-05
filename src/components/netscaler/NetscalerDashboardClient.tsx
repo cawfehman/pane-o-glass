@@ -5,7 +5,8 @@ import {
     Layers, ShieldAlert, Globe, Search, Clock, User, Server, 
     Activity, CheckCircle2, AlertTriangle, ExternalLink, RefreshCw, 
     X, Lock, Shield, ArrowUpRight, Filter, ChevronRight, Terminal, Laptop, Plus, Bug, Zap,
-    AlertOctagon, UserX, Flame, Copy, Download, Check, Play, Pause, RotateCcw, FileText, Radio
+    AlertOctagon, UserX, Flame, Copy, Download, Check, Play, Pause, RotateCcw, FileText, Radio,
+    DownloadCloud, Calendar
 } from "lucide-react";
 import { 
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -141,6 +142,77 @@ export default function NetscalerDashboardClient() {
         result: any | null;
         error: string | null;
     } | null>(null);
+
+    // Graylog Bulk Exporter Timeframe Override Modal State
+    const [cveExportModal, setCveExportModal] = useState<{
+        open: boolean;
+        title: string;
+        query: string;
+        timeframeMode: "scan" | "24h" | "3d" | "7d" | "custom";
+        customFrom: string;
+        customTo: string;
+    } | null>(null);
+
+    const toLocalIso = (d: Date) => {
+        const pad = (n: number) => String(n).padStart(2, "0");
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+
+    const openExportModal = ({
+        title,
+        query,
+        defaultTimeframe = "24h"
+    }: {
+        title: string;
+        query: string;
+        defaultTimeframe?: "scan" | "24h" | "3d" | "7d" | "custom";
+    }) => {
+        const now = new Date();
+        const past24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        setCveExportModal({
+            open: true,
+            title,
+            query,
+            timeframeMode: defaultTimeframe,
+            customFrom: toLocalIso(past24h),
+            customTo: toLocalIso(now)
+        });
+    };
+
+    const launchBulkExport = () => {
+        if (!cveExportModal) return;
+        const params = new URLSearchParams();
+        params.set("cluster", "OG_GRAYLOG");
+        params.set("streamId", "5c055e3ab20902046cedcfcd");
+        params.set("title", cveExportModal.title);
+        params.set("query", cveExportModal.query.trim());
+        params.set("fields", "timestamp,source,client_ip,username,vserver_ip,vserver_port,event_type,message");
+
+        if (cveExportModal.timeframeMode === "scan") {
+            const hours = Math.round(timeframe / 3600);
+            if (hours === 24) params.set("timePreset", "24h");
+            else if (hours === 72) params.set("timePreset", "3d");
+            else if (hours === 168) params.set("timePreset", "7d");
+            else if (hours === 1) params.set("timePreset", "1h");
+            else if (hours === 6) params.set("timePreset", "6h");
+            else {
+                const now = new Date();
+                const past = new Date(now.getTime() - timeframe * 1000);
+                params.set("timePreset", "custom");
+                params.set("from", toLocalIso(past));
+                params.set("to", toLocalIso(now));
+            }
+        } else if (cveExportModal.timeframeMode === "custom") {
+            params.set("timePreset", "custom");
+            params.set("from", cveExportModal.customFrom);
+            params.set("to", cveExportModal.customTo);
+        } else {
+            params.set("timePreset", cveExportModal.timeframeMode);
+        }
+
+        router.push(`/utilities/graylog-exporter?${params.toString()}`);
+    };
+
     const [firewallHosts, setFirewallHosts] = useState<{ id: string; name: string }[]>([]);
 
     useEffect(() => {
@@ -1487,7 +1559,24 @@ export default function NetscalerDashboardClient() {
                         <div className="flex items-center justify-between text-xs text-slate-400 px-1">
                             <span>Showing {filteredTimeline.length} events (limit 150)</span>
                             {timeline.length > 0 && (
-                                <span>Window: last {timeframe >= 86400 ? `${timeframe / 86400}d` : `${timeframe / 3600}h`}</span>
+                                <div className="flex items-center gap-3">
+                                    <span>Window: last {timeframe >= 86400 ? `${timeframe / 86400}d` : `${timeframe / 3600}h`}</span>
+                                    {searchQuery && (
+                                        <button
+                                            type="button"
+                                            onClick={() => openExportModal({
+                                                title: `Investigator Evidence - ${searchQuery}`,
+                                                query: `client_ip:"${searchQuery}" OR username:"${searchQuery}" OR message:"${searchQuery}"`,
+                                                defaultTimeframe: "24h"
+                                            })}
+                                            className="px-2.5 py-1 rounded-lg bg-cyan-950/70 hover:bg-cyan-900/80 text-cyan-200 border border-cyan-700/80 text-[11px] font-medium flex items-center gap-1.5 transition-colors shadow-sm"
+                                            title="Export full event history beyond the 150-event limit with timeframe override"
+                                        >
+                                            <DownloadCloud size={12} className="text-cyan-400" />
+                                            <span>Bulk Export All Events</span>
+                                        </button>
+                                    )}
+                                </div>
                             )}
                         </div>
 
@@ -1862,6 +1951,24 @@ export default function NetscalerDashboardClient() {
                                     </button>
                                     <button
                                         type="button"
+                                        onClick={() => {
+                                            const ipQuery = allUniqueMatchedIps.length > 0
+                                                ? `client_ip:(${allUniqueMatchedIps.map(x => `"${x.ip}"`).join(" OR ")}) OR message:(${allUniqueMatchedIps.map(x => `"${x.ip}"`).join(" OR ")})`
+                                                : `*`;
+                                            openExportModal({
+                                                title: `All Discovered Threat Actors (${allUniqueMatchedIps.length} IPs)`,
+                                                query: ipQuery,
+                                                defaultTimeframe: "24h"
+                                            });
+                                        }}
+                                        className="px-3 py-1.5 rounded-lg bg-cyan-950/70 hover:bg-cyan-900/80 text-cyan-200 text-xs font-medium border border-cyan-700/80 flex items-center gap-1.5 transition-colors shadow-sm"
+                                        title="Export Graylog logs for all discovered threat IPs with timeframe override"
+                                    >
+                                        <DownloadCloud size={14} className="text-cyan-400" />
+                                        <span>Bulk Export Logs</span>
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={() => setShunModalData({
                                             ips: allUniqueMatchedIps.map(x => x.ip),
                                             ruleName: `All Threat Detections (${allUniqueMatchedIps.length} IPs)`,
@@ -2093,8 +2200,23 @@ export default function NetscalerDashboardClient() {
                                         <p className="text-xs text-slate-400 mb-3">{finding.rule.description}</p>
 
                                         {/* Query string display */}
-                                        <div className="text-[11px] font-mono text-slate-400 bg-slate-950/70 p-2 rounded-lg border border-slate-800/80 mb-3 select-all truncate">
-                                            <span className="text-slate-500">Query: </span>{finding.rule.query}
+                                        <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-950/70 border border-slate-800/80 mb-3 text-[11px] font-mono">
+                                            <div className="text-slate-400 select-all truncate">
+                                                <span className="text-slate-500">Query: </span>{finding.rule.query}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => openExportModal({
+                                                    title: `${finding.rule.name} Forensics`,
+                                                    query: finding.rule.query,
+                                                    defaultTimeframe: "24h"
+                                                })}
+                                                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-cyan-950/70 text-slate-300 hover:text-cyan-300 border border-slate-700 hover:border-cyan-700/60 text-[10px] font-sans flex items-center gap-1 shrink-0 transition-colors"
+                                                title="Export logs for this query with timeframe override"
+                                            >
+                                                <DownloadCloud size={11} className="text-cyan-400" />
+                                                <span>Bulk Export</span>
+                                            </button>
                                         </div>
 
                                         {/* Extracted Threat Source IPs for this rule */}
@@ -2125,6 +2247,21 @@ export default function NetscalerDashboardClient() {
                                                         >
                                                             <Download size={12} />
                                                             <span>CSV</span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openExportModal({
+                                                                title: `${finding.rule.name} Forensic Evidence`,
+                                                                query: finding.matchedExternalIps && finding.matchedExternalIps.length > 0
+                                                                    ? `(${finding.rule.query}) OR client_ip:(${finding.matchedExternalIps.map(x => `"${x.ip}"`).join(" OR ")})`
+                                                                    : finding.rule.query,
+                                                                defaultTimeframe: "24h"
+                                                            })}
+                                                            className="px-2.5 py-1 rounded bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800/60 text-xs font-medium flex items-center gap-1 transition-colors"
+                                                            title="Export matching Graylog event logs beyond 10k limit with timeframe override"
+                                                        >
+                                                            <DownloadCloud size={12} className="text-cyan-400" />
+                                                            <span>Bulk Export Logs</span>
                                                         </button>
                                                         <button
                                                             type="button"
@@ -2185,6 +2322,19 @@ export default function NetscalerDashboardClient() {
                                                                                 className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] transition-colors"
                                                                             >
                                                                                 Trace
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => openExportModal({
+                                                                                    title: `Evidence - IP ${m.ip}`,
+                                                                                    query: `client_ip:"${m.ip}" OR message:"${m.ip}"`,
+                                                                                    defaultTimeframe: "24h"
+                                                                                })}
+                                                                                className="px-2 py-0.5 rounded bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800/60 text-[10px] flex items-center gap-1 transition-colors"
+                                                                                title={`Bulk export Graylog logs for ${m.ip}`}
+                                                                            >
+                                                                                <DownloadCloud size={10} />
+                                                                                <span>Export</span>
                                                                             </button>
                                                                             <button
                                                                                 type="button"
@@ -2362,6 +2512,27 @@ export default function NetscalerDashboardClient() {
                             >
                                 <Download size={13} />
                                 <span>Export CSV</span>
+                            </button>
+
+                            {/* Bulk Export Graylog Logs */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const activeIps = cveShuns.filter(s => s.status === "ACTIVE").map(s => s.ip);
+                                    const queryStr = activeIps.length > 0 
+                                        ? `client_ip:(${activeIps.map(ip => `"${ip}"`).join(" OR ")}) OR message:(${activeIps.map(ip => `"${ip}"`).join(" OR ")})`
+                                        : `message:("pitboss" OR "died on signal 6" OR "died on signal 11" OR "nsppe" OR "dtls_read_bytes")`;
+                                    openExportModal({
+                                        title: `All Active CVE-2026 Quarantined Attackers (${activeIps.length} IPs)`,
+                                        query: queryStr,
+                                        defaultTimeframe: "24h"
+                                    });
+                                }}
+                                className="px-3.5 py-1.5 rounded-lg bg-cyan-950/70 hover:bg-cyan-900/80 text-cyan-200 text-xs font-medium border border-cyan-700/80 flex items-center gap-1.5 transition-colors shadow-sm"
+                                title="Bulk Export Graylog logs for all tracked active shunned attacker IPs"
+                            >
+                                <DownloadCloud size={13} className="text-cyan-400" />
+                                <span>Bulk Export Evidence Logs</span>
                             </button>
                         </div>
                     </div>
@@ -2629,6 +2800,20 @@ export default function NetscalerDashboardClient() {
                                                                 className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] transition-colors"
                                                             >
                                                                 Trace
+                                                            </button>
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => openExportModal({
+                                                                    title: `CVE Evidence - ${shun.ip} (${shun.cve})`,
+                                                                    query: `client_ip:"${shun.ip}" OR message:"${shun.ip}"`,
+                                                                    defaultTimeframe: "24h"
+                                                                })}
+                                                                className="px-2 py-0.5 rounded bg-cyan-950/60 hover:bg-cyan-900/60 text-cyan-300 border border-cyan-800/60 text-[10px] flex items-center gap-1 transition-colors"
+                                                                title={`Bulk export Graylog logs for ${shun.ip}`}
+                                                            >
+                                                                <DownloadCloud size={10} />
+                                                                <span>Export</span>
                                                             </button>
 
                                                             {isActive ? (
@@ -2937,6 +3122,214 @@ export default function NetscalerDashboardClient() {
                     </div>
                 );
             })()}
+
+            {/* BULK EXPORTER TIMEFRAME OVERRIDE MODAL */}
+            {cveExportModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+                    <div className="relative w-full max-w-xl rounded-2xl bg-[#161a23] border border-cyan-500/30 shadow-2xl p-6 flex flex-col gap-5 text-slate-200">
+                        {/* Header */}
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                                    <DownloadCloud size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-semibold text-white">
+                                        Export Graylog Threat Forensics
+                                    </h3>
+                                    <p className="text-xs text-slate-400">
+                                        Graylog Bulk Exporter bypasses 10k limits with automatic time-slicing & ZIP packaging
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setCveExportModal(null)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+
+                        {/* Investigation Context & Query */}
+                        <div className="flex flex-col gap-2">
+                            <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                                <span>Target Graylog Query</span>
+                                <span className="text-[11px] text-slate-400 font-mono">Stream: NetScaler ADC (5c055e3a...)</span>
+                            </label>
+                            <input
+                                type="text"
+                                value={cveExportModal.query}
+                                onChange={(e) => setCveExportModal({ ...cveExportModal, query: e.target.value })}
+                                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-lg p-2.5 text-xs text-white font-mono focus:outline-none focus:border-cyan-400 transition-all select-all"
+                            />
+                            <div className="text-[11px] text-slate-400">
+                                <span className="text-slate-500 font-medium">Export Title: </span>
+                                <span className="text-slate-200 font-medium">{cveExportModal.title}</span>
+                            </div>
+                        </div>
+
+                        {/* TIMEFRAME OVERRIDE SELECTOR */}
+                        <div className="flex flex-col gap-2.5 pt-2 border-t border-slate-800">
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                                    <Clock size={14} className="text-cyan-400" />
+                                    Forensic Timeframe Override
+                                </label>
+                                <span className="text-[11px] text-cyan-400/90 font-medium">
+                                    Override detection scan window
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {/* Option 1: Current Scan Window */}
+                                <button
+                                    type="button"
+                                    onClick={() => setCveExportModal({ ...cveExportModal, timeframeMode: "scan" })}
+                                    className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                                        cveExportModal.timeframeMode === "scan"
+                                            ? "bg-cyan-950/50 border-cyan-500/80 text-white shadow-sm shadow-cyan-500/10"
+                                            : "bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-semibold">Current Scan Window</span>
+                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300">
+                                            {timeframe >= 86400 ? `${Math.round(timeframe / 86400)}d` : `${Math.round(timeframe / 3600)}h`}
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 mt-1">Export only what is shown in current scan duration</p>
+                                </button>
+
+                                {/* Option 2: Past 24 Hours */}
+                                <button
+                                    type="button"
+                                    onClick={() => setCveExportModal({ ...cveExportModal, timeframeMode: "24h" })}
+                                    className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                                        cveExportModal.timeframeMode === "24h"
+                                            ? "bg-cyan-950/50 border-cyan-500/80 text-white shadow-sm shadow-cyan-500/10"
+                                            : "bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-semibold flex items-center gap-1.5">
+                                            Past 24 Hours
+                                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">RECOMMENDED</span>
+                                        </span>
+                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300">24h</span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 mt-1">Full 24-hour day of attack recon & payload traffic</p>
+                                </button>
+
+                                {/* Option 3: Past 3 Days */}
+                                <button
+                                    type="button"
+                                    onClick={() => setCveExportModal({ ...cveExportModal, timeframeMode: "3d" })}
+                                    className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                                        cveExportModal.timeframeMode === "3d"
+                                            ? "bg-cyan-950/50 border-cyan-500/80 text-white shadow-sm shadow-cyan-500/10"
+                                            : "bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-semibold">Past 3 Days</span>
+                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300">72h</span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 mt-1">Multi-day campaign analysis & lateral movement</p>
+                                </button>
+
+                                {/* Option 4: Past 7 Days */}
+                                <button
+                                    type="button"
+                                    onClick={() => setCveExportModal({ ...cveExportModal, timeframeMode: "7d" })}
+                                    className={`p-3 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                                        cveExportModal.timeframeMode === "7d"
+                                            ? "bg-cyan-950/50 border-cyan-500/80 text-white shadow-sm shadow-cyan-500/10"
+                                            : "bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-semibold">Past 7 Days</span>
+                                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300">168h</span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-500 mt-1">Full dwell-time history and persistence verification</p>
+                                </button>
+                            </div>
+
+                            {/* Custom Range Selector */}
+                            <div className="mt-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setCveExportModal({ ...cveExportModal, timeframeMode: "custom" })}
+                                    className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between text-xs font-medium transition-all ${
+                                        cveExportModal.timeframeMode === "custom"
+                                            ? "bg-cyan-950/50 border-cyan-500/80 text-white"
+                                            : "bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    <span className="flex items-center gap-2">
+                                        <Calendar size={14} className="text-cyan-400" />
+                                        Custom Date & Time Range
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 font-mono">Select exact start & end</span>
+                                </button>
+
+                                {cveExportModal.timeframeMode === "custom" && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2 p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-[11px] text-slate-400">Start Date & Time (Local)</label>
+                                            <input
+                                                type="datetime-local"
+                                                value={cveExportModal.customFrom}
+                                                onChange={(e) => setCveExportModal({ ...cveExportModal, customFrom: e.target.value })}
+                                                className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <label className="text-[11px] text-slate-400">End Date & Time (Local)</label>
+                                            <input
+                                                type="datetime-local"
+                                                value={cveExportModal.customTo}
+                                                onChange={(e) => setCveExportModal({ ...cveExportModal, customTo: e.target.value })}
+                                                className="bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Routing Details */}
+                        <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-slate-400">
+                                <Server size={14} className="text-teal-400" />
+                                <span>Cluster: <strong className="text-slate-200">OG_GRAYLOG</strong></span>
+                                <span className="text-slate-600">•</span>
+                                <span>Fields: <strong className="text-slate-200">NetScaler / ADC (8 fields)</strong></span>
+                            </div>
+                            <span className="text-[11px] text-cyan-400 font-medium">Bypasses 10k Graylog Limits</span>
+                        </div>
+
+                        {/* Modal Actions */}
+                        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+                            <button
+                                type="button"
+                                onClick={() => setCveExportModal(null)}
+                                className="px-4 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 text-xs transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={launchBulkExport}
+                                className="px-5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition-all shadow-md shadow-cyan-900/30 flex items-center gap-2"
+                            >
+                                <DownloadCloud size={14} />
+                                <span>Launch in Bulk Exporter →</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

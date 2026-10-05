@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 import { 
     DownloadCloud, Play, AlertTriangle, CheckCircle2, Clock, 
     FileArchive, HardDrive, RefreshCw, Trash2, X, FileText, 
     Layers, Server, Shield, FileSpreadsheet, ChevronDown, ChevronRight, 
-    Calendar, ArrowRight, Info, AlertCircle, Ban, Search, Check, Globe
+    Calendar, ArrowRight, Info, AlertCircle, Ban, Search, Check, Globe,
+    Zap, ShieldAlert, Flame
 } from "lucide-react";
 
 interface ClusterConfig {
@@ -95,6 +97,82 @@ const FIELD_PRESETS: { name: string; description: string; fields: string[] }[] =
     }
 ];
 
+interface ThreatPreset {
+    id: string;
+    name: string;
+    badge: string;
+    description: string;
+    cluster: "OG_GRAYLOG";
+    streamId: string;
+    query: string;
+    fieldPreset: string;
+    defaultTimePreset: string;
+    title: string;
+}
+
+const CVE_THREAT_PRESETS: ThreatPreset[] = [
+    {
+        id: "cve-2026-88771",
+        name: "CVE-2026-88771: Supervisor RCE & Cmd Injection",
+        badge: "CVE-2026-88771",
+        description: "Searches for supervisor pitboss aborts, child signal 6/11, and shell meta-character injections",
+        cluster: "OG_GRAYLOG",
+        streamId: "5c055e3ab20902046cedcfcd",
+        query: 'message:("pitboss" OR "died on signal 6" OR "died on signal 11" OR "nsppe" OR "supervisor" OR ";/bin/sh" OR "`id`" OR "$(") AND NOT message:"normal shutdown"',
+        fieldPreset: "NetScaler / ADC",
+        defaultTimePreset: "24h",
+        title: "Forensics - CVE-2026-88771 Supervisor RCE Investigation"
+    },
+    {
+        id: "cve-2026-88772",
+        name: "CVE-2026-88772: DTLS Buffer Overflow Probes",
+        badge: "CVE-2026-88772",
+        description: "Searches for DTLS packet allocation faults, handshake memory overflows, and segfaults",
+        cluster: "OG_GRAYLOG",
+        streamId: "5c055e3ab20902046cedcfcd",
+        query: 'message:("dtls_read_bytes" OR "DTLS handshake error" OR "ns_dtls" OR "packet buffer overflow" OR "SSL_ERROR_WANT_READ" OR "dtls segmentation fault")',
+        fieldPreset: "NetScaler / ADC",
+        defaultTimePreset: "24h",
+        title: "Forensics - CVE-2026-88772 DTLS Overflow Investigation"
+    },
+    {
+        id: "whipshot-slapshot",
+        name: "WHIPSHOT & SLAPSHOT Backdoors",
+        badge: "UNC3886",
+        description: "Searches for known UNC3886 persistence mechanisms, unauthorized cron entries, and modified BSD binaries",
+        cluster: "OG_GRAYLOG",
+        streamId: "5c055e3ab20902046cedcfcd",
+        query: 'message:("/var/nstmp" OR "/var/vpn/themes" OR "pkill nsppe" OR "cron.d" OR "pb_policy" OR "/netscaler/nsppe")',
+        fieldPreset: "NetScaler / ADC",
+        defaultTimePreset: "7d",
+        title: "Forensics - WHIPSHOT & SLAPSHOT Backdoors Investigation"
+    },
+    {
+        id: "citrix-bleed",
+        name: "CVE-2023-4966: Citrix Bleed Session Hijack",
+        badge: "CVE-2023-4966",
+        description: "Searches for OpenID configuration leak probes and abnormal session hijacking patterns",
+        cluster: "OG_GRAYLOG",
+        streamId: "5c055e3ab20902046cedcfcd",
+        query: 'message:("/oauth/idp/.well-known/openid-configuration" OR "/vpn/../" OR "HTTP/1.1 200" AND "openid-configuration")',
+        fieldPreset: "NetScaler / ADC",
+        defaultTimePreset: "3d",
+        title: "Forensics - CVE-2023-4966 Citrix Bleed Investigation"
+    },
+    {
+        id: "citrix-rce-3519",
+        name: "CVE-2023-3519: Gateway Unauth RCE",
+        badge: "CVE-2023-3519",
+        description: "Searches for /gwtest/formssso request probes and nsppe core dump anomalies",
+        cluster: "OG_GRAYLOG",
+        streamId: "5c055e3ab20902046cedcfcd",
+        query: 'message:("/gwtest/formssso" OR "/vpn/login" AND "POST" AND ("cmd=" OR "eval=" OR "exec="))',
+        fieldPreset: "NetScaler / ADC",
+        defaultTimePreset: "3d",
+        title: "Forensics - CVE-2023-3519 Unauth RCE Investigation"
+    }
+];
+
 function formatBytes(bytes: number): string {
     if (!bytes || bytes <= 0) return "0 B";
     const k = 1024;
@@ -146,11 +224,55 @@ export default function GraylogExporterClient() {
     const [inspectJob, setInspectJob] = useState<ExportJob | null>(null);
     const [jobFiles, setJobFiles] = useState<{ name: string; sizeBytes: number; isZip: boolean; isMaster: boolean; isManifest: boolean }[]>([]);
     const [loadingJobDetails, setLoadingJobDetails] = useState(false);
+    const searchParams = useSearchParams();
+    const [loadingDynamicShuns, setLoadingDynamicShuns] = useState(false);
+    const [dynamicShunNotice, setDynamicShunNotice] = useState<string | null>(null);
 
-    // Initialize default time range
+    // Initialize or populate from URL search parameters (e.g. from CVE Hunter)
     useEffect(() => {
-        applyTimePreset("24h");
-    }, []);
+        if (!searchParams) {
+            applyTimePreset("24h");
+            return;
+        }
+
+        const q = searchParams.get("query");
+        const cluster = searchParams.get("cluster");
+        const stream = searchParams.get("streamId");
+        const title = searchParams.get("title");
+        const preset = searchParams.get("timePreset");
+        const fromParam = searchParams.get("from");
+        const toParam = searchParams.get("to");
+        const fieldsParam = searchParams.get("fields");
+
+        if (q) setQuery(q);
+        if (cluster === "OG_GRAYLOG" || cluster === "NEW_GRAYLOG") setSelectedCluster(cluster as any);
+        if (stream) setSelectedStreamId(stream);
+        if (title) setJobTitle(title);
+
+        if (preset) {
+            setTimePreset(preset);
+            if (preset === "custom" && fromParam && toParam) {
+                setFromTime(fromParam);
+                setToTime(toParam);
+            } else {
+                applyTimePreset(preset);
+            }
+        } else if (fromParam && toParam) {
+            setTimePreset("custom");
+            setFromTime(fromParam);
+            setToTime(toParam);
+        } else {
+            applyTimePreset("24h");
+        }
+
+        if (fieldsParam) {
+            const parsedFields = fieldsParam.split(",").map(f => f.trim()).filter(Boolean);
+            if (parsedFields.length > 0) {
+                setFields(parsedFields);
+                setSelectedPreset("Custom Selection");
+            }
+        }
+    }, [searchParams]);
 
     // Close stream dropdown on click outside
     useEffect(() => {
@@ -222,11 +344,23 @@ export default function GraylogExporterClient() {
         let past = new Date();
 
         switch (preset) {
+            case "15m":
+                past = new Date(now.getTime() - 15 * 60 * 1000);
+                break;
+            case "30m":
+                past = new Date(now.getTime() - 30 * 60 * 1000);
+                break;
             case "1h":
                 past = new Date(now.getTime() - 60 * 60 * 1000);
                 break;
+            case "2h":
+                past = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+                break;
             case "6h":
                 past = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+                break;
+            case "12h":
+                past = new Date(now.getTime() - 12 * 60 * 60 * 1000);
                 break;
             case "24h":
                 past = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -249,6 +383,43 @@ export default function GraylogExporterClient() {
 
         setFromTime(toLocalIso(past));
         setToTime(toLocalIso(now));
+    }
+
+    function loadThreatPreset(preset: ThreatPreset) {
+        setSelectedCluster(preset.cluster);
+        setSelectedStreamId(preset.streamId);
+        setQuery(preset.query);
+        setJobTitle(preset.title);
+        handleFieldPresetChange(preset.fieldPreset);
+        applyTimePreset(preset.defaultTimePreset);
+    }
+
+    async function loadActiveQuarantinedIps() {
+        setLoadingDynamicShuns(true);
+        setDynamicShunNotice(null);
+        try {
+            const res = await fetch("/api/netscaler/cve-shuns?status=ACTIVE");
+            const data = await res.json();
+            if (data.success && data.shuns && data.shuns.length > 0) {
+                const ips = data.shuns.map((s: any) => s.ip);
+                const queryStr = `client_ip:(${ips.map((ip: string) => `"${ip}"`).join(" OR ")}) OR message:(${ips.map((ip: string) => `"${ip}"`).join(" OR ")})`;
+                setSelectedCluster("OG_GRAYLOG");
+                setSelectedStreamId("5c055e3ab20902046cedcfcd");
+                setQuery(queryStr);
+                setJobTitle(`Forensics - Quarantined Attackers (${ips.length} IPs)`);
+                handleFieldPresetChange("NetScaler / ADC");
+                applyTimePreset("24h");
+                setDynamicShunNotice(`Loaded ${ips.length} active quarantined attacker IPs into search query.`);
+            } else {
+                setDynamicShunNotice("No active quarantined attacker IPs found in Auto-Shun engine.");
+            }
+        } catch (err) {
+            console.error("Failed to load active quarantined IPs:", err);
+            setDynamicShunNotice("Failed to query Auto-Shun engine.");
+        } finally {
+            setLoadingDynamicShuns(false);
+            setTimeout(() => setDynamicShunNotice(null), 5000);
+        }
     }
 
     function handleFieldPresetChange(presetName: string) {
@@ -657,6 +828,61 @@ export default function GraylogExporterClient() {
                             Search Query & Time Window
                         </div>
 
+                        {/* Threat Hunting & CVE Quick-Loader */}
+                        <div className="p-3.5 rounded-xl bg-slate-950/70 border border-border/40 flex flex-col gap-2.5">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                        <ShieldAlert size={14} />
+                                    </div>
+                                    <span className="text-xs font-semibold text-text-primary">
+                                        Threat Hunting & Zero-Day Presets
+                                    </span>
+                                    <span className="text-[10px] text-text-muted px-2 py-0.5 rounded bg-card/60 border border-border/40">
+                                        Auto-configures NetScaler Stream, Lucene Query, Fields & Time Window
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={loadActiveQuarantinedIps}
+                                    disabled={loadingDynamicShuns}
+                                    className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[11px] font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50"
+                                    title="Load all active quarantined attacker IPs from the Auto-Shun engine"
+                                >
+                                    <Flame size={12} className={loadingDynamicShuns ? "animate-pulse" : ""} />
+                                    <span>{loadingDynamicShuns ? "Loading Active Shuns..." : "Load Active Quarantined Attackers"}</span>
+                                </button>
+                            </div>
+
+                            {dynamicShunNotice && (
+                                <div className="text-[11px] p-2 rounded bg-accent-primary/10 border border-accent-primary/30 text-accent-primary font-medium flex items-center gap-1.5 animate-fadeIn">
+                                    <Info size={13} />
+                                    <span>{dynamicShunNotice}</span>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                {CVE_THREAT_PRESETS.map((tp) => (
+                                    <button
+                                        key={tp.id}
+                                        type="button"
+                                        onClick={() => loadThreatPreset(tp)}
+                                        className="p-2 rounded-lg bg-card/40 hover:bg-card/80 border border-border/40 hover:border-accent-primary/50 text-left flex flex-col justify-between transition-all group"
+                                    >
+                                        <div className="flex items-center justify-between gap-1 mb-1">
+                                            <span className="text-[11px] font-semibold text-text-primary group-hover:text-accent-primary truncate">
+                                                {tp.name}
+                                            </span>
+                                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-300 border border-rose-500/30 shrink-0">
+                                                {tp.badge}
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] text-text-muted line-clamp-1">{tp.description}</p>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                         {/* Query Input */}
                         <div className="flex flex-col gap-1.5">
                             <label className="text-xs font-medium text-text-secondary flex items-center justify-between">
@@ -690,11 +916,15 @@ export default function GraylogExporterClient() {
                             <label className="text-xs font-medium text-text-secondary">Time Window Presets</label>
                             <div className="flex flex-wrap gap-2">
                                 {[
-                                    { id: "1h", label: "Past 1 Hour" },
-                                    { id: "6h", label: "Past 6 Hours" },
-                                    { id: "24h", label: "Past 24 Hours" },
-                                    { id: "3d", label: "Past 3 Days" },
-                                    { id: "7d", label: "Past 7 Days" },
+                                    { id: "15m", label: "Past 15m" },
+                                    { id: "30m", label: "Past 30m" },
+                                    { id: "1h", label: "Past 1h" },
+                                    { id: "2h", label: "Past 2h" },
+                                    { id: "6h", label: "Past 6h" },
+                                    { id: "12h", label: "Past 12h" },
+                                    { id: "24h", label: "Past 24h" },
+                                    { id: "3d", label: "Past 3d" },
+                                    { id: "7d", label: "Past 7d" },
                                     { id: "custom", label: "Custom Range" },
                                 ].map((p) => (
                                     <button
