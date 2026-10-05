@@ -269,19 +269,6 @@ S2S_FIREWALL_CONFIG='${ftdJson}'
                     </button>
                 </div>
 
-                {/* Ephemeral In-Memory Security Notice */}
-                <div className="p-3.5 rounded-xl border border-cyan-500/30 bg-cyan-950/20 text-cyan-200 text-xs flex items-start gap-2.5">
-                    <Lock size={17} className="shrink-0 text-cyan-400 mt-0.5" />
-                    <div className="space-y-1">
-                        <div className="font-semibold text-cyan-300">
-                            🔒 Zero Disk Persistence (In-Memory Session Only)
-                        </div>
-                        <p className="text-[11px] text-text-secondary leading-relaxed">
-                            Passwords and credentials entered here are <strong className="text-cyan-300">never written to disk or stored in JSON files</strong>. They are held strictly in temporary server memory for the active session. If the server restarts, session credentials are cleared. Use <strong className="text-cyan-300">&quot;Copy as .env format&quot;</strong> below if you prefer to configure permanent server environment variables.
-                        </p>
-                    </div>
-                </div>
-
                 {/* Banner if initial prompt */}
                 {isInitialPrompt && (
                     <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-950/20 text-amber-200 text-xs flex items-center gap-2.5">

@@ -772,8 +772,8 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                             </div>
                         </div>
 
-                        {/* 3-Pillar Diagnostic Checklist */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                        {/* 4-Pillar Diagnostic Framework */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                             {/* Pillar 1: Phase 1 */}
                             <div className="p-3.5 rounded-xl border border-border-color bg-bg-surface-hover/30 space-y-2">
                                 <div className="flex items-center justify-between">
@@ -841,7 +841,101 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                     {activeDiagReport.dataPlane.details}
                                 </p>
                             </div>
+
+                            {/* Pillar 4: ACP & Connectivity Permissions */}
+                            <div className="p-3.5 rounded-xl border border-border-color bg-bg-surface-hover/30 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <div className="text-xs font-bold text-text-primary uppercase tracking-wide">Pillar 4: ACP & Policy</div>
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                        activeDiagReport.acpAudit?.status === "PASS"
+                                            ? "bg-emerald-500/20 text-emerald-300"
+                                            : activeDiagReport.acpAudit?.status === "WARN"
+                                            ? "bg-amber-500/20 text-amber-300"
+                                            : "bg-rose-500/20 text-rose-300"
+                                    }`}>
+                                        {activeDiagReport.acpAudit?.status || "PASS"}
+                                    </span>
+                                </div>
+                                <div className="space-y-1 text-xs">
+                                    <div className="text-text-secondary text-[11px]">Rule Action: <span className={`font-bold ${activeDiagReport.acpAudit?.action === "ALLOW" ? "text-emerald-400" : activeDiagReport.acpAudit?.action === "BLOCK" ? "text-rose-400" : "text-cyan-400"}`}>{activeDiagReport.acpAudit?.action || "ALLOW"}</span></div>
+                                    <div className="text-text-secondary text-[11px]">Permit-VPN: <span className={activeDiagReport.acpAudit?.sysoptPermitVpn ? "text-emerald-400" : "text-amber-400"}>{activeDiagReport.acpAudit?.sysoptPermitVpn ? "Active (Bypass)" : "Disabled (Inspected)"}</span></div>
+                                    <div className="text-text-secondary text-[11px]">Shadowing: <span className={activeDiagReport.acpAudit?.ruleShadowingDetected ? "text-rose-400 font-bold" : "text-emerald-400"}>{activeDiagReport.acpAudit?.ruleShadowingDetected ? "Detected" : "Clean"}</span></div>
+                                </div>
+                                <p className="text-[11px] text-text-secondary border-t border-border-color/60 pt-2 leading-tight">
+                                    {activeDiagReport.acpAudit?.packetTracerSimulation ? `Packet-Tracer: ${activeDiagReport.acpAudit.packetTracerSimulation.verdict}` : "Access rules permit inter-site traffic."}
+                                </p>
+                            </div>
                         </div>
+
+                        {/* Dedicated Access Control Policy (ACP) & Permissions Audit Section */}
+                        {activeDiagReport.acpAudit && (
+                            <div className="space-y-2.5">
+                                <h3 className="text-xs font-bold uppercase tracking-wider text-text-primary flex items-center gap-1.5">
+                                    <ShieldCheck size={14} className="text-emerald-400" />
+                                    <span>Access Control Policy (ACP) & Connectivity Permissions Audit</span>
+                                </h3>
+                                <div className="p-4 rounded-xl border border-border-color bg-bg-surface-hover/30 space-y-3 text-xs">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        <div className="space-y-1">
+                                            <div className="text-[11px] text-text-secondary uppercase">FMC Access Control Policy</div>
+                                            <div className="font-semibold text-text-primary flex items-center gap-1.5">
+                                                <Layers size={13} className="text-indigo-400" />
+                                                <span>{activeDiagReport.acpAudit.policyName}</span>
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <div className="text-[11px] text-text-secondary uppercase">Evaluated Access Rule</div>
+                                            <div className="font-semibold text-cyan-300 truncate" title={activeDiagReport.acpAudit.matchingRule}>
+                                                {activeDiagReport.acpAudit.matchingRule}
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <div className="text-[11px] text-text-secondary uppercase">sysopt connection permit-vpn</div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                                                    activeDiagReport.acpAudit.sysoptPermitVpn
+                                                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                                        : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                                }`}>
+                                                    {activeDiagReport.acpAudit.sysoptPermitVpn ? "Bypass Enabled" : "Bypass Disabled (ACL Check Enforced)"}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-3 rounded-lg bg-bg-surface border border-border-color text-text-secondary leading-relaxed">
+                                        <strong className="text-text-primary">Policy Audit Finding: </strong>
+                                        {activeDiagReport.acpAudit.details}
+                                    </div>
+
+                                    {activeDiagReport.acpAudit.packetTracerSimulation && (
+                                        <div className="space-y-1.5 pt-1 border-t border-border-color/60">
+                                            <div className="flex items-center justify-between text-[11px]">
+                                                <span className="font-bold text-text-primary flex items-center gap-1.5">
+                                                    <Terminal size={12} className="text-cyan-400" />
+                                                    <span>Simulated FTD Packet-Tracer Execution</span>
+                                                </span>
+                                                <span className={`px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                                    activeDiagReport.acpAudit.packetTracerSimulation.verdict === "ALLOW"
+                                                        ? "bg-emerald-500/20 text-emerald-300"
+                                                        : "bg-rose-500/20 text-rose-300"
+                                                }`}>
+                                                    Verdict: {activeDiagReport.acpAudit.packetTracerSimulation.verdict}
+                                                </span>
+                                            </div>
+                                            <div className="p-2.5 rounded bg-black/60 font-mono text-[11px] text-cyan-300 overflow-x-auto border border-border-color/80">
+                                                {activeDiagReport.acpAudit.packetTracerSimulation.traceSummary}
+                                                {activeDiagReport.acpAudit.packetTracerSimulation.dropReason && (
+                                                    <div className="text-rose-400 mt-1 font-semibold">
+                                                        Drop Reason: {activeDiagReport.acpAudit.packetTracerSimulation.dropReason}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Step-by-Step FMC Remediation Checklist */}
                         <div className="space-y-2.5">

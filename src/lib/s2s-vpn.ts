@@ -89,6 +89,22 @@ export interface S2sTroubleshootResult {
         natExemptionVerified: boolean;
         details: string;
     };
+    acpAudit: {
+        status: "PASS" | "WARN" | "FAIL" | "BYPASS_PERMIT_VPN";
+        policyName: string;
+        matchingRule: string;
+        action: "ALLOW" | "BLOCK" | "TRUST" | "BYPASS";
+        sysoptPermitVpn: boolean;
+        natExemptionVerified: boolean;
+        ruleShadowingDetected: boolean;
+        details: string;
+        packetTracerSimulation?: {
+            verdict: "ALLOW" | "DROP";
+            dropPhase?: string;
+            dropReason?: string;
+            traceSummary: string;
+        };
+    };
     correlatedSyslogs: Array<{
         timestamp: string;
         messageId: string;
@@ -567,6 +583,22 @@ function buildPskAuthFailureReport(tunnel: S2sTunnel): S2sTroubleshootResult {
             natExemptionVerified: true,
             details: "No data plane SAs established. Outbound packets queued and dropped."
         },
+        acpAudit: {
+            status: "WARN",
+            policyName: "FMC_Enterprise_Perimeter_ACP",
+            matchingRule: "Rule 18: Permit_Branch_S2S_Interconnect",
+            action: "ALLOW",
+            sysoptPermitVpn: true,
+            natExemptionVerified: true,
+            ruleShadowingDetected: false,
+            details: "ACP rules permit inter-subnet traffic between local and peer subnets, but data plane is blocked because Phase 1 PSK authentication failed.",
+            packetTracerSimulation: {
+                verdict: "DROP",
+                dropPhase: "VPN",
+                dropReason: "Crypto Map SA lookup failed: Phase 1 IKE_AUTH failure",
+                traceSummary: "Ingress Inside -> UN-NAT (PASS) -> Access-List (PASS Rule 18) -> VPN Encap: FAILED (No active IKE SA)"
+            }
+        },
         correlatedSyslogs: [
             {
                 timestamp: new Date(Date.now() - 120000).toISOString(),
@@ -651,6 +683,22 @@ function buildProposalMismatchReport(tunnel: S2sTunnel): S2sTroubleshootResult {
             natExemptionVerified: true,
             details: "Data plane offline."
         },
+        acpAudit: {
+            status: "WARN",
+            policyName: "FMC_Enterprise_Perimeter_ACP",
+            matchingRule: "Rule 24: Allow_Moorestown_Outpatient_Subnets",
+            action: "ALLOW",
+            sysoptPermitVpn: true,
+            natExemptionVerified: true,
+            ruleShadowingDetected: false,
+            details: "ACP policy permissions are configured to allow inter-site traffic, but packets cannot traverse due to IKE proposal negotiation failure.",
+            packetTracerSimulation: {
+                verdict: "DROP",
+                dropPhase: "VPN",
+                dropReason: "Crypto Map SA lookup failed: Proposal rejected",
+                traceSummary: "Ingress Inside -> UN-NAT (PASS) -> Access-List (PASS Rule 24) -> VPN Encap: FAILED (NO_PROPOSAL_CHOSEN)"
+            }
+        },
         correlatedSyslogs: [
             {
                 timestamp: new Date(Date.now() - 300000).toISOString(),
@@ -727,6 +775,22 @@ function buildTrafficSelectorMismatchReport(tunnel: S2sTunnel): S2sTroubleshootR
             natExemptionVerified: true,
             details: "Child SAs unallocated. Data packets dropped at ingress crypto boundary."
         },
+        acpAudit: {
+            status: "WARN",
+            policyName: "FMC_Enterprise_Perimeter_ACP",
+            matchingRule: "Rule 33: Voorhees_Pediatrics_Interconnect",
+            action: "ALLOW",
+            sysoptPermitVpn: true,
+            natExemptionVerified: true,
+            ruleShadowingDetected: true,
+            details: "ACP rule permits local 10.240.0.0/16 <-> remote 10.101.0.0/22. However, the remote peer expects specific /24 subnets. Risk: Subnet mask mismatch causes crypto Proxy-ID rejection.",
+            packetTracerSimulation: {
+                verdict: "DROP",
+                dropPhase: "IPSEC-PROXY-ID",
+                dropReason: "Proxy-ID Subnet Mask Discrepancy (TS_UNACCEPTABLE)",
+                traceSummary: "Ingress Inside -> UN-NAT (PASS) -> Access-List (PASS Rule 33) -> VPN Encap: FAILED (TS_UNACCEPTABLE)"
+            }
+        },
         correlatedSyslogs: [
             {
                 timestamp: new Date(Date.now() - 180000).toISOString(),
@@ -800,6 +864,22 @@ function buildDpdPeerDownReport(tunnel: S2sTunnel): S2sTroubleshootResult {
             recvErrors: 0,
             natExemptionVerified: true,
             details: "Peer network unreachable."
+        },
+        acpAudit: {
+            status: "WARN",
+            policyName: "FMC_Enterprise_Perimeter_ACP",
+            matchingRule: "Rule 45: Partner_PACS_Imaging_Direct",
+            action: "ALLOW",
+            sysoptPermitVpn: true,
+            natExemptionVerified: true,
+            ruleShadowingDetected: false,
+            details: "Inside ACP rules are configured for PACS imaging traffic, but external control plane packets (UDP 500/4500) to peer 12.180.204.60 are timing out. Check outside interface access rules or upstream edge provider.",
+            packetTracerSimulation: {
+                verdict: "DROP",
+                dropPhase: "ROUTING/DPD",
+                dropReason: "Next-hop peer unresponsive over outside interface",
+                traceSummary: "Ingress Inside -> UN-NAT (PASS) -> Access-List (PASS Rule 45) -> Routing: FAILED (Peer Dead / DPD Timeout)"
+            }
         },
         correlatedSyslogs: [
             {
@@ -880,6 +960,22 @@ function buildOneWayBlackHoleReport(tunnel: S2sTunnel): S2sTroubleshootResult {
             natExemptionVerified: false,
             details: `Severe packet ratio skew: ${tunnel.packetsEncaps.toLocaleString()} encaps vs ${tunnel.packetsDecaps.toLocaleString()} decaps.`
         },
+        acpAudit: {
+            status: "FAIL",
+            policyName: "FMC_Enterprise_Perimeter_ACP",
+            matchingRule: "Rule 14: Allow_Virtua_HIE vs Shadowed Rule 7: Block_RFC1918",
+            action: "BLOCK",
+            sysoptPermitVpn: false,
+            natExemptionVerified: false,
+            ruleShadowingDetected: true,
+            details: "ACP AUDIT FAILURE: 'sysopt connection permit-vpn' is DISABLED on this FTD gateway. Inbound decrypted packets from peer subnet 192.168.110.0/24 hit prior ACP Rule 7 (Block_RFC1918) and are dropped (%FTD-4-106023). Additionally, No-NAT exemption is missing or shadowed by PAT.",
+            packetTracerSimulation: {
+                verdict: "DROP",
+                dropPhase: "ACCESS-LIST",
+                dropReason: "Dropped by Access Control Policy (Rule 7: Block_RFC1918) - Access-group drop",
+                traceSummary: "Ingress Outside -> IPsec Decrypt (PASS) -> UN-NAT (PASS) -> Ingress ACP / Access-List: DROPPED by Rule 7 (%FTD-4-106023)"
+            }
+        },
         correlatedSyslogs: [
             {
                 timestamp: new Date(Date.now() - 45000).toISOString(),
@@ -950,6 +1046,20 @@ function buildHealthyTunnelReport(tunnel: S2sTunnel): S2sTroubleshootResult {
             recvErrors: 0,
             natExemptionVerified: true,
             details: `Healthy bi-directional traffic: ${tunnel.packetsEncaps.toLocaleString()} encaps, ${tunnel.packetsDecaps.toLocaleString()} decaps.`
+        },
+        acpAudit: {
+            status: "PASS",
+            policyName: "FMC_Enterprise_Perimeter_ACP",
+            matchingRule: "Rule 12: Allow_Epic_EHR_AWS_Direct",
+            action: "ALLOW",
+            sysoptPermitVpn: true,
+            natExemptionVerified: true,
+            ruleShadowingDetected: false,
+            details: "Access Control Policy permits bi-directional inter-subnet traffic. 'sysopt connection permit-vpn' is active on the FTD, and Section 1 Identity NAT (No-NAT) rule is verified.",
+            packetTracerSimulation: {
+                verdict: "ALLOW",
+                traceSummary: "Ingress Inside -> UN-NAT (PASS) -> Access-List (PASS Rule 12) -> Snort (INSPECT/PASS) -> NAT Exemption (PASS) -> IPsec Encap: ALLOW"
+            }
         },
         correlatedSyslogs: [
             {

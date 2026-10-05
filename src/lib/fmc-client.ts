@@ -197,6 +197,34 @@ export class FmcClient {
         }
     }
 
+    public async getAccessControlPolicies(): Promise<any[]> {
+        if (!this.isConfigured) {
+            return this.getMockAcpPolicies();
+        }
+        try {
+            const client = await this.getAxios();
+            const res = await client.get(`/api/fmc_config/v1/domain/${this.domainUuid}/policy/accesspolicies?expanded=true`);
+            return res.data?.items || [];
+        } catch (error: any) {
+            console.warn(`[FMC] Falling back to mock ACP policies: ${error.message}`);
+            return this.getMockAcpPolicies();
+        }
+    }
+
+    public async getAccessRules(policyId: string): Promise<any[]> {
+        if (!this.isConfigured) {
+            return this.getMockAccessRules(policyId);
+        }
+        try {
+            const client = await this.getAxios();
+            const res = await client.get(`/api/fmc_config/v1/domain/${this.domainUuid}/policy/accesspolicies/${policyId}/accessrules?expanded=true`);
+            return res.data?.items || [];
+        } catch (error: any) {
+            console.warn(`[FMC] Falling back to mock access rules: ${error.message}`);
+            return this.getMockAccessRules(policyId);
+        }
+    }
+
     public async testConnection(): Promise<{ success: boolean; message: string; domain?: string; deviceCount?: number }> {
         if (!this.isConfigured) {
             return {
@@ -480,4 +508,63 @@ export class FmcClient {
             }
         ];
     }
+
+    private getMockAcpPolicies(): any[] {
+        return [
+            {
+                id: "acp-enterprise-01",
+                name: "FMC_Enterprise_Perimeter_ACP",
+                description: "Primary enterprise access control policy for perimeter FTD clusters",
+                defaultAction: "BLOCK",
+                rulesCount: 64,
+                sysoptPermitVpn: true
+            },
+            {
+                id: "acp-branch-02",
+                name: "FMC_Branch_Interconnect_ACP",
+                description: "Policy governing outpatient clinics and regional branch connections",
+                defaultAction: "BLOCK",
+                rulesCount: 38,
+                sysoptPermitVpn: true
+            }
+        ];
+    }
+
+    private getMockAccessRules(policyId: string): any[] {
+        return [
+            {
+                id: "rule-01",
+                name: "Allow_DNS_NTP_Core",
+                action: "ALLOW",
+                sourceNetworks: ["10.240.0.0/16"],
+                destinationNetworks: ["any"],
+                destinationPorts: ["UDP/53", "UDP/123"]
+            },
+            {
+                id: "rule-07",
+                name: "Block_RFC1918_Shadow_Risk",
+                action: "BLOCK",
+                sourceNetworks: ["any"],
+                destinationNetworks: ["192.168.0.0/16", "172.16.0.0/12"],
+                notes: "Shadowing risk for partner S2S subnets if placed above VPN allow rules"
+            },
+            {
+                id: "rule-12",
+                name: "Allow_Epic_EHR_AWS_Direct",
+                action: "ALLOW",
+                sourceNetworks: ["10.240.0.0/16"],
+                destinationNetworks: ["172.31.0.0/16"],
+                destinationPorts: ["TCP/443", "TCP/8443", "TCP/9443"]
+            },
+            {
+                id: "rule-14",
+                name: "Allow_S2S_Virtua_HIE_Exchange",
+                action: "ALLOW",
+                sourceNetworks: ["10.240.50.0/24"],
+                destinationNetworks: ["192.168.110.0/24"],
+                destinationPorts: ["TCP/443", "TCP/8080"]
+            }
+        ];
+    }
 }
+
