@@ -2,9 +2,7 @@ import https from "https";
 import axios from "axios";
 import fs from "fs";
 import path from "path";
-// Turbopack CJS interop compatibility
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const archiver = require("archiver");
+import { createZipArchive, ZipFileEntry } from "./zip-util";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 
@@ -532,29 +530,20 @@ export async function executeExportJob(jobId: string) {
 
         const zipFileName = `all_in_one_${job.id}.zip`;
         const zipFilePath = path.join(jobDir, zipFileName);
-        const zipWriteStream = fs.createWriteStream(zipFilePath);
-        const archive = archiver("zip", { zlib: { level: 6 } });
 
-        archive.pipe(zipWriteStream);
-
-        // Add master file, manifest, and individual slices to ZIP
-        archive.file(manifestPath, { name: "export_manifest.json" });
-        archive.file(masterFilePath, { name: `master_export.${ext}` });
+        const zipEntries: ZipFileEntry[] = [
+            { name: "export_manifest.json", filePath: manifestPath },
+            { name: `master_export.${ext}`, filePath: masterFilePath },
+        ];
 
         for (const slice of sliceResults) {
             const sPath = path.join(jobDir, slice.filename);
             if (fs.existsSync(sPath)) {
-                archive.file(sPath, { name: `slices/${slice.filename}` });
+                zipEntries.push({ name: `slices/${slice.filename}`, filePath: sPath });
             }
         }
 
-        await archive.finalize();
-        await new Promise((resolve, reject) => {
-            zipWriteStream.on("close", resolve);
-            zipWriteStream.on("error", reject);
-        });
-
-        const compressedBytes = fs.statSync(zipFilePath).size;
+        const { compressedBytes } = await createZipArchive(zipEntries, zipFilePath);
 
         // 4. Mark job COMPLETED
         await prisma.graylogExportJob.update({
