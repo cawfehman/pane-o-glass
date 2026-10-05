@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getPermissionsForRole } from "@/app/actions/permissions";
-import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe, Shield, Server, Network, Mail, FileText } from "lucide-react";
+import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe, Shield, Server, Network, Mail, FileText, Link2 } from "lucide-react";
 import QueriesPageClient from "./QueriesPageClient";
 
 export default async function QueriesPage() {
@@ -41,6 +41,13 @@ export default async function QueriesPage() {
             href: "/queries/vpn-reporting",
             description: "Query historical VPN event logs by username or IP address with customizable date ranges and 1-click CSV export.",
             icon: <FileText size={24} className="text-indigo-400" />
+        },
+        {
+            id: 'vpn-s2s',
+            title: "Site-to-Site VPN Monitor",
+            href: "/queries/vpn-s2s",
+            description: "Monitor and troubleshoot IPsec/IKE site-to-site VPN tunnels on Cisco FTD firewalls managed by Firepower Management Center (FMC).",
+            icon: <Link2 size={24} className="text-cyan-400" />
         },
         {
             id: 'ise-tacacs',

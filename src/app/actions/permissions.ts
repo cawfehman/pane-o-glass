@@ -97,6 +97,14 @@ export async function getPermissionsForRole(role: string) {
                 list.push('graylog-exporter');
             }
         }
+        if ((roleUpper === 'ADMIN' || roleUpper === 'ANALYST' || roleUpper === 'NETWORK') && !list.includes('vpn-s2s')) {
+            const explicitlyDisabled = await prisma.toolPermission.findFirst({
+                where: { role: roleUpper, toolId: 'vpn-s2s', isEnabled: false }
+            });
+            if (!explicitlyDisabled) {
+                list.push('vpn-s2s');
+            }
+        }
         return list;
     } catch (error) {
         logInternalError(`Error fetching permissions for role ${role}`, error);
@@ -134,6 +142,14 @@ export async function hasPermission(role: string, toolId: string) {
         if (!permission && toolId === 'graylog-exporter') {
             const roleUpper = String(role).toUpperCase();
             if (roleUpper === 'ADMIN' || roleUpper === 'ANALYST') {
+                return true;
+            }
+        }
+
+        // Fallback for vpn-s2s: if no explicit entry exists, default to true for ADMIN, ANALYST, and NETWORK
+        if (!permission && toolId === 'vpn-s2s') {
+            const roleUpper = String(role).toUpperCase();
+            if (roleUpper === 'ADMIN' || roleUpper === 'ANALYST' || roleUpper === 'NETWORK') {
                 return true;
             }
         }
@@ -227,6 +243,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'hibp-domain', role: 'ADMIN', isEnabled: true },
             { toolId: 'vpn', role: 'ADMIN', isEnabled: true },
             { toolId: 'vpn-reporting', role: 'ADMIN', isEnabled: true },
+            { toolId: 'vpn-s2s', role: 'ADMIN', isEnabled: true },
             { toolId: 'threat-intel', role: 'ADMIN', isEnabled: true },
             { toolId: 'ironport', role: 'ADMIN', isEnabled: true },
             { toolId: 'bec', role: 'ADMIN', isEnabled: true },
@@ -242,6 +259,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'hibp-domain', role: 'ANALYST', isEnabled: false },
             { toolId: 'vpn', role: 'ANALYST', isEnabled: true },
             { toolId: 'vpn-reporting', role: 'ANALYST', isEnabled: true },
+            { toolId: 'vpn-s2s', role: 'ANALYST', isEnabled: true },
             { toolId: 'threat-intel', role: 'ANALYST', isEnabled: true },
             { toolId: 'ironport', role: 'ANALYST', isEnabled: true },
             { toolId: 'bec', role: 'ANALYST', isEnabled: true },
@@ -257,6 +275,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'hibp-domain', role: 'USER', isEnabled: false },
             { toolId: 'vpn', role: 'USER', isEnabled: false },
             { toolId: 'vpn-reporting', role: 'USER', isEnabled: false },
+            { toolId: 'vpn-s2s', role: 'USER', isEnabled: false },
             { toolId: 'threat-intel', role: 'USER', isEnabled: false },
             { toolId: 'ironport', role: 'USER', isEnabled: false },
             { toolId: 'bec', role: 'USER', isEnabled: false },
@@ -272,6 +291,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'hibp-domain', role: 'NETWORK', isEnabled: false },
             { toolId: 'vpn', role: 'NETWORK', isEnabled: true },
             { toolId: 'vpn-reporting', role: 'NETWORK', isEnabled: true },
+            { toolId: 'vpn-s2s', role: 'NETWORK', isEnabled: true },
             { toolId: 'threat-intel', role: 'NETWORK', isEnabled: true },
             { toolId: 'ironport', role: 'NETWORK', isEnabled: false },
             { toolId: 'bec', role: 'NETWORK', isEnabled: false },
@@ -286,6 +306,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'hibp-account', role: 'DESKTOP', isEnabled: true },
             { toolId: 'hibp-domain', role: 'DESKTOP', isEnabled: false },
             { toolId: 'vpn', role: 'DESKTOP', isEnabled: false },
+            { toolId: 'vpn-s2s', role: 'DESKTOP', isEnabled: false },
             { toolId: 'threat-intel', role: 'DESKTOP', isEnabled: false },
             { toolId: 'ironport', role: 'DESKTOP', isEnabled: false },
             { toolId: 'bec', role: 'DESKTOP', isEnabled: false },

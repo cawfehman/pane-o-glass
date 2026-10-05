@@ -6,7 +6,7 @@ import {
     LayoutDashboard, Wrench, Shield, Server, Network, Lock, 
     ShieldAlert, ShieldCheck, Globe, Map, Users, Key, 
     ClipboardList, Activity, MessageSquare, Mail, BellRing, FileText, Layers,
-    DownloadCloud
+    DownloadCloud, Link2
 } from "lucide-react";
 import packageJson from "../../package.json";
 import FeedbackModal from "./FeedbackModal";
@@ -107,6 +107,17 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                 >
                                     <FileText size={18} className="shrink-0 text-indigo-400" />
                                     <span className="nav-text">VPN Reporting</span>
+                                </Link>
+                            )}
+                            {hasPermission('vpn-s2s') && (
+                                <Link 
+                                    href="/queries/vpn-s2s" 
+                                    onClick={closeMobile}
+                                    title={isCollapsed ? "Site-to-Site VPN" : undefined}
+                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/vpn-s2s") ? "active" : ""}`}
+                                >
+                                    <Link2 size={18} className="shrink-0 text-cyan-400" />
+                                    <span className="nav-text">Site-to-Site VPN</span>
                                 </Link>
                             )}
                             {hasPermission('ise-tacacs') && (
