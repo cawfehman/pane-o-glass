@@ -32,9 +32,11 @@ import {
     XCircle,
     Zap,
     Download,
-    HelpCircle
+    HelpCircle,
+    Settings2
 } from "lucide-react";
 import { S2sTunnel, S2sTroubleshootResult } from "@/lib/s2s-vpn";
+import { S2sSetupModal } from "@/components/vpn/S2sSetupModal";
 
 interface FleetSummary {
     total: number;
@@ -58,6 +60,11 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
     const [error, setError] = useState<string | null>(null);
     const [lastUpdated, setLastUpdated] = useState<string>("");
 
+    // S2S Config & Prompt State
+    const [configInfo, setConfigInfo] = useState<any>(null);
+    const [isSetupModalOpen, setIsSetupModalOpen] = useState<boolean>(false);
+    const [hasAutoPrompted, setHasAutoPrompted] = useState<boolean>(false);
+
     // Filters
     const [searchQuery, setSearchQuery] = useState<string>("");
     const [selectedStatus, setSelectedStatus] = useState<string>("all");
@@ -79,6 +86,27 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
     const [isFmcModalOpen, setIsFmcModalOpen] = useState<boolean>(false);
     const [fmcStatusData, setFmcStatusData] = useState<any>(null);
     const [fmcLoading, setFmcLoading] = useState<boolean>(false);
+
+    const fetchConfig = useCallback(async () => {
+        try {
+            const res = await fetch("/api/vpn/s2s/config");
+            if (res.ok) {
+                const data = await res.json();
+                setConfigInfo(data);
+                // Prompt user immediately if .env / config is blank!
+                if (!data.isConfigured && !hasAutoPrompted) {
+                    setIsSetupModalOpen(true);
+                    setHasAutoPrompted(true);
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to check S2S configuration:", e);
+        }
+    }, [hasAutoPrompted]);
+
+    useEffect(() => {
+        fetchConfig();
+    }, [fetchConfig]);
 
     const fetchTunnels = useCallback(async (isBackground = false) => {
         if (!isBackground) setLoading(true);
@@ -269,6 +297,26 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                 </div>
 
                 <div className="flex items-center gap-2.5 flex-wrap">
+                    {/* Setup / Prompt Button */}
+                    <button
+                        onClick={() => setIsSetupModalOpen(true)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all shadow-sm ${
+                            configInfo?.isConfigured
+                                ? "border-cyan-500/30 bg-cyan-950/20 hover:bg-cyan-950/40 text-cyan-300"
+                                : "border-amber-500/50 bg-amber-950/40 hover:bg-amber-950/60 text-amber-300 ring-2 ring-amber-500/20"
+                        }`}
+                        title={configInfo?.isConfigured ? "Update FMC or FTD gateway credentials" : "No S2S credentials found in .env. Click to configure!"}
+                    >
+                        <Settings2 size={14} className={configInfo?.isConfigured ? "text-cyan-400" : "text-amber-400 animate-spin"} />
+                        <span>
+                            {configInfo?.isConfigured
+                                ? configInfo.fmc?.url
+                                    ? `FMC: ${configInfo.fmc.url.replace(/^https?:\/\//, '').split('/')[0].split(':')[0]}`
+                                    : `FTDs (${configInfo.ftds?.length || 0})`
+                                : "Configure FMC / FTDs"}
+                        </span>
+                    </button>
+
                     {/* Safe Mode Toggle */}
                     <button
                         onClick={() => setSafeMode(!safeMode)}
@@ -318,6 +366,27 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                     </button>
                 </div>
             </div>
+
+            {/* Setup Needed Banner if .env is blank */}
+            {configInfo && !configInfo.isConfigured && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl border border-amber-500/40 bg-amber-950/20 text-amber-200 shadow-sm animate-in fade-in duration-300">
+                    <div className="flex items-center gap-3">
+                        <AlertCircle size={22} className="shrink-0 text-amber-400" />
+                        <div className="text-xs space-y-0.5">
+                            <strong className="text-amber-100 text-sm block">Target S2S Firewalls Not Configured in .env</strong>
+                            <span className="text-amber-200/90 leading-relaxed block">
+                                Enter your target Firepower Management Center (FMC) or Firepower Threat Defense (FTD) IP addresses and credentials to connect to your live Site-to-Site VPN environment.
+                            </span>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setIsSetupModalOpen(true)}
+                        className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold whitespace-nowrap transition-all shadow-md active:scale-95 shrink-0"
+                    >
+                        Configure FMC & FTDs Now
+                    </button>
+                </div>
+            )}
 
             {/* Error Notification */}
             {error && (
@@ -968,6 +1037,18 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                     </div>
                 </div>
             )}
+
+            {/* S2S Setup & Credential Prompt Modal */}
+            <S2sSetupModal
+                isOpen={isSetupModalOpen}
+                onClose={() => setIsSetupModalOpen(false)}
+                onConfigSaved={() => {
+                    fetchConfig();
+                    fetchTunnels(false);
+                }}
+                currentConfig={configInfo}
+                isInitialPrompt={Boolean(configInfo && !configInfo.isConfigured)}
+            />
         </div>
     );
 }

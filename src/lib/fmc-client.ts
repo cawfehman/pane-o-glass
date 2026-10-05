@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from "axios";
 import https from "https";
+import { getS2sConfig } from "./s2s-config";
 
 export interface FmcEndpoint {
     deviceId?: string;
@@ -55,10 +56,11 @@ export class FmcClient {
     private isConfigured: boolean = false;
 
     constructor(config?: Partial<FmcConfig>) {
-        this.baseUrl = (config?.baseUrl || process.env.FMC_URL || "").replace(/\/$/, "");
-        this.username = config?.username || process.env.FMC_USER || "";
-        this.password = config?.password || process.env.FMC_PASSWORD || "";
-        this.domainUuid = config?.domainUuid || process.env.FMC_DOMAIN_UUID || "e276abec-e0f2-11e3-8169-6d9ed49b625f";
+        const fallback = getS2sConfig().config.fmc;
+        this.baseUrl = (config?.baseUrl || fallback?.url || process.env.FMC_URL || "").replace(/\/$/, "");
+        this.username = config?.username || fallback?.username || process.env.FMC_USER || "";
+        this.password = config?.password || fallback?.password || process.env.FMC_PASSWORD || "";
+        this.domainUuid = config?.domainUuid || fallback?.domainUuid || process.env.FMC_DOMAIN_UUID || "e276abec-e0f2-11e3-8169-6d9ed49b625f";
         this.isConfigured = Boolean(this.baseUrl && this.username && this.password);
     }
 
