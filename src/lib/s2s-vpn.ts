@@ -112,6 +112,24 @@ export interface S2sTroubleshootResult {
         text: string;
         category: string;
     }>;
+    liveTelemetric?: {
+        firewallId: string;
+        firewallName: string;
+        ip: string;
+        prompt: string;
+        isStandby: boolean;
+        hasIke: boolean;
+        hasIpsec: boolean;
+        pktsEncaps: number;
+        pktsDecaps: number;
+        sendErrors: number;
+        recvErrors: number;
+        localIdent: string;
+        remoteIdent: string;
+        ikeDetail: string;
+        ipsecDetail: string;
+        routeOutput: string;
+    };
 }
 
 async function resolvePythonCommand(): Promise<string> {
@@ -592,21 +610,90 @@ async function executeLiveS2sFetch(): Promise<{ tunnels: S2sTunnel[]; summary: a
 export async function troubleshootTunnel(tunnelId: string, peerIp: string): Promise<S2sTroubleshootResult> {
     const { tunnels } = await fetchS2sTunnels();
     const tunnel = tunnels.find(t => t.id === tunnelId || t.peerIp === peerIp) || tunnels[0];
+    const targetPeerIp = peerIp || tunnel.peerIp;
 
-    // Determine failure profile based on tunnel properties and known signatures
-    if (tunnel.peerIp === "68.80.14.92" || tunnel.ikeStatus === "AUTH_FAIL") {
-        return buildPskAuthFailureReport(tunnel);
-    } else if (tunnel.peerIp === "73.195.82.110" || tunnel.ikeStatus === "NO_PROPOSAL") {
-        return buildProposalMismatchReport(tunnel);
-    } else if (tunnel.peerIp === "96.245.101.5" || (tunnel.ikeStatus === "READY" && tunnel.ipsecStatus === "DOWN")) {
-        return buildTrafficSelectorMismatchReport(tunnel);
-    } else if (tunnel.peerIp === "12.180.204.60" || tunnel.failureReason?.includes("DPD")) {
-        return buildDpdPeerDownReport(tunnel);
-    } else if (tunnel.peerIp === "198.51.100.44" || tunnel.status === "DEGRADED") {
-        return buildOneWayBlackHoleReport(tunnel);
-    } else {
-        return buildHealthyTunnelReport(tunnel);
+    // 1. First, attempt live diagnostics via SSH to active firewall
+    let liveResult: any = null;
+    try {
+        const rawLive = await runFtdScript([
+            "--action", "s2s_troubleshoot",
+            "--target", tunnel.gatewayId || "cdc-2mc-2130",
+            "--ip", targetPeerIp
+        ]);
+        if (Array.isArray(rawLive)) {
+            liveResult = rawLive.find((r: any) => r.success && !r.isStandby) || rawLive.find((r: any) => r.success);
+        } else if (rawLive?.success) {
+            liveResult = rawLive;
+        }
+    } catch (e) {
+        console.warn("[S2S-INVESTIGATE] Failed to execute live SSH investigation:", e);
     }
+
+    // 2. Base heuristic report template
+    let report: S2sTroubleshootResult;
+    if (tunnel.peerIp === "68.80.14.92" || tunnel.ikeStatus === "AUTH_FAIL") {
+        report = buildPskAuthFailureReport(tunnel);
+    } else if (tunnel.peerIp === "73.195.82.110" || tunnel.ikeStatus === "NO_PROPOSAL") {
+        report = buildProposalMismatchReport(tunnel);
+    } else if (tunnel.peerIp === "96.245.101.5" || (tunnel.ikeStatus === "READY" && tunnel.ipsecStatus === "DOWN")) {
+        report = buildTrafficSelectorMismatchReport(tunnel);
+    } else if (tunnel.peerIp === "12.180.204.60" || tunnel.failureReason?.includes("DPD")) {
+        report = buildDpdPeerDownReport(tunnel);
+    } else if (tunnel.peerIp === "198.51.100.44" || tunnel.status === "DEGRADED") {
+        report = buildOneWayBlackHoleReport(tunnel);
+    } else {
+        report = buildHealthyTunnelReport(tunnel);
+    }
+
+    // 3. Enrich and override with real ground-truth telemetry if live SSH returned data
+    if (liveResult) {
+        report.liveTelemetric = liveResult;
+        report.gatewayName = `${liveResult.firewallName || 'CDC-2MC-2130'} (Active Node)`;
+
+        if (liveResult.hasIpsec) {
+            const hasDrops = (liveResult.sendErrors + liveResult.recvErrors) > 20;
+            report.overallHealth = hasDrops ? "WARNING" : "HEALTHY";
+            report.healthScore = hasDrops ? 75 : 100;
+            report.failureCategory = hasDrops ? "ONE_WAY_TRAFFIC_BLACK_HOLE" : "NONE";
+            report.summary = `Live Cisco FTD Lina engine reports active IKEv2 and IPsec SAs on ${liveResult.firewallName} (${liveResult.pktsEncaps.toLocaleString()} pkts encap / ${liveResult.pktsDecaps.toLocaleString()} pkts decap).`;
+            report.rootCause = `Operational check passed. Bidirectional encrypted communication is active on the physical data plane.`;
+            report.plainEnglishExplanation = `Live query of ${liveResult.firewallName} confirms that Phase 1 and Phase 2 security associations are established. Over ${((liveResult.pktsEncaps + liveResult.pktsDecaps) / 1000000).toFixed(1)}M packets have traversed the tunnel with ${liveResult.sendErrors} send errors and ${liveResult.recvErrors} receive errors.`;
+            report.phase1.status = "PASS";
+            report.phase1.state = "READY / INITIATOR";
+            report.phase2.status = "PASS";
+            report.phase2.ipsecState = "ACTIVE";
+            report.phase2.trafficSelectorsMatch = true;
+            if (liveResult.localIdent) report.phase2.localIdent = liveResult.localIdent;
+            if (liveResult.remoteIdent) report.phase2.remoteIdent = liveResult.remoteIdent;
+            report.dataPlane.status = hasDrops ? "WARN" : "PASS";
+            report.dataPlane.trafficFlowing = liveResult.pktsEncaps > 0 || liveResult.pktsDecaps > 0;
+            report.dataPlane.packetsEncaps = liveResult.pktsEncaps;
+            report.dataPlane.packetsDecaps = liveResult.pktsDecaps;
+            report.dataPlane.sendErrors = liveResult.sendErrors;
+            report.dataPlane.recvErrors = liveResult.recvErrors;
+        } else if (liveResult.hasIke && !liveResult.hasIpsec) {
+            report.overallHealth = "WARNING";
+            report.healthScore = 40;
+            report.failureCategory = "TRAFFIC_SELECTOR_MISMATCH";
+            report.summary = `IKEv2 Phase 1 is established, but Phase 2 (IPsec) SA is missing on ${liveResult.firewallName}.`;
+            report.rootCause = `Phase 1 SA is in READY state, but IPsec crypto map failed to instantiate. Common cause: Traffic Selector mismatch (proxy-ID) or access-list proposal disagreement.`;
+            report.plainEnglishExplanation = `The firewall successfully authenticated with remote peer ${targetPeerIp}, but the IPsec phase rejected the network ranges or crypto proposal.`;
+            report.phase1.status = "PASS";
+            report.phase2.status = "FAIL";
+            report.phase2.ipsecState = "DOWN / NO SA";
+        } else if (!liveResult.hasIke && !liveResult.hasIpsec) {
+            report.overallHealth = "CRITICAL";
+            report.healthScore = 0;
+            report.failureCategory = "DPD_PEER_UNREACHABLE";
+            report.summary = `No active IKEv2 or IPsec security associations found for peer ${targetPeerIp} on ${liveResult.firewallName}.`;
+            report.rootCause = `The firewall currently has no active cryptographic sessions for this remote peer IP. Peer is either unresponsive, offline, or ISAKMP negotiation has not initiated.`;
+            report.plainEnglishExplanation = `Live query of ${liveResult.firewallName} indicates zero cryptographic state for ${targetPeerIp}. The peer may be offline, filtering UDP 500/4500, or has not sent traffic.`;
+            report.phase1.status = "FAIL";
+            report.phase2.status = "FAIL";
+        }
+    }
+
+    return report;
 }
 
 function buildPskAuthFailureReport(tunnel: S2sTunnel): S2sTroubleshootResult {

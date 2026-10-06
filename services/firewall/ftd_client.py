@@ -357,9 +357,46 @@ class FtdClient:
         """Runs deep cryptographic diagnostics for a specific S2S VPN peer."""
         try:
             with self._connect() as conn:
-                ike_detail = conn.send_command(f"show crypto ikev2 sa detail", read_timeout=25)
-                ipsec_detail = conn.send_command(f"show crypto ipsec sa peer {peer_ip} detail", read_timeout=25)
+                prompt = conn.find_prompt()
+                is_standby = any(k in prompt.lower() for k in ["/standby", "(standby)", "-standby"])
+                if is_standby:
+                    return {
+                        "firewallId": self.fw_id,
+                        "firewallName": self.name,
+                        "ip": self.ip,
+                        "peerIp": peer_ip,
+                        "success": True,
+                        "isStandby": True,
+                        "prompt": prompt,
+                        "message": "Node is in Standby state; live crypto metrics executed on Active peer."
+                    }
+
+                ike_out = conn.send_command(f"show crypto ikev2 sa | include {peer_ip}", read_timeout=15)
+                ipsec_out = conn.send_command(f"show crypto ipsec sa peer {peer_ip}", read_timeout=20)
                 route_out = conn.send_command(f"show route {peer_ip}", read_timeout=15)
+
+                encaps = 0
+                decaps = 0
+                send_err = 0
+                recv_err = 0
+                m_enc = re.search(r"#pkts encaps:\s*(\d+)", ipsec_out)
+                if m_enc: encaps = int(m_enc.group(1))
+                m_dec = re.search(r"#pkts decaps:\s*(\d+)", ipsec_out)
+                if m_dec: decaps = int(m_dec.group(1))
+                m_serr = re.search(r"#send errors:\s*(\d+)", ipsec_out)
+                if m_serr: send_err = int(m_serr.group(1))
+                m_rerr = re.search(r"#recv errors:\s*(\d+)", ipsec_out)
+                if m_rerr: recv_err = int(m_rerr.group(1))
+
+                loc_ident = ""
+                rem_ident = ""
+                m_loc = re.search(r"local ident \(addr/mask/prot/port\):\s*\(([^)]+)\)", ipsec_out)
+                if m_loc: loc_ident = m_loc.group(1)
+                m_rem = re.search(r"remote ident \(addr/mask/prot/port\):\s*\(([^)]+)\)", ipsec_out)
+                if m_rem: rem_ident = m_rem.group(1)
+
+                has_ipsec = "Crypto map tag:" in ipsec_out or "#pkts encaps:" in ipsec_out
+                has_ike = "READY" in ike_out or peer_ip in ike_out
 
                 return {
                     "firewallId": self.fw_id,
@@ -367,8 +404,18 @@ class FtdClient:
                     "ip": self.ip,
                     "peerIp": peer_ip,
                     "success": True,
-                    "ikeDetail": ike_detail.strip(),
-                    "ipsecDetail": ipsec_detail.strip(),
+                    "isStandby": False,
+                    "prompt": prompt,
+                    "hasIke": has_ike,
+                    "hasIpsec": has_ipsec,
+                    "pktsEncaps": encaps,
+                    "pktsDecaps": decaps,
+                    "sendErrors": send_err,
+                    "recvErrors": recv_err,
+                    "localIdent": loc_ident,
+                    "remoteIdent": rem_ident,
+                    "ikeDetail": ike_out.strip(),
+                    "ipsecDetail": ipsec_out.strip(),
                     "routeOutput": route_out.strip()
                 }
         except Exception as e:

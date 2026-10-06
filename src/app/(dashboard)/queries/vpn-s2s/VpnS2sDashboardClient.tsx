@@ -299,7 +299,7 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
     };
 
     const exportIncidentReport = (report: S2sTroubleshootResult) => {
-        const content = `# Cisco S2S VPN Incident Report
+        let content = `# Cisco S2S VPN Incident Report
 **Generated:** ${new Date().toISOString()}
 **Tunnel Name:** ${report.tunnelName}
 **Local Gateway:** ${report.gatewayName}
@@ -312,7 +312,33 @@ ${report.rootCause}
 
 ## Plain English Summary
 ${report.plainEnglishExplanation}
+`;
 
+        if (report.liveTelemetric) {
+            content += `
+## Live Active Firewall Telemetry (${report.liveTelemetric.firewallName} - ${report.liveTelemetric.ip})
+- **Active Node Prompt:** \`${report.liveTelemetric.prompt}\`
+- **Live Packets Encapsulated:** ${report.liveTelemetric.pktsEncaps.toLocaleString()}
+- **Live Packets Decapsulated:** ${report.liveTelemetric.pktsDecaps.toLocaleString()}
+- **Drop Counters:** ${report.liveTelemetric.sendErrors} send errors / ${report.liveTelemetric.recvErrors} recv errors
+- **Local Traffic Selector:** \`${report.liveTelemetric.localIdent || 'None'}\`
+- **Remote Traffic Selector:** \`${report.liveTelemetric.remoteIdent || 'None'}\`
+
+### Raw Lina CLI Telemetry
+\`\`\`text
+# show crypto ikev2 sa | include ${report.peerIp}
+${report.liveTelemetric.ikeDetail || '% No SAs found'}
+
+# show crypto ipsec sa peer ${report.peerIp}
+${report.liveTelemetric.ipsecDetail || '% No IPsec SAs found'}
+
+# show route ${report.peerIp}
+${report.liveTelemetric.routeOutput || '% Network not in table'}
+\`\`\`
+`;
+        }
+
+        content += `
 ## FMC Remediation Steps
 ${report.fmcRemediationSteps.map((s, idx) => `${idx + 1}. ${s}`).join("\n")}
 
@@ -329,7 +355,7 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `vpn-incident-${report.peerIp.replace(/\./g, "-")}-${Date.now()}.md`;
+        a.download = `vpn-investigation-${report.peerIp.replace(/\./g, "-")}-${Date.now()}.md`;
         a.click();
         URL.revokeObjectURL(url);
     };
@@ -822,7 +848,7 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent-primary hover:bg-accent-primary/90 text-white text-xs font-semibold transition-all shadow-sm active:scale-95 disabled:opacity-50"
                                             >
                                                 <Zap size={13} className={diagnosingTunnelId === tunnel.id ? "animate-spin" : ""} />
-                                                <span>{diagnosingTunnelId === tunnel.id ? "Diagnosing..." : "Troubleshoot"}</span>
+                                                <span>{diagnosingTunnelId === tunnel.id ? "Investigating..." : "Investigate"}</span>
                                             </button>
                                         </div>
                                     </div>
@@ -933,7 +959,7 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                     </div>
                                     <div>
                                         <h2 className="text-xl font-extrabold text-text-primary flex items-center gap-2">
-                                            <span>Automated Root Cause Diagnosis</span>
+                                            <span>Live S2S Tunnel Investigation</span>
                                             <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
                                                 activeDiagReport.overallHealth === "CRITICAL"
                                                     ? "bg-rose-950/60 text-rose-300 border border-rose-800/50"
@@ -993,6 +1019,86 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                 <span className="text-amber-300">{activeDiagReport.rootCause}</span>
                             </div>
                         </div>
+
+                        {/* Live Lina Telemetry from Active Firewall */}
+                        {activeDiagReport.liveTelemetric && (
+                            <div className="p-4 rounded-xl border border-cyan-500/40 bg-cyan-950/20 space-y-3">
+                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <Terminal size={16} className="text-cyan-400" />
+                                        <span className="font-bold text-sm text-text-primary">
+                                            Live Lina Telemetry from <span className="text-cyan-300 font-mono">{activeDiagReport.liveTelemetric.firewallName}</span>
+                                        </span>
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                            Active Node ({activeDiagReport.liveTelemetric.ip})
+                                        </span>
+                                    </div>
+                                    <div className="text-[11px] font-mono text-text-secondary">
+                                        Prompt: <span className="text-text-primary font-bold">{activeDiagReport.liveTelemetric.prompt.trim()}</span>
+                                    </div>
+                                </div>
+
+                                {/* Live Counters Ribbon */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                    <div className="p-2.5 rounded-lg bg-bg-surface/80 border border-border-color">
+                                        <div className="text-[10px] text-text-secondary uppercase">Live Encaps pkts</div>
+                                        <div className="font-mono text-emerald-400 font-bold text-sm">
+                                            {activeDiagReport.liveTelemetric.pktsEncaps.toLocaleString()}
+                                        </div>
+                                    </div>
+                                    <div className="p-2.5 rounded-lg bg-bg-surface/80 border border-border-color">
+                                        <div className="text-[10px] text-text-secondary uppercase">Live Decaps pkts</div>
+                                        <div className="font-mono text-cyan-400 font-bold text-sm">
+                                            {activeDiagReport.liveTelemetric.pktsDecaps.toLocaleString()}
+                                        </div>
+                                    </div>
+                                    <div className="p-2.5 rounded-lg bg-bg-surface/80 border border-border-color">
+                                        <div className="text-[10px] text-text-secondary uppercase">Send / Recv Drops</div>
+                                        <div className={`font-mono font-bold text-sm ${(activeDiagReport.liveTelemetric.sendErrors + activeDiagReport.liveTelemetric.recvErrors) > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                                            {activeDiagReport.liveTelemetric.sendErrors} / {activeDiagReport.liveTelemetric.recvErrors}
+                                        </div>
+                                    </div>
+                                    <div className="p-2.5 rounded-lg bg-bg-surface/80 border border-border-color">
+                                        <div className="text-[10px] text-text-secondary uppercase">Traffic Selectors</div>
+                                        <div className="font-mono text-text-primary text-[11px] truncate" title={`${activeDiagReport.liveTelemetric.localIdent} <-> ${activeDiagReport.liveTelemetric.remoteIdent}`}>
+                                            {activeDiagReport.liveTelemetric.localIdent ? "Matched & Active" : "No Active SA"}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Real Live Raw CLI Accordion/Block */}
+                                <div className="space-y-1.5 pt-1">
+                                    <div className="flex items-center justify-between text-xs text-text-secondary">
+                                        <span className="font-semibold text-text-primary flex items-center gap-1.5">
+                                            <Activity size={13} className="text-cyan-400" />
+                                            <span>Real-Time CLI Output ({activeDiagReport.liveTelemetric.prompt.trim()})</span>
+                                        </span>
+                                        <button
+                                            onClick={() => {
+                                                const fullText = `=== SHOW CRYPTO IKEV2 SA ===\n${activeDiagReport.liveTelemetric?.ikeDetail}\n\n=== SHOW CRYPTO IPSEC SA PEER ===\n${activeDiagReport.liveTelemetric?.ipsecDetail}\n\n=== SHOW ROUTE ===\n${activeDiagReport.liveTelemetric?.routeOutput}`;
+                                                navigator.clipboard.writeText(fullText);
+                                                setCopiedCli(true);
+                                                setTimeout(() => setCopiedCli(false), 2000);
+                                            }}
+                                            className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                                        >
+                                            {copiedCli ? <Check size={12} /> : <Copy size={12} />}
+                                            <span>{copiedCli ? "Copied Raw CLI" : "Copy Raw CLI"}</span>
+                                        </button>
+                                    </div>
+                                    <pre className="p-3 rounded-lg bg-black/90 text-emerald-400 font-mono text-[11px] max-h-56 overflow-y-auto overflow-x-auto border border-border-color leading-tight select-text">
+{`# show crypto ikev2 sa | include ${activeDiagReport.peerIp}
+${activeDiagReport.liveTelemetric.ikeDetail || '% No IKE SAs found'}
+
+# show crypto ipsec sa peer ${activeDiagReport.peerIp}
+${activeDiagReport.liveTelemetric.ipsecDetail || '% No IPsec SAs found'}
+
+# show route ${activeDiagReport.peerIp}
+${activeDiagReport.liveTelemetric.routeOutput || '% Network not in table'}`}
+                                    </pre>
+                                </div>
+                            </div>
+                        )}
 
                         {/* 4-Pillar Diagnostic Framework */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">

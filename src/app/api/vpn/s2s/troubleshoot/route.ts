@@ -23,8 +23,8 @@ export async function POST(req: Request) {
         const report = await troubleshootTunnel(tunnelId || "", peerIp || "");
 
         await logAudit(
-            "VPN_S2S_TROUBLESHOOT",
-            `Executed deep diagnostics on tunnel ${report.tunnelName} (Peer: ${report.peerIp}, Result: ${report.overallHealth} - ${report.failureCategory})`,
+            "VPN_S2S_INVESTIGATE",
+            `Executed live investigation on tunnel ${report.tunnelName} (Peer: ${report.peerIp}, Gateway: ${report.gatewayName}, Result: ${report.overallHealth} - ${report.failureCategory})`,
             session.user.id
         );
 
