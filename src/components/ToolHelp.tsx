@@ -728,6 +728,74 @@ export const helpData: Record<string, TooltipDetails> = {
             "Run mandatory Pre-Flight Analysis before clicking Confirm & Launch.",
             "Check 'Export History & Storage Management' to download past exports or purge disk space immediately."
         ]
+    },
+    "vpn-s2s": {
+        title: "Cisco FTD / FMC Site-to-Site VPN Monitor",
+        version: "2.0.0",
+        category: "Site-to-Site Crypto Telemetry & HA Fleet Operations",
+        description: "Enterprise Cisco Site-to-Site VPN management suite combining FMC REST API policy topology with real-time direct SSH data plane interrogation across physical FTD High Availability clusters (CDC-2MC-2130).",
+        capabilities: [
+            {
+                title: "Full Fleet FMC Topology Ingestion",
+                detail: "Pulls the complete catalog of 48+ Site-to-Site VPN policies directly from Cisco FMC with pagination expansion and concurrent endpoint enrichment, including peer device names, local/remote subnets, and cryptographic proposals.",
+                tag: "FMC Topology"
+            },
+            {
+                title: "1-Click Direct SSH Live Investigation",
+                detail: "Clicking 'Investigate' automatically identifies the Active node in the CDC-2MC-2130 HA pair, connects over SSH port 22, and executes 'show crypto ikev2 sa', 'show crypto ipsec sa peer', and 'show route' in real time.",
+                tag: "Live SSH Engine"
+            },
+            {
+                title: "High Availability Active/Standby Awareness",
+                detail: "Automatically inspects failover states. Commands are dispatched to the Active unit, while the Standby unit is gracefully reported without throwing errors or interrupting operations.",
+                tag: "HA Awareness"
+            },
+            {
+                title: "Safe Mode Operational Protection (Default ON)",
+                detail: "All Soft Bounces and Hard Re-Keys default to Safe Mode simulation (dry-run). Commands are previewed and logged in the audit trail without touching the physical firewalls until explicitly toggled to LIVE.",
+                tag: "Safe Mode"
+            },
+            {
+                title: "Soft Bounce vs. Hard Re-Key Operations",
+                detail: "Soft Bounce clears Phase 2 IPsec SAs ('clear crypto ipsec sa peer <ip>') preserving Phase 1. Hard Re-Key tears down the entire IKEv2 security association ('clear crypto ikev2 sa peer <ip>') to force full key re-negotiation.",
+                tag: "SA Bounce Engine"
+            },
+            {
+                title: "Expandable Raw Console Terminal Viewer",
+                detail: "Embedded interactive console viewer with sub-tabs for All Telemetry, IPsec SAs, IKEv2 SA, and Routing Path. Features keyword line filtering, word wrap toggle, expand to 540px, and isolated scrolling (overscroll-contain).",
+                tag: "Terminal Console"
+            },
+            {
+                title: "Instant Caching & Stale-While-Revalidate",
+                detail: "Hydrates instantly from localStorage on initial page visit and maintains a 60-second in-memory server cache with single-flight locking to eliminate screen blanking between navigation switches.",
+                tag: "Zero-Latency Cache"
+            },
+            {
+                title: "1-Click TAC Incident Report Export",
+                detail: "Generates an audit-ready, full Markdown incident report containing tunnel metadata, root cause analysis, FMC remediation checklist, and the full raw Lina CLI diagnostic dump.",
+                tag: "TAC Report Export"
+            }
+        ],
+        colors: [
+            { name: "🟢 UP (Green Badge)", meaning: "Tunnel is active. Both Phase 1 (IKEv2) and Phase 2 (IPsec) security associations are healthy and processing traffic.", rgb: "#10b981" },
+            { name: "🟡 DEGRADED (Amber Badge)", meaning: "Phase 1 is established but Phase 2 is down (e.g. Traffic Selector mismatch), or drop counters are actively incrementing.", rgb: "#f59e0b" },
+            { name: "🔴 DOWN (Rose Badge)", meaning: "Tunnel is offline. Peer is unresponsive (DPD timeout), credentials failed (PSK error), or proposal was rejected.", rgb: "#ef4444" },
+            { name: "🟢 Safe Mode: ON (Emerald Pill)", meaning: "Safe simulation mode active. Operational clears are dry-run only.", rgb: "#10b981" },
+            { name: "🟡 Safe Mode: OFF (Amber Pill)", meaning: "LIVE execution mode active. Operational clears will be dispatched directly to the active firewall CLI.", rgb: "#f59e0b" },
+            { name: "🟣 IKEv2 / IPsec Proposals", meaning: "Cryptographic proposal tags displaying active ciphers (AES256-GCM, DH19/20, SHA256).", rgb: "#a855f7" }
+        ],
+        shortcuts: [
+            "Click [Investigate] on any tunnel card to launch instant live SSH CLI interrogation against the active FTD engine.",
+            "Use the console sub-tabs ('IPsec SAs', 'IKEv2 SA', 'Routing Path') to isolate specific command outputs.",
+            "Toggle the Maximize icon in the terminal console to expand the window to 540px for deep SA inspection.",
+            "Type in the terminal filter input (e.g. 'spi', 'encaps', 'drop') to highlight and isolate matching lines.",
+            "Click [Soft Bounce] while in Safe Mode to safely preview the exact command syntax before running live.",
+            "Click [Export TAC Incident Report] inside the investigation modal to download a full markdown diagnostic report."
+        ],
+        backgroundJobs: [
+            "FMC REST Crawler: Synchronizes 48+ S2S VPN policies, endpoint records, and crypto configurations from Cisco FMC.",
+            "Netmiko SSH Runner: Multi-threaded Python engine executing live Lina diagnostic probes and failover state detection over SSH port 22."
+        ]
     }
 };
 

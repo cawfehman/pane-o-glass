@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { S2sTunnel, S2sTroubleshootResult } from "@/lib/s2s-vpn";
 import { S2sSetupModal } from "@/components/vpn/S2sSetupModal";
+import { ToolHelp } from "@/components/ToolHelp";
 
 interface FleetSummary {
     total: number;
@@ -437,6 +438,7 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                     <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold uppercase tracking-wider bg-cyan-950/60 text-cyan-400 border border-cyan-800/50">
                                         FTD 7.2.10
                                     </span>
+                                    <ToolHelp toolId="vpn-s2s" />
                                 </h1>
                                 <p className="text-sm text-text-secondary mt-0.5">
                                     Real-time cryptographic telemetry, IKEv1/IKEv2 SA health, and automated root-cause diagnostics across the Cisco Firepower perimeter fleet.
