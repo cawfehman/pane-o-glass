@@ -33,7 +33,10 @@ import {
     Zap,
     Download,
     HelpCircle,
-    Settings2
+    Settings2,
+    Maximize2,
+    Minimize2,
+    WrapText
 } from "lucide-react";
 import { S2sTunnel, S2sTroubleshootResult } from "@/lib/s2s-vpn";
 import { S2sSetupModal } from "@/components/vpn/S2sSetupModal";
@@ -76,6 +79,40 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
     const [diagnosingTunnelId, setDiagnosingTunnelId] = useState<string | null>(null);
     const [isDiagOpen, setIsDiagOpen] = useState<boolean>(false);
     const [copiedCli, setCopiedCli] = useState<boolean>(false);
+
+    // Live Terminal Console Viewer State
+    const [consoleActiveTab, setConsoleActiveTab] = useState<"all" | "ipsec" | "ike" | "route">("all");
+    const [isConsoleExpanded, setIsConsoleExpanded] = useState<boolean>(false);
+    const [isConsoleWordWrap, setIsConsoleWordWrap] = useState<boolean>(false);
+    const [consoleFilterText, setConsoleFilterText] = useState<string>("");
+
+    const rawConsoleText = useMemo(() => {
+        if (!activeDiagReport?.liveTelemetric) return "";
+        const t = activeDiagReport.liveTelemetric;
+        const peer = activeDiagReport.peerIp;
+
+        let text = "";
+        if (consoleActiveTab === "all") {
+            text = `# show crypto ikev2 sa | include ${peer}\n${t.ikeDetail || "% No IKE SAs found"}\n\n# show crypto ipsec sa peer ${peer}\n${t.ipsecDetail || "% No IPsec SAs found"}\n\n# show route ${peer}\n${t.routeOutput || "% Network not in table"}`;
+        } else if (consoleActiveTab === "ipsec") {
+            text = `# show crypto ipsec sa peer ${peer}\n${t.ipsecDetail || "% No IPsec SAs found"}`;
+        } else if (consoleActiveTab === "ike") {
+            text = `# show crypto ikev2 sa | include ${peer}\n${t.ikeDetail || "% No IKE SAs found"}`;
+        } else if (consoleActiveTab === "route") {
+            text = `# show route ${peer}\n${t.routeOutput || "% Network not in table"}`;
+        }
+
+        if (consoleFilterText.trim()) {
+            const lines = text.split("\n");
+            const q = consoleFilterText.trim().toLowerCase();
+            const filtered = lines.filter(line => line.toLowerCase().includes(q) || line.startsWith("#"));
+            return filtered.length > 0 ? filtered.join("\n") : `[No lines matched filter "${consoleFilterText}"]\n\n${text}`;
+        }
+
+        return text;
+    }, [activeDiagReport, consoleActiveTab, consoleFilterText]);
+
+    const consoleLineCount = useMemo(() => rawConsoleText ? rawConsoleText.split("\n").length : 0, [rawConsoleText]);
 
     // Client-side Pagination States
     const [currentPage, setCurrentPage] = useState<number>(1);
@@ -1022,7 +1059,7 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
 
                         {/* Live Lina Telemetry from Active Firewall */}
                         {activeDiagReport.liveTelemetric && (
-                            <div className="p-4 rounded-xl border border-cyan-500/40 bg-cyan-950/20 space-y-3">
+                            <div className="p-4 rounded-xl border border-cyan-500/40 bg-cyan-950/20 space-y-3.5">
                                 <div className="flex items-center justify-between flex-wrap gap-2">
                                     <div className="flex items-center gap-2">
                                         <Terminal size={16} className="text-cyan-400" />
@@ -1033,8 +1070,10 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                             Active Node ({activeDiagReport.liveTelemetric.ip})
                                         </span>
                                     </div>
-                                    <div className="text-[11px] font-mono text-text-secondary">
-                                        Prompt: <span className="text-text-primary font-bold">{activeDiagReport.liveTelemetric.prompt.trim()}</span>
+                                    <div className="flex items-center gap-2">
+                                        <div className="text-[11px] font-mono text-text-secondary bg-black/50 px-2 py-0.5 rounded border border-border-color">
+                                            Prompt: <span className="text-cyan-300 font-bold">{activeDiagReport.liveTelemetric.prompt.trim()}</span>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -1066,36 +1105,140 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                     </div>
                                 </div>
 
-                                {/* Real Live Raw CLI Accordion/Block */}
-                                <div className="space-y-1.5 pt-1">
-                                    <div className="flex items-center justify-between text-xs text-text-secondary">
-                                        <span className="font-semibold text-text-primary flex items-center gap-1.5">
-                                            <Activity size={13} className="text-cyan-400" />
-                                            <span>Real-Time CLI Output ({activeDiagReport.liveTelemetric.prompt.trim()})</span>
-                                        </span>
-                                        <button
-                                            onClick={() => {
-                                                const fullText = `=== SHOW CRYPTO IKEV2 SA ===\n${activeDiagReport.liveTelemetric?.ikeDetail}\n\n=== SHOW CRYPTO IPSEC SA PEER ===\n${activeDiagReport.liveTelemetric?.ipsecDetail}\n\n=== SHOW ROUTE ===\n${activeDiagReport.liveTelemetric?.routeOutput}`;
-                                                navigator.clipboard.writeText(fullText);
-                                                setCopiedCli(true);
-                                                setTimeout(() => setCopiedCli(false), 2000);
-                                            }}
-                                            className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
-                                        >
-                                            {copiedCli ? <Check size={12} /> : <Copy size={12} />}
-                                            <span>{copiedCli ? "Copied Raw CLI" : "Copy Raw CLI"}</span>
-                                        </button>
+                                {/* Real Live Raw CLI Terminal Console */}
+                                <div className="rounded-xl border border-cyan-500/30 bg-zinc-950 shadow-2xl overflow-hidden flex flex-col">
+                                    {/* Terminal Toolbar: Tabs & Controls */}
+                                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-black/80 border-b border-border-color/80 text-xs">
+                                        {/* Sub-Tabs */}
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                onClick={() => setConsoleActiveTab("all")}
+                                                className={`px-2.5 py-1 rounded-md font-mono text-[11px] transition-all ${
+                                                    consoleActiveTab === "all"
+                                                        ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40"
+                                                        : "text-text-secondary hover:text-text-primary hover:bg-zinc-800/60"
+                                                }`}
+                                            >
+                                                All Telemetry
+                                            </button>
+                                            <button
+                                                onClick={() => setConsoleActiveTab("ipsec")}
+                                                className={`px-2.5 py-1 rounded-md font-mono text-[11px] transition-all ${
+                                                    consoleActiveTab === "ipsec"
+                                                        ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40"
+                                                        : "text-text-secondary hover:text-text-primary hover:bg-zinc-800/60"
+                                                }`}
+                                            >
+                                                IPsec SAs
+                                            </button>
+                                            <button
+                                                onClick={() => setConsoleActiveTab("ike")}
+                                                className={`px-2.5 py-1 rounded-md font-mono text-[11px] transition-all ${
+                                                    consoleActiveTab === "ike"
+                                                        ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40"
+                                                        : "text-text-secondary hover:text-text-primary hover:bg-zinc-800/60"
+                                                }`}
+                                            >
+                                                IKEv2 SA
+                                            </button>
+                                            <button
+                                                onClick={() => setConsoleActiveTab("route")}
+                                                className={`px-2.5 py-1 rounded-md font-mono text-[11px] transition-all ${
+                                                    consoleActiveTab === "route"
+                                                        ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40"
+                                                        : "text-text-secondary hover:text-text-primary hover:bg-zinc-800/60"
+                                                }`}
+                                            >
+                                                Routing Path
+                                            </button>
+                                        </div>
+
+                                        {/* Controls: Search, Wrap, Expand, Copy */}
+                                        <div className="flex items-center gap-2">
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    value={consoleFilterText}
+                                                    onChange={(e) => setConsoleFilterText(e.target.value)}
+                                                    placeholder="Filter lines..."
+                                                    className="w-28 sm:w-36 px-2 py-0.5 text-[11px] rounded bg-zinc-900 border border-border-color text-text-primary placeholder:text-text-secondary/50 focus:outline-none focus:border-cyan-500/50 font-mono"
+                                                />
+                                                {consoleFilterText && (
+                                                    <button
+                                                        onClick={() => setConsoleFilterText("")}
+                                                        className="absolute right-1 top-1 text-text-secondary hover:text-text-primary text-[10px]"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            <button
+                                                onClick={() => setIsConsoleWordWrap(!isConsoleWordWrap)}
+                                                title={isConsoleWordWrap ? "Disable word wrap" : "Enable word wrap"}
+                                                className={`p-1.5 rounded border transition-all ${
+                                                    isConsoleWordWrap
+                                                        ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
+                                                        : "border-border-color text-text-secondary hover:text-text-primary hover:bg-zinc-800"
+                                                }`}
+                                            >
+                                                <WrapText size={13} />
+                                            </button>
+
+                                            <button
+                                                onClick={() => setIsConsoleExpanded(!isConsoleExpanded)}
+                                                title={isConsoleExpanded ? "Collapse console height" : "Expand console height"}
+                                                className={`p-1.5 rounded border transition-all ${
+                                                    isConsoleExpanded
+                                                        ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
+                                                        : "border-border-color text-text-secondary hover:text-text-primary hover:bg-zinc-800"
+                                                }`}
+                                            >
+                                                {isConsoleExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                                            </button>
+
+                                            <button
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(rawConsoleText);
+                                                    setCopiedCli(true);
+                                                    setTimeout(() => setCopiedCli(false), 2000);
+                                                }}
+                                                className="flex items-center gap-1 px-2 py-1 rounded bg-zinc-900 border border-border-color hover:bg-zinc-800 text-cyan-400 hover:text-cyan-300 text-[11px] font-mono transition-all"
+                                            >
+                                                {copiedCli ? <Check size={12} /> : <Copy size={12} />}
+                                                <span>{copiedCli ? "Copied" : "Copy"}</span>
+                                            </button>
+                                        </div>
                                     </div>
-                                    <pre className="p-3 rounded-lg bg-black/90 text-emerald-400 font-mono text-[11px] max-h-56 overflow-y-auto overflow-x-auto border border-border-color leading-tight select-text">
-{`# show crypto ikev2 sa | include ${activeDiagReport.peerIp}
-${activeDiagReport.liveTelemetric.ikeDetail || '% No IKE SAs found'}
 
-# show crypto ipsec sa peer ${activeDiagReport.peerIp}
-${activeDiagReport.liveTelemetric.ipsecDetail || '% No IPsec SAs found'}
+                                    {/* Dedicated Scroll Container */}
+                                    <div className={`relative transition-all duration-200 ${isConsoleExpanded ? "h-[540px]" : "h-[340px]"}`}>
+                                        <pre className={`w-full h-full p-4 overflow-y-auto overflow-x-auto overscroll-contain select-text font-mono text-[12px] leading-relaxed text-emerald-400 bg-black/95 ${
+                                            isConsoleWordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"
+                                        }`}>
+                                            {rawConsoleText || "% No live telemetry available for this command selection."}
+                                        </pre>
+                                    </div>
 
-# show route ${activeDiagReport.peerIp}
-${activeDiagReport.liveTelemetric.routeOutput || '% Network not in table'}`}
-                                    </pre>
+                                    {/* Terminal Status Footer */}
+                                    <div className="flex items-center justify-between px-3 py-1.5 bg-black/90 border-t border-border-color/60 text-[11px] font-mono text-text-secondary">
+                                        <div className="flex items-center gap-3">
+                                            <span className="flex items-center gap-1.5">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                                <span className="text-text-primary">Live Lina Session</span>
+                                            </span>
+                                            <span>·</span>
+                                            <span>Lines: <strong className="text-text-primary">{consoleLineCount}</strong></span>
+                                            {consoleFilterText && (
+                                                <span className="text-amber-300">
+                                                    (Filtered by: "{consoleFilterText}")
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <span>Target: <strong className="text-cyan-300">{activeDiagReport.liveTelemetric.firewallName}</strong></span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         )}
