@@ -142,7 +142,45 @@ async function runFtdScript(args: string[]): Promise<any> {
     }
 }
 
-export async function fetchS2sTunnels(): Promise<{ tunnels: S2sTunnel[]; summary: any; timestamp: string }> {
+// In-memory cache for S2S VPN tunnels with background refresh (stale-while-revalidate)
+let cachedS2sResult: { tunnels: S2sTunnel[]; summary: any; timestamp: string } | null = null;
+let cachedAt: number = 0;
+let inflightS2sFetch: Promise<{ tunnels: S2sTunnel[]; summary: any; timestamp: string }> | null = null;
+const S2S_CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
+export async function fetchS2sTunnels(forceRefresh: boolean = false): Promise<{ tunnels: S2sTunnel[]; summary: any; timestamp: string; cached?: boolean }> {
+    const now = Date.now();
+
+    // If cache is fresh and not forced, return immediately
+    if (!forceRefresh && cachedS2sResult && (now - cachedAt) < S2S_CACHE_TTL_MS) {
+        return { ...cachedS2sResult, cached: true };
+    }
+
+    // If cache exists (even if stale) and not forced, return cached data immediately and trigger background refresh
+    if (!forceRefresh && cachedS2sResult) {
+        if (!inflightS2sFetch) {
+            inflightS2sFetch = executeLiveS2sFetch().finally(() => {
+                inflightS2sFetch = null;
+            });
+        }
+        return { ...cachedS2sResult, cached: true };
+    }
+
+    // If a fetch is already in flight, await it
+    if (inflightS2sFetch) {
+        const result = await inflightS2sFetch;
+        return { ...result, cached: true };
+    }
+
+    // Otherwise, perform fetch
+    inflightS2sFetch = executeLiveS2sFetch().finally(() => {
+        inflightS2sFetch = null;
+    });
+
+    return await inflightS2sFetch;
+}
+
+async function executeLiveS2sFetch(): Promise<{ tunnels: S2sTunnel[]; summary: any; timestamp: string }> {
     const fmc = new FmcClient();
     const [policies, ftdLiveResults] = await Promise.all([
         fmc.getS2sPolicies().catch(() => []),
@@ -530,7 +568,7 @@ export async function fetchS2sTunnels(): Promise<{ tunnels: S2sTunnel[]; summary
     const totalBytesTx = tunnels.reduce((acc, t) => acc + t.bytesTx, 0);
     const totalBytesRx = tunnels.reduce((acc, t) => acc + t.bytesRx, 0);
 
-    return {
+    const result = {
         tunnels,
         summary: {
             total,
@@ -544,6 +582,11 @@ export async function fetchS2sTunnels(): Promise<{ tunnels: S2sTunnel[]; summary
         },
         timestamp: new Date().toISOString()
     };
+
+    cachedS2sResult = result;
+    cachedAt = Date.now();
+
+    return result;
 }
 
 export async function troubleshootTunnel(tunnelId: string, peerIp: string): Promise<S2sTroubleshootResult> {

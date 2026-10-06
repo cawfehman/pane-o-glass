@@ -108,15 +108,42 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
         fetchConfig();
     }, [fetchConfig]);
 
-    const fetchTunnels = useCallback(async (isBackground = false) => {
-        if (!isBackground) setLoading(true);
-        else setRefreshing(true);
+    const S2S_STORAGE_KEY = "pane_s2s_vpn_cache";
+
+    // Load cached data from localStorage immediately on mount
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(S2S_STORAGE_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed.tunnels && Array.isArray(parsed.tunnels) && parsed.tunnels.length > 0) {
+                    setTunnels(parsed.tunnels);
+                    if (parsed.summary) setSummary(parsed.summary);
+                    if (parsed.lastUpdated) setLastUpdated(parsed.lastUpdated);
+                    // Cached data available: don't show full blank screen spinner
+                    setLoading(false);
+                    setRefreshing(true);
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to load cached S2S VPN tunnels:", e);
+        }
+    }, []);
+
+    const fetchTunnels = useCallback(async (isBackground = false, forceRefresh = false) => {
+        // If we already have tunnels loaded, treat fetch as a subtle background refresh rather than blanking the screen
+        if (!isBackground && tunnels.length === 0) {
+            setLoading(true);
+        } else {
+            setRefreshing(true);
+        }
         setError(null);
         try {
             const params = new URLSearchParams();
             if (selectedGateway !== "all") params.append("gateway", selectedGateway);
             if (selectedStatus !== "all") params.append("status", selectedStatus);
             if (searchQuery.trim()) params.append("q", searchQuery.trim());
+            if (forceRefresh) params.append("refresh", "true");
 
             const res = await fetch(`/api/vpn/s2s/tunnels?${params.toString()}`);
             if (!res.ok) {
@@ -124,19 +151,41 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
                 throw new Error(errData.error || `HTTP ${res.status}: Failed to fetch tunnels`);
             }
             const data = await res.json();
-            setTunnels(data.tunnels || []);
-            setSummary(data.summary || null);
-            setLastUpdated(new Date().toLocaleTimeString());
+            const fetchedTunnels = data.tunnels || [];
+            const fetchedSummary = data.summary || null;
+            const updateTime = new Date().toLocaleTimeString();
+
+            setTunnels(fetchedTunnels);
+            setSummary(fetchedSummary);
+            setLastUpdated(updateTime);
+
+            // Persist unfiltered / primary cache when no specific search is active
+            if (selectedGateway === "all" && selectedStatus === "all" && !searchQuery.trim()) {
+                try {
+                    localStorage.setItem(
+                        S2S_STORAGE_KEY,
+                        JSON.stringify({
+                            tunnels: fetchedTunnels,
+                            summary: fetchedSummary,
+                            lastUpdated: updateTime,
+                            timestamp: Date.now()
+                        })
+                    );
+                } catch (e) {
+                    console.warn("Failed to save S2S VPN cache:", e);
+                }
+            }
         } catch (err: any) {
             setError(err.message || "Failed to load S2S VPN tunnels");
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [selectedGateway, selectedStatus, searchQuery]);
+    }, [selectedGateway, selectedStatus, searchQuery, tunnels.length]);
 
     useEffect(() => {
-        fetchTunnels();
+        // Initial fetch or filter change
+        fetchTunnels(tunnels.length > 0);
     }, [fetchTunnels]);
 
     // Auto-refresh timer
@@ -355,14 +404,23 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                         </select>
                     </div>
 
+                    {/* Last Updated & Cache Status */}
+                    {lastUpdated && (
+                        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border-color bg-bg-surface text-xs text-text-secondary">
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                            <span>Updated {lastUpdated}</span>
+                        </div>
+                    )}
+
                     {/* Refresh Button */}
                     <button
-                        onClick={() => fetchTunnels(false)}
+                        onClick={() => fetchTunnels(false, true)}
                         disabled={loading || refreshing}
                         className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent-primary hover:bg-accent-primary/90 text-white text-xs font-medium transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                        title="Force re-sync against live FMC & FTD telemetry"
                     >
                         <RefreshCw size={13} className={refreshing || loading ? "animate-spin" : ""} />
-                        <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
+                        <span>{refreshing ? "Syncing..." : "Sync Now"}</span>
                     </button>
                 </div>
             </div>

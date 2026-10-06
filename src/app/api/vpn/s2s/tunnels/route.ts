@@ -16,8 +16,9 @@ export async function GET(req: Request) {
         const gateway = searchParams.get("gateway");
         const status = searchParams.get("status");
         const query = searchParams.get("q")?.toLowerCase();
+        const forceRefresh = searchParams.get("refresh") === "true";
 
-        const data = await fetchS2sTunnels();
+        const data = await fetchS2sTunnels(forceRefresh);
         let tunnels = data.tunnels;
 
         if (gateway && gateway !== "all") {
