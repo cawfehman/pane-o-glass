@@ -149,76 +149,83 @@ export class FmcClient {
             const client = await this.getAxios();
             let res;
             try {
-                res = await client.get(`/api/fmc_config/v1/domain/${this.domainUuid}/policy/ftds2svpns?expanded=true`);
+                res = await client.get(`/api/fmc_config/v1/domain/${this.domainUuid}/policy/ftds2svpns?limit=1000&expanded=true`);
             } catch (err: any) {
                 if (err.response?.status === 404) {
-                    res = await client.get(`/api/fmc_config/v1/domain/${this.domainUuid}/policy/ftds2svpnpolicies?expanded=true`);
+                    res = await client.get(`/api/fmc_config/v1/domain/${this.domainUuid}/policy/ftds2svpnpolicies?limit=1000&expanded=true`);
                 } else {
                     throw err;
                 }
             }
             const items = res.data?.items || [];
             
-            // Enrich each policy with its endpoints from FMC
-            const detailed = await Promise.all(items.map(async (p: any) => {
-                try {
-                    let epItems: any[] = [];
-                    if (Array.isArray(p.endpoints) && p.endpoints.length > 0) {
-                        epItems = p.endpoints;
-                    } else {
-                        const epRes = await client.get(`/api/fmc_config/v1/domain/${this.domainUuid}/policy/ftds2svpns/${p.id}/endpoints?expanded=true`);
-                        epItems = epRes.data?.items || [];
-                    }
+            // Enrich each policy with its endpoints from FMC using controlled concurrency (chunks of 6)
+            const chunkSize = 6;
+            const detailed: FmcS2sPolicy[] = [];
 
-                    const local = epItems.find((e: any) => !e.extranet) || epItems[0];
-                    const remote = epItems.find((e: any) => e.extranet) || epItems[1] || epItems[0];
+            for (let i = 0; i < items.length; i += chunkSize) {
+                const chunk = items.slice(i, i + chunkSize);
+                const chunkResults = await Promise.all(chunk.map(async (p: any) => {
+                    try {
+                        let epItems: any[] = [];
+                        if (Array.isArray(p.endpoints) && p.endpoints.length > 0) {
+                            epItems = p.endpoints;
+                        } else {
+                            const epRes = await client.get(`/api/fmc_config/v1/domain/${this.domainUuid}/policy/ftds2svpns/${p.id}/endpoints?expanded=true`);
+                            epItems = epRes.data?.items || [];
+                        }
 
-                    const endpoints: FmcEndpoint[] = [];
-                    if (local) {
-                        endpoints.push({
-                            deviceId: local.device?.id,
-                            deviceName: local.device?.name || "CDC-2MC-2130",
-                            interfaceName: local.interface?.name || "CDC-VPN-OUTSIDE",
-                            ipAddress: local.ipAddress || local.ipv4Address || "",
-                            peerType: "LOCAL",
-                            subnets: (local.protectedNetworks?.networks || []).map((n: any) => n.name)
-                        });
-                    }
-                    if (remote) {
-                        endpoints.push({
-                            deviceName: remote.device?.name || remote.name || remote.extranetInfo?.name || `${p.name} Remote Peer`,
-                            ipAddress: remote.extranetInfo?.ipAddress || remote.ipAddress || remote.name || "Dynamic",
-                            peerType: "PEER",
-                            subnets: (remote.protectedNetworks?.networks || []).map((n: any) => n.name)
-                        });
-                    }
+                        const local = epItems.find((e: any) => !e.extranet) || epItems[0];
+                        const remote = epItems.find((e: any) => e.extranet) || epItems[1] || epItems[0];
 
-                    return {
-                        id: p.id,
-                        name: p.name,
-                        description: p.description || `S2S VPN terminating on ${local?.device?.name || "CDC-2MC-2130"}`,
-                        topologyType: p.topologyType || "POINT_TO_POINT",
-                        ikeV1Enabled: Boolean(p.ikeV1Enabled),
-                        ikeV2Enabled: Boolean(p.ikeV2Enabled ?? true),
-                        ikePolicyName: p.ikeSettings?.name || p.ikePolicy?.name || "IKEv2_Policy",
-                        ipsecProposalName: p.ipsecSettings?.ikeV2IpsecProposal?.[0]?.name || "AES256-SHA256",
-                        endpoints
-                    };
-                } catch {
-                    return {
-                        id: p.id,
-                        name: p.name,
-                        description: `S2S VPN terminating on CDC-2MC-2130`,
-                        topologyType: p.topologyType || "POINT_TO_POINT",
-                        ikeV1Enabled: Boolean(p.ikeV1Enabled),
-                        ikeV2Enabled: Boolean(p.ikeV2Enabled ?? true),
-                        endpoints: [
-                            { deviceName: "CDC-2MC-2130", ipAddress: "162.252.231.104", peerType: "LOCAL" },
-                            { deviceName: `${p.name} Remote Peer`, ipAddress: "Dynamic", peerType: "PEER" }
-                        ]
-                    };
-                }
-            }));
+                        const endpoints: FmcEndpoint[] = [];
+                        if (local) {
+                            endpoints.push({
+                                deviceId: local.device?.id,
+                                deviceName: local.device?.name || "CDC-2MC-2130",
+                                interfaceName: local.interface?.name || "CDC-VPN-OUTSIDE",
+                                ipAddress: local.ipAddress || local.ipv4Address || "",
+                                peerType: "LOCAL",
+                                subnets: (local.protectedNetworks?.networks || []).map((n: any) => n.name)
+                            });
+                        }
+                        if (remote) {
+                            endpoints.push({
+                                deviceName: remote.device?.name || remote.name || remote.extranetInfo?.name || `${p.name} Remote Peer`,
+                                ipAddress: remote.extranetInfo?.ipAddress || remote.ipAddress || remote.name || "Dynamic",
+                                peerType: "PEER",
+                                subnets: (remote.protectedNetworks?.networks || []).map((n: any) => n.name)
+                            });
+                        }
+
+                        return {
+                            id: p.id,
+                            name: p.name,
+                            description: p.description || `S2S VPN terminating on ${local?.device?.name || "CDC-2MC-2130"}`,
+                            topologyType: p.topologyType || "POINT_TO_POINT",
+                            ikeV1Enabled: Boolean(p.ikeV1Enabled),
+                            ikeV2Enabled: Boolean(p.ikeV2Enabled ?? true),
+                            ikePolicyName: p.ikeSettings?.name || p.ikePolicy?.name || "IKEv2_Policy",
+                            ipsecProposalName: p.ipsecSettings?.ikeV2IpsecProposal?.[0]?.name || "AES256-SHA256",
+                            endpoints
+                        };
+                    } catch {
+                        return {
+                            id: p.id,
+                            name: p.name,
+                            description: `S2S VPN terminating on CDC-2MC-2130`,
+                            topologyType: p.topologyType || "POINT_TO_POINT",
+                            ikeV1Enabled: Boolean(p.ikeV1Enabled),
+                            ikeV2Enabled: Boolean(p.ikeV2Enabled ?? true),
+                            endpoints: [
+                                { deviceName: "CDC-2MC-2130", ipAddress: "162.252.231.104", peerType: "LOCAL" },
+                                { deviceName: `${p.name} Remote Peer`, ipAddress: "Dynamic", peerType: "PEER" }
+                            ]
+                        };
+                    }
+                }));
+                detailed.push(...chunkResults);
+            }
 
             return detailed;
         } catch (error: any) {
