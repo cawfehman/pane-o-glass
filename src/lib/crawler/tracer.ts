@@ -108,13 +108,38 @@ export class NativePathTracer {
 
         for (const route of routes) {
             try {
-                const cidrNum = parseInt(route.cidr.replace("/", ""), 10);
+                const prefix = route.prefix || route.network;
+                if (!prefix) continue;
+
+                let cidrNum: number;
+                if (route.cidr !== undefined && route.cidr !== null) {
+                    cidrNum = parseInt(String(route.cidr).replace("/", ""), 10);
+                } else if (route.prefix_len !== undefined && route.prefix_len !== null) {
+                    cidrNum = parseInt(String(route.prefix_len), 10);
+                } else if (route.netmask) {
+                    // Calculate cidr from netmask if provided
+                    const parts = String(route.netmask).split(".").map(Number);
+                    if (parts.length === 4) {
+                        const maskLong = ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+                        cidrNum = maskLong.toString(2).split("1").length - 1;
+                    } else {
+                        cidrNum = prefix === "0.0.0.0" ? 0 : 24;
+                    }
+                } else {
+                    cidrNum = prefix === "0.0.0.0" ? 0 : 24;
+                }
+
                 if (isNaN(cidrNum)) continue;
 
-                if (isIpInSubnet(targetIp, route.prefix, cidrNum)) {
+                if (isIpInSubnet(targetIp, prefix, cidrNum)) {
                     if (cidrNum > bestPrefixLen) {
                         bestPrefixLen = cidrNum;
-                        bestRoute = route;
+                        bestRoute = {
+                            ...route,
+                            prefix: prefix,
+                            cidr: `/${cidrNum}`,
+                            outgoing_interface: route.outgoing_interface || route.interface
+                        };
                     }
                 }
             } catch {
