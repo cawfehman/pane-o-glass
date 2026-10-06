@@ -34,7 +34,7 @@ export default async function VpnS2sPage() {
     }
 
     return (
-        <div className="page-container max-w-7xl mx-auto py-6 px-4 md:px-8 space-y-6">
+        <div className="internal-scroll-layout max-w-7xl mx-auto w-full h-full pb-2">
             <VpnS2sDashboardClient role={role} />
         </div>
     );

@@ -358,263 +358,329 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
     }, [totalPages, currentPage]);
 
     return (
-        <div className="space-y-6">
-            {/* Top Control Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border-color pb-5">
-                <div>
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
-                            <Link2 size={24} />
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-bold tracking-tight text-text-primary flex items-center gap-2">
-                                Cisco FTD / FMC Site-to-Site VPN Monitor
-                                <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold uppercase tracking-wider bg-cyan-950/60 text-cyan-400 border border-cyan-800/50">
-                                    FTD 7.2.10
-                                </span>
-                            </h1>
-                            <p className="text-sm text-text-secondary mt-0.5">
-                                Real-time cryptographic telemetry, IKEv1/IKEv2 SA health, and automated root-cause diagnostics across the Cisco Firepower perimeter fleet.
-                            </p>
+        <div className="flex flex-col h-full min-h-0 gap-4">
+            {/* Upper Fixed Area: Header, Controls, Alerts, Metrics Ribbon, and Filter Toolbar */}
+            <div className="shrink-0 flex flex-col gap-4">
+                {/* Top Control Header */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border-color pb-4">
+                    <div>
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                                <Link2 size={24} />
+                            </div>
+                            <div>
+                                <h1 className="text-2xl font-bold tracking-tight text-text-primary flex items-center gap-2">
+                                    Cisco FTD / FMC Site-to-Site VPN Monitor
+                                    <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold uppercase tracking-wider bg-cyan-950/60 text-cyan-400 border border-cyan-800/50">
+                                        FTD 7.2.10
+                                    </span>
+                                </h1>
+                                <p className="text-sm text-text-secondary mt-0.5">
+                                    Real-time cryptographic telemetry, IKEv1/IKEv2 SA health, and automated root-cause diagnostics across the Cisco Firepower perimeter fleet.
+                                </p>
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div className="flex items-center gap-2.5 flex-wrap">
-                    {/* Setup / Prompt Button */}
-                    <button
-                        onClick={() => setIsSetupModalOpen(true)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all shadow-sm ${
-                            configInfo?.isConfigured
-                                ? "border-cyan-500/30 bg-cyan-950/20 hover:bg-cyan-950/40 text-cyan-300"
-                                : "border-amber-500/50 bg-amber-950/40 hover:bg-amber-950/60 text-amber-300 ring-2 ring-amber-500/20"
-                        }`}
-                        title={configInfo?.isConfigured ? "Update FMC or FTD gateway credentials" : "No S2S credentials found in .env. Click to configure!"}
-                    >
-                        <Settings2 size={14} className={configInfo?.isConfigured ? "text-cyan-400" : "text-amber-400 animate-spin"} />
-                        <span>
-                            {configInfo?.isConfigured
-                                ? configInfo.fmc?.url
-                                    ? `FMC: ${configInfo.fmc.url.replace(/^https?:\/\//, '').split('/')[0].split(':')[0]}`
-                                    : `FTDs (${configInfo.ftds?.length || 0})`
-                                : "Configure FMC / FTDs"}
-                        </span>
-                    </button>
-
-                    {/* Safe Mode Toggle */}
-                    <button
-                        onClick={() => setSafeMode(!safeMode)}
-                        title={safeMode ? "Safe Mode is ON: SA bounces will be simulated (dry-run)" : "Safe Mode is OFF: SA bounces will execute LIVE on firewalls"}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
-                            safeMode
-                                ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300"
-                                : "bg-amber-950/40 border-amber-500/40 text-amber-300 shadow-sm"
-                        }`}
-                    >
-                        <Shield size={14} />
-                        <span>{safeMode ? "Safe Mode: ON" : "Safe Mode: OFF (LIVE)"}</span>
-                    </button>
-
-                    {/* FMC Topology Button */}
-                    <button
-                        onClick={checkFmcStatus}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-color bg-bg-surface hover:bg-bg-surface-hover text-text-secondary hover:text-text-primary text-xs font-medium transition-all"
-                    >
-                        <Server size={14} className="text-indigo-400" />
-                        <span>FMC Topology</span>
-                    </button>
-
-                    {/* Auto Refresh Select */}
-                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border-color bg-bg-surface text-xs text-text-secondary">
-                        <Clock size={13} />
-                        <select
-                            value={autoRefreshInterval}
-                            onChange={(e) => setAutoRefreshInterval(Number(e.target.value))}
-                            className="bg-transparent text-text-primary outline-none cursor-pointer text-xs"
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                        {/* Setup / Prompt Button */}
+                        <button
+                            onClick={() => setIsSetupModalOpen(true)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all shadow-sm ${
+                                configInfo?.isConfigured
+                                    ? "border-cyan-500/30 bg-cyan-950/20 hover:bg-cyan-950/40 text-cyan-300"
+                                    : "border-amber-500/50 bg-amber-950/40 hover:bg-amber-950/60 text-amber-300 ring-2 ring-amber-500/20"
+                            }`}
+                            title={configInfo?.isConfigured ? "Update FMC or FTD gateway credentials" : "No S2S credentials found in .env. Click to configure!"}
                         >
-                            <option value={0} className="bg-bg-surface text-text-primary">Auto: Off</option>
-                            <option value={15} className="bg-bg-surface text-text-primary">Auto: 15s</option>
-                            <option value={30} className="bg-bg-surface text-text-primary">Auto: 30s</option>
-                            <option value={60} className="bg-bg-surface text-text-primary">Auto: 60s</option>
-                        </select>
-                    </div>
-
-                    {/* Last Updated & Cache Status */}
-                    {lastUpdated && (
-                        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border-color bg-bg-surface text-xs text-text-secondary">
-                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                            <span>Updated {lastUpdated}</span>
-                        </div>
-                    )}
-
-                    {/* Refresh Button */}
-                    <button
-                        onClick={() => fetchTunnels(false, true)}
-                        disabled={loading || refreshing}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent-primary hover:bg-accent-primary/90 text-white text-xs font-medium transition-all shadow-sm active:scale-95 disabled:opacity-50"
-                        title="Force re-sync against live FMC & FTD telemetry"
-                    >
-                        <RefreshCw size={13} className={refreshing || loading ? "animate-spin" : ""} />
-                        <span>{refreshing ? "Syncing..." : "Sync Now"}</span>
-                    </button>
-                </div>
-            </div>
-
-            {/* Setup Needed Banner if .env is blank */}
-            {configInfo && !configInfo.isConfigured && (
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl border border-amber-500/40 bg-amber-950/20 text-amber-200 shadow-sm animate-in fade-in duration-300">
-                    <div className="flex items-center gap-3">
-                        <AlertCircle size={22} className="shrink-0 text-amber-400" />
-                        <div className="text-xs space-y-0.5">
-                            <strong className="text-amber-100 text-sm block">Target S2S Firewalls Not Configured in .env</strong>
-                            <span className="text-amber-200/90 leading-relaxed block">
-                                Enter your target Firepower Management Center (FMC) or Firepower Threat Defense (FTD) IP addresses and credentials to connect to your live Site-to-Site VPN environment.
+                            <Settings2 size={14} className={configInfo?.isConfigured ? "text-cyan-400" : "text-amber-400 animate-spin"} />
+                            <span>
+                                {configInfo?.isConfigured
+                                    ? configInfo.fmc?.url
+                                        ? `FMC: ${configInfo.fmc.url.replace(/^https?:\/\//, '').split('/')[0].split(':')[0]}`
+                                        : `FTDs (${configInfo.ftds?.length || 0})`
+                                    : "Configure FMC / FTDs"}
                             </span>
-                        </div>
-                    </div>
-                    <button
-                        onClick={() => setIsSetupModalOpen(true)}
-                        className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold whitespace-nowrap transition-all shadow-md active:scale-95 shrink-0"
-                    >
-                        Configure FMC & FTDs Now
-                    </button>
-                </div>
-            )}
+                        </button>
 
-            {/* Error Notification */}
-            {error && (
-                <div className="flex items-center gap-3 p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-sm">
-                    <AlertCircle size={18} className="shrink-0 text-rose-400" />
-                    <span>{error}</span>
-                </div>
-            )}
+                        {/* Safe Mode Toggle */}
+                        <button
+                            onClick={() => setSafeMode(!safeMode)}
+                            title={safeMode ? "Safe Mode is ON: SA bounces will be simulated (dry-run)" : "Safe Mode is OFF: SA bounces will execute LIVE on firewalls"}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all ${
+                                safeMode
+                                    ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300"
+                                    : "bg-amber-950/40 border-amber-500/40 text-amber-300 shadow-sm"
+                            }`}
+                        >
+                            <Shield size={14} />
+                            <span>{safeMode ? "Safe Mode: ON" : "Safe Mode: OFF (LIVE)"}</span>
+                        </button>
 
-            {/* Fleet KPI Ribbon */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
-                <div className="glass-card p-4 rounded-xl border border-border-color bg-bg-surface flex items-center justify-between">
-                    <div>
-                        <div className="text-xs text-text-secondary uppercase font-semibold tracking-wider">Total Tunnels</div>
-                        <div className="text-2xl font-extrabold text-text-primary mt-1">
-                            {summary?.total ?? tunnels.length}
-                        </div>
-                        <div className="text-[11px] text-text-secondary mt-0.5">FTD / FMC Monitored</div>
-                    </div>
-                    <div className="p-3 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
-                        <Network size={20} />
-                    </div>
-                </div>
+                        {/* FMC Topology Button */}
+                        <button
+                            onClick={checkFmcStatus}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-color bg-bg-surface hover:bg-bg-surface-hover text-text-secondary hover:text-text-primary text-xs font-medium transition-all"
+                        >
+                            <Server size={14} className="text-indigo-400" />
+                            <span>FMC Topology</span>
+                        </button>
 
-                <div className="glass-card p-4 rounded-xl border border-emerald-500/20 bg-emerald-950/10 flex items-center justify-between">
-                    <div>
-                        <div className="text-xs text-emerald-400 uppercase font-semibold tracking-wider flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                            Active (UP)
-                        </div>
-                        <div className="text-2xl font-extrabold text-emerald-300 mt-1">
-                            {summary?.up ?? tunnels.filter(t => t.status === "UP").length}
-                        </div>
-                        <div className="text-[11px] text-emerald-400/80 mt-0.5">Passing Encrypted Traffic</div>
-                    </div>
-                    <div className="p-3 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                        <CheckCircle2 size={20} />
-                    </div>
-                </div>
-
-                <div className="glass-card p-4 rounded-xl border border-amber-500/20 bg-amber-950/10 flex items-center justify-between">
-                    <div>
-                        <div className="text-xs text-amber-400 uppercase font-semibold tracking-wider">Degraded</div>
-                        <div className="text-2xl font-extrabold text-amber-300 mt-1">
-                            {summary?.degraded ?? tunnels.filter(t => t.status === "DEGRADED").length}
-                        </div>
-                        <div className="text-[11px] text-amber-400/80 mt-0.5">One-Way / High Drops</div>
-                    </div>
-                    <div className="p-3 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                        <AlertTriangle size={20} />
-                    </div>
-                </div>
-
-                <div className="glass-card p-4 rounded-xl border border-rose-500/20 bg-rose-950/10 flex items-center justify-between">
-                    <div>
-                        <div className="text-xs text-rose-400 uppercase font-semibold tracking-wider">Down / Failed</div>
-                        <div className="text-2xl font-extrabold text-rose-300 mt-1">
-                            {summary?.down ?? tunnels.filter(t => t.status === "DOWN").length}
-                        </div>
-                        <div className="text-[11px] text-rose-400/80 mt-0.5">Negotiation Faults</div>
-                    </div>
-                    <div className="p-3 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                        <XCircle size={20} />
-                    </div>
-                </div>
-
-                <div className="glass-card p-4 rounded-xl border border-border-color bg-bg-surface flex items-center justify-between col-span-2 md:col-span-1">
-                    <div>
-                        <div className="text-xs text-text-secondary uppercase font-semibold tracking-wider">Encrypted Volume</div>
-                        <div className="text-2xl font-extrabold text-indigo-400 mt-1">
-                            {summary?.totalBandwidthGigabytes ?? "0"} <span className="text-xs text-text-secondary font-medium">GB</span>
-                        </div>
-                        <div className="text-[11px] text-text-secondary mt-0.5">Cumulative Transferred</div>
-                    </div>
-                    <div className="p-3 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                        <Activity size={20} />
-                    </div>
-                </div>
-            </div>
-
-            {/* Filter and Search Bar */}
-            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3.5 rounded-xl border border-border-color bg-bg-surface">
-                {/* Search Input */}
-                <div className="relative flex-1">
-                    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-secondary" />
-                    <input
-                        type="text"
-                        placeholder="Search peer IP, tunnel name, protected subnet (e.g. 10.240.0.0/16)..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-9 pr-3 py-2 rounded-lg bg-bg-surface-hover/70 border border-border-color text-text-primary text-xs outline-none focus:border-accent-primary transition-all"
-                    />
-                </div>
-
-                <div className="flex items-center gap-2.5 flex-wrap">
-                    {/* Status Tabs */}
-                    <div className="flex items-center p-1 rounded-lg bg-bg-surface-hover/60 border border-border-color text-xs">
-                        {["all", "up", "degraded", "down"].map((st) => (
-                            <button
-                                key={st}
-                                onClick={() => setSelectedStatus(st)}
-                                className={`px-2.5 py-1 rounded-md text-xs font-medium capitalize transition-all ${
-                                    selectedStatus === st
-                                        ? "bg-accent-primary text-white shadow-sm"
-                                        : "text-text-secondary hover:text-text-primary"
-                                }`}
-                            >
-                                {st}
-                            </button>
-                        ))}
-                    </div>
-
-                    {/* Gateway Filter */}
-                    {gateways.length > 0 && (
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-color bg-bg-surface text-xs text-text-secondary">
-                            <Server size={13} />
+                        {/* Auto Refresh Select */}
+                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border-color bg-bg-surface text-xs text-text-secondary">
+                            <Clock size={13} />
                             <select
-                                value={selectedGateway}
-                                onChange={(e) => setSelectedGateway(e.target.value)}
-                                className="bg-transparent text-text-primary outline-none cursor-pointer text-xs max-w-[160px] truncate"
+                                value={autoRefreshInterval}
+                                onChange={(e) => setAutoRefreshInterval(Number(e.target.value))}
+                                className="bg-transparent text-text-primary outline-none cursor-pointer text-xs"
                             >
-                                <option value="all" className="bg-bg-surface text-text-primary">All Firewalls</option>
-                                {gateways.map((gw) => (
-                                    <option key={gw} value={gw} className="bg-bg-surface text-text-primary">
-                                        {gw}
-                                    </option>
-                                ))}
+                                <option value={0} className="bg-bg-surface text-text-primary">Auto: Off</option>
+                                <option value={15} className="bg-bg-surface text-text-primary">Auto: 15s</option>
+                                <option value={30} className="bg-bg-surface text-text-primary">Auto: 30s</option>
+                                <option value={60} className="bg-bg-surface text-text-primary">Auto: 60s</option>
                             </select>
                         </div>
-                    )}
+
+                        {/* Last Updated & Cache Status */}
+                        {lastUpdated && (
+                            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border-color bg-bg-surface text-xs text-text-secondary">
+                                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                                <span>Updated {lastUpdated}</span>
+                            </div>
+                        )}
+
+                        {/* Refresh Button */}
+                        <button
+                            onClick={() => fetchTunnels(false, true)}
+                            disabled={loading || refreshing}
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-accent-primary hover:bg-accent-primary/90 text-white text-xs font-medium transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                            title="Force re-sync against live FMC & FTD telemetry"
+                        >
+                            <RefreshCw size={13} className={refreshing || loading ? "animate-spin" : ""} />
+                            <span>{refreshing ? "Syncing..." : "Sync Now"}</span>
+                        </button>
+                    </div>
                 </div>
+
+                {/* Setup Needed Banner if .env is blank */}
+                {configInfo && !configInfo.isConfigured && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 rounded-xl border border-amber-500/40 bg-amber-950/20 text-amber-200 shadow-sm animate-in fade-in duration-300">
+                        <div className="flex items-center gap-3">
+                            <AlertCircle size={22} className="shrink-0 text-amber-400" />
+                            <div className="text-xs space-y-0.5">
+                                <strong className="text-amber-100 text-sm block">Target S2S Firewalls Not Configured in .env</strong>
+                                <span className="text-amber-200/90 leading-relaxed block">
+                                    Enter your target Firepower Management Center (FMC) or Firepower Threat Defense (FTD) IP addresses and credentials to connect to your live Site-to-Site VPN environment.
+                                </span>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setIsSetupModalOpen(true)}
+                            className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold whitespace-nowrap transition-all shadow-md active:scale-95 shrink-0"
+                        >
+                            Configure FMC & FTDs Now
+                        </button>
+                    </div>
+                )}
+
+                {/* Error Notification */}
+                {error && (
+                    <div className="flex items-center gap-3 p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 text-sm">
+                        <AlertCircle size={18} className="shrink-0 text-rose-400" />
+                        <span>{error}</span>
+                    </div>
+                )}
+
+                {/* Fleet KPI Ribbon */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
+                    <div className="glass-card p-3.5 rounded-xl border border-border-color bg-bg-surface flex items-center justify-between">
+                        <div>
+                            <div className="text-[11px] text-text-secondary uppercase font-semibold tracking-wider">Total Tunnels</div>
+                            <div className="text-xl font-extrabold text-text-primary mt-0.5">
+                                {summary?.total ?? tunnels.length}
+                            </div>
+                            <div className="text-[10px] text-text-secondary mt-0.5">FTD / FMC Monitored</div>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                            <Network size={18} />
+                        </div>
+                    </div>
+
+                    <div className="glass-card p-3.5 rounded-xl border border-emerald-500/20 bg-emerald-950/10 flex items-center justify-between">
+                        <div>
+                            <div className="text-[11px] text-emerald-400 uppercase font-semibold tracking-wider flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                Active (UP)
+                            </div>
+                            <div className="text-xl font-extrabold text-emerald-300 mt-0.5">
+                                {summary?.up ?? tunnels.filter(t => t.status === "UP").length}
+                            </div>
+                            <div className="text-[10px] text-emerald-400/80 mt-0.5">Passing Encrypted Traffic</div>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            <CheckCircle2 size={18} />
+                        </div>
+                    </div>
+
+                    <div className="glass-card p-3.5 rounded-xl border border-amber-500/20 bg-amber-950/10 flex items-center justify-between">
+                        <div>
+                            <div className="text-[11px] text-amber-400 uppercase font-semibold tracking-wider">Degraded</div>
+                            <div className="text-xl font-extrabold text-amber-300 mt-0.5">
+                                {summary?.degraded ?? tunnels.filter(t => t.status === "DEGRADED").length}
+                            </div>
+                            <div className="text-[10px] text-amber-400/80 mt-0.5">One-Way / High Drops</div>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                            <AlertTriangle size={18} />
+                        </div>
+                    </div>
+
+                    <div className="glass-card p-3.5 rounded-xl border border-rose-500/20 bg-rose-950/10 flex items-center justify-between">
+                        <div>
+                            <div className="text-[11px] text-rose-400 uppercase font-semibold tracking-wider">Down / Failed</div>
+                            <div className="text-xl font-extrabold text-rose-300 mt-0.5">
+                                {summary?.down ?? tunnels.filter(t => t.status === "DOWN").length}
+                            </div>
+                            <div className="text-[10px] text-rose-400/80 mt-0.5">Negotiation Faults</div>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                            <XCircle size={18} />
+                        </div>
+                    </div>
+
+                    <div className="glass-card p-3.5 rounded-xl border border-border-color bg-bg-surface flex items-center justify-between col-span-2 md:col-span-1">
+                        <div>
+                            <div className="text-[11px] text-text-secondary uppercase font-semibold tracking-wider">Encrypted Volume</div>
+                            <div className="text-xl font-extrabold text-indigo-400 mt-0.5">
+                                {summary?.totalBandwidthGigabytes ?? "0"} <span className="text-xs text-text-secondary font-medium">GB</span>
+                            </div>
+                            <div className="text-[10px] text-text-secondary mt-0.5">Cumulative Transferred</div>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                            <Activity size={18} />
+                        </div>
+                    </div>
+                </div>
+
+                {/* Filter and Search Bar */}
+                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 rounded-xl border border-border-color bg-bg-surface">
+                    {/* Search Input */}
+                    <div className="relative flex-1">
+                        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-secondary" />
+                        <input
+                            type="text"
+                            placeholder="Search peer IP, tunnel name, protected subnet (e.g. 10.240.0.0/16)..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 rounded-lg bg-bg-surface-hover/70 border border-border-color text-text-primary text-xs outline-none focus:border-accent-primary transition-all"
+                        />
+                    </div>
+
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                        {/* Status Tabs */}
+                        <div className="flex items-center p-1 rounded-lg bg-bg-surface-hover/60 border border-border-color text-xs">
+                            {["all", "up", "degraded", "down"].map((st) => (
+                                <button
+                                    key={st}
+                                    onClick={() => setSelectedStatus(st)}
+                                    className={`px-2.5 py-1 rounded-md text-xs font-medium capitalize transition-all ${
+                                        selectedStatus === st
+                                            ? "bg-accent-primary text-white shadow-sm"
+                                            : "text-text-secondary hover:text-text-primary"
+                                    }`}
+                                >
+                                    {st}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Gateway Filter */}
+                        {gateways.length > 0 && (
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-color bg-bg-surface text-xs text-text-secondary">
+                                <Server size={13} />
+                                <select
+                                    value={selectedGateway}
+                                    onChange={(e) => setSelectedGateway(e.target.value)}
+                                    className="bg-transparent text-text-primary outline-none cursor-pointer text-xs max-w-[160px] truncate"
+                                >
+                                    <option value="all" className="bg-bg-surface text-text-primary">All Firewalls</option>
+                                    {gateways.map((gw) => (
+                                        <option key={gw} value={gw} className="bg-bg-surface text-text-primary">
+                                            {gw}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Top Pagination Controls Bar */}
+                {!loading && tunnels.length > 0 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 px-3 py-2 rounded-xl border border-border-color bg-bg-surface/80 text-xs text-text-secondary">
+                        <div className="flex items-center gap-3">
+                            <span>
+                                Showing <strong className="text-text-primary font-mono">{((currentPage - 1) * pageSize) + 1}</strong> to{" "}
+                                <strong className="text-text-primary font-mono">{Math.min(currentPage * pageSize, tunnels.length)}</strong> of{" "}
+                                <strong className="text-text-primary font-mono">{tunnels.length}</strong> tunnels
+                            </span>
+
+                            <div className="flex items-center gap-1.5">
+                                <span>Per page:</span>
+                                <select
+                                    value={pageSize}
+                                    onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                                    className="bg-bg-surface-hover border border-border-color rounded px-2 py-0.5 text-text-primary text-xs outline-none cursor-pointer"
+                                >
+                                    <option value={10}>10</option>
+                                    <option value={25}>25</option>
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => setCurrentPage(1)}
+                                disabled={currentPage === 1}
+                                className="px-2 py-0.5 rounded border border-border-color bg-bg-surface hover:bg-bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed text-text-primary font-medium transition-all text-xs"
+                            >
+                                First
+                            </button>
+                            <button
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                className="px-2 py-0.5 rounded border border-border-color bg-bg-surface hover:bg-bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed text-text-primary font-medium transition-all text-xs"
+                            >
+                                Prev
+                            </button>
+
+                            <span className="px-2.5 py-0.5 font-mono text-text-primary">
+                                {currentPage} / {totalPages}
+                            </span>
+
+                            <button
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage >= totalPages}
+                                className="px-2 py-0.5 rounded border border-border-color bg-bg-surface hover:bg-bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed text-text-primary font-medium transition-all text-xs"
+                            >
+                                Next
+                            </button>
+                            <button
+                                onClick={() => setCurrentPage(totalPages)}
+                                disabled={currentPage >= totalPages}
+                                className="px-2 py-0.5 rounded border border-border-color bg-bg-surface hover:bg-bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed text-text-primary font-medium transition-all text-xs"
+                            >
+                                Last
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* Tunnels Grid & Table */}
-            <div className="space-y-3">
+            {/* Scrollable Middle Container: Tunnels List Only */}
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-2 space-y-3">
                 {loading ? (
                     <div className="py-20 text-center text-text-secondary flex flex-col items-center justify-center gap-3">
                         <RefreshCw size={28} className="animate-spin text-accent-primary" />
