@@ -77,6 +77,27 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
     const [isDiagOpen, setIsDiagOpen] = useState<boolean>(false);
     const [copiedCli, setCopiedCli] = useState<boolean>(false);
 
+    // Client-side Pagination States
+    const [currentPage, setCurrentPage] = useState<number>(1);
+    const [pageSize, setPageSize] = useState<number>(() => {
+        if (typeof window !== "undefined") {
+            const saved = localStorage.getItem("pane_s2s_page_size");
+            if (saved) {
+                const parsed = parseInt(saved, 10);
+                if ([10, 25, 50, 100].includes(parsed)) return parsed;
+            }
+        }
+        return 25;
+    });
+
+    const handlePageSizeChange = (size: number) => {
+        setPageSize(size);
+        setCurrentPage(1);
+        try {
+            localStorage.setItem("pane_s2s_page_size", size.toString());
+        } catch {}
+    };
+
     // Operational Action States
     const [actionLoading, setActionLoading] = useState<boolean>(false);
     const [actionFeedback, setActionFeedback] = useState<{ success: boolean; message: string } | null>(null);
@@ -321,6 +342,20 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
         });
         return Array.from(set);
     }, [tunnels]);
+
+    // Client-side pagination slice
+    const totalPages = Math.max(1, Math.ceil(tunnels.length / pageSize));
+    const paginatedTunnels = useMemo(() => {
+        const startIndex = (currentPage - 1) * pageSize;
+        return tunnels.slice(startIndex, startIndex + pageSize);
+    }, [tunnels, currentPage, pageSize]);
+
+    // Reset current page to 1 if out of bounds
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(1);
+        }
+    }, [totalPages, currentPage]);
 
     return (
         <div className="space-y-6">
@@ -593,7 +628,7 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 gap-3.5">
-                        {tunnels.map((tunnel) => {
+                        {paginatedTunnels.map((tunnel) => {
                             const isUp = tunnel.status === "UP";
                             const isDegraded = tunnel.status === "DEGRADED";
                             const isDown = tunnel.status === "DOWN";
@@ -746,6 +781,69 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                 </div>
                             );
                         })}
+                    </div>
+                )}
+
+                {/* Pagination Controls Footer */}
+                {!loading && tunnels.length > 0 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 rounded-xl border border-border-color bg-bg-surface text-xs text-text-secondary">
+                        <div className="flex items-center gap-3">
+                            <span>
+                                Showing <strong className="text-text-primary font-mono">{((currentPage - 1) * pageSize) + 1}</strong> to{" "}
+                                <strong className="text-text-primary font-mono">{Math.min(currentPage * pageSize, tunnels.length)}</strong> of{" "}
+                                <strong className="text-text-primary font-mono">{tunnels.length}</strong> tunnels
+                            </span>
+
+                            <div className="flex items-center gap-1.5">
+                                <span>Rows per page:</span>
+                                <select
+                                    value={pageSize}
+                                    onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                                    className="bg-bg-surface-hover border border-border-color rounded px-2 py-0.5 text-text-primary text-xs outline-none cursor-pointer"
+                                >
+                                    <option value={10}>10</option>
+                                    <option value={25}>25</option>
+                                    <option value={50}>50</option>
+                                    <option value={100}>100</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => setCurrentPage(1)}
+                                disabled={currentPage === 1}
+                                className="px-2.5 py-1 rounded border border-border-color bg-bg-surface hover:bg-bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed text-text-primary font-medium transition-all"
+                            >
+                                First
+                            </button>
+                            <button
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={currentPage === 1}
+                                className="px-2.5 py-1 rounded border border-border-color bg-bg-surface hover:bg-bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed text-text-primary font-medium transition-all"
+                            >
+                                Prev
+                            </button>
+
+                            <span className="px-3 py-1 font-mono text-text-primary">
+                                {currentPage} / {totalPages}
+                            </span>
+
+                            <button
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                disabled={currentPage >= totalPages}
+                                className="px-2.5 py-1 rounded border border-border-color bg-bg-surface hover:bg-bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed text-text-primary font-medium transition-all"
+                            >
+                                Next
+                            </button>
+                            <button
+                                onClick={() => setCurrentPage(totalPages)}
+                                disabled={currentPage >= totalPages}
+                                className="px-2.5 py-1 rounded border border-border-color bg-bg-surface hover:bg-bg-surface-hover disabled:opacity-40 disabled:cursor-not-allowed text-text-primary font-medium transition-all"
+                            >
+                                Last
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
