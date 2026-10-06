@@ -147,7 +147,16 @@ export class FmcClient {
 
         try {
             const client = await this.getAxios();
-            const res = await client.get(`/api/fmc_config/v1/domain/${this.domainUuid}/policy/s2svpnpolicies?expanded=true`);
+            let res;
+            try {
+                res = await client.get(`/api/fmc_config/v1/domain/${this.domainUuid}/policy/ftds2svpns?expanded=true`);
+            } catch (err: any) {
+                if (err.response?.status === 404) {
+                    res = await client.get(`/api/fmc_config/v1/domain/${this.domainUuid}/policy/ftds2svpnpolicies?expanded=true`);
+                } else {
+                    throw err;
+                }
+            }
             const items = res.data?.items || [];
             return items.map((p: any) => ({
                 id: p.id,
