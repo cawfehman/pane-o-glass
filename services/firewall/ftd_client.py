@@ -67,16 +67,24 @@ def load_env_file():
 
 
 def get_firewalls_config() -> List[Dict[str, Any]]:
-    """Loads and validates the FIREWALL_CONFIG array from the environment."""
+    """Loads and validates firewall configurations from FIREWALL_CONFIG and S2S_FIREWALL_CONFIG."""
     load_env_file()
-    raw = os.environ.get("FIREWALL_CONFIG", "[]")
-    try:
-        firewalls = json.loads(raw)
-        if isinstance(firewalls, list):
-            return firewalls
-    except Exception as e:
-        pass
-    return []
+    configs = []
+    seen_ids = set()
+
+    for env_var in ["FIREWALL_CONFIG", "S2S_FIREWALL_CONFIG"]:
+        raw = os.environ.get(env_var, "[]")
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                for fw in parsed:
+                    fid = str(fw.get("id") or fw.get("ip") or "").lower()
+                    if fid and fid not in seen_ids:
+                        seen_ids.add(fid)
+                        configs.append(fw)
+        except Exception:
+            pass
+    return configs
 
 
 class FtdClient:
@@ -421,12 +429,21 @@ def run_fleet_operation(action: str, target_ip: Optional[str] = None, dry_run: b
     """Runs an action concurrently across all or a selected firewall."""
     firewalls = get_firewalls_config()
     if not firewalls:
-        return [{"error": "No firewalls found in FIREWALL_CONFIG."}]
+        return [{"error": "No firewalls found in FIREWALL_CONFIG or S2S_FIREWALL_CONFIG."}]
 
     if target_id and target_id.lower() not in ["all", "fleet"]:
-        firewalls = [fw for fw in firewalls if fw.get("id") == target_id or fw.get("ip") == target_id or fw.get("name") == target_id]
-        if not firewalls:
-            return [{"error": f"Target firewall '{target_id}' was not found in FIREWALL_CONFIG."}]
+        tid = target_id.lower().strip()
+        matched = [
+            fw for fw in firewalls
+            if str(fw.get("id", "")).lower() == tid
+            or str(fw.get("ip", "")).lower() == tid
+            or str(fw.get("name", "")).lower() == tid
+            or tid in str(fw.get("id", "")).lower()
+            or tid in str(fw.get("name", "")).lower()
+        ]
+        if not matched:
+            return [{"error": f"Target firewall '{target_id}' was not found in FIREWALL_CONFIG or S2S_FIREWALL_CONFIG."}]
+        firewalls = matched
 
     results = []
     with ThreadPoolExecutor(max_workers=min(len(firewalls), 8)) as executor:
