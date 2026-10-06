@@ -90,7 +90,13 @@ export async function POST(req: Request) {
                     env: { ...process.env, PYTHONIOENCODING: "utf-8" }
                 });
                 const parsed = JSON.parse(stdout);
-                cliOutput = Array.isArray(parsed) && parsed[0]?.output ? parsed[0].output : JSON.stringify(parsed);
+                if (Array.isArray(parsed)) {
+                    cliOutput = parsed.map((p: any) => `[${p.firewallName || p.ip || 'FTD'}]: ${p.output || p.error || p.message || 'OK'}`).join("\n");
+                    executionSuccess = parsed.some((p: any) => p.success);
+                } else {
+                    cliOutput = parsed?.output || parsed?.message || JSON.stringify(parsed);
+                    executionSuccess = parsed?.success !== false;
+                }
             } catch (err: any) {
                 cliOutput = isLive 
                     ? `[DISPATCHED] Clear ${bounceType.toUpperCase()} command issued for peer ${peerIp}.`

@@ -398,7 +398,40 @@ class FtdClient:
             }
         try:
             with self._connect() as conn:
+                # Check if prompt or node indicates standby
+                try:
+                    prompt = conn.find_prompt()
+                    if "/standby" in prompt.lower() or "(standby)" in prompt.lower() or "-standby" in prompt.lower():
+                        return {
+                            "firewallId": self.fw_id,
+                            "firewallName": self.name,
+                            "ip": self.ip,
+                            "peerIp": peer_ip,
+                            "bounceType": bounce_type,
+                            "dryRun": False,
+                            "command": cmd,
+                            "success": True,
+                            "output": f"Standby unit ({prompt.strip()}): Crypto clear skipped on Standby node; active peer handles SA re-negotiation.",
+                            "isStandby": True
+                        }
+                except Exception:
+                    pass
+
                 out = conn.send_command(cmd, read_timeout=20)
+                if any(k in out.lower() for k in ["disabled on standby", "executed on the active", "standby unit"]):
+                    return {
+                        "firewallId": self.fw_id,
+                        "firewallName": self.name,
+                        "ip": self.ip,
+                        "peerIp": peer_ip,
+                        "bounceType": bounce_type,
+                        "dryRun": False,
+                        "command": cmd,
+                        "success": True,
+                        "output": f"Standby node acknowledged ({out.strip()}). Active peer handles re-negotiation.",
+                        "isStandby": True
+                    }
+
                 return {
                     "firewallId": self.fw_id,
                     "firewallName": self.name,
