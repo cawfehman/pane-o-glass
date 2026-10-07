@@ -608,9 +608,11 @@ async function executeLiveS2sFetch(): Promise<{ tunnels: S2sTunnel[]; summary: a
 }
 
 export async function troubleshootTunnel(tunnelId: string, peerIp: string): Promise<S2sTroubleshootResult> {
+    const cleanTunnelId = (tunnelId || "").trim();
+    const cleanPeerIp = (peerIp || "").trim();
     const { tunnels } = await fetchS2sTunnels();
-    const tunnel = tunnels.find(t => t.id === tunnelId || t.peerIp === peerIp) || tunnels[0];
-    const targetPeerIp = peerIp || tunnel.peerIp;
+    const tunnel = tunnels.find(t => (cleanTunnelId && t.id === cleanTunnelId) || (cleanPeerIp && t.peerIp === cleanPeerIp)) || tunnels[0];
+    const targetPeerIp = cleanPeerIp || tunnel.peerIp;
 
     // 1. First, attempt live diagnostics via SSH to active firewall
     let liveResult: any = null;

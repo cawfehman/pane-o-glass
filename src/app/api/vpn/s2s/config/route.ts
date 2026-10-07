@@ -57,7 +57,9 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json().catch(() => ({}));
-        const { action = "save", fmc, ftds, activeMode = "fmc", save = true } = body;
+        const action = typeof body.action === "string" ? body.action.trim() : "save";
+        const activeMode = typeof body.activeMode === "string" ? body.activeMode.trim() : "fmc";
+        const { fmc, ftds, save = true } = body;
 
         if (action === "clear") {
             clearSessionConfig();
@@ -66,14 +68,19 @@ export async function POST(req: Request) {
         }
 
         if (action === "test_fmc") {
-            if (!fmc?.url || !fmc?.username || !fmc?.password) {
+            const testUrl = fmc?.url?.trim();
+            const testUser = fmc?.username?.trim();
+            const testPass = fmc?.password?.trim();
+            const testDomain = fmc?.domainUuid?.trim();
+
+            if (!testUrl || !testUser || !testPass) {
                 return NextResponse.json({ error: "FMC URL, username, and password are required for connection test." }, { status: 400 });
             }
             const testClient = new FmcClient({
-                baseUrl: fmc.url,
-                username: fmc.username,
-                password: fmc.password,
-                domainUuid: fmc.domainUuid
+                baseUrl: testUrl,
+                username: testUser,
+                password: testPass,
+                domainUuid: testDomain
             });
             const res = await testClient.testConnection();
             return NextResponse.json(res);
@@ -85,17 +92,17 @@ export async function POST(req: Request) {
         const updatedFmc = fmc ? {
             url: fmc.url?.trim(),
             username: fmc.username?.trim(),
-            password: fmc.password || existing.fmc?.password || "",
+            password: typeof fmc.password === "string" && fmc.password.trim() ? fmc.password.trim() : (existing.fmc?.password || ""),
             domainUuid: fmc.domainUuid?.trim() || existing.fmc?.domainUuid
         } : existing.fmc;
 
         const updatedFtds = Array.isArray(ftds) ? ftds.map((f: any, idx: number) => ({
-            id: f.id || `s2s-ftd-${idx + 1}`,
-            name: f.name || f.ip,
+            id: (f.id?.trim()) || `s2s-ftd-${idx + 1}`,
+            name: (f.name?.trim()) || (f.ip?.trim()) || `FTD-${idx + 1}`,
             ip: f.ip?.trim(),
             user: f.user?.trim() || "admin",
-            pass: f.pass || (existing.ftds?.find(e => e.ip === f.ip)?.pass) || "",
-            secret: f.secret || ""
+            pass: typeof f.pass === "string" && f.pass.trim() ? f.pass.trim() : ((existing.ftds?.find(e => e.ip === f.ip?.trim())?.pass) || ""),
+            secret: typeof f.secret === "string" ? f.secret.trim() : ""
         })) : existing.ftds;
 
         setSessionConfig({

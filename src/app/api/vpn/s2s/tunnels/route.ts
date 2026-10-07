@@ -13,10 +13,10 @@ export async function GET(req: Request) {
         }
 
         const { searchParams } = new URL(req.url);
-        const gateway = searchParams.get("gateway");
-        const status = searchParams.get("status");
-        const query = searchParams.get("q")?.toLowerCase();
-        const forceRefresh = searchParams.get("refresh") === "true";
+        const gateway = searchParams.get("gateway")?.trim() || null;
+        const status = searchParams.get("status")?.trim() || null;
+        const query = searchParams.get("q")?.trim().toLowerCase() || null;
+        const forceRefresh = searchParams.get("refresh")?.trim() === "true";
 
         const data = await fetchS2sTunnels(forceRefresh);
         let tunnels = data.tunnels;

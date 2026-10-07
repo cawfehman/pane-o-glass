@@ -160,8 +160,16 @@ export function S2sSetupModal({
         setSaving(true);
         setSaveFeedback(null);
         try {
-            const formattedUrl = fmcUrl.trim() ? (fmcUrl.startsWith("http") ? fmcUrl.trim() : `https://${fmcUrl.trim()}`) : "";
-            const validFtds = ftds.filter(f => f.ip.trim().length > 0);
+            const validFtds = ftds
+                .filter(f => f.ip.trim().length > 0)
+                .map(f => ({
+                    id: f.id.trim(),
+                    name: f.name.trim() || f.ip.trim(),
+                    ip: f.ip.trim(),
+                    user: f.user.trim() || "admin",
+                    pass: f.pass.trim(),
+                    secret: f.secret.trim()
+                }));
 
             const payload: any = {
                 action: "save",

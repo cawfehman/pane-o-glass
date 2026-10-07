@@ -30,7 +30,11 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json().catch(() => ({}));
-        const { action, peerIp, gatewayId, dryRun = true } = body;
+        const rawAction = typeof body.action === "string" ? body.action.trim() : "";
+        const peerIp = typeof body.peerIp === "string" ? body.peerIp.trim() : "";
+        const gatewayId = typeof body.gatewayId === "string" ? body.gatewayId.trim() : undefined;
+        const dryRun = body.dryRun !== false;
+        const action = rawAction;
 
         if (!action || !peerIp) {
             return NextResponse.json({ error: "Missing required parameters: action and peerIp" }, { status: 400 });

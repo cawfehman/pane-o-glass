@@ -14,13 +14,14 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json().catch(() => ({}));
-        const { tunnelId, peerIp } = body;
+        const tunnelId = typeof body.tunnelId === "string" ? body.tunnelId.trim() : "";
+        const peerIp = typeof body.peerIp === "string" ? body.peerIp.trim() : "";
 
         if (!tunnelId && !peerIp) {
             return NextResponse.json({ error: "Either tunnelId or peerIp is required for troubleshooting" }, { status: 400 });
         }
 
-        const report = await troubleshootTunnel(tunnelId || "", peerIp || "");
+        const report = await troubleshootTunnel(tunnelId, peerIp);
 
         await logAudit(
             "VPN_S2S_INVESTIGATE",

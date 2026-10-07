@@ -274,13 +274,15 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
     }, [autoRefreshInterval, fetchTunnels]);
 
     const handleRunDiagnostics = async (tunnel: S2sTunnel) => {
-        setDiagnosingTunnelId(tunnel.id);
+        const tunnelId = tunnel.id.trim();
+        const peerIp = tunnel.peerIp.trim();
+        setDiagnosingTunnelId(tunnelId);
         setActionFeedback(null);
         try {
             const res = await fetch("/api/vpn/s2s/troubleshoot", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ tunnelId: tunnel.id, peerIp: tunnel.peerIp })
+                body: JSON.stringify({ tunnelId, peerIp })
             });
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
@@ -297,11 +299,13 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
     };
 
     const handleAction = async (action: "ping" | "clear_ipsec" | "clear_ike", peerIp: string, gatewayId?: string) => {
+        const cleanPeerIp = peerIp.trim();
+        const cleanGatewayId = gatewayId?.trim();
         setActionLoading(true);
         if (action === "ping") {
             setPingState(prev => ({
                 ...prev,
-                [peerIp]: { loading: true }
+                [cleanPeerIp]: { loading: true }
             }));
         }
         setActionFeedback(null);
@@ -311,8 +315,8 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     action,
-                    peerIp,
-                    gatewayId,
+                    peerIp: cleanPeerIp,
+                    gatewayId: cleanGatewayId,
                     dryRun: safeMode
                 })
             });
@@ -324,7 +328,7 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
             if (action === "ping") {
                 setPingState(prev => ({
                     ...prev,
-                    [peerIp]: {
+                    [cleanPeerIp]: {
                         loading: false,
                         reachable: data.reachable,
                         latencyMs: data.latencyMs,
@@ -346,7 +350,7 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
             if (action === "ping") {
                 setPingState(prev => ({
                     ...prev,
-                    [peerIp]: {
+                    [cleanPeerIp]: {
                         loading: false,
                         reachable: false,
                         packetLossPercent: 100,
