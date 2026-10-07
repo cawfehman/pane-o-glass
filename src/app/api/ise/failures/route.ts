@@ -18,7 +18,8 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const query = searchParams.get('query');
+    const rawQuery = searchParams.get('query');
+    const query = (rawQuery || "").trim();
 
     if (!query) {
         return NextResponse.json({ error: 'Missing query parameter' }, { status: 400 });

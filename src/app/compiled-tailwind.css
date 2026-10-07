@@ -3130,6 +3130,12 @@
       background-color: color-mix(in oklab, var(--color-indigo-500) 10%, transparent);
     }
   }
+  .bg-indigo-500\/15 {
+    background-color: color-mix(in srgb, oklch(58.5% 0.233 277.117) 15%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-indigo-500) 15%, transparent);
+    }
+  }
   .bg-indigo-500\/20 {
     background-color: color-mix(in srgb, oklch(58.5% 0.233 277.117) 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -4041,6 +4047,9 @@
   }
   .pr-14 {
     padding-right: calc(var(--spacing) * 14);
+  }
+  .pr-24 {
+    padding-right: calc(var(--spacing) * 24);
   }
   .pb-0 {
     padding-bottom: 0px;
@@ -5385,6 +5394,12 @@
       color: color-mix(in oklab, var(--color-text-secondary) 50%, transparent);
     }
   }
+  .placeholder\:text-text-secondary\/60::placeholder {
+    color: var(--color-text-secondary);
+    @supports (color: color-mix(in lab, red, red)) {
+      color: color-mix(in oklab, var(--color-text-secondary) 60%, transparent);
+    }
+  }
   .placeholder\:text-white\/20::placeholder {
     color: color-mix(in srgb, #fff 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -6463,6 +6478,12 @@
   .focus\:ring-accent-primary:focus {
     --tw-ring-color: var(--color-accent-primary);
   }
+  .focus\:ring-accent-primary\/30:focus {
+    --tw-ring-color: var(--color-accent-primary);
+    @supports (color: color-mix(in lab, red, red)) {
+      --tw-ring-color: color-mix(in oklab, var(--color-accent-primary) 30%, transparent);
+    }
+  }
   .focus\:ring-blue-500:focus {
     --tw-ring-color: var(--color-blue-500);
   }
@@ -6621,6 +6642,9 @@
     }
     .md\:inline {
       display: inline;
+    }
+    .md\:inline-flex {
+      display: inline-flex;
     }
     .md\:w-64 {
       width: calc(var(--spacing) * 64);

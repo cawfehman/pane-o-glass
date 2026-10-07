@@ -11,6 +11,7 @@ import ConnectionPath from "@/components/ise/ConnectionPath";
 import EnrichedEndpointCard from "@/components/ise/EnrichedEndpointCard";
 import AuthHistoryTimeline from "@/components/ise/AuthHistoryTimeline";
 import { isBooleanQuery, matchIseItemWithQuery } from "@/lib/booleanQueryParser";
+import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
 export default function CiscoIsePage() {
     const [query, setQuery] = useState("");
@@ -178,8 +179,9 @@ export default function CiscoIsePage() {
 
     const handleSearch = async (e?: React.FormEvent, directTerm?: string) => {
         if (e) e.preventDefault();
-        const searchTerm = directTerm || query;
-        if (!searchTerm.trim()) return;
+        const rawTerm = directTerm || query;
+        const searchTerm = (rawTerm || "").trim();
+        if (!searchTerm) return;
 
         setLoading(true);
         setError("");
@@ -192,9 +194,9 @@ export default function CiscoIsePage() {
         setSelectedHistoricalEvent(null);
 
         try {
-            const strippedHex = searchTerm.trim().replace(/[:.\-\s]/g, '');
+            const strippedHex = searchTerm.replace(/[:.\-\s]/g, '');
             const isMac = strippedHex.length === 12 && /^[0-9A-Fa-f]{12}$/.test(strippedHex);
-            const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(searchTerm.trim());
+            const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(searchTerm);
             const isBoolean = isBooleanQuery(searchTerm);
 
             // Fetch Live Session
@@ -212,7 +214,7 @@ export default function CiscoIsePage() {
 
             // Fetch 7-Day History & Failure Intelligence
             // If user typed a username (not MAC, not IP), searchVal MUST remain searchTerm to get multi-device summary!
-            const searchVal = directTerm || ((isMac || isIp) ? (sessionData.sessions?.[0]?.calling_station_id || searchTerm) : searchTerm);
+            const searchVal = (directTerm ? directTerm.trim() : "") || ((isMac || isIp) ? (sessionData.sessions?.[0]?.calling_station_id || searchTerm) : searchTerm);
             const historyRes = await fetch(`/api/ise/failures?query=${encodeURIComponent(searchVal)}`);
             let historyData: any = { found: false, failures: [], sessions: [] };
             if (historyRes.ok) {
@@ -362,53 +364,33 @@ export default function CiscoIsePage() {
                     />
 
                     {/* Primary Unified Smart Search Bar (Boolean & Site Code Capable) */}
-                    <form onSubmit={(e) => handleSearch(e)} className="glass-card flex flex-col gap-2 p-4">
-                        <div style={{ display: 'flex', gap: '12px' }}>
-                            <div style={{ position: 'relative', flex: 1 }}>
-                                <input
-                                    type="text"
-                                    value={query}
-                                    onChange={(e) => setQuery(e.target.value)}
-                                    placeholder="Search Username, IP, MAC, Site Code (e.g. 3CP, CUH), or Boolean (e.g. 3CP AND failure)..."
-                                    style={{ 
-                                        width: '100%', padding: '14px 16px 14px 44px', borderRadius: '12px', 
-                                        border: '1px solid var(--border-color)', background: 'var(--bg-card)', 
-                                        color: 'var(--text-primary)', fontSize: '1rem', outline: 'none', transition: 'border-color 0.2s' 
-                                    }}
-                                    disabled={loading}
-                                />
-                                <Search style={{ position: 'absolute', left: '16px', top: '15px', color: 'var(--text-muted)' }} size={20} />
-                            </div>
-                            <button type="submit" className="btn-primary" disabled={loading} style={{ padding: '0 32px', borderRadius: '12px', fontWeight: 'bold', minWidth: '150px' }}>
-                                {loading ? 'Querying...' : 'Triage Search'}
-                            </button>
-                            {query && (
-                                <button 
-                                    type="button" 
-                                    onClick={() => { 
-                                        setQuery(""); 
-                                        setDiscoveryResult(null); 
-                                        setEndpointResult(null); 
-                                        setHistoryResult(null); 
-                                        setActiveTab("dashboard"); 
-                                    }} 
-                                    className="btn-secondary" 
-                                    style={{ padding: '0 20px', borderRadius: '12px' }}
-                                >
-                                    Reset
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Search Syntax & Capability Hints */}
-                        <div style={{ display: 'flex', gap: '16px', alignItems: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', paddingLeft: '4px' }}>
-                            <span><strong>Supported:</strong> Username · IP · MAC · Facility Code (e.g. <span className="text-sky-400 font-mono">3CP</span>, <span className="text-sky-400 font-mono">CUH</span>)</span>
-                            <span>•</span>
-                            <span><strong>Boolean Operators:</strong> <span className="font-mono text-text-secondary">AND</span>, <span className="font-mono text-text-secondary">OR</span>, <span className="font-mono text-text-secondary">NOT</span>, <span className="font-mono text-text-secondary">()</span></span>
-                            <span>•</span>
-                            <span><strong>Examples:</strong> <span className="font-mono text-emerald-400">smith-jane</span> · <span className="font-mono text-emerald-400">10.20.30.40</span> · <span className="font-mono text-emerald-400">00:11:22:33:44:55</span> · <span className="font-mono text-emerald-400">3CP AND failure</span></span>
-                        </div>
-                    </form>
+                    <SmartSearchBar
+                        value={query}
+                        onChange={setQuery}
+                        onSearch={(cleanTerm) => handleSearch(undefined, cleanTerm)}
+                        onReset={() => {
+                            setQuery("");
+                            setDiscoveryResult(null);
+                            setEndpointResult(null);
+                            setHistoryResult(null);
+                            setActiveTab("dashboard");
+                        }}
+                        placeholder="Search Username, IP, MAC, Site Code (e.g. 3CP, CUH), or Boolean (e.g. 3CP AND failure)..."
+                        buttonLabel="Triage Search"
+                        loading={loading}
+                        supportedFields={["Username", "IP", "MAC", "Facility Code (e.g. 3CP, CUH)"]}
+                        examples={["smith-jane", "10.20.30.40", "00:11:22:33:44:55", "3CP AND failure"]}
+                        enableBooleanHelp={true}
+                        autoTrimOnSearch={true}
+                        typeDetector={(term) => {
+                            const clean = term.trim();
+                            // Site code detection (e.g. 3CP, CUH)
+                            if (/^[A-Za-z0-9]{3}$/.test(clean) && !/^\d{3}$/.test(clean)) {
+                                return { label: `Site Code: ${clean.toUpperCase()}`, colorClass: "bg-amber-500/15 text-amber-300 border-amber-500/30" };
+                            }
+                            return null;
+                        }}
+                    />
 
                     {error && (
                         <div style={{ marginTop: '16px', padding: '16px', borderRadius: '8px', borderLeft: '4px solid #ef4444', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444' }}>
