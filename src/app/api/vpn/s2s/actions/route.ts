@@ -37,8 +37,53 @@ export async function POST(req: Request) {
         }
 
         if (action === "ping") {
-            // Safe simulation or live ping
-            const isReachable = !["68.80.14.92", "12.180.204.60"].includes(peerIp);
+            let isReachable = false;
+            let latencyMs: number | null = null;
+            let packetLossPercent = 100;
+            let message = "";
+
+            // Attempt live ICMP ping probe (1 packet, 1200ms timeout)
+            try {
+                const isWin = process.platform === "win32";
+                const pingCmd = isWin ? "ping" : "ping";
+                const pingArgs = isWin ? ["-n", "1", "-w", "1200", peerIp] : ["-c", "1", "-W", "1", peerIp];
+                const { stdout } = await execFileAsync(pingCmd, pingArgs, { timeout: 2000 });
+
+                if (isWin) {
+                    const timeMatch = stdout.match(/time[=<](\d+)ms/i);
+                    const replyMatch = stdout.includes("Reply from") && !stdout.includes("Destination host unreachable");
+                    if (replyMatch) {
+                        isReachable = true;
+                        latencyMs = timeMatch ? parseInt(timeMatch[1], 10) : 15;
+                        packetLossPercent = 0;
+                        message = `Peer ${peerIp} responded to ICMP probe in ${latencyMs}ms (0% packet loss).`;
+                    }
+                } else {
+                    const timeMatch = stdout.match(/time=([\d.]+)\s*ms/i);
+                    if (!stdout.includes("100% packet loss") && stdout.includes("1 packets received")) {
+                        isReachable = true;
+                        latencyMs = timeMatch ? Math.round(parseFloat(timeMatch[1])) : 15;
+                        packetLossPercent = 0;
+                        message = `Peer ${peerIp} responded to ICMP probe in ${latencyMs}ms (0% packet loss).`;
+                    }
+                }
+            } catch {
+                // Ping timed out or host unreachable
+            }
+
+            // Fallback for simulated/demo endpoints when unreachable via direct host network
+            if (!isReachable) {
+                const isKnownDown = ["68.80.14.92", "12.180.204.60"].includes(peerIp);
+                if (!isKnownDown && dryRun) {
+                    isReachable = true;
+                    latencyMs = Math.floor(14 + Math.random() * 16);
+                    packetLossPercent = 0;
+                    message = `Peer ${peerIp} reachable (simulated lab probe: ${latencyMs}ms, 0% packet loss).`;
+                } else {
+                    message = `Peer ${peerIp} failed to respond (100% packet loss). Remote gateway down or routing unreachable.`;
+                }
+            }
+
             await logAudit(
                 "VPN_S2S_PING",
                 `Tested reachability to peer ${peerIp} from gateway ${gatewayId || 'fleet'}: ${isReachable ? 'REACHABLE' : 'UNREACHABLE'}`,
@@ -49,11 +94,9 @@ export async function POST(req: Request) {
                 action: "ping",
                 peerIp,
                 reachable: isReachable,
-                latencyMs: isReachable ? Math.floor(12 + Math.random() * 18) : null,
-                packetLossPercent: isReachable ? 0 : 100,
-                message: isReachable 
-                    ? `Peer ${peerIp} responded to ICMP probes (0% packet loss).`
-                    : `Peer ${peerIp} failed to respond (100% packet loss). Check upstream routing, ISP, or remote firewall power.`
+                latencyMs,
+                packetLossPercent,
+                message
             });
         }
 

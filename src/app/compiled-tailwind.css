@@ -1275,6 +1275,9 @@
   .cursor-pointer {
     cursor: pointer;
   }
+  .cursor-wait {
+    cursor: wait;
+  }
   .touch-none {
     touch-action: none;
   }

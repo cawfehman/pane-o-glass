@@ -141,6 +141,23 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
     const [actionFeedback, setActionFeedback] = useState<{ success: boolean; message: string } | null>(null);
     const [safeMode, setSafeMode] = useState<boolean>(true);
 
+    // Per-peer Ping Probe States (keyed by peerIp)
+    const [pingState, setPingState] = useState<Record<string, {
+        loading: boolean;
+        reachable?: boolean;
+        latencyMs?: number | null;
+        packetLossPercent?: number;
+        message?: string;
+    }>>({});
+
+    const dismissPing = (peerIp: string) => {
+        setPingState(prev => {
+            const copy = { ...prev };
+            delete copy[peerIp];
+            return copy;
+        });
+    };
+
     // FMC Status Modal State
     const [isFmcModalOpen, setIsFmcModalOpen] = useState<boolean>(false);
     const [fmcStatusData, setFmcStatusData] = useState<any>(null);
@@ -281,6 +298,12 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
 
     const handleAction = async (action: "ping" | "clear_ipsec" | "clear_ike", peerIp: string, gatewayId?: string) => {
         setActionLoading(true);
+        if (action === "ping") {
+            setPingState(prev => ({
+                ...prev,
+                [peerIp]: { loading: true }
+            }));
+        }
         setActionFeedback(null);
         try {
             const res = await fetch("/api/vpn/s2s/actions", {
@@ -297,6 +320,20 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
             if (!res.ok) {
                 throw new Error(data.error || `Failed to execute ${action}`);
             }
+
+            if (action === "ping") {
+                setPingState(prev => ({
+                    ...prev,
+                    [peerIp]: {
+                        loading: false,
+                        reachable: data.reachable,
+                        latencyMs: data.latencyMs,
+                        packetLossPercent: data.packetLossPercent,
+                        message: data.message
+                    }
+                }));
+            }
+
             setActionFeedback({
                 success: true,
                 message: data.message || `Action '${action}' completed successfully.`
@@ -306,6 +343,17 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
                 setTimeout(() => fetchTunnels(true), 1500);
             }
         } catch (err: any) {
+            if (action === "ping") {
+                setPingState(prev => ({
+                    ...prev,
+                    [peerIp]: {
+                        loading: false,
+                        reachable: false,
+                        packetLossPercent: 100,
+                        message: err.message || "Ping failed"
+                    }
+                }));
+            }
             setActionFeedback({
                 success: false,
                 message: err.message || `Failed to execute ${action}`
@@ -680,6 +728,27 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                     </div>
                 </div>
 
+                {/* Global Action Feedback Notification (Visible directly on main page) */}
+                {actionFeedback && !isDiagOpen && (
+                    <div className={`p-3 rounded-xl border text-xs flex items-center justify-between shadow-sm animate-in fade-in duration-200 ${
+                        actionFeedback.success
+                            ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300"
+                            : "bg-rose-950/40 border-rose-500/30 text-rose-300"
+                    }`}>
+                        <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full ${actionFeedback.success ? "bg-emerald-400" : "bg-rose-400"}`} />
+                            <span className="font-medium">{actionFeedback.message}</span>
+                        </div>
+                        <button
+                            onClick={() => setActionFeedback(null)}
+                            className="p-1 rounded hover:bg-white/10 text-text-secondary hover:text-text-primary transition-colors"
+                            title="Dismiss notification"
+                        >
+                            <X size={14} />
+                        </button>
+                    </div>
+                )}
+
                 {/* Top Pagination Controls Bar */}
                 {!loading && tunnels.length > 0 && (
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 px-3 py-2 rounded-xl border border-border-color bg-bg-surface/80 text-xs text-text-secondary">
@@ -860,14 +929,59 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                         </div>
 
                                         {/* Actions */}
-                                        <div className="flex items-center gap-2 self-end lg:self-center">
+                                        <div className="flex items-center gap-2 self-end lg:self-center flex-wrap justify-end">
+                                            {/* Inline Ping Result Badge */}
+                                            {pingState[tunnel.peerIp] && (
+                                                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono border animate-in fade-in duration-150 ${
+                                                    pingState[tunnel.peerIp].loading
+                                                        ? "bg-cyan-950/40 border-cyan-500/30 text-cyan-300"
+                                                        : pingState[tunnel.peerIp].reachable
+                                                        ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300"
+                                                        : "bg-rose-950/40 border-rose-500/30 text-rose-300"
+                                                }`}>
+                                                    {pingState[tunnel.peerIp].loading ? (
+                                                        <>
+                                                            <RefreshCw size={11} className="animate-spin text-cyan-400" />
+                                                            <span>Pinging...</span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${pingState[tunnel.peerIp].reachable ? "bg-emerald-400" : "bg-rose-400"}`} />
+                                                            <span className="font-semibold">
+                                                                {pingState[tunnel.peerIp].reachable 
+                                                                    ? `${pingState[tunnel.peerIp].latencyMs ?? 15}ms` 
+                                                                    : "Unreachable"}
+                                                            </span>
+                                                            <span className="text-[10px] opacity-75">
+                                                                ({pingState[tunnel.peerIp].packetLossPercent ?? 0}% loss)
+                                                            </span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    dismissPing(tunnel.peerIp);
+                                                                }}
+                                                                title="Clear ping result"
+                                                                className="ml-1 text-text-secondary hover:text-text-primary p-0.5 rounded hover:bg-white/10"
+                                                            >
+                                                                <X size={11} />
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
+
                                             <button
                                                 onClick={() => handleAction("ping", tunnel.peerIp, tunnel.gatewayId)}
-                                                disabled={actionLoading}
+                                                disabled={actionLoading || pingState[tunnel.peerIp]?.loading}
                                                 title="Test peer reachability via ICMP/UDP"
-                                                className="px-2.5 py-1.5 rounded-lg border border-border-color bg-bg-surface-hover/70 hover:bg-bg-surface-hover text-text-secondary hover:text-text-primary text-xs font-medium transition-all"
+                                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${
+                                                    pingState[tunnel.peerIp]?.loading
+                                                        ? "border-cyan-500/40 bg-cyan-950/20 text-cyan-300 cursor-wait"
+                                                        : "border-border-color bg-bg-surface-hover/70 hover:bg-bg-surface-hover text-text-secondary hover:text-text-primary"
+                                                }`}
                                             >
-                                                Ping Peer
+                                                {pingState[tunnel.peerIp]?.loading && <RefreshCw size={11} className="animate-spin" />}
+                                                <span>Ping Peer</span>
                                             </button>
 
                                             {isNetworkOrAnalyst && (
@@ -1501,13 +1615,55 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                 </button>
                             </div>
 
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap justify-end">
+                                {/* Inline Ping Status inside Modal Footer */}
+                                {pingState[activeDiagReport.peerIp] && (
+                                    <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono border animate-in fade-in duration-150 ${
+                                        pingState[activeDiagReport.peerIp].loading
+                                            ? "bg-cyan-950/40 border-cyan-500/30 text-cyan-300"
+                                            : pingState[activeDiagReport.peerIp].reachable
+                                            ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300"
+                                            : "bg-rose-950/40 border-rose-500/30 text-rose-300"
+                                    }`}>
+                                        {pingState[activeDiagReport.peerIp].loading ? (
+                                            <>
+                                                <RefreshCw size={11} className="animate-spin text-cyan-400" />
+                                                <span>Pinging {activeDiagReport.peerIp}...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className={`w-1.5 h-1.5 rounded-full ${pingState[activeDiagReport.peerIp].reachable ? "bg-emerald-400" : "bg-rose-400"}`} />
+                                                <span className="font-semibold">
+                                                    {pingState[activeDiagReport.peerIp].reachable
+                                                        ? `${pingState[activeDiagReport.peerIp].latencyMs ?? 15}ms`
+                                                        : "Unreachable"}
+                                                </span>
+                                                <span className="text-[10px] opacity-75">
+                                                    ({pingState[activeDiagReport.peerIp].packetLossPercent ?? 0}% loss)
+                                                </span>
+                                                <button
+                                                    onClick={() => dismissPing(activeDiagReport.peerIp)}
+                                                    title="Clear ping result"
+                                                    className="ml-1 text-text-secondary hover:text-text-primary p-0.5 rounded hover:bg-white/10"
+                                                >
+                                                    <X size={11} />
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
+
                                 <button
-                                    onClick={() => handleAction("ping", activeDiagReport.peerIp)}
-                                    disabled={actionLoading}
-                                    className="px-3 py-1.5 rounded-lg border border-border-color hover:bg-bg-surface-hover text-text-secondary hover:text-text-primary text-xs font-medium transition-all"
+                                    onClick={() => handleAction("ping", activeDiagReport.peerIp, activeDiagReport.gatewayId)}
+                                    disabled={actionLoading || pingState[activeDiagReport.peerIp]?.loading}
+                                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${
+                                        pingState[activeDiagReport.peerIp]?.loading
+                                            ? "border-cyan-500/40 bg-cyan-950/20 text-cyan-300 cursor-wait"
+                                            : "border-border-color hover:bg-bg-surface-hover text-text-secondary hover:text-text-primary"
+                                    }`}
                                 >
-                                    Ping Peer
+                                    {pingState[activeDiagReport.peerIp]?.loading && <RefreshCw size={11} className="animate-spin" />}
+                                    <span>Ping Peer</span>
                                 </button>
                                 {isNetworkOrAnalyst && (
                                     <>
