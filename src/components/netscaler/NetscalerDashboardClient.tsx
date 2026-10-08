@@ -18,6 +18,7 @@ import {
     NetscalerStats, NetscalerForeignEvent, NetscalerTimelineEvent,
     NetscalerIocRule, NetscalerIocFinding, NetscalerMatchedIp, DEFAULT_CITRIX_IOC_RULES 
 } from "@/lib/netscaler-graylog";
+import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
 const COUNTRY_COLORS: Record<string, string> = {
     US: "#3b82f6",
@@ -1488,35 +1489,29 @@ export default function NetscalerDashboardClient() {
             {/* TAB 3: USER & IP INVESTIGATOR */}
             {activeTab === "investigate" && (
                 <div className="flex flex-col gap-6">
-                    {/* Search Bar */}
-                    <div className="p-5 rounded-xl bg-slate-900/60 border border-slate-800">
-                        <form onSubmit={handleSearchSubmit} className="flex flex-col md:flex-row items-center gap-3">
-                            <div className="relative flex-1 w-full">
-                                <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                                <input
-                                    type="text"
-                                    placeholder="Enter username (e.g. honeywell-samantha) or IP address (e.g. 108.2.64.160)..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full pl-11 pr-4 py-2.5 rounded-lg bg-slate-950/80 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-teal-500 font-mono text-sm"
-                                />
-                            </div>
-                            <button
-                                type="submit"
-                                disabled={investigateLoading || !searchQuery.trim()}
-                                className="w-full md:w-auto px-6 py-2.5 rounded-lg bg-teal-500 hover:bg-teal-400 text-slate-950 font-semibold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                            >
-                                {investigateLoading ? (
-                                    <>
-                                        <RefreshCw size={16} className="animate-spin" /> Searching...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Search size={16} /> Trace User / IP
-                                    </>
-                                )}
-                            </button>
-                        </form>
+                    {/* Smart Search Bar */}
+                    <SmartSearchBar
+                        value={searchQuery}
+                        onChange={setSearchQuery}
+                        onSearch={(cleanTerm) => {
+                            setSearchQuery(cleanTerm);
+                            setActiveTab("investigate");
+                            runInvestigation(cleanTerm, timeframe);
+                        }}
+                        onReset={() => {
+                            setSearchQuery("");
+                            setInvestigateResults(null);
+                        }}
+                        placeholder="Enter username (e.g. honeywell-samantha) or IP address (e.g. 108.2.64.160)..."
+                        buttonLabel="Trace User / IP"
+                        loading={investigateLoading}
+                        supportedFields={["Username", "Client IP", "AAA Status", "Vserver", "Action"]}
+                        examples={["honeywell-samantha", "108.2.64.160", "FAIL", "LOGIN_FAILED"]}
+                        enableBooleanHelp={true}
+                        autoTrimOnSearch={true}
+                    />
+
+                    <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 -mt-2">
 
                         {/* Quick filter pills */}
                         <div className="flex flex-wrap items-center gap-2 mt-4 pt-3 border-t border-slate-800/80 text-xs">
@@ -2582,96 +2577,99 @@ export default function NetscalerDashboardClient() {
                     </div>
 
                     {/* Filter & Search Bar */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1 mr-1">
-                                <Filter size={13} className="text-teal-400" /> Filter:
-                            </span>
-                            <button
-                                onClick={() => setCveFilter("ALL")}
-                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-                                    cveFilter === "ALL"
-                                        ? "bg-slate-800 text-teal-300 font-semibold shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                            >
-                                All Signatures ({cveStats?.totalTracked || 0})
-                            </button>
-                            <button
-                                onClick={() => setCveFilter("88771")}
-                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-                                    cveFilter === "88771"
-                                        ? "bg-rose-500/20 text-rose-300 font-semibold border border-rose-500/40 shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                            >
-                                ⚡ CVE-2026-88771 ({cveStats?.cve88771Count || 0})
-                            </button>
-                            <button
-                                onClick={() => setCveFilter("88772")}
-                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-                                    cveFilter === "88772"
-                                        ? "bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/40 shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                            >
-                                ⚡ CVE-2026-88772 ({cveStats?.cve88772Count || 0})
-                            </button>
+                    {/* Unified Smart Search Bar */}
+                    <SmartSearchBar
+                        value={cveSearch}
+                        onChange={setCveSearch}
+                        onSearch={(cleanTerm) => {
+                            setCveSearch(cleanTerm);
+                            fetchCveShuns();
+                        }}
+                        onReset={() => {
+                            setCveSearch("");
+                            fetchCveShuns();
+                        }}
+                        placeholder="Search IP, country, rule, payload, or Boolean (e.g. 198.51.100.1 OR Germany)..."
+                        buttonLabel="Search Shuns"
+                        loading={cveLoading}
+                        supportedFields={["IP Address", "CISA Rule", "Country", "City", "Payload", "Notes"]}
+                        examples={["198.51.100.1", "DE", "CVE-2026-88771", "US AND NOT admin"]}
+                        enableBooleanHelp={true}
+                        autoTrimOnSearch={true}
+                        filterControls={
+                            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                                <button
+                                    type="button"
+                                    onClick={() => setCveFilter("ALL")}
+                                    className={`px-2.5 py-1.5 rounded-lg font-medium transition-all ${
+                                        cveFilter === "ALL"
+                                            ? "bg-slate-800 text-teal-300 font-semibold shadow-sm"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    All Signatures ({cveStats?.totalTracked || 0})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCveFilter("88771")}
+                                    className={`px-2.5 py-1.5 rounded-lg font-medium transition-all ${
+                                        cveFilter === "88771"
+                                            ? "bg-rose-500/20 text-rose-300 font-semibold border border-rose-500/40 shadow-sm"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    ⚡ 88771 ({cveStats?.cve88771Count || 0})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCveFilter("88772")}
+                                    className={`px-2.5 py-1.5 rounded-lg font-medium transition-all ${
+                                        cveFilter === "88772"
+                                            ? "bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/40 shadow-sm"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    ⚡ 88772 ({cveStats?.cve88772Count || 0})
+                                </button>
 
-                            <div className="h-4 w-[1px] bg-slate-800 mx-1" />
+                                <div className="h-4 w-[1px] bg-slate-800 mx-1" />
 
-                            <button
-                                onClick={() => setCveStatusFilter("ALL")}
-                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-                                    cveStatusFilter === "ALL"
-                                        ? "bg-slate-800 text-slate-200 font-semibold shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                            >
-                                All Statuses
-                            </button>
-                            <button
-                                onClick={() => setCveStatusFilter("ACTIVE")}
-                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-                                    cveStatusFilter === "ACTIVE"
-                                        ? "bg-rose-500/20 text-rose-300 font-semibold border border-rose-500/40 shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                            >
-                                Active Shuns ({cveStats?.activeCount || 0})
-                            </button>
-                            <button
-                                onClick={() => setCveStatusFilter("REMOVED")}
-                                className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
-                                    cveStatusFilter === "REMOVED"
-                                        ? "bg-slate-800 text-slate-400 font-semibold shadow-sm"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                            >
-                                Released ({cveStats?.removedCount || 0})
-                            </button>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            <div className="relative">
-                                <Search size={13} className="absolute left-2.5 top-2.5 text-slate-500" />
-                                <input
-                                    type="text"
-                                    placeholder="Search IP, country, rule, payload..."
-                                    value={cveSearch}
-                                    onChange={(e) => setCveSearch(e.target.value)}
-                                    onKeyDown={(e) => { if (e.key === "Enter") fetchCveShuns(); }}
-                                    className="pl-8 pr-3 py-1.5 text-xs rounded-lg bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-rose-500 w-56"
-                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setCveStatusFilter("ALL")}
+                                    className={`px-2.5 py-1.5 rounded-lg font-medium transition-all ${
+                                        cveStatusFilter === "ALL"
+                                            ? "bg-slate-800 text-slate-200 font-semibold shadow-sm"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    All Statuses
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCveStatusFilter("ACTIVE")}
+                                    className={`px-2.5 py-1.5 rounded-lg font-medium transition-all ${
+                                        cveStatusFilter === "ACTIVE"
+                                            ? "bg-rose-500/20 text-rose-300 font-semibold border border-rose-500/40 shadow-sm"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    Active ({cveStats?.activeCount || 0})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setCveStatusFilter("REMOVED")}
+                                    className={`px-2.5 py-1.5 rounded-lg font-medium transition-all ${
+                                        cveStatusFilter === "REMOVED"
+                                            ? "bg-slate-800 text-slate-400 font-semibold shadow-sm"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    Released ({cveStats?.removedCount || 0})
+                                </button>
                             </div>
-                            <button
-                                onClick={fetchCveShuns}
-                                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700"
-                            >
-                                Search
-                            </button>
-                        </div>
-                    </div>
+                        }
+                    />
 
                     {/* Dedicated Tracking Table */}
                     <div className="rounded-xl border border-slate-800 bg-slate-900/50 overflow-hidden shadow-lg">

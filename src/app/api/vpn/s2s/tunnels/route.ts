@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { fetchS2sTunnels } from "@/lib/s2s-vpn";
+import { isBooleanQuery, tokenizeQuery, parseTokensToAST, evaluateBooleanAST } from "@/lib/booleanQueryParser";
 
 export async function GET(req: Request) {
     try {
@@ -30,14 +31,34 @@ export async function GET(req: Request) {
         }
 
         if (query) {
-            tunnels = tunnels.filter(t => 
-                t.name.toLowerCase().includes(query) ||
-                t.peerIp.toLowerCase().includes(query) ||
-                t.peerDeviceName.toLowerCase().includes(query) ||
-                t.fmcPolicyName.toLowerCase().includes(query) ||
-                t.localSubnets.some(s => s.toLowerCase().includes(query)) ||
-                t.remoteSubnets.some(s => s.toLowerCase().includes(query))
-            );
+            const hasBool = isBooleanQuery(query);
+            let ast: any = null;
+            if (hasBool) {
+                try { ast = parseTokensToAST(tokenizeQuery(query)); } catch (e) {}
+            }
+            if (ast) {
+                tunnels = tunnels.filter(t => evaluateBooleanAST(t, ast, (tunnel: any, term: string) => {
+                    const q = term.toLowerCase().trim();
+                    if (!q) return true;
+                    return (
+                        tunnel.name.toLowerCase().includes(q) ||
+                        tunnel.peerIp.toLowerCase().includes(q) ||
+                        tunnel.peerDeviceName.toLowerCase().includes(q) ||
+                        tunnel.fmcPolicyName.toLowerCase().includes(q) ||
+                        tunnel.localSubnets.some((s: string) => s.toLowerCase().includes(q)) ||
+                        tunnel.remoteSubnets.some((s: string) => s.toLowerCase().includes(q))
+                    );
+                }));
+            } else {
+                tunnels = tunnels.filter(t => 
+                    t.name.toLowerCase().includes(query) ||
+                    t.peerIp.toLowerCase().includes(query) ||
+                    t.peerDeviceName.toLowerCase().includes(query) ||
+                    t.fmcPolicyName.toLowerCase().includes(query) ||
+                    t.localSubnets.some(s => s.toLowerCase().includes(query)) ||
+                    t.remoteSubnets.some(s => s.toLowerCase().includes(query))
+                );
+            }
         }
 
         return NextResponse.json({

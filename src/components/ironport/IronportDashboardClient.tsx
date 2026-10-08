@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { ShieldAlert, MailWarning, Activity, ServerCrash, RefreshCw, Search, Clock, AlertTriangle, FileText, Info, ExternalLink, Filter, Send, Inbox, Link2, Server, CheckCircle2, ShieldCheck, Mail, FileCode2, Globe, PieChart as PieIcon, Wrench, X, Lock, Users, LayoutDashboard } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart, PieChart, Pie, Cell, Legend } from "recharts";
-import { useSearchParams } from "next/navigation";
 import { GraylogStats, OFFICIAL_M365_AUTH_ENDPOINTS, M365AuthEndpoint, OFFICIAL_AUTH_HOSTS } from "@/lib/og-graylog";
+import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
 export default function IronportDashboardClient() {
     const searchParams = useSearchParams();
@@ -2138,30 +2138,33 @@ export default function IronportDashboardClient() {
             {/* Investigate & Logs Tab */}
             {activeTab === "investigate" && (
                 <div className="flex flex-col gap-6">
-                    <div className="glass-card">
-                        <form 
-                            onSubmit={(e) => { e.preventDefault(); handleSearch(); }}
-                            className="flex gap-4 items-center"
-                        >
-                            <div className="relative flex-1">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--text-muted)]" />
-                                <input 
-                                    type="text"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder='Search Graylog Lucene (e.g. message:"Message-ID" OR message:"Subject" OR message:"URL" OR message:"AMP" OR message:"MID 12345")'
-                                    className="w-full pl-10 pr-4 py-3 bg-[var(--bg-default)] border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-primary)] focus:ring-1 focus:ring-[var(--accent-primary)] font-mono text-sm"
-                                />
-                            </div>
-                            <button 
-                                type="submit"
-                                disabled={searchLoading || !searchQuery}
-                                className="px-6 py-3 bg-[var(--accent-primary)] hover:bg-blue-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
-                            >
-                                {searchLoading ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-                                Search ({getTimeframeLabel(timeframe)})
-                            </button>
-                        </form>
+                    {/* Unified Smart Search Bar */}
+                    <SmartSearchBar
+                        value={searchQuery}
+                        onChange={setSearchQuery}
+                        onSearch={(cleanTerm) => {
+                            setSearchQuery(cleanTerm);
+                            handleSearch(cleanTerm);
+                        }}
+                        onReset={() => {
+                            setSearchQuery("");
+                            setSearchResults([]);
+                        }}
+                        placeholder='Search Graylog Lucene (e.g. message:"Message-ID" OR message:"Subject" OR message:"URL" OR message:"AMP" OR message:"MID 12345")...'
+                        buttonLabel={`Search (${getTimeframeLabel(timeframe)})`}
+                        loading={searchLoading}
+                        supportedFields={["message", "source", "MID", "Subject", "URL", "AMP"]}
+                        examples={[
+                            'message:"Message-ID"',
+                            'message:"URL" OR message:"url_rep"',
+                            'message:"AMP"',
+                            'source:esa01*'
+                        ]}
+                        enableBooleanHelp={true}
+                        autoTrimOnSearch={true}
+                    />
+
+                    <div className="glass-card -mt-3">
                         <div className="flex gap-2 mt-4 flex-wrap items-center">
                             <span className="text-xs text-[var(--text-muted)] uppercase tracking-wider font-bold mr-2 flex items-center h-8">Quick Filters:</span>
                             <button onClick={() => handleSearch('message:"Message-ID" OR message:"Subject"')} className="px-3 py-1 bg-cyan-500/10 text-cyan-500 hover:bg-cyan-500/20 border border-cyan-500/30 rounded-md text-xs font-semibold transition-colors flex items-center gap-1"><Mail className="w-3 h-3" /> Message-ID / Subject Logs</button>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Lock, Shield, Search, RefreshCw, Clock, Wifi, User, Activity, Globe, Save, ChevronDown, ChevronUp, Terminal, ShieldCheck, Key, Hash, Layers, Pocket, ExternalLink, BarChart3, Users, Monitor, MapPin, Calendar, Filter, ArrowUpRight, AlertCircle } from 'lucide-react';
 import { QueryHeader } from '@/components/queries/QueryHeader';
+import { SmartSearchBar } from '@/components/common/SmartSearchBar';
 
 interface TacacsEvent {
     timestamp: string;
@@ -280,21 +281,35 @@ export default function TacacsPage() {
                     }
                 />
 
-                <div className="glass-card" style={{ padding: '12px 20px', background: 'rgba(255,255,255,0.02)' }}>
-                    <div className="flex gap-4">
-                        <div style={{ flex: 1, position: 'relative' }}>
-                            <Search style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} size={18} />
-                            <input 
-                                type="text"
-                                value={query}
-                                onChange={(e) => setQuery(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && performSearch()}
-                                placeholder="Search Command Strings, User Identities, or Device Hostnames..."
-                                style={{ width: '100%', padding: '14px 16px 14px 48px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '10px', color: 'var(--text-primary)', outline: 'none' }}
-                            />
-                        </div>
-                    </div>
-                </div>
+                <SmartSearchBar
+                    value={query}
+                    onChange={setQuery}
+                    onSearch={(cleanTerm) => {
+                        setQuery(cleanTerm);
+                        performSearch(cleanTerm, window);
+                    }}
+                    onReset={() => {
+                        setQuery("");
+                        performSearch("", window);
+                    }}
+                    placeholder="Search Command Strings, User Identities, Device Hostnames, or Boolean (e.g. admin AND show)..."
+                    buttonLabel="Forensic Search"
+                    loading={isSearching}
+                    supportedFields={["User Identity", "Network Device", "Command String", "Source IP"]}
+                    examples={["admin", "kel-core", "show running-config", "admin AND show", "cuh-sw NOT show"]}
+                    enableBooleanHelp={true}
+                    autoTrimOnSearch={true}
+                    typeDetector={(term) => {
+                        const clean = term.trim();
+                        if (/-(?:core|sw\d*|fw\d*|rtr\d*)/i.test(clean)) {
+                            return { label: "Device Hostname", colorClass: "bg-amber-500/15 text-amber-300 border-amber-500/30" };
+                        }
+                        if (/^(?:show|conf|config|terminal|wr|write|reload|ping|traceroute)/i.test(clean)) {
+                            return { label: "CLI Command", colorClass: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" };
+                        }
+                        return null;
+                    }}
+                />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', margin: '24px 0 40px' }}>

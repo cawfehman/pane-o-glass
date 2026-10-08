@@ -41,6 +41,7 @@ import {
 import { S2sTunnel, S2sTroubleshootResult } from "@/lib/s2s-vpn";
 import { S2sSetupModal } from "@/components/vpn/S2sSetupModal";
 import { ToolHelp } from "@/components/ToolHelp";
+import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
 interface FleetSummary {
     total: number;
@@ -71,6 +72,7 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
 
     // Filters
     const [searchQuery, setSearchQuery] = useState<string>("");
+    const [activeQuery, setActiveQuery] = useState<string>("");
     const [selectedStatus, setSelectedStatus] = useState<string>("all");
     const [selectedGateway, setSelectedGateway] = useState<string>("all");
     const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(30); // seconds (0 = off)
@@ -206,7 +208,7 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
         }
     }, []);
 
-    const fetchTunnels = useCallback(async (isBackground = false, forceRefresh = false) => {
+    const fetchTunnels = useCallback(async (isBackground = false, forceRefresh = false, queryOverride?: string) => {
         // If we already have tunnels loaded, treat fetch as a subtle background refresh rather than blanking the screen
         if (!isBackground && tunnels.length === 0) {
             setLoading(true);
@@ -218,7 +220,8 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
             const params = new URLSearchParams();
             if (selectedGateway !== "all") params.append("gateway", selectedGateway);
             if (selectedStatus !== "all") params.append("status", selectedStatus);
-            if (searchQuery.trim()) params.append("q", searchQuery.trim());
+            const term = (queryOverride !== undefined ? queryOverride : activeQuery).trim();
+            if (term) params.append("q", term);
             if (forceRefresh) params.append("refresh", "true");
 
             const res = await fetch(`/api/vpn/s2s/tunnels?${params.toString()}`);
@@ -236,7 +239,7 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
             setLastUpdated(updateTime);
 
             // Persist unfiltered / primary cache when no specific search is active
-            if (selectedGateway === "all" && selectedStatus === "all" && !searchQuery.trim()) {
+            if (selectedGateway === "all" && selectedStatus === "all" && !term) {
                 try {
                     localStorage.setItem(
                         S2S_STORAGE_KEY,
@@ -257,7 +260,7 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [selectedGateway, selectedStatus, searchQuery, tunnels.length]);
+    }, [selectedGateway, selectedStatus, activeQuery, tunnels.length]);
 
     useEffect(() => {
         // Initial fetch or filter change
@@ -679,58 +682,78 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                     </div>
                 </div>
 
-                {/* Filter and Search Bar */}
-                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 rounded-xl border border-border-color bg-bg-surface">
-                    {/* Search Input */}
-                    <div className="relative flex-1">
-                        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-secondary" />
-                        <input
-                            type="text"
-                            placeholder="Search peer IP, tunnel name, protected subnet (e.g. 10.240.0.0/16)..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-9 pr-3 py-2 rounded-lg bg-bg-surface-hover/70 border border-border-color text-text-primary text-xs outline-none focus:border-accent-primary transition-all"
-                        />
-                    </div>
-
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                        {/* Status Tabs */}
-                        <div className="flex items-center p-1 rounded-lg bg-bg-surface-hover/60 border border-border-color text-xs">
-                            {["all", "up", "degraded", "down"].map((st) => (
-                                <button
-                                    key={st}
-                                    onClick={() => setSelectedStatus(st)}
-                                    className={`px-2.5 py-1 rounded-md text-xs font-medium capitalize transition-all ${
-                                        selectedStatus === st
-                                            ? "bg-accent-primary text-white shadow-sm"
-                                            : "text-text-secondary hover:text-text-primary"
-                                    }`}
-                                >
-                                    {st}
-                                </button>
-                            ))}
-                        </div>
-
-                        {/* Gateway Filter */}
-                        {gateways.length > 0 && (
-                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border-color bg-bg-surface text-xs text-text-secondary">
-                                <Server size={13} />
-                                <select
-                                    value={selectedGateway}
-                                    onChange={(e) => setSelectedGateway(e.target.value)}
-                                    className="bg-transparent text-text-primary outline-none cursor-pointer text-xs max-w-[160px] truncate"
-                                >
-                                    <option value="all" className="bg-bg-surface text-text-primary">All Firewalls</option>
-                                    {gateways.map((gw) => (
-                                        <option key={gw} value={gw} className="bg-bg-surface text-text-primary">
-                                            {gw}
-                                        </option>
-                                    ))}
-                                </select>
+                {/* Unified Smart Search Bar & Filter Controls */}
+                <SmartSearchBar
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    onSearch={(cleanTerm) => {
+                        setSearchQuery(cleanTerm);
+                        setActiveQuery(cleanTerm);
+                        fetchTunnels(false, false, cleanTerm);
+                    }}
+                    onReset={() => {
+                        setSearchQuery("");
+                        setActiveQuery("");
+                        fetchTunnels(false, false, "");
+                    }}
+                    placeholder="Search peer IP, tunnel name, protected subnet, or Boolean (e.g. 10.240.0.0/16 AND cuh-fw)..."
+                    buttonLabel="Filter"
+                    loading={loading || refreshing}
+                    supportedFields={["Peer IP", "Tunnel Name", "Protected Subnet", "Firewall Gateway", "FMC Policy"]}
+                    examples={["10.240.0.0/16", "cuh-fw1", "192.168.1.1", "cuh-fw1 AND up"]}
+                    enableBooleanHelp={true}
+                    autoTrimOnSearch={true}
+                    typeDetector={(term) => {
+                        const clean = term.trim();
+                        if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}\/\d{1,2}$/.test(clean)) {
+                            return { label: "CIDR Subnet", colorClass: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" };
+                        }
+                        if (/-(?:fw|asa|firewall)/i.test(clean)) {
+                            return { label: "Firewall Gateway", colorClass: "bg-amber-500/15 text-amber-300 border-amber-500/30" };
+                        }
+                        return null;
+                    }}
+                    filterControls={
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {/* Status Tabs */}
+                            <div className="flex items-center p-1 rounded-xl bg-bg-surface-hover/80 border border-border-color text-xs">
+                                {["all", "up", "degraded", "down"].map((st) => (
+                                    <button
+                                        key={st}
+                                        type="button"
+                                        onClick={() => setSelectedStatus(st)}
+                                        className={`px-2.5 py-1 rounded-lg text-xs font-medium capitalize transition-all ${
+                                            selectedStatus === st
+                                                ? "bg-accent-primary text-white shadow-sm"
+                                                : "text-text-secondary hover:text-text-primary"
+                                        }`}
+                                    >
+                                        {st}
+                                    </button>
+                                ))}
                             </div>
-                        )}
-                    </div>
-                </div>
+
+                            {/* Gateway Filter */}
+                            {gateways.length > 0 && (
+                                <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border-color bg-bg-surface-hover/80 text-xs text-text-secondary">
+                                    <Server size={13} />
+                                    <select
+                                        value={selectedGateway}
+                                        onChange={(e) => setSelectedGateway(e.target.value)}
+                                        className="bg-transparent text-text-primary outline-none cursor-pointer text-xs max-w-[160px] truncate"
+                                    >
+                                        <option value="all" className="bg-bg-surface text-text-primary">All Firewalls</option>
+                                        {gateways.map((gw) => (
+                                            <option key={gw} value={gw} className="bg-bg-surface text-text-primary">
+                                                {gw}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+                    }
+                />
 
                 {/* Global Action Feedback Notification (Visible directly on main page) */}
                 {actionFeedback && !isDiagOpen && (

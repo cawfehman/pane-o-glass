@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
+import { parseBooleanSearchQuery } from "@/lib/booleanQueryParser";
 
 export const dynamic = "force-dynamic";
 
@@ -26,14 +27,21 @@ export async function GET(req: NextRequest) {
         }
 
         if (search) {
-            whereClause.OR = [
-                { ip: { contains: search, mode: 'insensitive' } },
-                { companyName: { contains: search, mode: 'insensitive' } },
-                { companyType: { contains: search, mode: 'insensitive' } },
-                { cidr: { contains: search, mode: 'insensitive' } },
-                { asn: { contains: search, mode: 'insensitive' } },
-                { details: { contains: search, mode: 'insensitive' } }
-            ];
+            const parsedWhere = parseBooleanSearchQuery(search, (term) => ({
+                OR: [
+                    { ip: { contains: term, mode: 'insensitive' } },
+                    { companyName: { contains: term, mode: 'insensitive' } },
+                    { companyType: { contains: term, mode: 'insensitive' } },
+                    { cidr: { contains: term, mode: 'insensitive' } },
+                    { asn: { contains: term, mode: 'insensitive' } },
+                    { details: { contains: term, mode: 'insensitive' } }
+                ]
+            }));
+            if (parsedWhere) {
+                if (parsedWhere.AND) whereClause.AND = parsedWhere.AND;
+                else if (parsedWhere.OR) whereClause.OR = parsedWhere.OR;
+                else Object.assign(whereClause, parsedWhere);
+            }
         }
 
         const take = limitParam === "all" ? 10000 : Math.min(10000, Math.max(1, parseInt(limitParam, 10) || 500));

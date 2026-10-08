@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { logAudit } from "@/lib/audit";
 import { lookupDomainUmbrella, UmbrellaCategorizationResponse } from "@/lib/umbrella";
+import { parseBooleanSearchQuery } from "@/lib/booleanQueryParser";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -74,18 +75,24 @@ export async function GET(req: Request) {
             }
 
             if (query) {
-                const clean = query.trim().toLowerCase();
-                const cleanDomain = clean.replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
-
-                whereConditions.OR = [
-                    { targetHost: { contains: cleanDomain, mode: 'insensitive' } },
-                    { targetHost: { contains: clean, mode: 'insensitive' } },
-                    { destUrl: { contains: clean, mode: 'insensitive' } },
-                    { mid: { contains: clean } },
-                    { recipient: { contains: clean, mode: 'insensitive' } },
-                    { sender: { contains: clean, mode: 'insensitive' } },
-                    { subject: { contains: clean, mode: 'insensitive' } }
-                ];
+                const becWhere = parseBooleanSearchQuery(query, (term) => {
+                    const clean = term.trim().toLowerCase();
+                    const cleanDomain = clean.replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
+                    return {
+                        OR: [
+                            { targetHost: { contains: cleanDomain, mode: 'insensitive' } },
+                            { targetHost: { contains: clean, mode: 'insensitive' } },
+                            { destUrl: { contains: clean, mode: 'insensitive' } },
+                            { mid: { contains: clean } },
+                            { recipient: { contains: clean, mode: 'insensitive' } },
+                            { sender: { contains: clean, mode: 'insensitive' } },
+                            { subject: { contains: clean, mode: 'insensitive' } }
+                        ]
+                    };
+                });
+                if (becWhere) {
+                    Object.assign(whereConditions, becWhere);
+                }
             }
 
             const [foundUrls, matches] = await Promise.all([

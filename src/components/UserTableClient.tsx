@@ -4,6 +4,7 @@ import React, { useState, useMemo } from "react";
 import { updateUser, deleteUser } from "@/app/actions/users";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PaginationControls } from "@/components/common/PaginationControls";
+import SmartSearchBar from "@/components/common/SmartSearchBar";
 import { Search, Edit2, Trash2 } from "lucide-react";
 
 export default function UserTableClient({ initialUsers }: { initialUsers: any[] }) {
@@ -185,17 +186,16 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
         <div className="flex flex-col border border-border-color rounded-xl overflow-hidden bg-bg-surface shadow-sm">
             {/* Top Toolbar */}
             <div className="p-4 border-b border-border-color bg-bg-surface/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shrink-0">
-                <div className="relative w-full sm:w-72">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                    <input
-                        type="text"
-                        placeholder="Search accounts or roles..."
+                <div className="w-full sm:w-80">
+                    <SmartSearchBar
                         value={searchQuery}
-                        onChange={(e) => {
-                            setSearchQuery(e.target.value);
+                        onChange={(val) => {
+                            setSearchQuery(val);
                             setPage(1);
                         }}
-                        className="w-full pl-9 pr-3 py-1.5 bg-bg-dark border border-border-color rounded-lg text-text-primary text-xs outline-none focus:border-accent-primary transition-all"
+                        placeholder="Search accounts or roles..."
+                        enableLiveFiltering={true}
+                        showHelp={false}
                     />
                 </div>
 

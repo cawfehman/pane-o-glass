@@ -11,6 +11,7 @@ import { VpnWorldMap } from "@/components/VpnWorldMap";
 import { useSession } from "next-auth/react";
 import { PromptDialog } from "@/components/common/PromptDialog";
 import { PaginationControls } from "@/components/common/PaginationControls";
+import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
 export default function VpnTroubleshootingPage() {
     const { data: session } = useSession();
@@ -216,9 +217,10 @@ export default function VpnTroubleshootingPage() {
         }
     };
 
-    const handleSearch = async (e?: React.FormEvent) => {
+    const handleSearch = async (e?: React.FormEvent, termOverride?: string) => {
         if (e) e.preventDefault();
-        if (!searchQuery.trim()) {
+        const term = (termOverride !== undefined ? termOverride : searchQuery).trim();
+        if (!term) {
             setSearchResults(null);
             return;
         }
@@ -226,7 +228,7 @@ export default function VpnTroubleshootingPage() {
         setSearching(true);
         try {
             setError("");
-            const res = await fetch(`/api/vpn/events?q=${encodeURIComponent(searchQuery)}`);
+            const res = await fetch(`/api/vpn/events?q=${encodeURIComponent(term)}`);
             if (!res.ok) throw new Error("Search request failed");
             const data = await res.json();
             setSearchResults(data.results || []);
@@ -725,58 +727,35 @@ export default function VpnTroubleshootingPage() {
                         borderBottom: '1px solid var(--border-color)',
                         marginBottom: '2.5rem'
                     }}>
-                        <form onSubmit={handleSearch} className="flex gap-3">
-                            <div style={{ position: 'relative', flex: 1 }}>
-                                <Search size={20} style={{ 
-                                    position: 'absolute', 
-                                    left: '14px', 
-                                    top: '50%', 
-                                    transform: 'translateY(-50%)', 
-                                    color: 'var(--text-muted)' 
-                                }} />
-                                <input
-                                    type="text"
-                                    placeholder="Search by Username, IP address, or Date (e.g. YYYY-MM-DD)..."
-                                    value={searchQuery}
-                                    onChange={(e) => {
-                                        setSearchQuery(e.target.value);
-                                        if (!e.target.value.trim()) setSearchResults(null);
-                                    }}
-                                    style={{
-                                        width: '100%',
-                                        padding: '14px 14px 14px 44px',
-                                        background: 'var(--bg-surface)',
-                                        border: '1px solid var(--border-color)',
-                                        borderRadius: '10px',
-                                        color: 'var(--text-primary)',
-                                        fontSize: '1rem',
-                                        outline: 'none',
-                                        transition: 'border-color 0.2s'
-                                    }}
-                                />
-                            </div>
-                            <button 
-                                type="submit" 
-                                className="btn-primary" 
-                                disabled={searching}
-                                style={{ padding: '0 24px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}
-                            >
-                                {searching ? "Searching..." : "Search"}
-                            </button>
-                            {searchResults !== null && (
-                                <button 
-                                    type="button" 
-                                    className="btn-secondary"
-                                    onClick={() => {
-                                        setSearchQuery("");
-                                        setSearchResults(null);
-                                    }}
-                                    style={{ padding: '0 18px', borderRadius: '10px' }}
-                                >
-                                    Clear
-                                </button>
-                            )}
-                        </form>
+                        <SmartSearchBar
+                            value={searchQuery}
+                            onChange={(val) => {
+                                setSearchQuery(val);
+                                if (!val.trim()) setSearchResults(null);
+                            }}
+                            onSearch={(cleanTerm) => {
+                                setSearchQuery(cleanTerm);
+                                handleSearch(undefined, cleanTerm);
+                            }}
+                            onReset={() => {
+                                setSearchQuery("");
+                                setSearchResults(null);
+                            }}
+                            placeholder="Search Username, IP address, Stream, or Boolean (e.g. (smith-jane OR doe-john) AND 10.20.30.40)..."
+                            buttonLabel="Forensic Search"
+                            loading={searching}
+                            supportedFields={["Username", "Source IP", "Assigned IP", "VPN Stream", "Country", "Failure Reason"]}
+                            examples={["smith-jane", "10.20.30.40", "US", "smith-jane AND failure", "(smith-jane OR doe-john) AND NOT US"]}
+                            enableBooleanHelp={true}
+                            autoTrimOnSearch={true}
+                            typeDetector={(term) => {
+                                const clean = term.trim();
+                                if (/^(?:10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.)/.test(clean)) {
+                                    return { label: "RFC1918 Private IP", colorClass: "bg-amber-500/15 text-amber-300 border-amber-500/30" };
+                                }
+                                return null;
+                            }}
+                        />
                         
                         {/* Subtabs Selector & Row Limit */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', gap: '12px', flexWrap: 'wrap' }}>

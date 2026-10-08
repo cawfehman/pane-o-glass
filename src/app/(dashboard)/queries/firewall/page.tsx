@@ -6,6 +6,7 @@ import { Shield, ExternalLink } from "lucide-react";
 import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PaginationControls } from "@/components/common/PaginationControls";
+import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
 export default function CiscoFirewallPage() {
     const [activeTab, setActiveTab] = useState<"manual" | "guardian" | "blacklist" | "database">("manual");
@@ -647,91 +648,84 @@ export default function CiscoFirewallPage() {
         </>
         ) : activeTab === "guardian" ? (
              <div className="flex-1 min-h-0 flex flex-col gap-4">
-                {/* --- SEARCH & FILTER CONTROLS --- */}
-                <div className="glass-card" style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: '250px' }}>
-                        <input
-                            type="text"
-                            placeholder="Search by IP, Company Name, CIDR, ASN or details..."
-                            value={guardianSearch}
-                            onChange={(e) => {
-                                setGuardianSearch(e.target.value);
-                                setGuardianPage(1);
-                            }}
-                            style={{
-                                width: '100%',
-                                padding: '10px 14px',
-                                backgroundColor: 'var(--bg-dark)',
-                                border: '1px solid var(--border-color)',
-                                borderRadius: '8px',
-                                color: 'var(--text-primary)',
-                                outline: 'none'
-                            }}
-                        />
-                    </div>
-                    <div style={{ width: '180px' }}>
-                        <select
-                            value={guardianFilter}
-                            onChange={(e) => {
-                                setGuardianFilter(e.target.value);
-                                setGuardianPage(1);
-                            }}
-                            style={{
-                                width: '100%',
-                                padding: '10px 14px',
-                                backgroundColor: 'var(--bg-dark)',
-                                border: '1px solid var(--border-color)',
-                                borderRadius: '8px',
-                                color: 'var(--text-primary)',
-                                outline: 'none',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <option value="" className="bg-bg-dark text-text-primary">All Actions</option>
-                            <option value="AUTO_UNSHUNNED" className="bg-bg-dark text-text-primary">Auto-Unshunned</option>
-                            <option value="SKIPPED" className="bg-bg-dark text-text-primary">Skipped (Retained)</option>
-                            <option value="FAILED" className="bg-bg-dark text-text-primary">Failed</option>
-                        </select>
-                    </div>
+                {/* --- SMART SEARCH & FILTER CONTROLS --- */}
+                <SmartSearchBar
+                    value={guardianSearch}
+                    onChange={(val) => {
+                        setGuardianSearch(val);
+                    }}
+                    onSearch={(cleanTerm) => {
+                        setGuardianSearch(cleanTerm);
+                        setGuardianPage(1);
+                        fetchGuardianEvents();
+                    }}
+                    onReset={() => {
+                        setGuardianSearch("");
+                        setGuardianPage(1);
+                        fetchGuardianEvents();
+                    }}
+                    placeholder="Search by IP, Company Name, CIDR, ASN, or Boolean (e.g. Microsoft OR Amazon)..."
+                    buttonLabel="Filter Events"
+                    loading={loadingGuardianEvents}
+                    supportedFields={["IP Address", "Company Name", "CIDR", "ASN", "Details"]}
+                    examples={["198.51.100.1", "AS15169", "Microsoft OR Google", "cuh-fw1"]}
+                    enableBooleanHelp={true}
+                    autoTrimOnSearch={true}
+                    typeDetector={(term) => {
+                        const clean = term.trim();
+                        if (/^AS\d+$/i.test(clean)) {
+                            return { label: `ASN: ${clean.toUpperCase()}`, colorClass: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" };
+                        }
+                        if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}\/\d{1,2}$/.test(clean)) {
+                            return { label: "CIDR", colorClass: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30" };
+                        }
+                        return null;
+                    }}
+                    filterControls={
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <select
+                                value={guardianFilter}
+                                onChange={(e) => {
+                                    setGuardianFilter(e.target.value);
+                                    setGuardianPage(1);
+                                }}
+                                className="px-3 py-2.5 rounded-xl border border-border-color bg-bg-surface-hover/80 text-xs text-text-primary outline-none cursor-pointer"
+                            >
+                                <option value="" className="bg-bg-surface text-text-primary">All Actions</option>
+                                <option value="AUTO_UNSHUNNED" className="bg-bg-surface text-text-primary">Auto-Unshunned</option>
+                                <option value="SKIPPED" className="bg-bg-surface text-text-primary">Skipped (Retained)</option>
+                                <option value="FAILED" className="bg-bg-surface text-text-primary">Failed</option>
+                            </select>
 
-                    {/* Database Query Fetch Limit */}
-                    <div style={{ width: '180px' }}>
-                        <select
-                            value={guardianQueryLimit}
-                            onChange={(e) => {
-                                setGuardianQueryLimit(e.target.value);
-                                setGuardianPage(1);
-                            }}
-                            title="Database Fetch Range (defaults to top 500, or load all 30 days)"
-                            style={{
-                                width: '100%',
-                                padding: '10px 14px',
-                                backgroundColor: 'var(--bg-dark)',
-                                border: '1px solid var(--border-color)',
-                                borderRadius: '8px',
-                                color: 'var(--text-primary)',
-                                outline: 'none',
-                                cursor: 'pointer'
-                            }}
-                        >
-                            <option value="100" className="bg-bg-dark text-text-primary">Fetch Top 100</option>
-                            <option value="250" className="bg-bg-dark text-text-primary">Fetch Top 250</option>
-                            <option value="500" className="bg-bg-dark text-text-primary">Fetch Top 500</option>
-                            <option value="1000" className="bg-bg-dark text-text-primary">Fetch Top 1,000</option>
-                            <option value="all" className="bg-bg-dark text-text-primary">Fetch All 30 Days</option>
-                        </select>
-                    </div>
+                            <select
+                                value={guardianQueryLimit}
+                                onChange={(e) => {
+                                    setGuardianQueryLimit(e.target.value);
+                                    setGuardianPage(1);
+                                }}
+                                title="Database Fetch Range (defaults to top 500, or load all 30 days)"
+                                className="px-3 py-2.5 rounded-xl border border-border-color bg-bg-surface-hover/80 text-xs text-text-primary outline-none cursor-pointer"
+                            >
+                                <option value="100" className="bg-bg-surface text-text-primary">Fetch Top 100</option>
+                                <option value="250" className="bg-bg-surface text-text-primary">Fetch Top 250</option>
+                                <option value="500" className="bg-bg-surface text-text-primary">Fetch Top 500</option>
+                                <option value="1000" className="bg-bg-surface text-text-primary">Fetch Top 1,000</option>
+                                <option value="all" className="bg-bg-surface text-text-primary">Fetch All 30 Days</option>
+                            </select>
 
-                    {guardianEvents.length > 0 && (
-                        <button
-                            onClick={exportGuardianToCsv}
-                            className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs ml-auto"
-                        >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                            <span>Export CSV ({guardianEvents.length})</span>
-                        </button>
-                    )}
-                </div>
+                            {guardianEvents.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={exportGuardianToCsv}
+                                    className="px-3.5 py-2.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-400 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                                >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                    <span>Export CSV ({guardianEvents.length})</span>
+                                </button>
+                            )}
+                        </div>
+                    }
+                />
 
                 {/* --- GUARDIAN EVENTS TABLE --- */}
                 <div className="glass-card flex-1 flex flex-col min-h-0 border border-border-color rounded-xl overflow-hidden shadow-sm" style={{ minHeight: '400px', padding: 0 }}>

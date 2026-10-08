@@ -33,6 +33,8 @@ import {
     GraylogThirdPartyOAuthAggregation,
     GraylogThirdPartyOAuthItem
 } from "@/lib/og-graylog";
+import SmartSearchBar from "@/components/common/SmartSearchBar";
+import { evaluateBooleanAST, parseTokensToAST, tokenizeQuery, isBooleanQuery } from "@/lib/booleanQueryParser";
 
 export default function BecDashboardClient() {
     const [timeframe, setTimeframe] = useState<number>(3600); // 1h default (3600s) for lightning fast load
@@ -227,12 +229,37 @@ export default function BecDashboardClient() {
         handleSaveEndpoints(OFFICIAL_M365_AUTH_ENDPOINTS);
     };
 
-    // Filter BEC threats based on search query safely
+    // Filter BEC threats based on search query safely (supports boolean expressions)
     const filteredBecData = useMemo(() => {
         if (!Array.isArray(activeBecData)) return [];
+        if (!searchQuery || !searchQuery.trim()) return activeBecData;
+
+        if (isBooleanQuery(searchQuery)) {
+            try {
+                const tokens = tokenizeQuery(searchQuery);
+                const ast = parseTokensToAST(tokens);
+                return activeBecData.filter(item => {
+                    return evaluateBooleanAST(item, ast, (rec, term) => {
+                        const q = term.toLowerCase().trim();
+                        if (!q) return true;
+                        return Boolean(
+                            (rec.mid && rec.mid.toLowerCase().includes(q)) ||
+                            (rec.subject && rec.subject.toLowerCase().includes(q)) ||
+                            (rec.sender && rec.sender.toLowerCase().includes(q)) ||
+                            (rec.recipient && rec.recipient.toLowerCase().includes(q)) ||
+                            (rec.targetHost && rec.targetHost.toLowerCase().includes(q)) ||
+                            (rec.destUrl && rec.destUrl.toLowerCase().includes(q)) ||
+                            (rec.threatCategory && rec.threatCategory.toLowerCase().includes(q))
+                        );
+                    });
+                });
+            } catch {
+                // fallback to simple filtering below
+            }
+        }
+
+        const q = searchQuery.toLowerCase().trim();
         return activeBecData.filter(item => {
-            if (!searchQuery) return true;
-            const q = searchQuery.toLowerCase();
             return (
                 (item.mid && item.mid.toLowerCase().includes(q)) ||
                 (item.subject && item.subject.toLowerCase().includes(q)) ||
@@ -477,36 +504,15 @@ export default function BecDashboardClient() {
 
                         {/* Search Input Bar & Wildcard Presets */}
                         <div className="flex flex-col gap-3">
-                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                                <div className="relative flex-1">
-                                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search domain (e.g. *.claims, *.zip, ticketsatwork.com), full URL, MID, or recipient..."
-                                        value={urlSearchQuery}
-                                        onChange={(e) => setUrlSearchQuery(e.target.value)}
-                                        onKeyDown={(e) => e.key === "Enter" && executeUrlSearch()}
-                                        className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] text-xs sm:text-sm text-[var(--text-primary)] focus:outline-none focus:border-blue-500 font-mono transition-colors"
-                                    />
-                                    {urlSearchQuery && (
-                                        <button
-                                            onClick={() => { setUrlSearchQuery(""); executeUrlSearch(""); }}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
-                                    )}
-                                </div>
-
-                                <button
-                                    onClick={() => executeUrlSearch()}
-                                    disabled={urlSearchLoading}
-                                    className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
-                                >
-                                    {urlSearchLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                                    <span>Search URLs</span>
-                                </button>
-                            </div>
+                            <SmartSearchBar
+                                value={urlSearchQuery}
+                                onChange={setUrlSearchQuery}
+                                onSearch={(val) => executeUrlSearch(val)}
+                                placeholder="Search domain (e.g. *.claims, *.zip, ticketsatwork.com), full URL, MID, or recipient..."
+                                loading={urlSearchLoading}
+                                showHelp={true}
+                                enableLiveFiltering={false}
+                            />
 
                             {/* Wildcard & TLD Quick Presets */}
                             <div className="flex items-center gap-2 flex-wrap text-xs">
@@ -1044,37 +1050,13 @@ export default function BecDashboardClient() {
             </div>
 
             {/* Filter Search Bar */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="relative flex-1 w-full">
-                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
-                    <input
-                        type="text"
-                        placeholder="Search by MID, Subject, Sender, Target Recipient, Target Host, or Threat Category..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-10 pr-10 py-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] text-sm sm:text-base text-[var(--text-primary)] focus:outline-none focus:border-blue-500 transition-colors"
-                    />
-                    {searchQuery && (
-                        <button
-                            onClick={() => setSearchQuery("")}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1"
-                            title="Clear search filter"
-                        >
-                            <X className="w-3.5 h-3.5" />
-                        </button>
-                    )}
-                </div>
-
-                {searchQuery && (
-                    <button
-                        onClick={() => setSearchQuery("")}
-                        className="px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors"
-                    >
-                        <Filter className="w-3.5 h-3.5" />
-                        <span>Filter: "{searchQuery}" (Clear)</span>
-                    </button>
-                )}
-            </div>
+            <SmartSearchBar
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="Search by MID, Subject, Sender, Target Recipient, Target Host, or Threat Category..."
+                showHelp={true}
+                enableLiveFiltering={true}
+            />
 
             {/* BEC Threat Table */}
             <div className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] overflow-hidden">

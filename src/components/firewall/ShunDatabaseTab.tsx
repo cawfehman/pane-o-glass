@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Search, Server, Filter, ShieldAlert, Clock, ShieldCheck, SearchX, LayoutTemplate, Check, Download, Info } from "lucide-react";
 import { EnrichmentDetailsModal } from "./EnrichmentDetailsModal";
+import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
 export function ShunDatabaseTab() {
     const [records, setRecords] = useState<any[]>([]);
@@ -8,6 +9,7 @@ export function ShunDatabaseTab() {
     const [error, setError] = useState("");
     
     const [search, setSearch] = useState("");
+    const [activeSearch, setActiveSearch] = useState("");
     
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(50);
@@ -67,7 +69,8 @@ export function ShunDatabaseTab() {
         try {
             setIsExporting(true);
             const query = new URLSearchParams();
-            if (search) query.append("search", search);
+            const term = (activeSearch || search).trim();
+            if (term) query.append("search", term);
             query.append("sortField", sortField);
             query.append("sortDir", sortDir);
             
@@ -83,17 +86,18 @@ export function ShunDatabaseTab() {
         }
     };
 
-    const fetchRecords = useCallback(async () => {
+    const fetchRecords = useCallback(async (searchOverride?: string) => {
         setLoading(true);
         setError("");
         try {
+            const currentSearch = searchOverride !== undefined ? searchOverride : activeSearch;
             const query = new URLSearchParams({ 
                 page: page.toString(), 
                 limit: limit.toString(),
                 sortField,
                 sortDir 
             });
-            if (search) query.append("search", search);
+            if (currentSearch) query.append("search", currentSearch);
 
             const res = await fetch(`/api/firewall/shun-database?${query.toString()}`);
             if (res.ok) {
@@ -110,7 +114,7 @@ export function ShunDatabaseTab() {
         } finally {
             setLoading(false);
         }
-    }, [page, limit, search, sortField, sortDir]);
+    }, [page, limit, activeSearch, sortField, sortDir]);
 
     useEffect(() => {
         fetchRecords();
@@ -118,77 +122,94 @@ export function ShunDatabaseTab() {
 
     const clearFilters = () => {
         setSearch("");
+        setActiveSearch("");
         setPage(1);
         setSortField("isActive");
         setSortDir("desc");
+        fetchRecords("");
     };
 
     return (
         <div className="flex flex-col gap-0 h-full overflow-hidden">
-            <div className="bg-[var(--bg-surface)] p-4 border-b border-[var(--border-color)] shadow-sm shrink-0 flex flex-col gap-4">
-                <form 
-                    onSubmit={(e) => { e.preventDefault(); setPage(1); fetchRecords(); }}
-                    className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between w-full"
-                >
-                    <div className="flex w-full md:flex-1 max-w-4xl gap-3 relative items-center">
-                        <div className="relative flex-1 w-full">
-                            <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-5 w-5 text-[var(--accent-primary)] opacity-70 pointer-events-none" />
-                            <input
-                                type="text"
-                                placeholder="Omnisearch: IP, ASN, Org, or Firewall..."
-                                className="w-full h-[48px] rounded-full border border-[var(--border-color)] bg-[var(--bg-default)] text-base focus:border-[var(--accent-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-primary)]/20 transition-all duration-200 shadow-inner"
-                                style={{ paddingLeft: '3.5rem', paddingRight: '1.5rem' }}
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                            />
-                        </div>
-                        <button type="submit" className="h-[48px] bg-[var(--accent-primary)] text-white text-base font-medium rounded-full shadow-lg shadow-[var(--accent-primary)]/20 hover:shadow-[var(--accent-primary)]/40 hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap shrink-0" style={{ paddingLeft: '2.5rem', paddingRight: '2.5rem' }}>
-                            Search
-                        </button>
-                    </div>
+            <div className="bg-[var(--bg-surface)] p-4 border-b border-[var(--border-color)] shadow-sm shrink-0 flex flex-col gap-3">
+                <SmartSearchBar
+                    value={search}
+                    onChange={setSearch}
+                    onSearch={(cleanTerm) => {
+                        setSearch(cleanTerm);
+                        setActiveSearch(cleanTerm);
+                        setPage(1);
+                        fetchRecords(cleanTerm);
+                    }}
+                    onReset={clearFilters}
+                    placeholder="Omnisearch: IP, ASN, Org, or Firewall (e.g. cuh-fw1 AND NOT US)..."
+                    buttonLabel="Search"
+                    loading={loading}
+                    supportedFields={["IP Address", "Firewall Host", "ASN", "Organization", "Country"]}
+                    examples={["198.51.100.1", "cuh-fw1", "AS15169", "Microsoft OR Amazon"]}
+                    enableBooleanHelp={true}
+                    autoTrimOnSearch={true}
+                    typeDetector={(term) => {
+                        const clean = term.trim();
+                        if (/^AS\d+$/i.test(clean)) {
+                            return { label: `ASN: ${clean.toUpperCase()}`, colorClass: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" };
+                        }
+                        if (/-(?:fw|asa|firewall)/i.test(clean)) {
+                            return { label: "Firewall Node", colorClass: "bg-amber-500/15 text-amber-300 border-amber-500/30" };
+                        }
+                        return null;
+                    }}
+                    filterControls={
+                        <div className="flex items-center gap-2">
+                            <div className="relative">
+                                <button 
+                                    type="button" 
+                                    onClick={() => setShowColumnMenu(!showColumnMenu)} 
+                                    className="px-3.5 py-3 rounded-xl border border-border-color bg-bg-surface-hover hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs font-medium transition-all flex items-center gap-1.5 whitespace-nowrap"
+                                >
+                                    <LayoutTemplate className="w-3.5 h-3.5" /> Columns
+                                </button>
+                                {showColumnMenu && (
+                                    <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setShowColumnMenu(false)}></div>
+                                        <div className="absolute right-0 top-full mt-2 w-48 bg-bg-surface border border-border-color rounded-xl shadow-xl z-50 p-2 glass-card">
+                                            <div className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-2 px-2 mt-1">Toggle Columns</div>
+                                            {Object.entries({
+                                                status: "Status",
+                                                ip: "IP Address",
+                                                lifecycle: "Lifecycle",
+                                                firewall: "Firewall",
+                                                network: "Network Intel",
+                                                location: "Location"
+                                            }).map(([key, label]) => (
+                                                <button 
+                                                    key={key} 
+                                                    type="button" 
+                                                    onClick={() => toggleColumn(key as any)}
+                                                    className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors text-left"
+                                                >
+                                                    <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${visibleColumns[key as keyof typeof visibleColumns] ? 'bg-accent-primary border-accent-primary text-white' : 'border-border-color text-transparent'}`}>
+                                                        <Check className="w-3 h-3" />
+                                                    </div>
+                                                    {label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
 
-                    <div className="flex gap-2 shrink-0 w-full md:w-auto justify-end ml-auto">
-                        <button type="button" onClick={clearFilters} className="py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-default)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] transition-colors whitespace-nowrap" style={{ paddingLeft: '1.25rem', paddingRight: '1.25rem' }}>
-                            Clear
-                        </button>
-                        <div className="relative">
-                            <button type="button" onClick={() => setShowColumnMenu(!showColumnMenu)} className="py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-default)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] transition-colors flex items-center gap-2 whitespace-nowrap" style={{ paddingLeft: '1.25rem', paddingRight: '1.25rem' }}>
-                                <LayoutTemplate className="w-4 h-4" /> Columns
+                            <button 
+                                type="button" 
+                                onClick={handleExport} 
+                                disabled={isExporting} 
+                                className="px-3.5 py-3 rounded-xl border border-border-color bg-bg-surface-hover hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 whitespace-nowrap"
+                            >
+                                <Download className="w-3.5 h-3.5" /> {isExporting ? "Exporting..." : "Export"}
                             </button>
-                            {showColumnMenu && (
-                                <>
-                                    <div className="fixed inset-0 z-40" onClick={() => setShowColumnMenu(false)}></div>
-                                    <div className="absolute right-0 top-full mt-2 w-48 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-lg shadow-xl z-50 p-2 glass-card">
-                                        <div className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2 px-2 mt-1">Toggle Columns</div>
-                                        {Object.entries({
-                                            status: "Status",
-                                            ip: "IP Address",
-                                            lifecycle: "Lifecycle",
-                                            firewall: "Firewall",
-                                            network: "Network Intel",
-                                            location: "Location"
-                                        }).map(([key, label]) => (
-                                            <button 
-                                                key={key} 
-                                                type="button" 
-                                                onClick={() => toggleColumn(key as any)}
-                                                className="w-full flex items-center gap-2 px-2 py-1.5 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] rounded transition-colors text-left"
-                                            >
-                                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${visibleColumns[key as keyof typeof visibleColumns] ? 'bg-[var(--accent-primary)] border-[var(--accent-primary)] text-white' : 'border-[var(--border-color)] text-transparent'}`}>
-                                                    <Check className="w-3 h-3" />
-                                                </div>
-                                                {label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </>
-                            )}
                         </div>
-                        <button type="button" onClick={handleExport} disabled={isExporting} className="py-2.5 bg-[var(--bg-surface-hover)] hover:bg-[var(--bg-default)] text-[var(--text-primary)] text-sm font-medium rounded-full border border-[var(--border-color)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 whitespace-nowrap" style={{ paddingLeft: '1.25rem', paddingRight: '1.25rem' }}>
-                            <Download className="w-4 h-4" /> {isExporting ? "Exporting..." : "Export"}
-                        </button>
-                    </div>
-                </form>
+                    }
+                />
                 
                 <div className="flex justify-between items-center text-sm text-[var(--text-secondary)] pt-2 border-t border-[var(--border-color)]">
                     <div className="flex items-center gap-4">

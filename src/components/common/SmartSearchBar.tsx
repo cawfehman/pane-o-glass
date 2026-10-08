@@ -7,11 +7,14 @@ import { isBooleanQuery, tokenizeQuery } from "@/lib/booleanQueryParser";
 export interface SmartSearchBarProps {
     value: string;
     onChange: (value: string) => void;
-    onSearch: (cleanQuery: string, isBoolean: boolean) => void;
+    onSearch?: (cleanQuery: string, isBoolean: boolean) => void;
     onReset?: () => void;
     placeholder?: string;
     loading?: boolean;
     buttonLabel?: string;
+    hideSubmitButton?: boolean;
+    enableLiveFiltering?: boolean;
+    showHelp?: boolean;
     supportedFields?: string[];
     examples?: string[];
     filterControls?: React.ReactNode;
@@ -36,6 +39,8 @@ export function SmartSearchBar({
     placeholder = "Search...",
     loading = false,
     buttonLabel = "Search",
+    hideSubmitButton = false,
+    enableLiveFiltering = false,
     supportedFields = [],
     examples = [],
     filterControls,
@@ -94,7 +99,9 @@ export function SmartSearchBar({
         e.preventDefault();
         const term = autoTrimOnSearch ? value.trim() : value;
         if (!term) return;
-        onSearch(term, isBooleanQuery(term));
+        if (onSearch) {
+            onSearch(term, isBooleanQuery(term));
+        }
     };
 
     const handleClear = () => {
@@ -157,33 +164,35 @@ export function SmartSearchBar({
                 )}
 
                 {/* Primary Action Button */}
-                <div className="flex items-center gap-2 shrink-0">
-                    <button
-                        type="submit"
-                        disabled={loading || !cleanValue}
-                        className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-accent-primary hover:bg-accent-primary/90 text-white text-xs font-semibold tracking-wide uppercase shadow-sm transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed min-w-[120px]"
-                    >
-                        {loading ? (
-                            <>
-                                <Loader2 size={15} className="animate-spin" />
-                                <span>Querying...</span>
-                            </>
-                        ) : (
-                            <span>{buttonLabel}</span>
-                        )}
-                    </button>
-
-                    {hasValue && onReset && (
+                {onSearch && !hideSubmitButton && (
+                    <div className="flex items-center gap-2 shrink-0">
                         <button
-                            type="button"
-                            onClick={handleClear}
-                            disabled={loading}
-                            className="px-3.5 py-3 rounded-xl border border-border-color bg-bg-surface-hover hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs font-medium transition-all"
+                            type="submit"
+                            disabled={loading || !cleanValue}
+                            className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-accent-primary hover:bg-accent-primary/90 text-white text-xs font-semibold tracking-wide uppercase shadow-sm transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed min-w-[120px]"
                         >
-                            Reset
+                            {loading ? (
+                                <>
+                                    <Loader2 size={15} className="animate-spin" />
+                                    <span>Querying...</span>
+                                </>
+                            ) : (
+                                <span>{buttonLabel}</span>
+                            )}
                         </button>
-                    )}
-                </div>
+
+                        {hasValue && onReset && (
+                            <button
+                                type="button"
+                                onClick={handleClear}
+                                disabled={loading}
+                                className="px-3.5 py-3 rounded-xl border border-border-color bg-bg-surface-hover hover:bg-bg-surface text-text-secondary hover:text-text-primary text-xs font-medium transition-all"
+                            >
+                                Reset
+                            </button>
+                        )}
+                    </div>
+                )}
             </form>
 
             {/* Parentheses Syntax Warning Banner */}
@@ -266,3 +275,5 @@ export function SmartSearchBar({
         </div>
     );
 }
+
+export default SmartSearchBar;

@@ -3,6 +3,7 @@
 import React from "react";
 import { Search, SearchX, AlertCircle } from "lucide-react";
 import { PaginationControls, PaginationControlsProps } from "./PaginationControls";
+import SmartSearchBar from "./SmartSearchBar";
 
 export interface DataTableContainerProps {
     title?: React.ReactNode;
@@ -80,31 +81,19 @@ export function DataTableContainer({
                         {/* Search and Action Tools */}
                         <div className="flex flex-wrap items-center gap-2.5 ml-auto w-full lg:w-auto justify-end">
                             {onSearchChange && (
-                                <form
-                                    onSubmit={(e) => {
-                                        if (onSearchSubmit) onSearchSubmit(e);
-                                        else e.preventDefault();
-                                    }}
-                                    className="relative flex-1 sm:w-72 lg:w-80"
-                                >
-                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
-                                    <input
-                                        type="text"
-                                        placeholder={searchPlaceholder}
+                                <div className="flex-1 sm:w-72 lg:w-80">
+                                    <SmartSearchBar
                                         value={searchValue || ""}
-                                        onChange={(e) => onSearchChange(e.target.value)}
-                                        className="w-full pl-9 pr-8 py-1.5 bg-bg-dark border border-border-color rounded-lg text-text-primary text-xs outline-none focus:border-accent-primary focus:shadow-glow transition-all"
+                                        onChange={(val) => onSearchChange(val)}
+                                        onSearch={() => {
+                                            if (onSearchSubmit) onSearchSubmit({} as any);
+                                        }}
+                                        onReset={onSearchClear}
+                                        placeholder={searchPlaceholder}
+                                        enableLiveFiltering={true}
+                                        showHelp={false}
                                     />
-                                    {searchValue && onSearchClear && (
-                                        <button
-                                            type="button"
-                                            onClick={onSearchClear}
-                                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary bg-transparent border-none cursor-pointer text-sm"
-                                        >
-                                            &times;
-                                        </button>
-                                    )}
-                                </form>
+                                </div>
                             )}
 
                             {actions}

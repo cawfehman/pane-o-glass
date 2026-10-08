@@ -27,6 +27,7 @@ import {
     ExternalLink
 } from "lucide-react";
 import { ToolHelp } from "../ToolHelp";
+import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
 export interface VpnReportEvent {
     id: string;
@@ -58,6 +59,7 @@ export interface VpnReportEvent {
 
 export default function VpnReportingClient() {
     const [searchQuery, setSearchQuery] = useState<string>("");
+    const [activeQuery, setActiveQuery] = useState<string>("");
     const [timeframe, setTimeframe] = useState<number>(86400); // 24h default
     const [isCustomDate, setIsCustomDate] = useState<boolean>(false);
     const [startDate, setStartDate] = useState<string>("");
@@ -109,15 +111,16 @@ export default function VpnReportingClient() {
     const [totalBytes, setTotalBytes] = useState<number>(0);
     const [dbSpeedMs, setDbSpeedMs] = useState<number | null>(null);
 
-    const fetchReportData = useCallback(async () => {
+    const fetchReportData = useCallback(async (queryOverride?: string) => {
         setLoading(true);
         setError(null);
         setCurrentPage(1); // Reset page to 1 on new query
 
         try {
             const params = new URLSearchParams();
-            if (searchQuery) {
-                params.set("query", searchQuery);
+            const term = queryOverride !== undefined ? queryOverride : activeQuery;
+            if (term) {
+                params.set("query", term);
             }
 
             const statusParam = isAllSelected ? "ALL" : selectedStatuses.join(",");
@@ -170,7 +173,7 @@ export default function VpnReportingClient() {
         } finally {
             setLoading(false);
         }
-    }, [searchQuery, timeframe, isCustomDate, startDate, endDate, selectedStatuses, isAllSelected]);
+    }, [activeQuery, timeframe, isCustomDate, startDate, endDate, selectedStatuses, isAllSelected]);
 
     useEffect(() => {
         fetchReportData();
@@ -345,31 +348,42 @@ export default function VpnReportingClient() {
     );
 
     return (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-4">
+            {/* Standard Smart Search Bar */}
+            <SmartSearchBar
+                value={searchQuery}
+                onChange={setSearchQuery}
+                onSearch={(cleanTerm) => {
+                    setSearchQuery(cleanTerm);
+                    setActiveQuery(cleanTerm);
+                    fetchReportData(cleanTerm);
+                }}
+                onReset={() => {
+                    setSearchQuery("");
+                    setActiveQuery("");
+                    fetchReportData("");
+                }}
+                placeholder="Search (e.g. (smith-jane OR doe-john) AND 10.20.30.40 or smith-jane, 10.20.30.40)..."
+                buttonLabel="Filter Records"
+                loading={loading}
+                supportedFields={["Username", "Source IP", "Assigned IP", "VPN Stream", "Country", "Failure Reason"]}
+                examples={["smith-jane", "10.20.30.40", "US", "smith-jane AND failure", "(smith-jane OR doe-john) AND NOT US"]}
+                enableBooleanHelp={true}
+                autoTrimOnSearch={true}
+                typeDetector={(term) => {
+                    const clean = term.trim();
+                    if (/^(?:10\.|172\.(?:1[6-9]|2\d|3[01])\.|192\.168\.)/.test(clean)) {
+                        return { label: "RFC1918 Private IP", colorClass: "bg-amber-500/15 text-amber-300 border-amber-500/30" };
+                    }
+                    return null;
+                }}
+            />
+
             {/* Top Controls & Filter Bar */}
             <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] shadow-2xs">
                 
-                {/* Search Bar & Mode Selector */}
+                {/* Status & Category Filters */}
                 <div className="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                    <div className="relative flex-1">
-                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
-                        <input
-                            type="text"
-                            placeholder="Search (e.g. (smith-jane OR doe-john) AND 10.20.30.40 or smith-jane, 10.20.30.40)..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && fetchReportData()}
-                            className="w-full pl-9 pr-4 py-2 rounded-lg bg-[var(--bg-default)] border border-[var(--border-color)] text-xs sm:text-sm text-[var(--text-primary)] focus:outline-none focus:border-indigo-500 transition-colors"
-                        />
-                        {searchQuery && (
-                            <button 
-                                onClick={() => setSearchQuery("")}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                            >
-                                Clear
-                            </button>
-                        )}
-                    </div>
 
                     {/* Multi-Select Status Checkbox Group */}
                     <div className="flex flex-wrap items-center gap-2 shrink-0">

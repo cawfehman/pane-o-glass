@@ -9,6 +9,7 @@ import {
     Calendar, ArrowRight, Info, AlertCircle, Ban, Search, Check, Globe,
     Zap, ShieldAlert, Flame, AlertOctagon, Radio
 } from "lucide-react";
+import SmartSearchBar from "@/components/common/SmartSearchBar";
 
 interface ClusterConfig {
     id: "OG_GRAYLOG" | "NEW_GRAYLOG";
@@ -959,38 +960,41 @@ export default function GraylogExporterClient() {
                         {/* Query Input */}
                         <div className="flex flex-col gap-1.5">
                             <label className="text-xs font-medium text-text-secondary flex items-center justify-between">
-                                <span>Graylog Query (Lucene syntax)</span>
+                                <span>Graylog Query (Lucene / Boolean syntax)</span>
                                 <span className="text-[11px] text-text-muted">Use '*' to match all records in stream</span>
                             </label>
-                            <input
-                                type="text"
+                            <SmartSearchBar
                                 value={query}
-                                onChange={(e) => setQuery(e.target.value)}
+                                onChange={setQuery}
                                 placeholder="e.g. action:DROP OR client_ip:10.10.* OR mail_sender:*@domain.com"
-                                className="w-full bg-card/60 border border-border/40 rounded-lg p-3 text-sm text-text-primary font-mono focus:outline-none focus:border-accent-primary transition-all"
+                                showHelp={true}
+                                supportedFields={["action", "client_ip", "mail_sender", "facility", "level", "gl2_source_input"]}
+                                examples={["action:DROP", "client_ip:10.10.*", "level:3 OR level:2", "*"]}
+                                enableBooleanHelp={true}
+                                filterControls={
+                                    <div className="flex items-center gap-1.5">
+                                        {["*", 'level:3 OR level:2', 'action:DROP', 'facility:local0', 'client_ip:*'].map((qExample) => (
+                                            <button
+                                                key={qExample}
+                                                type="button"
+                                                onClick={() => setQuery(qExample)}
+                                                className="text-[11px] px-2 py-0.5 rounded bg-card border border-border/40 text-text-secondary hover:text-text-primary hover:border-accent-primary/50 font-mono transition-all"
+                                            >
+                                                {qExample}
+                                            </button>
+                                        ))}
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowNuclearModal(true)}
+                                            className="text-[11px] px-2.5 py-0.5 rounded bg-rose-500/15 border border-rose-500/40 text-rose-300 hover:bg-rose-500/25 font-semibold transition-all flex items-center gap-1 shadow-sm"
+                                            title="Open Nuclear Dump configuration modal"
+                                        >
+                                            <span>☢️</span>
+                                            <span>Nuclear Dump</span>
+                                        </button>
+                                    </div>
+                                }
                             />
-                            <div className="flex flex-wrap gap-2 mt-1 items-center">
-                                <span className="text-[11px] text-text-muted">Quick filters:</span>
-                                {["*", 'level:3 OR level:2', 'action:DROP', 'facility:local0', 'client_ip:*'].map((qExample) => (
-                                    <button
-                                        key={qExample}
-                                        type="button"
-                                        onClick={() => setQuery(qExample)}
-                                        className="text-[11px] px-2 py-0.5 rounded bg-card border border-border/40 text-text-secondary hover:text-text-primary hover:border-accent-primary/50 font-mono transition-all"
-                                    >
-                                        {qExample}
-                                    </button>
-                                ))}
-                                <button
-                                    type="button"
-                                    onClick={() => setShowNuclearModal(true)}
-                                    className="text-[11px] px-2.5 py-0.5 rounded bg-rose-500/15 border border-rose-500/40 text-rose-300 hover:bg-rose-500/25 font-semibold transition-all flex items-center gap-1 shadow-sm"
-                                    title="Open Nuclear Dump configuration modal"
-                                >
-                                    <span>☢️</span>
-                                    <span>Nuclear Dump</span>
-                                </button>
-                            </div>
                         </div>
 
                         {/* Time Range Quick Presets */}

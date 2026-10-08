@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
+import { isBooleanQuery, tokenizeQuery, parseTokensToAST, evaluateBooleanAST } from "@/lib/booleanQueryParser";
 
 export async function GET(request: Request) {
     try {
@@ -48,6 +49,27 @@ export async function GET(request: Request) {
 
         const results: any[] = [];
         const maxFeedLimit = query && query !== 'recent' ? 1000 : 200;
+
+        const hasBool = isBooleanQuery(query);
+        let booleanAst: any = null;
+        if (hasBool) {
+            try {
+                booleanAst = parseTokensToAST(tokenizeQuery(query));
+            } catch (e) {}
+        }
+
+        const tacacsTermMatcher = (norm: any, term: string): boolean => {
+            const t = term.toLowerCase().trim();
+            if (!t) return true;
+            return (
+                norm.user_name.toLowerCase().includes(t) ||
+                norm.device_name.toLowerCase().includes(t) ||
+                norm.command_set.toLowerCase().includes(t) ||
+                norm.calling_station_id.toLowerCase().includes(t) ||
+                norm.status.toLowerCase().includes(t) ||
+                norm.raw_message.toLowerCase().includes(t)
+            );
+        };
 
         const processEntry = (entry: any) => {
             const entryTime = new Date(entry.timestamp);
@@ -107,8 +129,12 @@ export async function GET(request: Request) {
             // 2. Update Search Results Feed
             if (!query || query === 'recent') {
                 if (results.length < maxFeedLimit) results.push(normalized);
+            } else if (booleanAst) {
+                if (evaluateBooleanAST(normalized, booleanAst, tacacsTermMatcher)) {
+                    if (results.length < maxFeedLimit) results.push(normalized);
+                }
             } else {
-                const searchString = `${normalized.user_name} ${normalized.device_name} ${normalized.command_set} ${normalized.raw_message}`.toLowerCase();
+                const searchString = `${normalized.user_name} ${normalized.device_name} ${normalized.command_set} ${normalized.calling_station_id} ${normalized.raw_message}`.toLowerCase();
                 if (searchString.includes(query)) {
                     if (results.length < maxFeedLimit) results.push(normalized);
                 }

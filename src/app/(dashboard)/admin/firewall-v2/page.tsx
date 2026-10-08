@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
+import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
 interface FirewallHost {
     id: string;
@@ -1026,41 +1027,50 @@ export default function FtdOperationsPage() {
 
                         return (
                             <div className="space-y-3">
-                                {/* Top Search and Pagination Bar */}
-                                <div className="bg-[var(--bg-surface)] p-3.5 rounded-2xl border border-[var(--border-color)] flex flex-col md:flex-row gap-3 items-center justify-between shadow-sm">
-                                    <div className="flex w-full md:w-auto items-center gap-2 flex-1 max-w-xl">
-                                        <div className="relative flex-1">
-                                            <Search className="w-3.5 h-3.5 text-[var(--text-secondary)] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                                            <input
-                                                type="text"
-                                                value={guardianSearch}
-                                                onChange={(e) => { setGuardianSearch(e.target.value); setGuardianPage(1); }}
-                                                onKeyDown={(e) => e.key === "Enter" && fetchGuardianEvents()}
-                                                placeholder="Omnisearch: IP, Reason, ASN, Company..."
-                                                className="w-full bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-full pl-10 pr-8 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)] shadow-inner"
-                                                style={{ paddingLeft: '2.5rem' }}
-                                            />
-                                            {guardianSearch && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => { setGuardianSearch(""); setGuardianPage(1); }}
-                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] text-xs"
-                                                >
-                                                    ✕
-                                                </button>
-                                            )}
-                                        </div>
+                                {/* Smart Search Bar */}
+                                <SmartSearchBar
+                                    value={guardianSearch}
+                                    onChange={setGuardianSearch}
+                                    onSearch={(cleanTerm) => {
+                                        setGuardianSearch(cleanTerm);
+                                        setGuardianPage(1);
+                                        fetchGuardianEvents();
+                                    }}
+                                    onReset={() => {
+                                        setGuardianSearch("");
+                                        setGuardianPage(1);
+                                        fetchGuardianEvents();
+                                    }}
+                                    placeholder="Omnisearch: IP, Reason, ASN, Company, or Boolean (e.g. Microsoft OR Amazon)..."
+                                    buttonLabel="Filter Events"
+                                    loading={loadingGuardian}
+                                    supportedFields={["IP Address", "Reason", "ASN", "Company"]}
+                                    examples={["198.51.100.1", "AS15169", "Microsoft OR Google"]}
+                                    enableBooleanHelp={true}
+                                    autoTrimOnSearch={true}
+                                    typeDetector={(term) => {
+                                        const clean = term.trim();
+                                        if (/^AS\d+$/i.test(clean)) {
+                                            return { label: `ASN: ${clean.toUpperCase()}`, colorClass: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30" };
+                                        }
+                                        return null;
+                                    }}
+                                    filterControls={
                                         <select
                                             value={guardianActionFilter}
                                             onChange={(e) => { setGuardianActionFilter(e.target.value); setGuardianPage(1); }}
-                                            className="bg-[var(--bg-dark)] border border-[var(--border-color)] rounded-full px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-primary)] cursor-pointer"
+                                            className="px-3 py-2.5 rounded-xl border border-border-color bg-bg-surface-hover/80 text-xs text-text-primary outline-none cursor-pointer"
                                         >
                                             <option value="">All Actions</option>
                                             <option value="AUTO_UNSHUNNED">Auto-Unshunned</option>
                                             <option value="SHUN_DETECTED">Shun Detected</option>
                                             <option value="SKIPPED">Skipped (Retained)</option>
                                         </select>
-                                    </div>
+                                    }
+                                />
+
+                                {/* Top Pagination Bar */}
+                                <div className="bg-[var(--bg-surface)] p-3.5 rounded-2xl border border-[var(--border-color)] flex flex-col md:flex-row gap-3 items-center justify-between shadow-sm">
 
                                     {/* Top Pagination Controls */}
                                     <div className="flex items-center gap-3 text-xs text-[var(--text-secondary)] w-full md:w-auto justify-between md:justify-end">
