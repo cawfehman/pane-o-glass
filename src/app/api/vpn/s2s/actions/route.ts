@@ -33,6 +33,8 @@ export async function POST(req: Request) {
         const rawAction = typeof body.action === "string" ? body.action.trim() : "";
         const peerIp = typeof body.peerIp === "string" ? body.peerIp.trim() : "";
         const gatewayId = typeof body.gatewayId === "string" ? body.gatewayId.trim() : undefined;
+        const tunnelId = typeof body.tunnelId === "string" ? body.tunnelId.trim() : undefined;
+        const tunnelName = typeof body.tunnelName === "string" ? body.tunnelName.trim() : undefined;
         const dryRun = body.dryRun !== false;
         const action = rawAction;
 
@@ -90,7 +92,7 @@ export async function POST(req: Request) {
 
             await logAudit(
                 "VPN_S2S_PING",
-                `Tested reachability to peer ${peerIp} from gateway ${gatewayId || 'fleet'}: ${isReachable ? 'REACHABLE' : 'UNREACHABLE'}`,
+                `Tested reachability for tunnel "${tunnelName || peerIp}" (Peer: ${peerIp}, Gateway: ${gatewayId || 'fleet'}): ${isReachable ? 'REACHABLE' : 'UNREACHABLE'}`,
                 session.user.id
             );
             return NextResponse.json({
@@ -152,7 +154,7 @@ export async function POST(req: Request) {
 
             await logAudit(
                 "VPN_S2S_BOUNCE",
-                `${isLive ? 'LIVE' : 'DRY-RUN'} Cleared ${bounceType.toUpperCase()} SA for peer ${peerIp} on ${gatewayId || 'fleet'}. Mode: ${isLive ? 'EXECUTE' : 'SIMULATE'}`,
+                `${isLive ? 'LIVE' : 'DRY-RUN'} Cleared ${bounceType.toUpperCase()} SA for tunnel "${tunnelName || peerIp}" (Peer: ${peerIp}, Gateway: ${gatewayId || 'fleet'}). Mode: ${isLive ? 'EXECUTE' : 'SIMULATE'}`,
                 session.user.id
             );
 

@@ -35,8 +35,13 @@ import {
     HelpCircle,
     Settings2,
     Maximize2,
-    Minimize2,
-    WrapText
+    WrapText,
+    ClipboardList,
+    MessageSquareText,
+    Send,
+    Calendar,
+    User,
+    StickyNote
 } from "lucide-react";
 import { S2sTunnel, S2sTroubleshootResult } from "@/lib/s2s-vpn";
 import { S2sSetupModal } from "@/components/vpn/S2sSetupModal";
@@ -52,6 +57,30 @@ interface FleetSummary {
     totalBytesTx: number;
     totalBytesRx: number;
     totalBandwidthGigabytes: string;
+}
+
+export interface S2sAuditItem {
+    id: string;
+    action: string;
+    details: string;
+    ipAddress?: string | null;
+    createdAt: string;
+    user?: {
+        username: string;
+        fullName?: string;
+    } | null;
+}
+
+export interface S2sNoteItem {
+    id: string;
+    tunnelId: string;
+    peerIp: string;
+    tunnelName?: string | null;
+    note: string;
+    username: string;
+    userId?: string | null;
+    createdAt: string;
+    updatedAt: string;
 }
 
 export default function VpnS2sDashboardClient({ role }: { role: string }) {
@@ -82,6 +111,101 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
     const [diagnosingTunnelId, setDiagnosingTunnelId] = useState<string | null>(null);
     const [isDiagOpen, setIsDiagOpen] = useState<boolean>(false);
     const [copiedCli, setCopiedCli] = useState<boolean>(false);
+
+    // Investigate Modal Sub-Tabs: Diagnostics, Audits, Notes
+    const [investigateTab, setInvestigateTab] = useState<"diagnostics" | "audits" | "notes">("diagnostics");
+    const [tunnelAudits, setTunnelAudits] = useState<S2sAuditItem[]>([]);
+    const [loadingAudits, setLoadingAudits] = useState<boolean>(false);
+    const [tunnelNotes, setTunnelNotes] = useState<S2sNoteItem[]>([]);
+    const [loadingNotes, setLoadingNotes] = useState<boolean>(false);
+    const [newNoteText, setNewNoteText] = useState<string>("");
+    const [submittingNote, setSubmittingNote] = useState<boolean>(false);
+
+    const fetchTunnelAudits = useCallback(async (peerIp: string, tunnelId?: string, tunnelName?: string) => {
+        if (!peerIp && !tunnelId && !tunnelName) return;
+        setLoadingAudits(true);
+        try {
+            const params = new URLSearchParams();
+            if (peerIp) params.set("peerIp", peerIp);
+            if (tunnelId) params.set("tunnelId", tunnelId);
+            if (tunnelName) params.set("tunnelName", tunnelName);
+            const res = await fetch(`/api/vpn/s2s/audits?${params.toString()}`);
+            if (res.ok) {
+                const data = await res.json();
+                setTunnelAudits(data.audits || []);
+            }
+        } catch (e) {
+            console.error("Failed to fetch tunnel audits:", e);
+        } finally {
+            setLoadingAudits(false);
+        }
+    }, []);
+
+    const fetchTunnelNotes = useCallback(async (peerIp: string, tunnelId?: string) => {
+        if (!peerIp && !tunnelId) return;
+        setLoadingNotes(true);
+        try {
+            const params = new URLSearchParams();
+            if (peerIp) params.set("peerIp", peerIp);
+            if (tunnelId) params.set("tunnelId", tunnelId);
+            const res = await fetch(`/api/vpn/s2s/notes?${params.toString()}`);
+            if (res.ok) {
+                const data = await res.json();
+                setTunnelNotes(data.notes || []);
+            }
+        } catch (e) {
+            console.error("Failed to fetch tunnel notes:", e);
+        } finally {
+            setLoadingNotes(false);
+        }
+    }, []);
+
+    const handleAddNote = async () => {
+        if (!newNoteText.trim() || !activeDiagReport) return;
+        setSubmittingNote(true);
+        try {
+            const res = await fetch("/api/vpn/s2s/notes", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    peerIp: activeDiagReport.peerIp,
+                    tunnelId: activeDiagReport.tunnelId,
+                    tunnelName: activeDiagReport.tunnelName,
+                    note: newNoteText.trim()
+                })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setTunnelNotes(prev => [data.note, ...prev]);
+                setNewNoteText("");
+                fetchTunnelAudits(activeDiagReport.peerIp, activeDiagReport.tunnelId, activeDiagReport.tunnelName);
+            } else {
+                const err = await res.json().catch(() => ({}));
+                alert(err.error || "Failed to save note");
+            }
+        } catch (e: any) {
+            alert(e.message || "Failed to save note");
+        } finally {
+            setSubmittingNote(false);
+        }
+    };
+
+    const handleDeleteNote = async (id: string) => {
+        if (!confirm("Are you sure you want to delete this note?")) return;
+        try {
+            const res = await fetch(`/api/vpn/s2s/notes?id=${encodeURIComponent(id)}`, {
+                method: "DELETE"
+            });
+            if (res.ok) {
+                setTunnelNotes(prev => prev.filter(n => n.id !== id));
+                if (activeDiagReport) {
+                    fetchTunnelAudits(activeDiagReport.peerIp, activeDiagReport.tunnelId, activeDiagReport.tunnelName);
+                }
+            }
+        } catch (e) {
+            console.error("Failed to delete note:", e);
+        }
+    };
 
     // Live Terminal Console Viewer State
     const [consoleActiveTab, setConsoleActiveTab] = useState<"all" | "ipsec" | "ike" | "route">("all");
@@ -294,6 +418,9 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
             const data = await res.json();
             setActiveDiagReport(data.report);
             setIsDiagOpen(true);
+            setInvestigateTab("diagnostics");
+            fetchTunnelAudits(data.report.peerIp, data.report.tunnelId, data.report.tunnelName);
+            fetchTunnelNotes(data.report.peerIp, data.report.tunnelId);
         } catch (err: any) {
             alert(`Diagnostic error: ${err.message}`);
         } finally {
@@ -320,6 +447,8 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
                     action,
                     peerIp: cleanPeerIp,
                     gatewayId: cleanGatewayId,
+                    tunnelId: activeDiagReport?.tunnelId,
+                    tunnelName: activeDiagReport?.tunnelName,
                     dryRun: safeMode
                 })
             });
@@ -345,6 +474,9 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
                 success: true,
                 message: data.message || `Action '${action}' completed successfully.`
             });
+            if (activeDiagReport) {
+                fetchTunnelAudits(activeDiagReport.peerIp, activeDiagReport.tunnelId, activeDiagReport.tunnelName);
+            }
             // Re-fetch in background after bounce
             if (action !== "ping") {
                 setTimeout(() => fetchTunnels(true), 1500);
@@ -1179,26 +1311,105 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                             </div>
                         )}
 
-                        {/* Primary Diagnostic Banner */}
-                        <div className={`p-4 rounded-xl border ${
-                            activeDiagReport.overallHealth === "CRITICAL"
-                                ? "bg-rose-950/30 border-rose-500/40 text-rose-200"
-                                : activeDiagReport.overallHealth === "WARNING"
-                                ? "bg-amber-950/30 border-amber-500/40 text-amber-200"
-                                : "bg-emerald-950/30 border-emerald-500/40 text-emerald-200"
-                        } space-y-2`}>
-                            <div className="font-bold text-sm flex items-center gap-2">
-                                <AlertCircle size={16} />
-                                <span>{activeDiagReport.summary}</span>
-                            </div>
-                            <p className="text-xs leading-relaxed text-text-secondary">
-                                {activeDiagReport.plainEnglishExplanation}
-                            </p>
-                            <div className="pt-1.5 text-xs font-mono text-text-primary border-t border-border-color/40">
-                                <span className="text-text-secondary">Root Cause Signature: </span>
-                                <span className="text-amber-300">{activeDiagReport.rootCause}</span>
-                            </div>
+                        {/* Investigation Modal Sub-Tabs */}
+                        <div className="flex items-center gap-2 border-b border-border-color pb-3 overflow-x-auto">
+                            <button
+                                type="button"
+                                onClick={() => setInvestigateTab("diagnostics")}
+                                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                    investigateTab === "diagnostics"
+                                        ? "bg-accent-primary text-white shadow-sm"
+                                        : "bg-bg-surface-hover/50 text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover border border-border-color/60"
+                                }`}
+                            >
+                                <Zap size={14} />
+                                <span>Diagnostics & Telemetry</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setInvestigateTab("audits")}
+                                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                    investigateTab === "audits"
+                                        ? "bg-accent-primary text-white shadow-sm"
+                                        : "bg-bg-surface-hover/50 text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover border border-border-color/60"
+                                }`}
+                            >
+                                <ClipboardList size={14} />
+                                <span>Audit Trail</span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                                    investigateTab === "audits"
+                                        ? "bg-white/20 text-white"
+                                        : "bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
+                                }`}>
+                                    {tunnelAudits.length}
+                                </span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setInvestigateTab("notes")}
+                                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                    investigateTab === "notes"
+                                        ? "bg-accent-primary text-white shadow-sm"
+                                        : "bg-bg-surface-hover/50 text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover border border-border-color/60"
+                                }`}
+                            >
+                                <StickyNote size={14} />
+                                <span>Engineering Notes</span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                                    investigateTab === "notes"
+                                        ? "bg-white/20 text-white"
+                                        : "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                                }`}>
+                                    {tunnelNotes.length}
+                                </span>
+                            </button>
                         </div>
+
+                        {investigateTab === "diagnostics" && (
+                            <>
+                                {/* Primary Diagnostic Banner */}
+                                <div className={`p-4 rounded-xl border ${
+                                    activeDiagReport.overallHealth === "CRITICAL"
+                                        ? "bg-rose-950/30 border-rose-500/40 text-rose-200"
+                                        : activeDiagReport.overallHealth === "WARNING"
+                                        ? "bg-amber-950/30 border-amber-500/40 text-amber-200"
+                                        : "bg-emerald-950/30 border-emerald-500/40 text-emerald-200"
+                                } space-y-2`}>
+                                    <div className="font-bold text-sm flex items-center gap-2">
+                                        <AlertCircle size={16} />
+                                        <span>{activeDiagReport.summary}</span>
+                                    </div>
+                                    <p className="text-xs leading-relaxed text-text-secondary">
+                                        {activeDiagReport.plainEnglishExplanation}
+                                    </p>
+                                    <div className="pt-1.5 text-xs font-mono text-text-primary border-t border-border-color/40 flex items-center justify-between flex-wrap gap-2">
+                                        <div>
+                                            <span className="text-text-secondary">Root Cause Signature: </span>
+                                            <span className="text-amber-300">{activeDiagReport.rootCause}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2.5 text-xs">
+                                            <button
+                                                type="button"
+                                                onClick={() => setInvestigateTab("audits")}
+                                                className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 hover:underline cursor-pointer"
+                                            >
+                                                <ClipboardList size={12} />
+                                                <span>{tunnelAudits.length} Audits</span>
+                                            </button>
+                                            <span className="text-border-color">•</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setInvestigateTab("notes")}
+                                                className="flex items-center gap-1 text-amber-400 hover:text-amber-300 hover:underline cursor-pointer"
+                                            >
+                                                <StickyNote size={12} />
+                                                <span>{tunnelNotes.length} Notes</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
 
                         {/* Live Lina Telemetry from Active Firewall */}
                         {activeDiagReport.liveTelemetric && (
@@ -1629,6 +1840,250 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                 </table>
                             </div>
                         </div>
+                    </>
+                )}
+
+                {/* Audit Trail Tab */}
+                {investigateTab === "audits" && (
+                    <div className="space-y-4 animate-in fade-in duration-150">
+                        <div className="flex items-center justify-between flex-wrap gap-2 p-4 rounded-xl border border-border-color bg-bg-surface-hover/30">
+                            <div>
+                                <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                                    <ClipboardList size={16} className="text-indigo-400" />
+                                    <span>Audit Trail for {activeDiagReport.tunnelName}</span>
+                                </h3>
+                                <p className="text-xs text-text-secondary mt-0.5">
+                                    Showing {tunnelAudits.length} recorded audit events specifically associated with peer <span className="font-mono text-cyan-400 font-semibold">{activeDiagReport.peerIp}</span>.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => fetchTunnelAudits(activeDiagReport.peerIp, activeDiagReport.tunnelId, activeDiagReport.tunnelName)}
+                                disabled={loadingAudits}
+                                className="px-3 py-1.5 rounded-lg border border-border-color bg-bg-surface hover:bg-bg-surface-hover text-xs font-semibold text-text-primary flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                                <RefreshCw size={13} className={loadingAudits ? "animate-spin text-accent-primary" : ""} />
+                                <span>Refresh Audits</span>
+                            </button>
+                        </div>
+
+                        {loadingAudits ? (
+                            <div className="py-12 text-center text-text-secondary flex flex-col items-center justify-center gap-2">
+                                <RefreshCw size={22} className="animate-spin text-accent-primary" />
+                                <span className="text-xs">Loading audit trail...</span>
+                            </div>
+                        ) : tunnelAudits.length === 0 ? (
+                            <div className="py-12 px-4 text-center rounded-xl border border-border-color bg-bg-surface-hover/20 flex flex-col items-center justify-center gap-2.5">
+                                <div className="p-3 rounded-full bg-white/5 border border-border-color text-text-secondary">
+                                    <ClipboardList size={26} />
+                                </div>
+                                <div className="font-bold text-sm text-text-primary">No Audit Events Recorded Yet</div>
+                                <p className="text-xs text-text-secondary max-w-md">
+                                    Audit events for this VPN (such as live investigation runs, reachability probes, SA clear resets, and notes) will appear here automatically.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="border border-border-color rounded-xl overflow-hidden shadow-xs">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-xs border-collapse">
+                                        <thead className="bg-bg-surface-hover/60 border-b border-border-color text-text-secondary text-[11px] uppercase tracking-wider">
+                                            <tr>
+                                                <th className="p-3">Timestamp</th>
+                                                <th className="p-3">Operator</th>
+                                                <th className="p-3">Action Type</th>
+                                                <th className="p-3">Action Details</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-border-color/60">
+                                            {tunnelAudits.map((audit) => {
+                                                let badgeColor = "bg-indigo-500/15 text-indigo-300 border-indigo-500/30";
+                                                let actionLabel = audit.action.replace(/^VPN_S2S_/, "");
+                                                if (audit.action === "VPN_S2S_PING") {
+                                                    badgeColor = "bg-cyan-500/15 text-cyan-300 border-cyan-500/30";
+                                                    actionLabel = "PING PROBE";
+                                                } else if (audit.action === "VPN_S2S_BOUNCE") {
+                                                    badgeColor = "bg-amber-500/15 text-amber-300 border-amber-500/30";
+                                                    actionLabel = "SA RESET";
+                                                } else if (audit.action === "VPN_S2S_INVESTIGATE") {
+                                                    badgeColor = "bg-purple-500/15 text-purple-300 border-purple-500/30";
+                                                    actionLabel = "INVESTIGATED";
+                                                } else if (audit.action === "VPN_S2S_NOTE_ADDED") {
+                                                    badgeColor = "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
+                                                    actionLabel = "NOTE ADDED";
+                                                } else if (audit.action === "VPN_S2S_NOTE_DELETED") {
+                                                    badgeColor = "bg-rose-500/15 text-rose-300 border-rose-500/30";
+                                                    actionLabel = "NOTE REMOVED";
+                                                }
+
+                                                const dateObj = new Date(audit.createdAt);
+                                                const operatorName = audit.user?.fullName || audit.user?.username || "Automated System";
+
+                                                return (
+                                                    <tr key={audit.id} className="hover:bg-bg-surface-hover/40 transition-colors">
+                                                        <td className="p-3 whitespace-nowrap text-text-secondary font-mono text-[11px]">
+                                                            <div className="font-semibold text-text-primary">{dateObj.toLocaleDateString()}</div>
+                                                            <div>{dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>
+                                                        </td>
+                                                        <td className="p-3 whitespace-nowrap">
+                                                            <div className="flex items-center gap-1.5 font-medium text-text-primary">
+                                                                <User size={13} className="text-text-secondary" />
+                                                                <span>{operatorName}</span>
+                                                            </div>
+                                                            {audit.user?.username && audit.user?.fullName && audit.user.username !== audit.user.fullName && (
+                                                                <div className="text-[10px] text-text-secondary font-mono ml-4.5">
+                                                                    @{audit.user.username}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-3 whitespace-nowrap">
+                                                            <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${badgeColor}`}>
+                                                                {actionLabel}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-3 text-text-primary text-xs leading-relaxed max-w-md">
+                                                            <div className="break-words">{audit.details}</div>
+                                                            {audit.ipAddress && (
+                                                                <div className="text-[10px] text-text-secondary font-mono mt-0.5">
+                                                                    Source: {audit.ipAddress}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Engineering Notes Tab */}
+                {investigateTab === "notes" && (
+                    <div className="space-y-5 animate-in fade-in duration-150">
+                        <div className="flex items-center justify-between flex-wrap gap-2 p-4 rounded-xl border border-border-color bg-bg-surface-hover/30">
+                            <div>
+                                <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                                    <StickyNote size={16} className="text-amber-400" />
+                                    <span>Engineering & Operational Notes for {activeDiagReport.tunnelName}</span>
+                                </h3>
+                                <p className="text-xs text-text-secondary mt-0.5">
+                                    Keep persistent notes per VPN tunnel. All notes are timestamped and tagged with your username.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => fetchTunnelNotes(activeDiagReport.peerIp, activeDiagReport.tunnelId)}
+                                disabled={loadingNotes}
+                                className="px-3 py-1.5 rounded-lg border border-border-color bg-bg-surface hover:bg-bg-surface-hover text-xs font-semibold text-text-primary flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                                <RefreshCw size={13} className={loadingNotes ? "animate-spin text-accent-primary" : ""} />
+                                <span>Refresh Notes</span>
+                            </button>
+                        </div>
+
+                        {/* Add Note Composer */}
+                        <div className="p-4 rounded-xl border border-border-color bg-bg-surface space-y-3 shadow-xs">
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                                    <MessageSquareText size={14} className="text-amber-400" />
+                                    <span>Add New Operational Note</span>
+                                </label>
+                                <span className="text-[11px] text-text-secondary">Optional · Visible in investigate window</span>
+                            </div>
+                            <textarea
+                                value={newNoteText}
+                                onChange={(e) => setNewNoteText(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                                        e.preventDefault();
+                                        handleAddNote();
+                                    }
+                                }}
+                                rows={3}
+                                placeholder={`e.g. "Called partner network team at 11:30 AM; they verified ASA config and are bouncing their peer. Ticket CHG-4091."`}
+                                className="w-full p-3 rounded-lg bg-bg-default border border-border-color text-xs text-text-primary placeholder:text-text-secondary/60 focus:outline-none focus:border-amber-500 transition-colors resize-y font-sans"
+                            />
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                <span className="text-[11px] text-text-secondary">
+                                    Tip: Press <kbd className="px-1.5 py-0.5 rounded bg-black/40 border border-border-color text-[10px] font-mono">Ctrl+Enter</kbd> to save.
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={handleAddNote}
+                                    disabled={submittingNote || !newNoteText.trim()}
+                                    className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                                >
+                                    {submittingNote ? (
+                                        <>
+                                            <RefreshCw size={13} className="animate-spin" />
+                                            <span>Saving Note...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Send size={13} />
+                                            <span>Save Note</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Notes List */}
+                        <div className="space-y-3">
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center justify-between">
+                                <span>Recorded Notes ({tunnelNotes.length})</span>
+                            </h4>
+
+                            {loadingNotes ? (
+                                <div className="py-10 text-center text-text-secondary flex flex-col items-center justify-center gap-2">
+                                    <RefreshCw size={20} className="animate-spin text-accent-primary" />
+                                    <span className="text-xs">Loading notes...</span>
+                                </div>
+                            ) : tunnelNotes.length === 0 ? (
+                                <div className="py-10 px-4 text-center rounded-xl border border-border-color bg-bg-surface-hover/20 flex flex-col items-center justify-center gap-2">
+                                    <StickyNote size={24} className="text-text-secondary/40" />
+                                    <div className="font-bold text-xs text-text-primary">No Notes Added Yet</div>
+                                    <p className="text-xs text-text-secondary max-w-sm">
+                                        Use the form above to record handoff notes, peer ticket numbers, maintenance schedules, or contact info for this tunnel.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2.5">
+                                    {tunnelNotes.map((noteItem) => (
+                                        <div key={noteItem.id} className="p-4 rounded-xl border border-border-color bg-bg-surface hover:border-amber-500/30 transition-all space-y-2.5 shadow-xs">
+                                            <div className="flex items-center justify-between flex-wrap gap-2 text-xs border-b border-border-color/60 pb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="flex items-center gap-1 font-bold text-amber-300">
+                                                        <User size={13} />
+                                                        <span>@{noteItem.username}</span>
+                                                    </span>
+                                                    <span className="text-border-color">•</span>
+                                                    <span className="text-text-secondary font-mono text-[11px] flex items-center gap-1">
+                                                        <Clock size={12} />
+                                                        <span>{new Date(noteItem.createdAt).toLocaleString()}</span>
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteNote(noteItem.id)}
+                                                    title="Delete note"
+                                                    className="p-1 rounded text-text-secondary hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                                >
+                                                    <Trash2 size={13} />
+                                                </button>
+                                            </div>
+                                            <div className="text-xs text-text-primary leading-relaxed whitespace-pre-wrap font-sans">
+                                                {noteItem.note}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
 
                         {/* Footer Operational Actions */}
                         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border-color pt-4">

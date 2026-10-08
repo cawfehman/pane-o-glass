@@ -567,5 +567,18 @@ model GraylogExportJob {
   @@index([createdBy])
 }
 
+model S2sTunnelNote {
+  id         String   @id @default(cuid())
+  tunnelId   String
+  peerIp     String
+  tunnelName String?
+  note       String
+  username   String
+  userId     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-
+  @@index([peerIp])
+  @@index([tunnelId])
+  @@index([createdAt])
+}
