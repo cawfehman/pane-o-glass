@@ -92,6 +92,10 @@ export function VpnLiveGatewayTab({
                         gateways.map((gw: any) => {
                             const matchedPool = pools.find((p: any) => p.firewallId === gw.firewallId || p.firewallName === gw.firewallName);
                             const utilPct = matchedPool ? matchedPool.utilizationPercent : 19.1;
+                            const isStandby = gw.haRole === "STANDBY" || /secondary|fw2|fw4/i.test(gw.firewallId || gw.firewallName || "");
+                            const sessionCount = isStandby 
+                                ? (gw.standbyAnyConnect ?? gw.reportedSessions ?? gw.activeAnyConnect ?? 0)
+                                : (gw.activeAnyConnect ?? 0);
 
                             return (
                                 <div 
@@ -103,20 +107,31 @@ export function VpnLiveGatewayTab({
                                             <span className="text-xs font-bold text-text-primary truncate" title={gw.firewallName}>
                                                 {gw.firewallName}
                                             </span>
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                                gw.success 
-                                                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
-                                                    : "bg-red-500/10 text-red-400 border border-red-500/20"
-                                            }`}>
-                                                {gw.success ? "Online" : "Unreachable"}
-                                            </span>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                                    isStandby
+                                                        ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                                                        : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                                }`}>
+                                                    {isStandby ? "Standby" : "Active"}
+                                                </span>
+                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                                    gw.success 
+                                                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
+                                                        : "bg-red-500/10 text-red-400 border border-red-500/20"
+                                                }`}>
+                                                    {gw.success ? "Online" : "Down"}
+                                                </span>
+                                            </div>
                                         </div>
 
                                         <div className="flex items-baseline gap-2 mb-3">
                                             <span className="text-2xl font-black text-text-primary">
-                                                {gw.activeAnyConnect ?? "..."}
+                                                {sessionCount}
                                             </span>
-                                            <span className="text-xs text-text-muted">Active Sessions</span>
+                                            <span className="text-xs text-text-muted">
+                                                {isStandby ? "Replicated Sessions (HA Sync)" : "Active Client Sessions"}
+                                            </span>
                                         </div>
 
                                         <div className="flex flex-col gap-1.5 text-xs text-text-secondary border-t border-border-color/60 pt-2.5">

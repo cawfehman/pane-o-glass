@@ -107,13 +107,20 @@ export async function GET(req: NextRequest) {
 
             const raw = await runFtdCli(["--action", "ra_summary", "--target", firewall]);
             const gateways = Array.isArray(raw) ? raw : [];
-            const totalActive = gateways.reduce((acc, g) => acc + (g.activeAnyConnect || 0), 0);
-            const totalPeak = gateways.reduce((acc, g) => acc + (g.peakAnyConnect || 0), 0);
-            const totalCapacity = gateways.reduce((acc, g) => acc + (g.deviceCapacity || 10000), 0);
+            
+            // Distinguish Active vs Standby nodes to prevent double-counting replicated sessions
+            const activeGateways = gateways.filter((g) => g.haRole === "ACTIVE" || (!g.haRole && (g.activeAnyConnect || 0) > 0));
+            const standbyGateways = gateways.filter((g) => g.haRole === "STANDBY");
+
+            const totalActive = activeGateways.reduce((acc, g) => acc + (g.activeAnyConnect || 0), 0);
+            const totalStandbySynced = standbyGateways.reduce((acc, g) => acc + (g.standbyAnyConnect || 0), 0);
+            const totalPeak = activeGateways.reduce((acc, g) => acc + (g.peakAnyConnect || 0), 0);
+            const totalCapacity = activeGateways.reduce((acc, g) => acc + (g.deviceCapacity || 10000), 0);
 
             const data = {
                 success: true,
                 totalActive,
+                totalStandbySynced,
                 totalPeak,
                 totalCapacity,
                 gateways,
@@ -140,9 +147,18 @@ export async function GET(req: NextRequest) {
                 }
             }
 
-            const totalIps = pools.reduce((acc, p) => acc + (p.totalIps || 0), 0);
-            const usedIps = pools.reduce((acc, p) => acc + (p.usedIps || 0), 0);
-            const freeIps = pools.reduce((acc, p) => acc + (p.freeIps || 0), 0);
+            // Deduplicate across HA pairs by poolName to avoid doubling cluster subnet capacity
+            const uniquePoolsMap = new Map<string, any>();
+            for (const p of pools) {
+                if (!uniquePoolsMap.has(p.poolName)) {
+                    uniquePoolsMap.set(p.poolName, p);
+                }
+            }
+            const clusterPools = Array.from(uniquePoolsMap.values());
+
+            const totalIps = clusterPools.reduce((acc, p) => acc + (p.totalIps || 0), 0);
+            const usedIps = clusterPools.reduce((acc, p) => acc + (p.usedIps || 0), 0);
+            const freeIps = clusterPools.reduce((acc, p) => acc + (p.freeIps || 0), 0);
             const utilizationPercent = totalIps > 0 ? Number(((usedIps / totalIps) * 100).toFixed(1)) : 0;
 
             const data = {

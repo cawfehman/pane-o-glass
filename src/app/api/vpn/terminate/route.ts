@@ -41,7 +41,10 @@ export async function POST(req: NextRequest) {
         }
 
         const sessionType = username ? "name" : "ipaddress";
-        const targetFirewall = firewallId || "ra";
+        let targetFirewall = firewallId || "ra";
+        // Ensure termination is routed to the Active node of the HA pair
+        if (targetFirewall === "fw2") targetFirewall = "fw1";
+        if (targetFirewall === "fw4") targetFirewall = "fw3";
 
         const pythonBin = await resolvePythonCommand();
         const scriptPath = path.join(process.cwd(), "services", "firewall", "ftd_client.py");

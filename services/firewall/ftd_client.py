@@ -528,12 +528,23 @@ class FtdClient:
                 if m_load:
                     device_load = m_load.group(1).strip()
 
+                # Detect HA Role (Active vs Standby)
+                # Standby nodes have 'Total Standby' or 'Standby :' in the summary header
+                is_standby = bool(
+                    re.search(r"Total Standby", output, re.IGNORECASE) or 
+                    re.search(r"^\s*Standby\s*:", output, re.MULTILINE)
+                )
+                ha_role = "STANDBY" if is_standby else "ACTIVE"
+
                 return {
                     "firewallId": self.fw_id,
                     "firewallName": self.name,
                     "ip": self.ip,
                     "success": True,
-                    "activeAnyConnect": active_ac,
+                    "haRole": ha_role,
+                    "activeAnyConnect": active_ac if ha_role == "ACTIVE" else 0,
+                    "standbyAnyConnect": active_ac if ha_role == "STANDBY" else 0,
+                    "reportedSessions": active_ac,
                     "cumulativeAnyConnect": cumulative_ac,
                     "peakAnyConnect": peak_ac,
                     "deviceCapacity": device_capacity,
