@@ -86,96 +86,205 @@ export function VpnLiveGatewayTab({
                     </button>
                 </div>
 
-                {/* Gateway Cards Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {gateways.length > 0 ? (
-                        gateways.map((gw: any) => {
-                            const matchedPool = pools.find((p: any) => p.firewallId === gw.firewallId || p.firewallName === gw.firewallName);
-                            const utilPct = matchedPool ? matchedPool.utilizationPercent : 19.1;
-                            const isStandby = gw.haRole === "STANDBY" || /secondary|fw2|fw4/i.test(gw.firewallId || gw.firewallName || "");
-                            const sessionCount = isStandby 
-                                ? (gw.standbyAnyConnect ?? gw.reportedSessions ?? gw.activeAnyConnect ?? 0)
-                                : (gw.activeAnyConnect ?? 0);
-
-                            return (
-                                <div 
-                                    key={gw.firewallId || gw.ip}
-                                    className="glass-card p-4 rounded-xl border border-border-color bg-[var(--bg-surface)] flex flex-col justify-between hover:border-accent-primary/40 transition-all"
-                                >
-                                    <div>
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="text-xs font-bold text-text-primary truncate" title={gw.firewallName}>
-                                                {gw.firewallName}
-                                            </span>
-                                            <div className="flex items-center gap-1.5">
-                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                                    isStandby
-                                                        ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
-                                                        : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                                                }`}>
-                                                    {isStandby ? "Standby" : "Active"}
-                                                </span>
-                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                                    gw.success 
-                                                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
-                                                        : "bg-red-500/10 text-red-400 border border-red-500/20"
-                                                }`}>
-                                                    {gw.success ? "Online" : "Down"}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-baseline gap-2 mb-3">
-                                            <span className="text-2xl font-black text-text-primary">
-                                                {sessionCount}
-                                            </span>
-                                            <span className="text-xs text-text-muted">
-                                                {isStandby ? "Replicated Sessions (HA Sync)" : "Active Client Sessions"}
-                                            </span>
-                                        </div>
-
-                                        <div className="flex flex-col gap-1.5 text-xs text-text-secondary border-t border-border-color/60 pt-2.5">
-                                            <div className="flex justify-between">
-                                                <span>Node Load:</span>
-                                                <span className="font-semibold text-text-primary">{gw.deviceLoad || "4%"}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span>Peak 24h:</span>
-                                                <span className="text-text-primary">{gw.peakAnyConnect || "813"}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span>Capacity Limit:</span>
-                                                <span className="text-text-muted">{gw.deviceCapacity ? `${gw.deviceCapacity.toLocaleString()}` : "10,000"}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* IP Pool Mini Bar */}
-                                    <div className="mt-3 pt-2.5 border-t border-border-color/60 flex flex-col gap-1">
-                                        <div className="flex justify-between text-[11px]">
-                                            <span className="text-text-muted truncate">
-                                                {matchedPool ? matchedPool.poolName : "AnyConnect Pool"}
-                                            </span>
-                                            <span className="font-semibold text-text-primary">{utilPct}%</span>
-                                        </div>
-                                        <div className="w-full h-1.5 rounded-full bg-[var(--bg-background)] overflow-hidden">
-                                            <div 
-                                                className={`h-full rounded-full transition-all duration-500 ${
-                                                    utilPct >= 90 ? "bg-red-500" : utilPct >= 75 ? "bg-amber-400" : "bg-emerald-400"
-                                                }`}
-                                                style={{ width: `${Math.min(100, utilPct)}%` }}
-                                            />
-                                        </div>
-                                        <span className="text-[10px] text-text-muted text-right">
-                                            {matchedPool ? `${matchedPool.usedIps} / ${matchedPool.totalIps} leases` : "389 / 2,032 leases"}
-                                        </span>
-                                    </div>
+                {/* Site Gateways Grid: Connect (Wilmington) vs Reconnect (Keleman) */}
+                {gateways.length > 0 ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                        {/* Site 1: Wilmington DC ("Connect") */}
+                        <div className="p-4 rounded-2xl border border-border-color bg-[var(--bg-surface)]/50 flex flex-col gap-3">
+                            <div className="flex items-center justify-between border-b border-border-color/60 pb-2.5">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                    <h3 className="text-sm font-bold text-text-primary m-0">
+                                        Connect Gateway <span className="text-xs text-text-muted font-normal">(Wilmington DC)</span>
+                                    </h3>
                                 </div>
-                            );
-                        })
-                    ) : (
-                        // Fallback skeleton / static representation
-                        [
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+                                    connect.cooperhealth.edu
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {gateways
+                                    .filter((g: any) => /fw1|fw2|connect|wilmington|wtd|wdc/i.test(g.firewallId || g.firewallName))
+                                    .map((gw: any) => {
+                                        const matchedPool = pools.find((p: any) => p.firewallId === gw.firewallId || p.firewallName === gw.firewallName);
+                                        const utilPct = matchedPool ? matchedPool.utilizationPercent : 19.1;
+                                        const isStandby = gw.haRole === "STANDBY" || /secondary|fw2/i.test(gw.firewallId || gw.firewallName || "");
+                                        const sessionCount = isStandby 
+                                            ? (gw.standbyAnyConnect ?? gw.reportedSessions ?? gw.activeAnyConnect ?? 0)
+                                            : (gw.activeAnyConnect ?? 0);
+
+                                        return (
+                                            <div 
+                                                key={gw.firewallId || gw.ip}
+                                                className="glass-card p-3.5 rounded-xl border border-border-color bg-[var(--bg-surface)] flex flex-col justify-between hover:border-accent-primary/40 transition-all"
+                                            >
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-xs font-bold text-text-primary truncate" title={gw.firewallName}>
+                                                            {gw.firewallName}
+                                                        </span>
+                                                        <div className="flex items-center gap-1">
+                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                                                                isStandby
+                                                                    ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                                                                    : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                                            }`}>
+                                                                {isStandby ? "Standby Mate" : "Active Node"}
+                                                            </span>
+                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                                                                gw.success 
+                                                                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
+                                                                    : "bg-red-500/10 text-red-400 border border-red-500/20"
+                                                            }`}>
+                                                                {gw.success ? "Online" : "Down"}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-baseline gap-2 mb-2.5">
+                                                        <span className="text-xl font-black text-text-primary">
+                                                            {sessionCount}
+                                                        </span>
+                                                        <span className="text-[11px] text-text-muted">
+                                                            {isStandby ? "Replicated (HA Sync)" : "Active Sessions"}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="flex flex-col gap-1 text-[11px] text-text-secondary border-t border-border-color/60 pt-2">
+                                                        <div className="flex justify-between">
+                                                            <span>Load / Peak:</span>
+                                                            <span className="font-semibold text-text-primary">{gw.deviceLoad || "4%"} • Peak: {gw.peakAnyConnect || "813"}</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span>Capacity:</span>
+                                                            <span className="text-text-muted">{gw.deviceCapacity ? `${gw.deviceCapacity.toLocaleString()}` : "10,000"}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-2.5 pt-2 border-t border-border-color/60 flex flex-col gap-1">
+                                                    <div className="flex justify-between text-[10px]">
+                                                        <span className="text-text-muted truncate">
+                                                            {matchedPool ? matchedPool.poolName : "WDCAnyConnectPool"}
+                                                        </span>
+                                                        <span className="font-semibold text-text-primary">{utilPct}%</span>
+                                                    </div>
+                                                    <div className="w-full h-1.5 rounded-full bg-[var(--bg-background)] overflow-hidden">
+                                                        <div 
+                                                            className="h-full rounded-full bg-emerald-400 transition-all duration-500"
+                                                            style={{ width: `${Math.min(100, utilPct)}%` }}
+                                                        />
+                                                    </div>
+                                                    <span className="text-[9px] text-text-muted text-right">
+                                                        {matchedPool ? `${matchedPool.usedIps} / ${matchedPool.totalIps} leases` : "390 / 2,032 leases"}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                        </div>
+
+                        {/* Site 2: Keleman DC ("Reconnect") */}
+                        <div className="p-4 rounded-2xl border border-border-color bg-[var(--bg-surface)]/50 flex flex-col gap-3">
+                            <div className="flex items-center justify-between border-b border-border-color/60 pb-2.5">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-pink-400"></span>
+                                    <h3 className="text-sm font-bold text-text-primary m-0">
+                                        Reconnect Gateway <span className="text-xs text-text-muted font-normal">(Keleman DC)</span>
+                                    </h3>
+                                </div>
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-pink-500/10 text-pink-400 border border-pink-500/20 font-semibold">
+                                    reconnect.cooperhealth.edu
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {gateways
+                                    .filter((g: any) => /fw3|fw4|reconnect|keleman|kel/i.test(g.firewallId || g.firewallName))
+                                    .map((gw: any) => {
+                                        const matchedPool = pools.find((p: any) => p.firewallId === gw.firewallId || p.firewallName === gw.firewallName);
+                                        const utilPct = matchedPool ? matchedPool.utilizationPercent : 16.4;
+                                        const isStandby = gw.haRole === "STANDBY" || /secondary|fw4/i.test(gw.firewallId || gw.firewallName || "");
+                                        const sessionCount = isStandby 
+                                            ? (gw.standbyAnyConnect ?? gw.reportedSessions ?? gw.activeAnyConnect ?? 0)
+                                            : (gw.activeAnyConnect ?? 0);
+
+                                        return (
+                                            <div 
+                                                key={gw.firewallId || gw.ip}
+                                                className="glass-card p-3.5 rounded-xl border border-border-color bg-[var(--bg-surface)] flex flex-col justify-between hover:border-accent-primary/40 transition-all"
+                                            >
+                                                <div>
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-xs font-bold text-text-primary truncate" title={gw.firewallName}>
+                                                            {gw.firewallName}
+                                                        </span>
+                                                        <div className="flex items-center gap-1">
+                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                                                                isStandby
+                                                                    ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                                                                    : "bg-pink-500/10 text-pink-400 border border-pink-500/20"
+                                                            }`}>
+                                                                {isStandby ? "Standby Mate" : "Active Node"}
+                                                            </span>
+                                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                                                                gw.success 
+                                                                    ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
+                                                                    : "bg-red-500/10 text-red-400 border border-red-500/20"
+                                                            }`}>
+                                                                {gw.success ? "Online" : "Down"}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-baseline gap-2 mb-2.5">
+                                                        <span className="text-xl font-black text-text-primary">
+                                                            {sessionCount}
+                                                        </span>
+                                                        <span className="text-[11px] text-text-muted">
+                                                            {isStandby ? "Replicated (HA Sync)" : "Active Sessions"}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="flex flex-col gap-1 text-[11px] text-text-secondary border-t border-border-color/60 pt-2">
+                                                        <div className="flex justify-between">
+                                                            <span>Load / Peak:</span>
+                                                            <span className="font-semibold text-text-primary">{gw.deviceLoad || "2%"} • Peak: {gw.peakAnyConnect || "429"}</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span>Capacity:</span>
+                                                            <span className="text-text-muted">{gw.deviceCapacity ? `${gw.deviceCapacity.toLocaleString()}` : "20,000"}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-2.5 pt-2 border-t border-border-color/60 flex flex-col gap-1">
+                                                    <div className="flex justify-between text-[10px]">
+                                                        <span className="text-text-muted truncate">
+                                                            {matchedPool ? matchedPool.poolName : "KELAnyconnectPool"}
+                                                        </span>
+                                                        <span className="font-semibold text-text-primary">{utilPct}%</span>
+                                                    </div>
+                                                    <div className="w-full h-1.5 rounded-full bg-[var(--bg-background)] overflow-hidden">
+                                                        <div 
+                                                            className="h-full rounded-full bg-pink-400 transition-all duration-500"
+                                                            style={{ width: `${Math.min(100, utilPct)}%` }}
+                                                        />
+                                                    </div>
+                                                    <span className="text-[9px] text-text-muted text-right">
+                                                        {matchedPool ? `${matchedPool.usedIps} / ${matchedPool.totalIps} leases` : "333 / 2,032 leases"}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    // Fallback skeleton / static representation
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {[
                             { id: "fw1", name: "Wilmington (Connect Primary)", ip: "172.16.2.51", active: 384, util: 19.1 },
                             { id: "fw2", name: "Wilmington (Connect Secondary)", ip: "172.16.2.61", active: 0, util: 0 },
                             { id: "fw3", name: "Keleman (Reconnect Primary)", ip: "172.18.166.55", active: 12, util: 4.8 },
@@ -204,9 +313,9 @@ export function VpnLiveGatewayTab({
                                     </div>
                                 </div>
                             </div>
-                        ))
-                    )}
-                </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Active Sessions Table Section */}
