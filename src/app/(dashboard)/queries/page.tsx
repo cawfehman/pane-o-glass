@@ -16,6 +16,7 @@ export default async function QueriesPage() {
     const tools = [
         {
             id: 'firewall',
+            category: 'Perimeter & Access',
             title: "Cisco Firewall Utilities",
             href: "/queries/firewall",
             description: "Query IP shuns across edge firewalls and audit background 'Guardian' automation events.",
@@ -23,41 +24,47 @@ export default async function QueriesPage() {
         },
         {
             id: 'ise',
+            category: 'Perimeter & Access',
             title: "Cisco ISE Center",
             href: "/queries/ise",
             description: "Monitor real-time network authentication sessions and identity services for wired and wireless clients.",
             icon: <Server size={24} />
         },
         {
-            id: 'vpn',
-            title: "VPN Troubleshooting",
-            href: "/queries/vpn",
-            description: "Analyze, search, and troubleshoot Secure Client (AnyConnect) VPN session connectivity, duration, bandwidth, and failures.",
-            icon: <Network size={24} />
-        },
-        {
-            id: 'vpn-reporting',
-            title: "VPN Reporting & Audit Suite",
-            href: "/queries/vpn-reporting",
-            description: "Query historical VPN event logs by username or IP address with customizable date ranges and 1-click CSV export.",
-            icon: <FileText size={24} className="text-indigo-400" />
-        },
-        {
-            id: 'vpn-s2s',
-            title: "Site-to-Site VPN Monitor",
-            href: "/queries/vpn-s2s",
-            description: "Monitor and troubleshoot IPsec/IKE site-to-site VPN tunnels on Cisco FTD firewalls managed by Firepower Management Center (FMC).",
-            icon: <Link2 size={24} className="text-cyan-400" />
-        },
-        {
             id: 'ise-tacacs',
+            category: 'Perimeter & Access',
             title: "TACACS+ Administration",
             href: "/queries/tacacs",
             description: "Audit administrative access to network devices and track command executions across the infrastructure.",
             icon: <Lock size={24} />
         },
         {
+            id: 'vpn',
+            category: 'VPN Solutions',
+            title: "Remote Access VPN Troubleshooting",
+            href: "/queries/vpn",
+            description: "Real-time AnyConnect active sessions, IP pool capacity, live session termination, and Graylog event telemetry.",
+            icon: <Network size={24} className="text-sky-400" />
+        },
+        {
+            id: 'vpn-reporting',
+            category: 'VPN Solutions',
+            title: "Remote Access VPN Reporting",
+            href: "/queries/vpn-reporting",
+            description: "Query historical AnyConnect connection and disconnect logs by username or IP address with customizable date ranges and 1-click CSV export.",
+            icon: <FileText size={24} className="text-indigo-400" />
+        },
+        {
+            id: 'vpn-s2s',
+            category: 'VPN Solutions',
+            title: "Site-to-Site VPN Monitor",
+            href: "/queries/vpn-s2s",
+            description: "Monitor and troubleshoot IPsec/IKE site-to-site VPN tunnels on Cisco FTD firewalls managed by Firepower Management Center (FMC).",
+            icon: <Link2 size={24} className="text-cyan-400" />
+        },
+        {
             id: 'hibp-account',
+            category: 'Threat Intelligence & Telemetry',
             title: "HIBP Account Security",
             href: "/queries/hibp/account",
             description: "Search the 'Have I Been Pwned' database to identify if specific accounts have been compromised in breaches.",
@@ -65,6 +72,7 @@ export default async function QueriesPage() {
         },
         {
             id: 'hibp-domain',
+            category: 'Threat Intelligence & Telemetry',
             title: "HIBP Domain Security",
             href: "/queries/hibp/domain",
             description: "Monitor domain-wide breach data to identify leaked credentials across all corporate employees.",
@@ -72,6 +80,7 @@ export default async function QueriesPage() {
         },
         {
             id: 'threat-intel',
+            category: 'Threat Intelligence & Telemetry',
             title: "Threat Intelligence",
             href: "/queries/threat-intel",
             description: "Query IP reputation, DNS zones, and file signatures correlated with Cisco Umbrella categorization.",
@@ -79,6 +88,7 @@ export default async function QueriesPage() {
         },
         {
             id: 'ironport',
+            category: 'Threat Intelligence & Telemetry',
             title: "IronPort Telemetry",
             href: "/queries/ironport",
             description: "Monitor Cisco IronPort logs from Old Graylog for health, mail delays, and threat metrics.",

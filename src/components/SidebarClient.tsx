@@ -64,73 +64,94 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
 
                     {/* Consolidated Tool Links */}
                     {(isAnalyst || permissions.length > 0) && (
-                        <div className={isCollapsed ? "flex flex-col gap-1" : "ml-4 flex flex-col gap-1"}>
-                            {hasPermission('firewall') && (
-                                <Link 
-                                    href="/queries/firewall" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "Cisco Firewall Utilities" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/firewall") ? "active" : ""}`}
-                                >
-                                    <Shield size={18} className="shrink-0" />
-                                    <span className="nav-text">Cisco Firewall Utilities</span>
-                                </Link>
+                        <>
+                            {/* Perimeter & Access Group */}
+                            {(hasPermission('firewall') || hasPermission('ise') || hasPermission('ise-tacacs')) && (
+                                <>
+                                    <div className="nav-section mt-3">Perimeter & Access</div>
+                                    <div className={isCollapsed ? "flex flex-col gap-1" : "ml-4 flex flex-col gap-1"}>
+                                        {hasPermission('firewall') && (
+                                            <Link 
+                                                href="/queries/firewall" 
+                                                onClick={closeMobile}
+                                                title={isCollapsed ? "Cisco Firewall Utilities" : undefined}
+                                                className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/firewall") ? "active" : ""}`}
+                                            >
+                                                <Shield size={18} className="shrink-0" />
+                                                <span className="nav-text">Cisco Firewall Utilities</span>
+                                            </Link>
+                                        )}
+                                        {hasPermission('ise') && (
+                                            <Link 
+                                                href="/queries/ise" 
+                                                onClick={closeMobile}
+                                                title={isCollapsed ? "Cisco ISE Center" : undefined}
+                                                className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/ise") ? "active" : ""}`}
+                                            >
+                                                <Server size={18} className="shrink-0" />
+                                                <span className="nav-text">Cisco ISE Center</span>
+                                            </Link>
+                                        )}
+                                        {hasPermission('ise-tacacs') && (
+                                            <Link 
+                                                href="/queries/tacacs" 
+                                                onClick={closeMobile}
+                                                title={isCollapsed ? "TACACS+ Administration" : undefined}
+                                                className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/tacacs") ? "active" : ""}`}
+                                            >
+                                                <Lock size={18} className="shrink-0" />
+                                                <span className="nav-text">TACACS+ Administration</span>
+                                            </Link>
+                                        )}
+                                    </div>
+                                </>
                             )}
-                            {hasPermission('ise') && (
-                                <Link 
-                                    href="/queries/ise" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "Cisco ISE Center" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/ise") ? "active" : ""}`}
-                                >
-                                    <Server size={18} className="shrink-0" />
-                                    <span className="nav-text">Cisco ISE Center</span>
-                                </Link>
+
+                            {/* VPN Solutions Group */}
+                            {(hasPermission('vpn') || hasPermission('vpn-reporting') || hasPermission('vpn-s2s')) && (
+                                <>
+                                    <div className="nav-section mt-3">VPN Solutions</div>
+                                    <div className={isCollapsed ? "flex flex-col gap-1" : "ml-4 flex flex-col gap-1"}>
+                                        {hasPermission('vpn') && (
+                                            <Link 
+                                                href="/queries/vpn" 
+                                                onClick={closeMobile}
+                                                title={isCollapsed ? "Remote Access VPN" : undefined}
+                                                className={`nav-link text-[0.9rem] ${pathname === "/queries/vpn" ? "active" : ""}`}
+                                            >
+                                                <Network size={18} className="shrink-0 text-sky-400" />
+                                                <span className="nav-text">Remote Access VPN</span>
+                                            </Link>
+                                        )}
+                                        {hasPermission('vpn-reporting') && (
+                                            <Link 
+                                                href="/queries/vpn-reporting" 
+                                                onClick={closeMobile}
+                                                title={isCollapsed ? "Remote Access VPN Reporting" : undefined}
+                                                className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/vpn-reporting") ? "active" : ""}`}
+                                            >
+                                                <FileText size={18} className="shrink-0 text-indigo-400" />
+                                                <span className="nav-text">RA VPN Reporting</span>
+                                            </Link>
+                                        )}
+                                        {hasPermission('vpn-s2s') && (
+                                            <Link 
+                                                href="/queries/vpn-s2s" 
+                                                onClick={closeMobile}
+                                                title={isCollapsed ? "Site-to-Site VPN" : undefined}
+                                                className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/vpn-s2s") ? "active" : ""}`}
+                                            >
+                                                <Link2 size={18} className="shrink-0 text-cyan-400" />
+                                                <span className="nav-text">Site-to-Site VPN</span>
+                                            </Link>
+                                        )}
+                                    </div>
+                                </>
                             )}
-                            {hasPermission('vpn') && (
-                                <Link 
-                                    href="/queries/vpn" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "VPN Troubleshooting" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname === "/queries/vpn" ? "active" : ""}`}
-                                >
-                                    <Network size={18} className="shrink-0" />
-                                    <span className="nav-text">VPN Troubleshooting</span>
-                                </Link>
-                            )}
-                            {hasPermission('vpn-reporting') && (
-                                <Link 
-                                    href="/queries/vpn-reporting" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "VPN Reporting" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/vpn-reporting") ? "active" : ""}`}
-                                >
-                                    <FileText size={18} className="shrink-0 text-indigo-400" />
-                                    <span className="nav-text">VPN Reporting</span>
-                                </Link>
-                            )}
-                            {hasPermission('vpn-s2s') && (
-                                <Link 
-                                    href="/queries/vpn-s2s" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "Site-to-Site VPN" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/vpn-s2s") ? "active" : ""}`}
-                                >
-                                    <Link2 size={18} className="shrink-0 text-cyan-400" />
-                                    <span className="nav-text">Site-to-Site VPN</span>
-                                </Link>
-                            )}
-                            {hasPermission('ise-tacacs') && (
-                                <Link 
-                                    href="/queries/tacacs" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "TACACS+ Administration" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/tacacs") ? "active" : ""}`}
-                                >
-                                    <Lock size={18} className="shrink-0" />
-                                    <span className="nav-text">TACACS+ Administration</span>
-                                </Link>
-                            )}
+
+                            {/* Threat Intelligence & Telemetry Group */}
+                            <div className="nav-section mt-3">Threat & Mail Telemetry</div>
+                            <div className={isCollapsed ? "flex flex-col gap-1" : "ml-4 flex flex-col gap-1"}>
                             {hasPermission('hibp-account') && (
                                 <Link 
                                     href="/queries/hibp/account" 
@@ -231,7 +252,8 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                 </Link>
                             )}
                         </div>
-                    )}
+                    </>
+                )}
 
                     {(isAdmin || hasPermission('graylog-exporter')) && (
                         <>

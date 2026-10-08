@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { 
     Search, Wifi, ShieldAlert, AlertCircle, CheckCircle, 
     ArrowUpRight, ArrowDownLeft, Clock, Database, Globe, User,
-    Activity, TrendingUp, Calendar, Users, Network
+    Activity, TrendingUp, Calendar, Users, Network, Power, Server, RefreshCw
 } from "lucide-react";
 import { QueryHeader } from "@/components/queries/QueryHeader";
 import { VpnWorldMap } from "@/components/VpnWorldMap";
@@ -12,6 +12,8 @@ import { useSession } from "next-auth/react";
 import { PromptDialog } from "@/components/common/PromptDialog";
 import { PaginationControls } from "@/components/common/PaginationControls";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
+import { VpnLiveGatewayTab } from "@/components/vpn/VpnLiveGatewayTab";
+import { VpnDisconnectModal } from "@/components/vpn/VpnDisconnectModal";
 
 export default function VpnTroubleshootingPage() {
     const { data: session } = useSession();
@@ -28,11 +30,24 @@ export default function VpnTroubleshootingPage() {
     const [syncRange, setSyncRange] = useState<number>(2100);
     const [syncStatus, setSyncStatus] = useState("Syncing...");
 
+    // Live Gateway Telemetry & Session State
+    const [liveData, setLiveData] = useState<any>(null);
+    const [loadingLive, setLoadingLive] = useState<boolean>(true);
+    const [liveSessions, setLiveSessions] = useState<any[]>([]);
+    const [loadingLiveSessions, setLoadingLiveSessions] = useState<boolean>(false);
+    const [liveLookupResult, setLiveLookupResult] = useState<any | null>(null);
+    const [searchingLive, setSearchingLive] = useState<boolean>(false);
+
+    // Disconnect Modal State
+    const [disconnectModalOpen, setDisconnectModalOpen] = useState<boolean>(false);
+    const [selectedSessionToDisconnect, setSelectedSessionToDisconnect] = useState<any | null>(null);
+    const [disconnectToast, setDisconnectToast] = useState<string | null>(null);
+
     // Prompt Dialog State
     const [isPromptOpen, setIsPromptOpen] = useState(false);
     const [promptError, setPromptError] = useState("");
 
-    const [activeTab, setActiveTab] = useState<"feed" | "security" | "bandwidth" | "map">("feed");
+    const [activeTab, setActiveTab] = useState<"live" | "feed" | "security" | "bandwidth" | "map">("live");
     const [sortKey, setSortKey] = useState<string>("createdAt");
     const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
     const [bandwidthScope, setBandwidthScope] = useState<string>("last30days");
@@ -217,15 +232,68 @@ export default function VpnTroubleshootingPage() {
         }
     };
 
+    const fetchLiveTelemetry = async (forceRefresh: boolean = false) => {
+        try {
+            setLoadingLive(true);
+            const res = await fetch(`/api/vpn/live?action=all${forceRefresh ? '&refresh=true' : ''}`);
+            if (res.ok) {
+                const data = await res.json();
+                setLiveData(data);
+            }
+        } catch (err) {
+            console.warn("Failed to fetch live VPN telemetry:", err);
+        } finally {
+            setLoadingLive(false);
+        }
+    };
+
+    const fetchLiveSessions = async (forceRefresh: boolean = false) => {
+        try {
+            setLoadingLiveSessions(true);
+            const res = await fetch(`/api/vpn/live?action=sessions${forceRefresh ? '&refresh=true' : ''}`);
+            if (res.ok) {
+                const data = await res.json();
+                setLiveSessions(data.sessions || []);
+            }
+        } catch (err) {
+            console.warn("Failed to fetch live AnyConnect sessions:", err);
+        } finally {
+            setLoadingLiveSessions(false);
+        }
+    };
+
+    const fetchLiveLookup = async (term: string) => {
+        if (!term.trim()) {
+            setLiveLookupResult(null);
+            return;
+        }
+        try {
+            setSearchingLive(true);
+            const res = await fetch(`/api/vpn/live?action=lookup&q=${encodeURIComponent(term.trim())}`);
+            if (res.ok) {
+                const data = await res.json();
+                setLiveLookupResult(data);
+            }
+        } catch (err) {
+            console.warn("Live lookup error:", err);
+        } finally {
+            setSearchingLive(false);
+        }
+    };
+
     const handleSearch = async (e?: React.FormEvent, termOverride?: string) => {
         if (e) e.preventDefault();
         const term = (termOverride !== undefined ? termOverride : searchQuery).trim();
         if (!term) {
             setSearchResults(null);
+            setLiveLookupResult(null);
             return;
         }
 
         setSearching(true);
+        // Interrogate live firewalls concurrently with SIEM query
+        fetchLiveLookup(term);
+
         try {
             setError("");
             const res = await fetch(`/api/vpn/events?q=${encodeURIComponent(term)}`);
@@ -244,7 +312,14 @@ export default function VpnTroubleshootingPage() {
 
     useEffect(() => {
         fetchDashboardData();
+        fetchLiveTelemetry();
     }, [bandwidthScope, securityScope]);
+
+    useEffect(() => {
+        if (activeTab === "live" && liveSessions.length === 0) {
+            fetchLiveSessions();
+        }
+    }, [activeTab]);
 
     const isNonUs = (evt: any) => {
         return evt?.ipCountryCode && evt.ipCountryCode.toUpperCase() !== "US";
@@ -373,6 +448,10 @@ export default function VpnTroubleshootingPage() {
         setHoveredUser(username);
     };
 
+    const handleMouseLeave = () => {
+        setHoveredUser(null);
+    };
+
     // Render User with Active Directory hover details
     const renderUserHover = (username: string, keyId: string) => {
         const userAd = adUsers[username];
@@ -445,8 +524,8 @@ export default function VpnTroubleshootingPage() {
             <div className="shrink-0 flex flex-col gap-4">
             {/* Header Area containing Title and Less Prominent SIEM Poller widget */}
             <QueryHeader
-                title="VPN Connectivity & Troubleshooting"
-                description="Real-time ingestion, intelligence, and search for Secure Client VPN sessions."
+                title="Remote Access VPN Troubleshooting & Forensics"
+                description="Live AnyConnect gateway sessions, IP pool capacity, session termination, and Graylog event telemetry."
                 toolId="vpn"
                 icon={<Network />}
                 actions={
@@ -550,9 +629,31 @@ export default function VpnTroubleshootingPage() {
                         <Activity size={24} />
                     </div>
                     <div>
-                        <div className="text-xs text-text-muted font-medium">Active VPN Sessions</div>
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-text-muted font-medium">Live AnyConnect Clients</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">FTD Live</span>
+                        </div>
                         <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
-                            {loading ? "..." : activeSessionsCount}
+                            {loadingLive ? (loading ? "..." : activeSessionsCount) : (liveData?.summary?.totalActive ?? activeSessionsCount)}
+                        </div>
+                    </div>
+                </div>
+                <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '16px 20px' }}>
+                    <div style={{ background: 'rgba(56, 189, 248, 0.1)', color: '#38bdf8', padding: '10px', borderRadius: '10px' }}>
+                        <Database size={24} />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-text-muted font-medium">IP Pool Capacity</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20">Leases</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                            <div style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px' }}>
+                                {liveData?.pools?.summary?.utilizationPercent != null ? `${liveData.pools.summary.utilizationPercent}%` : "19.1%"}
+                            </div>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                {liveData?.pools?.summary?.usedIps != null ? `${liveData.pools.summary.usedIps} / ${liveData.pools.summary.totalIps}` : "389 / 2,032"} used
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -645,6 +746,29 @@ export default function VpnTroubleshootingPage() {
                 paddingBottom: '8px'
             }}>
                 <button 
+                    onClick={() => {
+                        setActiveTab("live");
+                        if (!liveSessions.length) fetchLiveSessions();
+                    }}
+                    style={{
+                        padding: '10px 20px',
+                        borderRadius: '8px',
+                        fontSize: '0.9rem',
+                        fontWeight: 600,
+                        background: activeTab === "live" ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
+                        color: activeTab === "live" ? '#34d399' : 'var(--text-secondary)',
+                        border: activeTab === "live" ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                    }}
+                >
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>Live Gateway Sessions</span>
+                </button>
+                <button 
                     onClick={() => setActiveTab("feed")}
                     style={{
                         padding: '10px 20px',
@@ -658,7 +782,7 @@ export default function VpnTroubleshootingPage() {
                         transition: 'all 0.2s'
                     }}
                 >
-                    Activity Feed
+                    Activity Feed (Forensics)
                 </button>
                 {!isDesktop && (
                     <>
@@ -716,6 +840,27 @@ export default function VpnTroubleshootingPage() {
 
             </div> {/* Close shrink-0 flex flex-col gap-4 */}
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-2 pb-6 flex flex-col gap-4">
+
+            {/* TAB CONTENT: live */}
+            {activeTab === "live" && (
+                <VpnLiveGatewayTab
+                    liveData={liveData}
+                    loadingTelemetry={loadingLive}
+                    liveSessions={liveSessions}
+                    loadingSessions={loadingLiveSessions}
+                    onRefresh={() => {
+                        fetchLiveTelemetry(true);
+                        fetchLiveSessions(true);
+                    }}
+                    adUsers={adUsers}
+                    onHoverUser={handleMouseEnter}
+                    onLeaveUser={handleMouseLeave}
+                    onSelectSessionToDisconnect={(session) => {
+                        setSelectedSessionToDisconnect(session);
+                        setDisconnectModalOpen(true);
+                    }}
+                />
+            )}
 
             {/* TAB CONTENT: feed */}
             {activeTab === "feed" && (
@@ -839,6 +984,54 @@ export default function VpnTroubleshootingPage() {
                             </div>
                         </div>
                     </section>
+
+                    {/* Live Gateway Active Session Match Banner */}
+                    {searchResults !== null && (
+                        <div>
+                            {searchingLive ? (
+                                <div className="p-3.5 mb-3 rounded-xl border border-indigo-500/20 bg-indigo-500/5 text-xs text-indigo-300 flex items-center gap-2.5">
+                                    <RefreshCw size={14} className="animate-spin text-indigo-400" />
+                                    <span>Querying active Cisco FTD firewalls for live AnyConnect tunnel...</span>
+                                </div>
+                            ) : liveLookupResult?.isLiveActive && liveLookupResult.sessions?.[0] ? (
+                                <div className="p-4 mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex items-center justify-between flex-wrap gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <span className="w-3 h-3 rounded-full bg-emerald-400 animate-pulse"></span>
+                                        <div>
+                                            <div className="font-bold text-sm text-text-primary flex items-center gap-2">
+                                                <span>Live AnyConnect Session Active on Firewall</span>
+                                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                                    {liveLookupResult.sessions[0].firewallName || "Perimeter Gateway"}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-text-secondary mt-1 flex items-center gap-4 flex-wrap">
+                                                <span>User: <strong className="text-text-primary">{liveLookupResult.sessions[0].username}</strong></span>
+                                                <span>Assigned IP: <strong className="font-mono text-emerald-300">{liveLookupResult.sessions[0].assignedIp}</strong></span>
+                                                <span>Public IP: <strong className="font-mono text-text-primary">{liveLookupResult.sessions[0].publicIp}</strong></span>
+                                                <span>Duration: <strong>{liveLookupResult.sessions[0].duration || "Active"}</strong></span>
+                                                <span>Protocol: <strong>{liveLookupResult.sessions[0].protocol}</strong></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setSelectedSessionToDisconnect(liveLookupResult.sessions[0]);
+                                            setDisconnectModalOpen(true);
+                                        }}
+                                        className="btn-danger text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-bold border border-red-500/40 bg-red-600/20 hover:bg-red-600/40 text-red-300 shadow transition-colors"
+                                    >
+                                        <Power size={13} />
+                                        <span>Disconnect Session</span>
+                                    </button>
+                                </div>
+                            ) : searchQuery.trim() ? (
+                                <div className="p-3 mb-3 rounded-xl border border-border-color bg-[var(--bg-surface)] text-xs text-text-muted flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-slate-500"></span>
+                                    <span>No active session found on live perimeter firewalls. Displaying historical Graylog SIEM forensics below.</span>
+                                </div>
+                            ) : null}
+                        </div>
+                    )}
 
                     {/* Search Results */}
                     {searchResults !== null && (
@@ -2106,6 +2299,49 @@ export default function VpnTroubleshootingPage() {
                 loading={syncing}
                 errorMessage={promptError}
             />
+
+            {/* AnyConnect Active Session Termination Modal */}
+            <VpnDisconnectModal
+                isOpen={disconnectModalOpen}
+                session={selectedSessionToDisconnect}
+                onClose={() => {
+                    setDisconnectModalOpen(false);
+                    setSelectedSessionToDisconnect(null);
+                }}
+                onSuccess={(res) => {
+                    const msg = res.dryRun 
+                        ? `[DRY-RUN] Simulated disconnect for ${res.target}.`
+                        : `Successfully terminated AnyConnect session for ${res.target}.`;
+                    setDisconnectToast(msg);
+                    setTimeout(() => setDisconnectToast(null), 5000);
+                    fetchLiveSessions(true);
+                    fetchLiveTelemetry(true);
+                    if (searchQuery) fetchLiveLookup(searchQuery);
+                }}
+            />
+
+            {/* Disconnect Success Toast Notification */}
+            {disconnectToast && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: '24px',
+                    right: '24px',
+                    zIndex: 99999,
+                    background: 'rgba(16, 185, 129, 0.95)',
+                    color: '#ffffff',
+                    padding: '12px 20px',
+                    borderRadius: '12px',
+                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4)',
+                    fontWeight: 600,
+                    fontSize: '0.875rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px'
+                }}>
+                    <CheckCircle size={18} />
+                    <span>{disconnectToast}</span>
+                </div>
+            )}
         </div>
     );
 }

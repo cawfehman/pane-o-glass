@@ -503,15 +503,240 @@ class FtdClient:
                 "error": str(e)
             }
 
+    def get_ra_summary(self) -> Dict[str, Any]:
+        """Polls live AnyConnect VPN session counts and system capacity from FTD/ASA."""
+        try:
+            with self._connect() as conn:
+                output = conn.send_command("show vpn-sessiondb summary", cmd_verify=False, read_timeout=15)
+                active_ac = 0
+                cumulative_ac = 0
+                peak_ac = 0
+                device_capacity = 10000
+                device_load = "0%"
+
+                m_active = re.search(r"AnyConnect Client\s*:\s*(\d+)\s*:\s*(\d+)\s*:\s*(\d+)", output)
+                if m_active:
+                    active_ac = int(m_active.group(1))
+                    cumulative_ac = int(m_active.group(2))
+                    peak_ac = int(m_active.group(3))
+
+                m_cap = re.search(r"Device Total VPN Capacity\s*:\s*(\d+)", output)
+                if m_cap:
+                    device_capacity = int(m_cap.group(1))
+
+                m_load = re.search(r"Device Load\s*:\s*([^\r\n]+)", output)
+                if m_load:
+                    device_load = m_load.group(1).strip()
+
+                return {
+                    "firewallId": self.fw_id,
+                    "firewallName": self.name,
+                    "ip": self.ip,
+                    "success": True,
+                    "activeAnyConnect": active_ac,
+                    "cumulativeAnyConnect": cumulative_ac,
+                    "peakAnyConnect": peak_ac,
+                    "deviceCapacity": device_capacity,
+                    "deviceLoad": device_load,
+                    "rawSummary": output.strip()
+                }
+        except Exception as e:
+            return {
+                "firewallId": self.fw_id,
+                "firewallName": self.name,
+                "ip": self.ip,
+                "success": False,
+                "error": str(e)
+            }
+
+    def get_ra_sessions(self, filter_type: Optional[str] = None, filter_val: Optional[str] = None) -> Dict[str, Any]:
+        """Polls live AnyConnect active sessions, optionally filtered by username, assigned IP, or public IP."""
+        cmd = "show vpn-sessiondb anyconnect"
+        if filter_type and filter_val:
+            cmd = f"show vpn-sessiondb anyconnect filter {filter_type} {filter_val}"
+
+        try:
+            with self._connect() as conn:
+                output = conn.send_command(cmd, cmd_verify=False, read_timeout=25)
+                sessions = []
+
+                if "no active sessions" not in output.lower() and "there are presently no active sessions" not in output.lower():
+                    # Split into session chunks
+                    raw_blocks = re.split(r"(?:^|\n)(?=Username\s*:)", output)
+                    for blk in raw_blocks:
+                        if not blk.strip() or "Username" not in blk:
+                            continue
+
+                        u_match = re.search(r"Username\s*:\s*([^\s\r\n]+)", blk)
+                        if not u_match:
+                            continue
+                        user = u_match.group(1).strip()
+
+                        idx_match = re.search(r"Index\s*:\s*(\d+)", blk)
+                        a_ip_match = re.search(r"Assigned IP\s*:\s*([0-9\.]+)", blk)
+                        p_ip_match = re.search(r"Public IP\s*:\s*([0-9\.]+)", blk)
+                        proto_match = re.search(r"Protocol\s*:\s*([^\r\n]+)", blk)
+                        enc_match = re.search(r"Encryption\s*:\s*([^\r\n]+)", blk)
+                        tx_match = re.search(r"Bytes Tx\s*:\s*(\d+)", blk)
+                        rx_match = re.search(r"Bytes Rx\s*:\s*(\d+)", blk)
+                        grp_match = re.search(r"Group Policy\s*:\s*([^\r\n]+)", blk)
+                        tun_match = re.search(r"Tunnel Group\s*:\s*([^\r\n]+)", blk)
+                        login_match = re.search(r"Login Time\s*:\s*([^\r\n]+)", blk)
+                        dur_match = re.search(r"Duration\s*:\s*([^\r\n]+)", blk)
+                        inact_match = re.search(r"Inactivity\s*:\s*([^\r\n]+)", blk)
+                        audit_match = re.search(r"Audt Sess ID\s*:\s*([^\r\n]+)", blk)
+
+                        sessions.append({
+                            "username": user,
+                            "index": idx_match.group(1) if idx_match else "",
+                            "assignedIp": a_ip_match.group(1) if a_ip_match else "",
+                            "publicIp": p_ip_match.group(1) if p_ip_match else "",
+                            "protocol": proto_match.group(1).strip() if proto_match else "IKEv2 / IPsec",
+                            "encryption": enc_match.group(1).strip() if enc_match else "AES-GCM-256",
+                            "bytesTx": int(tx_match.group(1)) if tx_match else 0,
+                            "bytesRx": int(rx_match.group(1)) if rx_match else 0,
+                            "groupPolicy": grp_match.group(1).strip() if grp_match else "Standard",
+                            "tunnelGroup": tun_match.group(1).strip() if tun_match else "DefaultWEBVPNGroup",
+                            "loginTime": login_match.group(1).strip() if login_match else "",
+                            "duration": dur_match.group(1).strip() if dur_match else "",
+                            "inactivity": inact_match.group(1).strip() if inact_match else "",
+                            "auditSessionId": audit_match.group(1).strip() if audit_match else "",
+                            "firewallId": self.fw_id,
+                            "firewallName": self.name,
+                            "firewallIp": self.ip
+                        })
+
+                return {
+                    "firewallId": self.fw_id,
+                    "firewallName": self.name,
+                    "ip": self.ip,
+                    "success": True,
+                    "command": cmd,
+                    "sessionCount": len(sessions),
+                    "sessions": sessions
+                }
+        except Exception as e:
+            return {
+                "firewallId": self.fw_id,
+                "firewallName": self.name,
+                "ip": self.ip,
+                "success": False,
+                "error": str(e)
+            }
+
+    def get_ra_pools(self) -> Dict[str, Any]:
+        """Polls AnyConnect local IP address pool configuration and real-time lease utilization."""
+        try:
+            with self._connect() as conn:
+                conf_out = conn.send_command("show running-config ip local pool", cmd_verify=False, read_timeout=15)
+                pools = []
+
+                # Matches: ip local pool <name> <start-end> mask <mask>
+                pool_matches = re.findall(r"ip local pool\s+([^\s]+)\s+([0-9\.]+)-([0-9\.]+)(?:\s+mask\s+([0-9\.]+))?", conf_out)
+                for p_name, p_start, p_end, p_mask in pool_matches:
+                    # Calculate total IP capacity
+                    try:
+                        import ipaddress
+                        start_int = int(ipaddress.IPv4Address(p_start))
+                        end_int = int(ipaddress.IPv4Address(p_end))
+                        total_ips = max(1, end_int - start_int + 1)
+                    except Exception:
+                        total_ips = 254
+
+                    # Now check usage for this pool
+                    pool_detail_out = conn.send_command(f"show ip local pool {p_name}", cmd_verify=False, read_timeout=20)
+                    in_use_ips = 0
+                    if "In Use Addresses:" in pool_detail_out:
+                        in_use_section = pool_detail_out.split("In Use Addresses:")[1]
+                        in_use_lines = [l.strip() for l in in_use_section.splitlines() if re.match(r"^\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", l.strip())]
+                        in_use_ips = len(in_use_lines)
+
+                    free_ips = max(0, total_ips - in_use_ips)
+                    util_pct = round((in_use_ips / total_ips) * 100, 1) if total_ips > 0 else 0
+
+                    pools.append({
+                        "poolName": p_name,
+                        "range": f"{p_start} - {p_end}",
+                        "startIp": p_start,
+                        "endIp": p_end,
+                        "mask": p_mask or "255.255.255.0",
+                        "totalIps": total_ips,
+                        "usedIps": in_use_ips,
+                        "freeIps": free_ips,
+                        "utilizationPercent": util_pct,
+                        "firewallId": self.fw_id,
+                        "firewallName": self.name
+                    })
+
+                return {
+                    "firewallId": self.fw_id,
+                    "firewallName": self.name,
+                    "ip": self.ip,
+                    "success": True,
+                    "pools": pools
+                }
+        except Exception as e:
+            return {
+                "firewallId": self.fw_id,
+                "firewallName": self.name,
+                "ip": self.ip,
+                "success": False,
+                "error": str(e)
+            }
+
+    def terminate_ra_session(self, target: str, session_type: str = "name", dry_run: bool = True) -> Dict[str, Any]:
+        """Disconnects an active AnyConnect session via 'vpn-sessiondb logoff [name|ipaddress] <target>'."""
+        cmd = f"vpn-sessiondb logoff {session_type} {target}"
+        if dry_run:
+            return {
+                "firewallId": self.fw_id,
+                "firewallName": self.name,
+                "ip": self.ip,
+                "target": target,
+                "sessionType": session_type,
+                "dryRun": True,
+                "command": cmd,
+                "success": True,
+                "message": f"[DRY-RUN] Simulated '{cmd}' on {self.name} ({self.ip}). No sessions dropped."
+            }
+
+        try:
+            with self._connect() as conn:
+                output = conn.send_command(cmd, cmd_verify=False, read_timeout=15)
+                return {
+                    "firewallId": self.fw_id,
+                    "firewallName": self.name,
+                    "ip": self.ip,
+                    "target": target,
+                    "sessionType": session_type,
+                    "dryRun": False,
+                    "command": cmd,
+                    "success": True,
+                    "output": output.strip() or "Session logoff command sent to firewall."
+                }
+        except Exception as e:
+            return {
+                "firewallId": self.fw_id,
+                "firewallName": self.name,
+                "ip": self.ip,
+                "target": target,
+                "sessionType": session_type,
+                "dryRun": False,
+                "command": cmd,
+                "success": False,
+                "error": str(e)
+            }
 
 
-def run_fleet_operation(action: str, target_ip: Optional[str] = None, dry_run: bool = True, target_id: Optional[str] = None, bounce_type: str = "ipsec") -> List[Dict[str, Any]]:
+
+def run_fleet_operation(action: str, target_ip: Optional[str] = None, dry_run: bool = True, target_id: Optional[str] = None, bounce_type: str = "ipsec", username: Optional[str] = None, filter_type: Optional[str] = None, filter_val: Optional[str] = None, session_type: str = "name") -> List[Dict[str, Any]]:
     """Runs an action concurrently across all or a selected firewall."""
     firewalls = get_firewalls_config()
     if not firewalls:
         return [{"error": "No firewalls found in FIREWALL_CONFIG or S2S_FIREWALL_CONFIG."}]
 
-    if target_id and target_id.lower() not in ["all", "fleet"]:
+    # Filter by target
+    if target_id and target_id.lower() not in ["all", "fleet", "ra"]:
         tid = target_id.lower().strip()
         matched = [
             fw for fw in firewalls
@@ -524,6 +749,17 @@ def run_fleet_operation(action: str, target_ip: Optional[str] = None, dry_run: b
         if not matched:
             return [{"error": f"Target firewall '{target_id}' was not found in FIREWALL_CONFIG or S2S_FIREWALL_CONFIG."}]
         firewalls = matched
+    elif target_id and target_id.lower() == "ra":
+        # Target only Remote Access firewalls (fw1-fw4 or names with connect/reconnect)
+        ra_fws = [fw for fw in firewalls if any(k in str(fw.get("id", "")).lower() for k in ["fw1", "fw2", "fw3", "fw4"]) or "connect" in str(fw.get("name", "")).lower() or "reconnect" in str(fw.get("name", "")).lower()]
+        if ra_fws:
+            firewalls = ra_fws
+
+    # If action is an RA action and no target was specified, default to RA firewalls
+    if not target_id and action.startswith("ra_"):
+        ra_fws = [fw for fw in firewalls if any(k in str(fw.get("id", "")).lower() for k in ["fw1", "fw2", "fw3", "fw4"]) or "connect" in str(fw.get("name", "")).lower() or "reconnect" in str(fw.get("name", "")).lower()]
+        if ra_fws:
+            firewalls = ra_fws
 
     results = []
     with ThreadPoolExecutor(max_workers=min(len(firewalls), 8)) as executor:
@@ -556,6 +792,20 @@ def run_fleet_operation(action: str, target_ip: Optional[str] = None, dry_run: b
                 if not target_ip:
                     return [{"error": "--ip (peer IP) is required for 's2s_bounce' action"}]
                 f = executor.submit(client.bounce_tunnel, target_ip, bounce_type=bounce_type, dry_run=dry_run)
+            elif action == "ra_summary":
+                f = executor.submit(client.get_ra_summary)
+            elif action == "ra_sessions":
+                f_type = filter_type or ("name" if username else ("a-ipaddress" if target_ip else None))
+                f_val = filter_val or username or target_ip
+                f = executor.submit(client.get_ra_sessions, filter_type=f_type, filter_val=f_val)
+            elif action == "ra_pools":
+                f = executor.submit(client.get_ra_pools)
+            elif action == "ra_terminate":
+                target = username or target_ip
+                if not target:
+                    return [{"error": "--username or --ip is required for 'ra_terminate' action"}]
+                s_type = session_type if session_type else ("name" if username else "ipaddress")
+                f = executor.submit(client.terminate_ra_session, target=target, session_type=s_type, dry_run=dry_run)
             else:
                 return [{"error": f"Unknown action: {action}"}]
             future_map[f] = fw
@@ -580,10 +830,17 @@ def run_fleet_operation(action: str, target_ip: Optional[str] = None, dry_run: b
 def main():
     parser = argparse.ArgumentParser(description="Netmiko Cisco FTD / ASA Operations Client")
     parser.add_argument("--list", action="store_true", help="List all configured firewalls without credentials")
-    parser.add_argument("--target", default="fleet", help="Target firewall ID/Name or 'fleet' for all (default: fleet)")
-    parser.add_argument("--action", choices=["version", "check", "show_all", "unshun", "shun", "s2s_status", "s2s_troubleshoot", "s2s_bounce"], default="version",
-                        help="Action to execute (default: version)")
-    parser.add_argument("--ip", help="Target IPv4 address (required for check, shun, unshun, s2s_troubleshoot, s2s_bounce)")
+    parser.add_argument("--target", default="fleet", help="Target firewall ID/Name or 'fleet' / 'ra' for all (default: fleet)")
+    parser.add_argument("--action", choices=[
+        "version", "check", "show_all", "unshun", "shun", 
+        "s2s_status", "s2s_troubleshoot", "s2s_bounce",
+        "ra_summary", "ra_sessions", "ra_pools", "ra_terminate"
+    ], default="version", help="Action to execute (default: version)")
+    parser.add_argument("--ip", help="Target IPv4 address")
+    parser.add_argument("--username", help="Target username for Remote Access VPN operations")
+    parser.add_argument("--filter-type", choices=["name", "a-ipaddress", "p-ipaddress", "tunnel-group"], help="Filter field for AnyConnect sessions")
+    parser.add_argument("--filter-val", help="Filter value for AnyConnect sessions")
+    parser.add_argument("--session-type", choices=["name", "ipaddress"], default="name", help="Session termination type (default: name)")
     parser.add_argument("--bounce-type", choices=["ipsec", "ike"], default="ipsec", help="Type of SA to bounce (default: ipsec)")
     parser.add_argument("--live", action="store_true", help="Execute live mutation (disables default safe dry-run mode)")
     parser.add_argument("--json", action="store_true", help="Emit output strictly as formatted JSON")
@@ -609,7 +866,11 @@ def main():
         target_ip=args.ip,
         dry_run=dry_run,
         target_id=args.target,
-        bounce_type=getattr(args, "bounce_type", "ipsec")
+        bounce_type=getattr(args, "bounce_type", "ipsec"),
+        username=args.username,
+        filter_type=args.filter_type,
+        filter_val=args.filter_val,
+        session_type=args.session_type
     )
 
     if args.json:

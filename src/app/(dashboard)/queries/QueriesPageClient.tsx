@@ -8,52 +8,76 @@ export default function QueriesPageClient({
     visibleTools, 
     role 
 }: { 
-    visibleTools: { id: string; title: string; href: string; description: string; icon: React.ReactNode }[];
+    visibleTools: { id: string; category?: string; title: string; href: string; description: string; icon: React.ReactNode }[];
     role: string;
 }) {
+    // Group tools by category
+    const categories = ["Perimeter & Access", "VPN Solutions", "Threat Intelligence & Telemetry"];
+    const grouped = categories.map(cat => ({
+        category: cat,
+        tools: visibleTools.filter(t => t.category === cat || (!t.category && cat === "Perimeter & Access"))
+    })).filter(g => g.tools.length > 0);
+
     return (
         <div className="page-container">
-            <header className="mb-10">
+            <header className="mb-8">
                 <h1 className="text-4xl font-extrabold mb-2 tracking-tight">
                     System Tools & Queries
                 </h1>
                 <p className="text-text-secondary text-lg">
-                    Centralized forensic control center for network infrastructure and security intelligence.
+                    Centralized forensic control center for network perimeter, VPN infrastructure, and security intelligence.
                 </p>
             </header>
 
-            <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] gap-6">
-                {visibleTools.map((tool) => (
-                    <div 
-                        key={tool.id} 
-                        className="glass-card relative transition-all duration-200 ease-in-out h-full bg-bg-surface flex flex-col border border-border-color p-6"
-                    >
-                        {/* Help Trigger Button */}
-                        <ToolHelp 
-                            toolId={tool.id === 'hibp-account' ? 'hibp-account' : tool.id === 'hibp-domain' ? 'hibp-domain' : tool.id}
-                            iconSize={18}
-                            triggerStyle={{
-                                position: 'absolute',
-                                top: '16px',
-                                right: '16px',
-                                zIndex: 10
-                            }}
-                        />
+            <div className="flex flex-col gap-10">
+                {grouped.map(group => (
+                    <section key={group.category} className="flex flex-col gap-4">
+                        <div className="flex items-center gap-3 border-b border-border-color pb-2">
+                            <h2 className="text-xl font-bold tracking-tight text-text-primary">
+                                {group.category}
+                            </h2>
+                            {group.category === "VPN Solutions" && (
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                                    FTD CLI & FMC Integrated
+                                </span>
+                            )}
+                        </div>
 
-                        <Link href={tool.href} className="no-underline flex flex-col h-full w-full">
-                            <div className="flex items-center gap-4 mb-4">
-                                <div className="bg-accent-glow p-3 rounded-xl text-accent-primary flex items-center justify-center">
-                                    {tool.icon}
+                        <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] gap-6">
+                            {group.tools.map((tool) => (
+                                <div 
+                                    key={tool.id} 
+                                    className="glass-card relative transition-all duration-200 ease-in-out h-full bg-bg-surface flex flex-col border border-border-color p-6 hover:border-accent-primary/40"
+                                >
+                                    {/* Help Trigger Button */}
+                                    <ToolHelp 
+                                        toolId={tool.id === 'hibp-account' ? 'hibp-account' : tool.id === 'hibp-domain' ? 'hibp-domain' : tool.id}
+                                        iconSize={18}
+                                        triggerStyle={{
+                                            position: 'absolute',
+                                            top: '16px',
+                                            right: '16px',
+                                            zIndex: 10
+                                        }}
+                                    />
+
+                                    <Link href={tool.href} className="no-underline flex flex-col h-full w-full">
+                                        <div className="flex items-center gap-4 mb-4">
+                                            <div className="bg-accent-glow p-3 rounded-xl text-accent-primary flex items-center justify-center">
+                                                {tool.icon}
+                                            </div>
+                                            <h3 className="m-0 text-text-primary text-xl font-semibold pr-6">
+                                                {tool.title}
+                                            </h3>
+                                        </div>
+                                        <p className="text-text-secondary m-0 text-[0.95rem] leading-[1.6] grow">
+                                            {tool.description}
+                                        </p>
+                                    </Link>
                                 </div>
-                                <h3 className="m-0 text-text-primary text-xl font-semibold pr-6">
-                                    {tool.title}
-                                </h3>
-                            </div>
-                            <p className="text-text-secondary m-0 text-[0.95rem] leading-[1.6] grow">
-                                {tool.description}
-                            </p>
-                        </Link>
-                    </div>
+                            ))}
+                        </div>
+                    </section>
                 ))}
 
                 {/* If no tools are available */}
