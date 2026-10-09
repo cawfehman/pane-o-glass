@@ -153,7 +153,8 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
                 body: JSON.stringify({
                     target: peerIp,
                     label: tunnelName || peerIp,
-                    type: "s2s_peer"
+                    type: "s2s_peer",
+                    gatewayId: activeDiagReport?.gatewayId || "cdc-2mc-2130-1"
                 })
             });
             if (res.ok) {
@@ -1948,7 +1949,7 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                     <span>Peer Reachability & ICMP Latency Profile</span>
                                 </h3>
                                 <p className="text-xs text-text-secondary mt-0.5">
-                                    Measures end-to-end network health to remote peer <span className="font-mono text-cyan-400 font-semibold">{activeDiagReport.peerIp}</span> directly from this server.
+                                    Measures live ICMP reachability and round-trip latency to remote peer <span className="font-mono text-cyan-400 font-semibold">{activeDiagReport.peerIp}</span> directly from active perimeter VPN appliance <span className="font-semibold text-text-primary">({activeDiagReport.gatewayName || "CDC-2MC-2130-1"})</span>.
                                 </p>
                             </div>
                             <button

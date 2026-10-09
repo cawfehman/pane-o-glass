@@ -738,6 +738,65 @@ class FtdClient:
                 "error": str(e)
             }
 
+    def ping_target(self, target_ip: str, interface: Optional[str] = None) -> Dict[str, Any]:
+        """Executes live ICMP ping directly from the Cisco FTD/ASA appliance to a target peer or IP."""
+        try:
+            with self._connect() as conn:
+                prompt = conn.find_prompt()
+                is_standby = any(k in prompt.lower() for k in ["/standby", "(standby)", "-standby"])
+                if is_standby:
+                    return {
+                        "firewallId": self.fw_id,
+                        "firewallName": self.name,
+                        "ip": self.ip,
+                        "target": target_ip,
+                        "success": True,
+                        "isStandby": True,
+                        "prompt": prompt,
+                        "message": "Node is in Standby state; ICMP ping executed from Active peer."
+                    }
+
+                cmd = f"ping {interface} {target_ip}" if interface else f"ping {target_ip}"
+                output = conn.send_command(cmd, read_timeout=15)
+
+                success_match = re.search(r"Success rate is (\d+) percent \((\d+)/(\d+)\)", output)
+                rtt_match = re.search(r"round-trip min/avg/max = (\d+)/(\d+)/(\d+) ms", output)
+
+                success_pct = int(success_match.group(1)) if success_match else (100 if "!" in output else 0)
+                alive = success_pct > 0
+                packet_loss = 100 - success_pct
+
+                rtt_min = int(rtt_match.group(1)) if rtt_match else 0
+                rtt_avg = int(rtt_match.group(2)) if rtt_match else (rtt_min if rtt_min else 0)
+                rtt_max = int(rtt_match.group(3)) if rtt_match else rtt_avg
+
+                return {
+                    "firewallId": self.fw_id,
+                    "firewallName": self.name,
+                    "firewallIp": self.ip,
+                    "target": target_ip,
+                    "command": cmd,
+                    "success": True,
+                    "alive": alive,
+                    "packetLoss": packet_loss,
+                    "rttMin": rtt_min,
+                    "rttAvg": rtt_avg,
+                    "rttMax": rtt_max,
+                    "rawOutput": output.strip(),
+                    "prompt": prompt
+                }
+        except Exception as e:
+            return {
+                "firewallId": self.fw_id,
+                "firewallName": self.name,
+                "firewallIp": self.ip,
+                "target": target_ip,
+                "success": False,
+                "alive": False,
+                "packetLoss": 100,
+                "error": str(e)
+            }
+
 
 
 def run_fleet_operation(action: str, target_ip: Optional[str] = None, dry_run: bool = True, target_id: Optional[str] = None, bounce_type: str = "ipsec", username: Optional[str] = None, filter_type: Optional[str] = None, filter_val: Optional[str] = None, session_type: str = "name") -> List[Dict[str, Any]]:
@@ -803,6 +862,10 @@ def run_fleet_operation(action: str, target_ip: Optional[str] = None, dry_run: b
                 if not target_ip:
                     return [{"error": "--ip (peer IP) is required for 's2s_bounce' action"}]
                 f = executor.submit(client.bounce_tunnel, target_ip, bounce_type=bounce_type, dry_run=dry_run)
+            elif action == "ping":
+                if not target_ip:
+                    return [{"error": "--ip is required for 'ping' action"}]
+                f = executor.submit(client.ping_target, target_ip, interface=filter_val)
             elif action == "ra_summary":
                 f = executor.submit(client.get_ra_summary)
             elif action == "ra_sessions":
@@ -845,9 +908,10 @@ def main():
     parser.add_argument("--action", choices=[
         "version", "check", "show_all", "unshun", "shun", 
         "s2s_status", "s2s_troubleshoot", "s2s_bounce",
-        "ra_summary", "ra_sessions", "ra_pools", "ra_terminate"
+        "ra_summary", "ra_sessions", "ra_pools", "ra_terminate", "ping"
     ], default="version", help="Action to execute (default: version)")
     parser.add_argument("--ip", help="Target IPv4 address")
+    parser.add_argument("--interface", help="Optional egress interface for ping (e.g. outside)")
     parser.add_argument("--username", help="Target username for Remote Access VPN operations")
     parser.add_argument("--filter-type", choices=["name", "a-ipaddress", "p-ipaddress", "tunnel-group"], help="Filter field for AnyConnect sessions")
     parser.add_argument("--filter-val", help="Filter value for AnyConnect sessions")

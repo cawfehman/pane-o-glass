@@ -86,21 +86,110 @@ function seedBaselineHistory() {
 loadPersistedSamples();
 
 /**
- * Executes a cross-platform ICMP ping probe against a target IP
+ * Executes a ping directly from the designated Cisco Firewall appliance (FTD / ASA Lina engine)
+ */
+async function pingFromFirewallAppliance(
+    host: string,
+    targetFirewall: string = "cdc-2mc-2130-1",
+    iface?: string
+): Promise<{ alive: boolean; rttMin: number; rttAvg: number; rttMax: number; packetLoss: number; rawOutput?: string }> {
+    const pythonBin = process.platform === "win32" ? "python" : "python3";
+    const scriptPath = path.join(process.cwd(), "services", "firewall", "ftd_client.py");
+    const args = ["--action", "ping", "--target", targetFirewall, "--ip", host, "--json"];
+    if (iface) {
+        args.push("--filter-val", iface);
+    }
+
+    try {
+        const { stdout } = await execFileAsync(pythonBin, [scriptPath, ...args], {
+            cwd: process.cwd(),
+            timeout: 25000,
+            env: { ...process.env, PYTHONIOENCODING: "utf-8" }
+        });
+        const parsed = JSON.parse(stdout);
+        const res = Array.isArray(parsed) ? parsed[0] : parsed;
+        if (res && res.success) {
+            return {
+                alive: Boolean(res.alive),
+                rttMin: Number(res.rttMin || 0),
+                rttAvg: Number(res.rttAvg || 0),
+                rttMax: Number(res.rttMax || 0),
+                packetLoss: Number(res.packetLoss ?? (res.alive ? 0 : 100)),
+                rawOutput: res.rawOutput
+            };
+        }
+    } catch (e: any) {
+        console.warn(`[VPN-PING] Appliance ping to ${host} on ${targetFirewall} note:`, e.message);
+    }
+
+    return {
+        alive: false,
+        rttMin: 0,
+        rttAvg: 0,
+        rttMax: 0,
+        packetLoss: 100
+    };
+}
+
+/**
+ * Executes an ICMP ping probe:
+ * - S2S Peers: Executed directly on S2S Firewall Appliance (e.g. cdc-2mc-2130-1)
+ * - RA Clients: Executed directly on active Remote Access Cluster Node (e.g. fw1)
+ * - RA Gateways: Executed to test network reachability to perimeter firewall management interfaces
  */
 export async function pingHost(
     host: string,
     label: string = host,
     type: "ra_gateway" | "ra_client" | "s2s_tunnel" = "ra_client",
     count: number = 2,
-    timeoutMs: number = 1500
+    timeoutMs: number = 1500,
+    gatewayId?: string
 ): Promise<PingSample> {
+    const timestamp = new Date().toISOString();
+
+    // 1. S2S Peers: MUST ping directly from the S2S VPN Firewall appliance
+    if (type === "s2s_tunnel" || (type as string) === "s2s_peer") {
+        const targetFw = gatewayId || "cdc-2mc-2130-1";
+        const res = await pingFromFirewallAppliance(host, targetFw);
+        const sample: PingSample = {
+            target: host,
+            label,
+            type,
+            alive: res.alive,
+            rttMin: res.rttMin,
+            rttAvg: res.rttAvg,
+            rttMax: res.rttMax,
+            packetLoss: res.packetLoss,
+            timestamp
+        };
+        recordPingSample(sample);
+        return sample;
+    }
+
+    // 2. RA Clients: MUST ping directly from the active Remote Access Cluster Node
+    if (type === "ra_client") {
+        const targetFw = gatewayId || "fw1";
+        const res = await pingFromFirewallAppliance(host, targetFw);
+        const sample: PingSample = {
+            target: host,
+            label,
+            type,
+            alive: res.alive,
+            rttMin: res.rttMin,
+            rttAvg: res.rttAvg,
+            rttMax: res.rttMax,
+            packetLoss: res.packetLoss,
+            timestamp
+        };
+        recordPingSample(sample);
+        return sample;
+    }
+
+    // 3. Perimeter Gateway backbone monitoring (e.g. testing firewall management IPs 172.16.2.51 / 172.18.166.55)
     const isWin = process.platform === "win32";
     const args = isWin
         ? ["-n", String(count), "-w", String(timeoutMs), host]
         : ["-c", String(count), "-W", String(Math.ceil(timeoutMs / 1000)), host];
-
-    const timestamp = new Date().toISOString();
 
     try {
         const { stdout } = await execFileAsync("ping", args, {

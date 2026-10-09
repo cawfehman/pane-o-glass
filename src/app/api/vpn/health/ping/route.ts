@@ -23,7 +23,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Invalid target characters" }, { status: 400 });
         }
 
-        const sample = await pingHost(target, label, type, 3, 1200);
+        const gatewayId = body.gatewayId ? String(body.gatewayId).trim() : undefined;
+
+        const sample = await pingHost(target, label, type, 3, 1200, gatewayId);
 
         return NextResponse.json({
             success: true,

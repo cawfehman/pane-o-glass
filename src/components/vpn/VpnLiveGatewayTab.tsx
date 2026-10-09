@@ -88,14 +88,19 @@ export function VpnLiveGatewayTab({
         fetchHealthHistory();
     }, []);
 
-    const handlePingClient = async (assignedIp: string, username: string) => {
+    const handlePingClient = async (assignedIp: string, username: string, firewallId?: string) => {
         if (!assignedIp || assignedIp === "N/A") return;
         setClientPingStatus(prev => ({ ...prev, [assignedIp]: { loading: true } }));
         try {
             const res = await fetch("/api/vpn/health/ping", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ target: assignedIp, label: `${username} (${assignedIp})`, type: "ra_client" })
+                body: JSON.stringify({ 
+                    target: assignedIp, 
+                    label: `${username} (${assignedIp})`, 
+                    type: "ra_client",
+                    gatewayId: firewallId || "fw1"
+                })
             });
             if (res.ok) {
                 const data = await res.json();
@@ -632,7 +637,7 @@ export function VpnLiveGatewayTab({
                                             <div className="flex items-center justify-end gap-1.5">
                                                 {session.assignedIp && session.assignedIp !== "N/A" && (
                                                     <button
-                                                        onClick={() => handlePingClient(session.assignedIp, session.username)}
+                                                        onClick={() => handlePingClient(session.assignedIp, session.username, session.firewallId)}
                                                         disabled={clientPingStatus[session.assignedIp]?.loading}
                                                         className={`text-[11px] px-2 py-1 rounded-lg border font-medium inline-flex items-center gap-1 transition-colors ${
                                                             clientPingStatus[session.assignedIp]?.sample?.alive
@@ -641,7 +646,7 @@ export function VpnLiveGatewayTab({
                                                                 ? "border-rose-500/40 bg-rose-500/10 text-rose-400"
                                                                 : "border-border-color bg-[var(--bg-background)] hover:bg-border-color/30 text-text-secondary"
                                                         }`}
-                                                        title={`Probe ICMP latency to client virtual adapter (${session.assignedIp})`}
+                                                        title={`Probe ICMP latency directly from firewall (${session.firewallName?.split(" ")[0] || "Active Node"}) to client virtual adapter (${session.assignedIp})`}
                                                     >
                                                         {clientPingStatus[session.assignedIp]?.loading ? (
                                                             <Loader2 size={11} className="animate-spin text-text-muted" />
