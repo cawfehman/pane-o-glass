@@ -48,10 +48,11 @@ export async function POST(req: Request) {
 
             const isReachable = sample.alive;
             const latencyMs = sample.alive ? Math.round(sample.rttAvg) : null;
-            const packetLossPercent = sample.packetLoss;
             const message = sample.alive
-                ? `Peer ${peerIp} responded to ICMP probe from firewall appliance (${gatewayId || 'CDC-2MC-2130-1'}) in ${latencyMs}ms (${packetLossPercent}% loss).`
-                : `Peer ${peerIp} failed to respond to ICMP probe from firewall appliance (${gatewayId || 'CDC-2MC-2130-1'}) (100% loss).`;
+                ? (sample.ikeActive
+                    ? `Peer ${peerIp} verified REACHABLE via active IKEv2 Security Association on firewall appliance (${gatewayId || 'CDC-2MC-2130-1'}) (remote cloud peer drops public ICMP echo).`
+                    : `Peer ${peerIp} responded to ICMP probe from firewall appliance (${gatewayId || 'CDC-2MC-2130-1'}) in ${latencyMs}ms (${packetLossPercent}% loss).`)
+                : `Peer ${peerIp} failed to respond to probe from firewall appliance (${gatewayId || 'CDC-2MC-2130-1'}) (100% loss).`;
 
             await logAudit(
                 "VPN_S2S_PING",

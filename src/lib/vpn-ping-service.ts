@@ -15,6 +15,8 @@ export interface PingSample {
     rttMax: number;
     packetLoss: number; // 0 - 100
     timestamp: string;
+    ikeActive?: boolean;
+    statusNote?: string;
 }
 
 // In-memory ring buffer (up to 1,000 samples)
@@ -103,7 +105,7 @@ async function pingFromFirewallAppliance(
     try {
         const { stdout } = await execFileAsync(pythonBin, [scriptPath, ...args], {
             cwd: process.cwd(),
-            timeout: 25000,
+            timeout: 40000,
             env: { ...process.env, PYTHONIOENCODING: "utf-8" }
         });
         const parsed = JSON.parse(stdout);
@@ -115,7 +117,9 @@ async function pingFromFirewallAppliance(
                 rttAvg: Number(res.rttAvg || 0),
                 rttMax: Number(res.rttMax || 0),
                 packetLoss: Number(res.packetLoss ?? (res.alive ? 0 : 100)),
-                rawOutput: res.rawOutput
+                rawOutput: res.rawOutput,
+                ikeActive: Boolean(res.ikeActive),
+                statusNote: res.statusNote
             };
         }
     } catch (e: any) {
@@ -149,7 +153,10 @@ export async function pingHost(
 
     // 1. S2S Peers: MUST ping directly from the S2S VPN Firewall appliance
     if (type === "s2s_tunnel" || (type as string) === "s2s_peer") {
-        const targetFw = gatewayId || "cdc-2mc-2130-1";
+        let targetFw = (gatewayId || "").trim();
+        if (!targetFw || targetFw.startsWith("fmc-dev") || targetFw === "fleet") {
+            targetFw = "cdc-2mc-2130-1";
+        }
         const res = await pingFromFirewallAppliance(host, targetFw);
         const sample: PingSample = {
             target: host,
@@ -160,7 +167,9 @@ export async function pingHost(
             rttAvg: res.rttAvg,
             rttMax: res.rttMax,
             packetLoss: res.packetLoss,
-            timestamp
+            timestamp,
+            ikeActive: res.ikeActive,
+            statusNote: res.statusNote
         };
         recordPingSample(sample);
         return sample;
