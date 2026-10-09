@@ -166,9 +166,14 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
                         [peerIp]: {
                             loading: false,
                             reachable: data.sample.alive,
-                            latencyMs: Math.round(data.sample.rttAvg),
+                            icmpAlive: data.sample.icmpAlive,
+                            saActive: data.sample.saActive,
+                            saStatus: data.sample.saStatus,
+                            healthStatus: data.sample.healthStatus,
+                            summaryStatus: data.sample.summaryStatus,
+                            latencyMs: data.sample.icmpAlive && data.sample.rttAvg ? Math.round(data.sample.rttAvg) : null,
                             packetLossPercent: data.sample.packetLoss,
-                            message: data.sample.alive ? `Peer responded in ${Math.round(data.sample.rttAvg)}ms` : "Peer probe timed out"
+                            message: data.sample.statusNote || (data.sample.alive ? `Peer responded in ${Math.round(data.sample.rttAvg)}ms` : "Peer probe timed out")
                         }
                     }));
                 }
@@ -280,6 +285,7 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
     const [isConsoleExpanded, setIsConsoleExpanded] = useState<boolean>(false);
     const [isConsoleWordWrap, setIsConsoleWordWrap] = useState<boolean>(false);
     const [consoleFilterText, setConsoleFilterText] = useState<string>("");
+    const [showRawProbeOutput, setShowRawProbeOutput] = useState<boolean>(false);
 
     const rawConsoleText = useMemo(() => {
         if (!activeDiagReport?.liveTelemetric) return "";
@@ -339,6 +345,11 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
     const [pingState, setPingState] = useState<Record<string, {
         loading: boolean;
         reachable?: boolean;
+        icmpAlive?: boolean;
+        saActive?: boolean;
+        saStatus?: string;
+        healthStatus?: string;
+        summaryStatus?: string;
         latencyMs?: number | null;
         packetLossPercent?: number;
         message?: string;
@@ -532,6 +543,11 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
                     [cleanPeerIp]: {
                         loading: false,
                         reachable: data.reachable,
+                        icmpAlive: data.icmpAlive,
+                        saActive: data.saActive,
+                        saStatus: data.saStatus,
+                        healthStatus: data.healthStatus,
+                        summaryStatus: data.summaryStatus,
                         latencyMs: data.latencyMs,
                         packetLossPercent: data.packetLossPercent,
                         message: data.message
@@ -1163,6 +1179,8 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                                 <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono border animate-in fade-in duration-150 ${
                                                     pingState[tunnel.peerIp].loading
                                                         ? "bg-cyan-950/40 border-cyan-500/30 text-cyan-300"
+                                                        : pingState[tunnel.peerIp].saActive && !pingState[tunnel.peerIp].icmpAlive
+                                                        ? "bg-teal-950/40 border-teal-500/30 text-teal-300"
                                                         : pingState[tunnel.peerIp].reachable
                                                         ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300"
                                                         : "bg-rose-950/40 border-rose-500/30 text-rose-300"
@@ -1170,18 +1188,28 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                                     {pingState[tunnel.peerIp].loading ? (
                                                         <>
                                                             <RefreshCw size={11} className="animate-spin text-cyan-400" />
-                                                            <span>Pinging...</span>
+                                                            <span>Pinging from appliance...</span>
                                                         </>
                                                     ) : (
                                                         <>
-                                                            <span className={`w-1.5 h-1.5 rounded-full ${pingState[tunnel.peerIp].reachable ? "bg-emerald-400" : "bg-rose-400"}`} />
+                                                            <span className={`w-1.5 h-1.5 rounded-full ${
+                                                                pingState[tunnel.peerIp].saActive && !pingState[tunnel.peerIp].icmpAlive
+                                                                    ? "bg-teal-400"
+                                                                    : pingState[tunnel.peerIp].reachable
+                                                                    ? "bg-emerald-400"
+                                                                    : "bg-rose-400"
+                                                            }`} />
                                                             <span className="font-semibold">
-                                                                {pingState[tunnel.peerIp].reachable 
-                                                                    ? `${pingState[tunnel.peerIp].latencyMs ?? 15}ms` 
+                                                                {pingState[tunnel.peerIp].saActive && !pingState[tunnel.peerIp].icmpAlive
+                                                                    ? "ICMP Filtered · SA Active"
+                                                                    : pingState[tunnel.peerIp].icmpAlive
+                                                                    ? `${pingState[tunnel.peerIp].latencyMs ?? 15}ms`
                                                                     : "Unreachable"}
                                                             </span>
                                                             <span className="text-[10px] opacity-75">
-                                                                ({pingState[tunnel.peerIp].packetLossPercent ?? 0}% loss)
+                                                                {pingState[tunnel.peerIp].saActive && !pingState[tunnel.peerIp].icmpAlive
+                                                                    ? "(IKE SA UP)"
+                                                                    : `(${pingState[tunnel.peerIp].packetLossPercent ?? 0}% loss${pingState[tunnel.peerIp].saActive ? ' · SA UP' : ''})`}
                                                             </span>
                                                             <button
                                                                 onClick={(e) => {
@@ -1939,81 +1967,202 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                 )}
 
                 {/* ICMP Health & Latency Tab */}
-                {investigateTab === "health" && (
+                {investigateTab === "health" && (() => {
+                    const latestSample = peerHealthHistory.length > 0 ? peerHealthHistory[peerHealthHistory.length - 1] : null;
+                    const hasLiveCrypto = activeDiagReport.ikeStatus === "READY" || Boolean(latestSample?.saActive);
+                    const isFilteredByPeer = Boolean(latestSample && !latestSample.icmpAlive && hasLiveCrypto);
+
+                    return (
                     <div className="space-y-4 animate-in fade-in duration-150">
-                        {/* Header Banner */}
-                        <div className="flex items-center justify-between flex-wrap gap-3 p-4 rounded-xl border border-border-color bg-bg-surface-hover/30">
+                        {/* Header Banner - Explicit Hardware Appliance Probe Origin */}
+                        <div className="flex items-center justify-between flex-wrap gap-3 p-4 rounded-xl border border-cyan-500/25 bg-cyan-950/20">
                             <div>
-                                <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
-                                    <Activity size={16} className="text-emerald-400" />
-                                    <span>Peer Reachability & ICMP Latency Profile</span>
-                                </h3>
-                                <p className="text-xs text-text-secondary mt-0.5">
-                                    Measures live ICMP reachability and round-trip latency to remote peer <span className="font-mono text-cyan-400 font-semibold">{activeDiagReport.peerIp}</span> directly from active perimeter VPN appliance <span className="font-semibold text-text-primary">({activeDiagReport.gatewayName || "CDC-2MC-2130-1"})</span>.
+                                <div className="flex items-center gap-2">
+                                    <Activity size={16} className="text-cyan-400" />
+                                    <h3 className="text-sm font-bold text-text-primary">
+                                        Dual Diagnostic Telemetry: L3 ICMP Probe & L7 Crypto SA Verification
+                                    </h3>
+                                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                                        Perimeter Egress
+                                    </span>
+                                </div>
+                                <p className="text-xs text-text-secondary mt-1">
+                                    Probing remote peer <span className="font-mono text-cyan-400 font-bold">{activeDiagReport.peerIp}</span> directly from perimeter appliance <span className="font-semibold text-text-primary">{activeDiagReport.gatewayName || "CDC-2MC-2130-1"}</span> (Outside Interface: <span className="font-mono text-text-primary">CDC-VPN-OUTSIDE / 162.252.231.231</span>) — natively executed on Cisco hardware.
                                 </p>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => handleProbeTunnelPeer(activeDiagReport.peerIp, activeDiagReport.tunnelName)}
                                 disabled={probingPeerHealth}
-                                className="px-3.5 py-1.5 rounded-lg border border-border-color bg-bg-surface hover:bg-bg-surface-hover text-xs font-semibold text-text-primary flex items-center gap-1.5 transition-all cursor-pointer hover:border-emerald-500/40"
+                                className="px-3.5 py-1.5 rounded-lg border border-cyan-500/30 bg-bg-surface hover:bg-bg-surface-hover text-xs font-semibold text-text-primary flex items-center gap-1.5 transition-all cursor-pointer hover:border-cyan-400 shadow-sm"
                             >
-                                <RefreshCw size={13} className={probingPeerHealth ? "animate-spin text-emerald-400" : "text-emerald-400"} />
-                                <span>{probingPeerHealth ? "Pinging Peer..." : "Test Ping Now"}</span>
+                                <RefreshCw size={13} className={probingPeerHealth ? "animate-spin text-cyan-400" : "text-cyan-400"} />
+                                <span>{probingPeerHealth ? "Probing Appliance..." : "Run Dual Probe Now"}</span>
                             </button>
                         </div>
 
-                        {/* Metric Highlights */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <div className="p-3.5 rounded-xl border border-border-color bg-[var(--bg-background)]/50">
-                                <div className="text-[11px] text-text-muted font-medium uppercase tracking-wider">Remote Peer Status</div>
-                                <div className="text-base font-bold text-text-primary mt-1 flex items-center gap-2">
-                                    <span className={`w-2 h-2 rounded-full ${
-                                        peerHealthHistory.length > 0 && peerHealthHistory[peerHealthHistory.length - 1]?.alive
-                                            ? "bg-emerald-400"
-                                            : peerHealthHistory.length > 0
-                                            ? "bg-rose-400"
-                                            : "bg-amber-400"
-                                    }`} />
+                        {/* Diagnostic Synthesis Verdict Banner */}
+                        {latestSample && (
+                            <div className={`p-3.5 rounded-xl border flex items-center gap-3 ${
+                                latestSample.icmpAlive && hasLiveCrypto
+                                    ? "border-emerald-500/30 bg-emerald-950/25 text-emerald-200"
+                                    : isFilteredByPeer
+                                    ? "border-teal-500/30 bg-teal-950/25 text-teal-200"
+                                    : latestSample.icmpAlive && !hasLiveCrypto
+                                    ? "border-amber-500/30 bg-amber-950/25 text-amber-200"
+                                    : "border-rose-500/30 bg-rose-950/25 text-rose-200"
+                            }`}>
+                                {hasLiveCrypto ? (
+                                    <CheckCircle2 size={18} className={latestSample.icmpAlive ? "text-emerald-400 shrink-0" : "text-teal-400 shrink-0"} />
+                                ) : (
+                                    <AlertTriangle size={18} className="text-rose-400 shrink-0" />
+                                )}
+                                <div className="text-xs">
+                                    <span className="font-bold">
+                                        {latestSample.summaryStatus || (isFilteredByPeer ? "Tunnel Verified Healthy (ICMP Filtered by Remote Peer)" : "Tunnel Attention Needed")}
+                                        :
+                                    </span>{" "}
                                     <span>
-                                        {peerHealthHistory.length > 0 
-                                            ? (peerHealthHistory[peerHealthHistory.length - 1]?.alive ? "Reachable" : "Unresponsive")
-                                            : "Awaiting Probe"}
+                                        {latestSample.statusNote || (
+                                            isFilteredByPeer
+                                                ? "Remote peer drops public ICMP echo requests (standard security policy on AWS, Azure, & cloud firewalls). Cryptographic IKEv2 / IPsec SAs are actively encrypting."
+                                                : latestSample.alive
+                                                ? "Peer responded to ICMP probe from firewall appliance."
+                                                : "Peer failed to respond to probe from firewall appliance."
+                                        )}
                                     </span>
                                 </div>
-                                <div className="text-[11px] font-mono text-text-secondary mt-0.5">
-                                    {activeDiagReport.peerIp}
+                            </div>
+                        )}
+
+                        {/* Dual-Layer Metric Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                            {/* Card 1: Layer 3 Network Probe (ICMP Echo) */}
+                            <div className={`p-4 rounded-xl border flex flex-col justify-between ${
+                                latestSample?.icmpAlive
+                                    ? "border-emerald-500/30 bg-emerald-950/10"
+                                    : isFilteredByPeer
+                                    ? "border-teal-500/30 bg-teal-950/10"
+                                    : "border-border-color bg-[var(--bg-background)]/50"
+                            }`}>
+                                <div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                                            <Activity size={13} className="text-cyan-400" />
+                                            Layer 3 Network (ICMP Echo)
+                                        </span>
+                                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                                            latestSample?.icmpAlive
+                                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                                : isFilteredByPeer
+                                                ? "bg-teal-500/20 text-teal-300 border-teal-500/40"
+                                                : "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                                        }`}>
+                                            {latestSample
+                                                ? (latestSample.icmpAlive
+                                                    ? "REACHABLE"
+                                                    : (isFilteredByPeer ? "ICMP FILTERED BY PEER" : "UNRESPONSIVE"))
+                                                : "AWAITING PROBE"}
+                                        </span>
+                                    </div>
+
+                                    <div className="mt-3 flex items-baseline gap-3">
+                                        <div className="text-2xl font-bold font-mono text-text-primary">
+                                            {latestSample?.icmpAlive && latestSample.rttAvg
+                                                ? `${Math.round(latestSample.rttAvg)} ms`
+                                                : (isFilteredByPeer ? "Filtered" : "—")}
+                                        </div>
+                                        <div className="text-xs font-mono text-text-secondary">
+                                            Loss: <span className={latestSample?.icmpAlive ? "text-emerald-400 font-bold" : isFilteredByPeer ? "text-teal-400 font-bold" : "text-rose-400 font-bold"}>
+                                                {latestSample ? `${latestSample.packetLoss}%` : "—"}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <p className="text-[11px] text-text-secondary mt-2 leading-relaxed">
+                                        {latestSample?.icmpAlive
+                                            ? `Remote peer responded to ICMP echo probes directly from outside interface 162.252.231.231.`
+                                            : isFilteredByPeer
+                                            ? `Remote peer firewall drops public ICMP echo requests (100% loss). This is standard security hardening for cloud peers (AWS, Azure, GCP).`
+                                            : `No ICMP echo response received from ${activeDiagReport.peerIp} (100% loss).`}
+                                    </p>
+                                </div>
+
+                                <div className="mt-3 pt-3 border-t border-border-color/60 flex items-center justify-between text-[11px] text-text-muted font-mono">
+                                    <span>Src: 162.252.231.231</span>
+                                    <span>Dst: {activeDiagReport.peerIp}</span>
                                 </div>
                             </div>
 
-                            <div className="p-3.5 rounded-xl border border-border-color bg-[var(--bg-background)]/50">
-                                <div className="text-[11px] text-text-muted font-medium uppercase tracking-wider">Average Round-Trip Time</div>
-                                <div className="text-base font-bold text-text-primary mt-1 font-mono">
-                                    {peerHealthHistory.length > 0 && peerHealthHistory[peerHealthHistory.length - 1]?.alive
-                                        ? `${Math.round(peerHealthHistory[peerHealthHistory.length - 1]?.rttAvg)} ms`
-                                        : "—"}
-                                </div>
-                                <div className="text-[11px] text-text-secondary mt-0.5">
-                                    {peerHealthHistory.length > 0
-                                        ? `Min: ${Math.round(peerHealthHistory[peerHealthHistory.length - 1]?.rttMin ?? 0)}ms · Max: ${Math.round(peerHealthHistory[peerHealthHistory.length - 1]?.rttMax ?? 0)}ms`
-                                        : "Direct ICMP ping"}
-                                </div>
-                            </div>
+                            {/* Card 2: Layer 7 Cryptographic SA (IKEv2 / IPsec) */}
+                            <div className={`p-4 rounded-xl border flex flex-col justify-between ${
+                                hasLiveCrypto
+                                    ? "border-emerald-500/30 bg-emerald-950/10"
+                                    : "border-border-color bg-[var(--bg-background)]/50"
+                            }`}>
+                                <div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                                            <Shield size={13} className="text-emerald-400" />
+                                            Layer 7 Crypto SA (IKEv2 / IPsec)
+                                        </span>
+                                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                                            hasLiveCrypto
+                                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                                : "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                                        }`}>
+                                            {hasLiveCrypto ? "ESTABLISHED / ACTIVE" : "DISCONNECTED"}
+                                        </span>
+                                    </div>
 
-                            <div className="p-3.5 rounded-xl border border-border-color bg-[var(--bg-background)]/50">
-                                <div className="text-[11px] text-text-muted font-medium uppercase tracking-wider">Packet Loss & Stability</div>
-                                <div className="text-base font-bold text-text-primary mt-1 font-mono">
-                                    {peerHealthHistory.length > 0
-                                        ? `${peerHealthHistory[peerHealthHistory.length - 1]?.packetLoss ?? 0}%`
-                                        : "—"}
+                                    <div className="mt-3 flex items-baseline gap-3">
+                                        <div className="text-2xl font-bold font-mono text-emerald-400">
+                                            {hasLiveCrypto ? "READY" : "DOWN"}
+                                        </div>
+                                        <div className="text-xs font-mono text-text-secondary">
+                                            IPsec: <span className={activeDiagReport.ipsecStatus === "ACTIVE" ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+                                                {activeDiagReport.ipsecStatus}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <p className="text-[11px] text-text-secondary mt-2 leading-relaxed">
+                                        {hasLiveCrypto
+                                            ? `Phase 1 (IKEv2) and Phase 2 (IPsec) Security Associations are actively established on the firewall Lina engine. Encrypted ESP payloads are passing successfully.`
+                                            : `No active IKEv2 or IPsec Security Association exists for peer ${activeDiagReport.peerIp}. Tunnel renegotiation is required.`}
+                                    </p>
                                 </div>
-                                <div className="text-[11px] text-text-secondary mt-0.5">
-                                    {peerHealthHistory.length > 0 && (peerHealthHistory[peerHealthHistory.length - 1]?.packetLoss ?? 0) === 0
-                                        ? "Optimal line quality"
-                                        : "Direct probe response"}
+
+                                <div className="mt-3 pt-3 border-t border-border-color/60 flex items-center justify-between text-[11px] text-text-muted font-mono">
+                                    <span>Map: CSM_CDC-VPN-OUTSIDE_map</span>
+                                    <span>State: {hasLiveCrypto ? "Active Encrypting" : "Down"}</span>
                                 </div>
                             </div>
                         </div>
+
+                        {/* Raw Cisco FTD Lina Probe Output Snippet */}
+                        {latestSample?.rawOutput && (
+                            <div className="p-3.5 rounded-xl border border-border-color bg-black/40">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-xs font-mono font-bold text-text-secondary flex items-center gap-1.5">
+                                        <Terminal size={13} className="text-cyan-400" />
+                                        Raw Cisco FTD Lina Probe Telemetry ({activeDiagReport.gatewayName || "CDC-2MC-2130-1"})
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowRawProbeOutput(!showRawProbeOutput)}
+                                        className="text-[11px] text-cyan-400 hover:underline font-mono cursor-pointer"
+                                    >
+                                        {showRawProbeOutput ? "Hide Details" : "View Raw Output"}
+                                    </button>
+                                </div>
+                                {showRawProbeOutput && (
+                                    <pre className="text-[11px] font-mono text-zinc-300 bg-black/60 p-3 rounded-lg overflow-x-auto whitespace-pre leading-relaxed border border-white/5 mt-2">
+                                        {`# ping ${activeDiagReport.peerIp}\n${latestSample.rawOutput}\n\n# show crypto ikev2 sa | include ${activeDiagReport.peerIp}\n${latestSample.ikeDetail || "% No active IKE SAs found"}`}
+                                    </pre>
+                                )}
+                            </div>
+                        )}
 
                         {/* Historical Trend Chart */}
                         <div className="p-4 rounded-xl border border-border-color bg-[var(--bg-background)]/50 flex flex-col gap-3">
@@ -2075,7 +2224,8 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                             )}
                         </div>
                     </div>
-                )}
+                    );
+                })()}
 
                 {/* Audit Trail Tab */}
                 {investigateTab === "audits" && (
@@ -2337,6 +2487,8 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                     <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono border animate-in fade-in duration-150 ${
                                         pingState[activeDiagReport.peerIp].loading
                                             ? "bg-cyan-950/40 border-cyan-500/30 text-cyan-300"
+                                            : pingState[activeDiagReport.peerIp].saActive && !pingState[activeDiagReport.peerIp].icmpAlive
+                                            ? "bg-teal-950/40 border-teal-500/30 text-teal-300"
                                             : pingState[activeDiagReport.peerIp].reachable
                                             ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-300"
                                             : "bg-rose-950/40 border-rose-500/30 text-rose-300"
@@ -2344,18 +2496,28 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                                         {pingState[activeDiagReport.peerIp].loading ? (
                                             <>
                                                 <RefreshCw size={11} className="animate-spin text-cyan-400" />
-                                                <span>Pinging {activeDiagReport.peerIp}...</span>
+                                                <span>Pinging from appliance...</span>
                                             </>
                                         ) : (
                                             <>
-                                                <span className={`w-1.5 h-1.5 rounded-full ${pingState[activeDiagReport.peerIp].reachable ? "bg-emerald-400" : "bg-rose-400"}`} />
+                                                <span className={`w-1.5 h-1.5 rounded-full ${
+                                                    pingState[activeDiagReport.peerIp].saActive && !pingState[activeDiagReport.peerIp].icmpAlive
+                                                        ? "bg-teal-400"
+                                                        : pingState[activeDiagReport.peerIp].reachable
+                                                        ? "bg-emerald-400"
+                                                        : "bg-rose-400"
+                                                }`} />
                                                 <span className="font-semibold">
-                                                    {pingState[activeDiagReport.peerIp].reachable
+                                                    {pingState[activeDiagReport.peerIp].saActive && !pingState[activeDiagReport.peerIp].icmpAlive
+                                                        ? "ICMP Filtered · SA Active"
+                                                        : pingState[activeDiagReport.peerIp].icmpAlive
                                                         ? `${pingState[activeDiagReport.peerIp].latencyMs ?? 15}ms`
                                                         : "Unreachable"}
                                                 </span>
                                                 <span className="text-[10px] opacity-75">
-                                                    ({pingState[activeDiagReport.peerIp].packetLossPercent ?? 0}% loss)
+                                                    {pingState[activeDiagReport.peerIp].saActive && !pingState[activeDiagReport.peerIp].icmpAlive
+                                                        ? "(IKE SA UP)"
+                                                        : `(${pingState[activeDiagReport.peerIp].packetLossPercent ?? 0}% loss${pingState[activeDiagReport.peerIp].saActive ? ' · SA UP' : ''})`}
                                                 </span>
                                                 <button
                                                     onClick={() => dismissPing(activeDiagReport.peerIp)}

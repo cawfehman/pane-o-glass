@@ -47,16 +47,22 @@ export async function POST(req: Request) {
             const sample = await pingHost(peerIp, tunnelName || peerIp, "s2s_tunnel", 2, 2000, gatewayId);
 
             const isReachable = sample.alive;
-            const latencyMs = sample.alive ? Math.round(sample.rttAvg) : null;
-            const message = sample.alive
-                ? (sample.ikeActive
-                    ? `Peer ${peerIp} verified REACHABLE via active IKEv2 Security Association on firewall appliance (${gatewayId || 'CDC-2MC-2130-1'}) (remote cloud peer drops public ICMP echo).`
-                    : `Peer ${peerIp} responded to ICMP probe from firewall appliance (${gatewayId || 'CDC-2MC-2130-1'}) in ${latencyMs}ms (${packetLossPercent}% loss).`)
-                : `Peer ${peerIp} failed to respond to probe from firewall appliance (${gatewayId || 'CDC-2MC-2130-1'}) (100% loss).`;
+            const icmpAlive = sample.icmpAlive ?? sample.alive;
+            const saActive = sample.saActive ?? false;
+            const latencyMs = icmpAlive && sample.rttAvg ? Math.round(sample.rttAvg) : null;
+            const packetLossPercent = sample.packetLoss;
+            const summaryStatus = sample.summaryStatus || (isReachable ? "Reachable" : "Unreachable");
+            const message = sample.statusNote || (
+                isReachable
+                    ? (saActive && !icmpAlive
+                        ? `Peer ${peerIp} drops public ICMP (normal for cloud/AWS), but IKEv2/IPsec SA is active on firewall appliance (${gatewayId || 'CDC-2MC-2130-1'}).`
+                        : `Peer ${peerIp} responded to ICMP probe from firewall appliance (${gatewayId || 'CDC-2MC-2130-1'}) in ${latencyMs}ms (${packetLossPercent}% loss).`)
+                    : `Peer ${peerIp} failed to respond to probe from firewall appliance (${gatewayId || 'CDC-2MC-2130-1'}) (100% loss).`
+            );
 
             await logAudit(
                 "VPN_S2S_PING",
-                `Tested reachability for tunnel "${tunnelName || peerIp}" (Peer: ${peerIp}, Gateway: ${gatewayId || 'fleet'}): ${isReachable ? 'REACHABLE' : 'UNREACHABLE'}`,
+                `Tested reachability for tunnel "${tunnelName || peerIp}" (Peer: ${peerIp}, Gateway: ${gatewayId || 'fleet'}): ${summaryStatus}`,
                 session.user.id
             );
             return NextResponse.json({
@@ -64,9 +70,15 @@ export async function POST(req: Request) {
                 action: "ping",
                 peerIp,
                 reachable: isReachable,
+                icmpAlive,
+                saActive,
+                saStatus: sample.saStatus,
+                healthStatus: sample.healthStatus,
+                summaryStatus,
                 latencyMs,
                 packetLossPercent,
-                message
+                message,
+                rawOutput: sample.rawOutput
             });
         }
 

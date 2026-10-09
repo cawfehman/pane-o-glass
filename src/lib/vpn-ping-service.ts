@@ -15,8 +15,18 @@ export interface PingSample {
     rttMax: number;
     packetLoss: number; // 0 - 100
     timestamp: string;
-    ikeActive?: boolean;
+    // Dual Diagnostic Fields
+    icmpAlive?: boolean;
+    saActive?: boolean;
+    saStatus?: string;
+    healthStatus?: "OPTIMAL" | "HEALTHY_ICMP_FILTERED" | "DEGRADED_SA_DOWN" | "DOWN" | "ERROR";
+    summaryStatus?: string;
     statusNote?: string;
+    ikeActive?: boolean;
+    ipsecActive?: boolean;
+    ikeDetail?: string;
+    ipsecDetail?: string;
+    rawOutput?: string;
 }
 
 // In-memory ring buffer (up to 1,000 samples)
@@ -74,6 +84,11 @@ function seedBaselineHistory() {
                 label: t.label,
                 type: t.type,
                 alive: true,
+                icmpAlive: true,
+                saActive: true,
+                saStatus: "READY (IKEv2 Active)",
+                healthStatus: "OPTIMAL",
+                summaryStatus: "Reachable & Active",
                 rttMin: Math.max(8, rtt - 3),
                 rttAvg: rtt,
                 rttMax: rtt + 5,
@@ -94,7 +109,24 @@ async function pingFromFirewallAppliance(
     host: string,
     targetFirewall: string = "cdc-2mc-2130-1",
     iface?: string
-): Promise<{ alive: boolean; rttMin: number; rttAvg: number; rttMax: number; packetLoss: number; rawOutput?: string }> {
+): Promise<{
+    alive: boolean;
+    icmpAlive: boolean;
+    rttMin: number;
+    rttAvg: number;
+    rttMax: number;
+    packetLoss: number;
+    rawOutput?: string;
+    saActive?: boolean;
+    saStatus?: string;
+    healthStatus?: "OPTIMAL" | "HEALTHY_ICMP_FILTERED" | "DEGRADED_SA_DOWN" | "DOWN" | "ERROR";
+    summaryStatus?: string;
+    statusNote?: string;
+    ikeActive?: boolean;
+    ipsecActive?: boolean;
+    ikeDetail?: string;
+    ipsecDetail?: string;
+}> {
     const pythonBin = process.platform === "win32" ? "python" : "python3";
     const scriptPath = path.join(process.cwd(), "services", "firewall", "ftd_client.py");
     const args = ["--action", "ping", "--target", targetFirewall, "--ip", host, "--json"];
@@ -113,25 +145,39 @@ async function pingFromFirewallAppliance(
         if (res && res.success) {
             return {
                 alive: Boolean(res.alive),
+                icmpAlive: Boolean(res.icmpAlive),
                 rttMin: Number(res.rttMin || 0),
                 rttAvg: Number(res.rttAvg || 0),
                 rttMax: Number(res.rttMax || 0),
-                packetLoss: Number(res.packetLoss ?? (res.alive ? 0 : 100)),
+                packetLoss: Number(res.packetLoss ?? (res.icmpAlive ? 0 : 100)),
                 rawOutput: res.rawOutput,
+                saActive: Boolean(res.saActive),
+                saStatus: res.saStatus,
+                healthStatus: res.healthStatus,
+                summaryStatus: res.summaryStatus,
+                statusNote: res.statusNote,
                 ikeActive: Boolean(res.ikeActive),
-                statusNote: res.statusNote
+                ipsecActive: Boolean(res.ipsecActive),
+                ikeDetail: res.ikeDetail,
+                ipsecDetail: res.ipsecDetail
             };
         }
     } catch (e: any) {
-        console.warn(`[VPN-PING] Appliance ping to ${host} on ${targetFirewall} note:`, e.message);
+        console.warn(`[VPN-PING] Appliance probe to ${host} on ${targetFirewall} note:`, e.message);
     }
 
     return {
         alive: false,
+        icmpAlive: false,
         rttMin: 0,
         rttAvg: 0,
         rttMax: 0,
-        packetLoss: 100
+        packetLoss: 100,
+        saActive: false,
+        saStatus: "DOWN (No SA found)",
+        healthStatus: "DOWN",
+        summaryStatus: "Unreachable",
+        statusNote: "Probe failed or peer unreachable"
     };
 }
 
@@ -163,13 +209,22 @@ export async function pingHost(
             label,
             type,
             alive: res.alive,
+            icmpAlive: res.icmpAlive,
             rttMin: res.rttMin,
             rttAvg: res.rttAvg,
             rttMax: res.rttMax,
             packetLoss: res.packetLoss,
             timestamp,
+            saActive: res.saActive,
+            saStatus: res.saStatus,
+            healthStatus: res.healthStatus,
+            summaryStatus: res.summaryStatus,
+            statusNote: res.statusNote,
             ikeActive: res.ikeActive,
-            statusNote: res.statusNote
+            ipsecActive: res.ipsecActive,
+            ikeDetail: res.ikeDetail,
+            ipsecDetail: res.ipsecDetail,
+            rawOutput: res.rawOutput
         };
         recordPingSample(sample);
         return sample;

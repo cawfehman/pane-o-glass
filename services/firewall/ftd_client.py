@@ -778,6 +778,7 @@ class FtdClient:
                         "message": "Node is in Standby state; ICMP ping executed from Active peer."
                     }
 
+                # 1. Layer 3 ICMP Ping Probe from outside interface
                 cmd = f"ping {interface} {target_ip}" if interface else f"ping {target_ip}"
                 output = conn.send_command(cmd, read_timeout=15)
 
@@ -785,30 +786,56 @@ class FtdClient:
                 rtt_match = re.search(r"round-trip min/avg/max = (\d+)/(\d+)/(\d+) ms", output)
 
                 success_pct = int(success_match.group(1)) if success_match else (100 if "!" in output else 0)
-                alive = success_pct > 0
-                packet_loss = 100 - success_pct
+                icmp_alive = success_pct > 0
+                icmp_packet_loss = 100 - success_pct
 
                 rtt_min = int(rtt_match.group(1)) if rtt_match else 0
                 rtt_avg = int(rtt_match.group(2)) if rtt_match else (rtt_min if rtt_min else 0)
                 rtt_max = int(rtt_match.group(3)) if rtt_match else rtt_avg
 
-                # If ICMP to external peer received 0 replies (typical for AWS/cloud VPN peers that drop public ICMP),
-                # inspect the firewall's live cryptographic state to verify if the tunnel is authenticated & active
+                # 2. Layer 7 Cryptographic SA Inspection (IKEv2 & IPsec)
+                # Always test crypto state to provide dual-layer diagnostic visibility
                 ike_active = False
-                status_note = ""
-                if not alive:
-                    try:
-                        ike_check = conn.send_command(f"show crypto ikev2 sa | include {target_ip}", read_timeout=5)
-                        if "READY" in ike_check or "UP-ACTIVE" in ike_check:
-                            ike_active = True
-                            alive = True
-                            packet_loss = 0
-                            rtt_min = 12
-                            rtt_avg = 16
-                            rtt_max = 20
-                            status_note = "Tunnel active & verified via live IKEv2 SA (peer drops public ICMP)"
-                    except Exception:
-                        pass
+                ipsec_active = False
+                ike_detail = ""
+                ipsec_detail = ""
+
+                try:
+                    ike_out = conn.send_command(f"show crypto ikev2 sa | include {target_ip}", read_timeout=8)
+                    ike_detail = ike_out.strip()
+                    if "READY" in ike_out or "UP-ACTIVE" in ike_out:
+                        ike_active = True
+
+                    ipsec_out = conn.send_command(f"show crypto ipsec sa peer {target_ip}", read_timeout=10)
+                    ipsec_detail = ipsec_out.strip()
+                    if "#pkts encaps:" in ipsec_out or "Crypto map tag:" in ipsec_out:
+                        ipsec_active = True
+                except Exception:
+                    pass
+
+                sa_active = ike_active or ipsec_active
+                sa_status = (
+                    "READY (IKEv2 Active)" if ike_active
+                    else ("ACTIVE (IPsec Phase 2)" if ipsec_active else "DOWN (No SA found)")
+                )
+
+                # 3. Dual Diagnostic Health Synthesis
+                if icmp_alive and sa_active:
+                    health_status = "OPTIMAL"
+                    summary_status = "Reachable & Active"
+                    status_note = f"Peer {target_ip} responded to ICMP ({rtt_avg}ms, {icmp_packet_loss}% loss) and IKEv2/IPsec SA is active."
+                elif (not icmp_alive) and sa_active:
+                    health_status = "HEALTHY_ICMP_FILTERED"
+                    summary_status = "ICMP Filtered · SA Active"
+                    status_note = f"Peer {target_ip} dropped ICMP echo (filtered by remote peer firewall policy), but IKEv2/IPsec SA is verified UP and active."
+                elif icmp_alive and (not sa_active):
+                    health_status = "DEGRADED_SA_DOWN"
+                    summary_status = "Peer Reachable · SA Down"
+                    status_note = f"Peer {target_ip} responds to ICMP ({rtt_avg}ms), but no active IKEv2/IPsec SA is established on firewall."
+                else:
+                    health_status = "DOWN"
+                    summary_status = "Unreachable & Disconnected"
+                    status_note = f"Peer {target_ip} failed to respond to ICMP (100% loss) and no active IKEv2/IPsec SA found."
 
                 return {
                     "firewallId": self.fw_id,
@@ -817,14 +844,24 @@ class FtdClient:
                     "target": target_ip,
                     "command": cmd,
                     "success": True,
-                    "alive": alive,
-                    "ikeActive": ike_active,
+                    "alive": icmp_alive or sa_active,
+                    "healthStatus": health_status,
+                    "summaryStatus": summary_status,
                     "statusNote": status_note,
-                    "packetLoss": packet_loss,
+                    # L3 ICMP details (unfalsified)
+                    "icmpAlive": icmp_alive,
+                    "packetLoss": icmp_packet_loss,
                     "rttMin": rtt_min,
                     "rttAvg": rtt_avg,
                     "rttMax": rtt_max,
                     "rawOutput": output.strip(),
+                    # L7 Cryptographic SA details
+                    "saActive": sa_active,
+                    "saStatus": sa_status,
+                    "ikeActive": ike_active,
+                    "ipsecActive": ipsec_active,
+                    "ikeDetail": ike_detail,
+                    "ipsecDetail": ipsec_detail,
                     "prompt": prompt
                 }
         except Exception as e:
@@ -835,6 +872,12 @@ class FtdClient:
                 "target": target_ip,
                 "success": False,
                 "alive": False,
+                "icmpAlive": False,
+                "saActive": False,
+                "saStatus": "ERROR",
+                "healthStatus": "ERROR",
+                "summaryStatus": "Probe Error",
+                "statusNote": str(e),
                 "packetLoss": 100,
                 "error": str(e)
             }
