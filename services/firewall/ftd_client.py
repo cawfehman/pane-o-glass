@@ -568,6 +568,28 @@ class FtdClient:
 
         try:
             with self._connect() as conn:
+                # Detect HA Standby status: standby nodes maintain replicated sessions that duplicate active node data
+                try:
+                    fo_out = conn.send_command("show failover state", read_timeout=5)
+                    # Check if 'This host' is Standby
+                    this_host_match = re.search(r"This host\s*-\s*[^\n]+\n\s*([^\n]+)", fo_out, re.IGNORECASE)
+                    state_line = this_host_match.group(1).lower() if this_host_match else fo_out.lower()
+                    if "standby" in state_line:
+                        return {
+                            "firewallId": self.fw_id,
+                            "firewallName": self.name,
+                            "ip": self.ip,
+                            "success": True,
+                            "isStandby": True,
+                            "haRole": "STANDBY",
+                            "command": cmd,
+                            "sessionCount": 0,
+                            "sessions": [],
+                            "message": "Node is in Standby state; sessions are actively handled by the Active HA peer."
+                        }
+                except Exception:
+                    pass
+
                 output = conn.send_command(cmd, cmd_verify=False, read_timeout=25)
                 sessions = []
 
