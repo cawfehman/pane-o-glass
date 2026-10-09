@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import { Search, X, Loader2, Sparkles, Check, HelpCircle, AlertCircle } from "lucide-react";
 import { isBooleanQuery, tokenizeQuery } from "@/lib/booleanQueryParser";
 
@@ -50,6 +50,47 @@ export function SmartSearchBar({
     className = ""
 }: SmartSearchBarProps) {
     const [showHelp, setShowHelp] = useState<boolean>(false);
+    const [openUpward, setOpenUpward] = useState<boolean>(false);
+    const helpContainerRef = useRef<HTMLDivElement>(null);
+
+    // Collision detection: dynamically determine if popover should flip upward or downward
+    useEffect(() => {
+        if (!showHelp || !helpContainerRef.current) return;
+        const rect = helpContainerRef.current.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const spaceAbove = rect.top;
+
+        // Tooltip is ~200px tall. Default to downward unless viewport bottom is cramped and top has ample space.
+        if (spaceBelow < 220 && spaceAbove > 220) {
+            setOpenUpward(true);
+        } else {
+            setOpenUpward(false);
+        }
+    }, [showHelp]);
+
+    // Dismiss help popover on click outside or Escape key
+    useEffect(() => {
+        if (!showHelp) return;
+
+        const handleClickOutside = (e: MouseEvent) => {
+            if (helpContainerRef.current && !helpContainerRef.current.contains(e.target as Node)) {
+                setShowHelp(false);
+            }
+        };
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                setShowHelp(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleClickOutside);
+        document.addEventListener("keydown", handleKeyDown);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [showHelp]);
 
     // Live query analysis
     const cleanValue = value.trim();
@@ -226,7 +267,9 @@ export function SmartSearchBar({
                                                 type="button"
                                                 onClick={() => {
                                                     onChange(ex);
-                                                    onSearch(ex.trim(), isBooleanQuery(ex.trim()));
+                                                    if (onSearch) {
+                                                        onSearch(ex.trim(), isBooleanQuery(ex.trim()));
+                                                    }
                                                 }}
                                                 className="font-mono text-emerald-400 hover:text-emerald-300 hover:underline cursor-pointer"
                                                 title={`Click to search "${ex}"`}
@@ -241,11 +284,16 @@ export function SmartSearchBar({
                     </div>
 
                     {enableBooleanHelp && (
-                        <div className="relative">
+                        <div className="relative" ref={helpContainerRef}>
                             <button
                                 type="button"
                                 onClick={() => setShowHelp(!showHelp)}
-                                className="flex items-center gap-1 text-[11px] text-text-secondary hover:text-accent-primary transition-colors cursor-pointer"
+                                className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer ${
+                                    showHelp
+                                        ? "text-accent-primary bg-accent-primary/10"
+                                        : "text-text-secondary hover:text-accent-primary hover:bg-bg-surface-hover/60"
+                                }`}
+                                title="Toggle Boolean Search Syntax Reference"
                             >
                                 <Sparkles size={12} className="text-indigo-400" />
                                 <span>Boolean Syntax</span>
@@ -253,18 +301,46 @@ export function SmartSearchBar({
 
                             {/* Dropdown Syntax Reference Tip Sheet */}
                             {showHelp && (
-                                <div className="absolute right-0 bottom-full mb-2 w-72 p-3 rounded-xl border border-border-color bg-bg-surface shadow-2xl z-20 space-y-2 text-xs animate-in fade-in duration-150">
-                                    <div className="flex items-center justify-between border-b border-border-color pb-1.5 font-bold text-text-primary">
-                                        <span>Boolean Search Syntax</span>
-                                        <button onClick={() => setShowHelp(false)} className="text-text-secondary hover:text-text-primary">
-                                            <X size={12} />
+                                <div
+                                    className={`absolute right-0 ${
+                                        openUpward ? "bottom-full mb-2" : "top-full mt-2"
+                                    } w-72 sm:w-80 max-w-[calc(100vw-2rem)] p-3.5 rounded-xl border border-border-color bg-bg-surface shadow-2xl z-50 space-y-2.5 text-xs animate-in fade-in duration-150 backdrop-blur-md`}
+                                >
+                                    <div className="flex items-center justify-between border-b border-border-color/80 pb-2 font-bold text-text-primary">
+                                        <div className="flex items-center gap-1.5">
+                                            <Sparkles size={13} className="text-indigo-400" />
+                                            <span>Boolean Search Syntax</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowHelp(false)}
+                                            className="p-1 rounded-md text-text-secondary hover:text-text-primary hover:bg-white/10 transition-colors cursor-pointer"
+                                            title="Close (Esc)"
+                                        >
+                                            <X size={13} />
                                         </button>
                                     </div>
-                                    <div className="space-y-1.5 text-[11px] text-text-secondary">
-                                        <div><strong className="text-indigo-400 font-mono">AND</strong>: Both conditions must match (<code className="text-emerald-400">3CP AND failure</code>)</div>
-                                        <div><strong className="text-indigo-400 font-mono">OR</strong>: Either condition matches (<code className="text-emerald-400">smith-jane OR doe-john</code>)</div>
-                                        <div><strong className="text-indigo-400 font-mono">NOT / -</strong>: Exclude term (<code className="text-emerald-400">CUH NOT Android</code> or <code className="text-emerald-400">-Apple</code>)</div>
-                                        <div><strong className="text-indigo-400 font-mono">()</strong>: Grouping (<code className="text-emerald-400">(CUH OR 3CP) AND failure</code>)</div>
+                                    <div className="space-y-2 text-[11px] text-text-secondary">
+                                        <div className="flex items-start gap-1.5">
+                                            <strong className="text-indigo-400 font-mono font-bold shrink-0 w-12">AND</strong>
+                                            <span>Both conditions match (<code className="text-emerald-400 font-mono bg-emerald-500/10 px-1 py-0.5 rounded">3CP AND failure</code>)</span>
+                                        </div>
+                                        <div className="flex items-start gap-1.5">
+                                            <strong className="text-indigo-400 font-mono font-bold shrink-0 w-12">OR</strong>
+                                            <span>Either condition matches (<code className="text-emerald-400 font-mono bg-emerald-500/10 px-1 py-0.5 rounded">smith-jane OR doe-john</code>)</span>
+                                        </div>
+                                        <div className="flex items-start gap-1.5">
+                                            <strong className="text-indigo-400 font-mono font-bold shrink-0 w-12">NOT / -</strong>
+                                            <span>Exclude term (<code className="text-emerald-400 font-mono bg-emerald-500/10 px-1 py-0.5 rounded">CUH NOT Android</code> or <code className="text-emerald-400 font-mono bg-emerald-500/10 px-1 py-0.5 rounded">-Apple</code>)</span>
+                                        </div>
+                                        <div className="flex items-start gap-1.5">
+                                            <strong className="text-indigo-400 font-mono font-bold shrink-0 w-12">()</strong>
+                                            <span>Grouping (<code className="text-emerald-400 font-mono bg-emerald-500/10 px-1 py-0.5 rounded">(CUH OR 3CP) AND failure</code>)</span>
+                                        </div>
+                                    </div>
+                                    <div className="pt-2 border-t border-border-color/60 text-[10px] text-text-secondary/70 flex items-center justify-between">
+                                        <span>Click outside or press Esc to dismiss</span>
+                                        <span className="font-mono text-[9px] bg-bg-surface-hover px-1.5 py-0.5 rounded border border-border-color">Esc</span>
                                     </div>
                                 </div>
                             )}
