@@ -10,6 +10,8 @@
     "build": "npm run clean && npx prisma generate && npm run build:css && npm run build:scripts && next build",
     "cron:crawl": "node dist-scripts/cron/crawl-network.js",
     "cron:cve-shun": "node dist-scripts/cron/monitor-cve-2026-netscaler.js",
+    "cron:vpn-sync": "node dist-scripts/cron/sync-vpn-logs.js --once",
+    "daemon:vpn-sync": "node dist-scripts/cron/sync-vpn-logs.js",
     "start": "next start",
     "lint": "next lint",
     "deploy": "git push origin main --follow-tags && git push production main --follow-tags",
