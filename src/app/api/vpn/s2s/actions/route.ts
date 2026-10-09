@@ -90,6 +90,22 @@ export async function POST(req: Request) {
                 }
             }
 
+            // Record in unified telemetry buffer
+            try {
+                const { recordPingSample } = await import("@/lib/vpn-ping-service");
+                recordPingSample({
+                    target: peerIp,
+                    label: tunnelName || peerIp,
+                    type: "s2s_peer",
+                    timestamp: new Date().toISOString(),
+                    alive: isReachable,
+                    rttMin: latencyMs ?? 0,
+                    rttAvg: latencyMs ?? 0,
+                    rttMax: latencyMs ?? 0,
+                    packetLoss: packetLossPercent
+                });
+            } catch {}
+
             await logAudit(
                 "VPN_S2S_PING",
                 `Tested reachability for tunnel "${tunnelName || peerIp}" (Peer: ${peerIp}, Gateway: ${gatewayId || 'fleet'}): ${isReachable ? 'REACHABLE' : 'UNREACHABLE'}`,

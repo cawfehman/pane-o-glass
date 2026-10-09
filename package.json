@@ -12,6 +12,8 @@
     "cron:cve-shun": "node dist-scripts/cron/monitor-cve-2026-netscaler.js",
     "cron:vpn-sync": "node dist-scripts/cron/sync-vpn-logs.js --once",
     "daemon:vpn-sync": "node dist-scripts/cron/sync-vpn-logs.js",
+    "cron:vpn-health": "node dist-scripts/cron/ping-health-probes.js",
+    "daemon:vpn-health": "node dist-scripts/cron/ping-health-probes.js --daemon",
     "start": "next start",
     "lint": "next lint",
     "deploy": "git push origin main --follow-tags && git push production main --follow-tags",

@@ -15,10 +15,11 @@ interface CacheEntry<T> {
 let cachedSummary: CacheEntry<any> | null = null;
 let cachedPools: CacheEntry<any> | null = null;
 let cachedSessions: CacheEntry<any> | null = null;
+let inflightSessionsFetch: Promise<any> | null = null;
 
 const TTL_SUMMARY_MS = 25 * 1000; // 25 seconds
 const TTL_POOLS_MS = 60 * 1000;   // 60 seconds
-const TTL_SESSIONS_MS = 20 * 1000; // 20 seconds
+const TTL_SESSIONS_MS = 150 * 1000; // 2.5 minutes (Stale-While-Revalidate window)
 
 async function resolvePythonCommand(): Promise<string> {
     if (process.env.PYTHON_PATH) return process.env.PYTHON_PATH;
@@ -38,7 +39,7 @@ async function runFtdCli(args: string[]): Promise<any> {
     try {
         const { stdout } = await execFileAsync(pythonBin, [scriptPath, "--json", ...args], {
             cwd: process.cwd(),
-            timeout: 30000,
+            timeout: 75000,
             env: { ...process.env, PYTHONIOENCODING: "utf-8" }
         });
         return JSON.parse(stdout);
@@ -177,33 +178,73 @@ export async function GET(req: NextRequest) {
             return NextResponse.json(data);
         }
 
-        // 4. Full Sessions List
+        // 4. Full Sessions List (Stale-While-Revalidate Engine)
         if (action === "sessions") {
-            if (!refresh && cachedSessions && (now - cachedSessions.timestamp) < TTL_SESSIONS_MS) {
-                return NextResponse.json({ ...cachedSessions.data, cached: true });
+            const isFresh = cachedSessions && (now - cachedSessions.timestamp) < TTL_SESSIONS_MS;
+
+            // 1. If fresh cache exists and not forced refresh, return immediately (<10ms)
+            if (!refresh && isFresh) {
+                return NextResponse.json({ ...cachedSessions!.data, cached: true });
             }
 
-            const raw = await runFtdCli(["--action", "ra_sessions", "--target", firewall]);
-            const sessions: any[] = [];
-            if (Array.isArray(raw)) {
-                for (const r of raw) {
-                    if (r.success && Array.isArray(r.sessions)) {
-                        sessions.push(...r.sessions);
+            // Function to perform the live multi-firewall retrieval and deduplication
+            const doFetch = async () => {
+                const raw = await runFtdCli(["--action", "ra_sessions", "--target", firewall]);
+                const sessions: any[] = [];
+                if (Array.isArray(raw)) {
+                    for (const r of raw) {
+                        if (r.success && Array.isArray(r.sessions)) {
+                            sessions.push(...r.sessions);
+                        }
                     }
                 }
-            }
 
-            // Sort by duration or login time
-            sessions.sort((a, b) => (b.bytesTx + b.bytesRx) - (a.bytesTx + a.bytesRx));
+                // Deduplicate across HA / load-balanced cluster members
+                const seen = new Set<string>();
+                const deduplicated: any[] = [];
+                for (const s of sessions) {
+                    const key = s.auditSessionId ? `${s.auditSessionId}` : `${s.username}-${s.assignedIp || s.publicIp}`;
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        deduplicated.push(s);
+                    }
+                }
 
-            const data = {
-                success: true,
-                totalSessions: sessions.length,
-                sessions,
-                timestamp: new Date().toISOString()
+                // Sort by throughput (highest traffic first)
+                deduplicated.sort((a, b) => ((b.bytesTx || 0) + (b.bytesRx || 0)) - ((a.bytesTx || 0) + (a.bytesRx || 0)));
+
+                const result = {
+                    success: true,
+                    totalSessions: deduplicated.length,
+                    sessions: deduplicated,
+                    timestamp: new Date().toISOString()
+                };
+
+                cachedSessions = { data: result, timestamp: Date.now() };
+                return result;
             };
 
-            cachedSessions = { data, timestamp: now };
+            // 2. If we have existing cached data (even if stale) and not forced, return immediately (<10ms)
+            // and trigger background revalidation without blocking the user
+            if (!refresh && cachedSessions) {
+                if (!inflightSessionsFetch) {
+                    inflightSessionsFetch = doFetch().finally(() => {
+                        inflightSessionsFetch = null;
+                    });
+                }
+                return NextResponse.json({ ...cachedSessions.data, cached: true, stale: true });
+            }
+
+            // 3. Cold start or forced refresh: await retrieval or join inflight fetch
+            if (inflightSessionsFetch) {
+                const data = await inflightSessionsFetch;
+                return NextResponse.json(data);
+            }
+
+            inflightSessionsFetch = doFetch().finally(() => {
+                inflightSessionsFetch = null;
+            });
+            const data = await inflightSessionsFetch;
             return NextResponse.json(data);
         }
 

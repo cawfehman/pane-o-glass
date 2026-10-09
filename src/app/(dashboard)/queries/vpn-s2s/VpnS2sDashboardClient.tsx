@@ -47,6 +47,9 @@ import { S2sTunnel, S2sTroubleshootResult } from "@/lib/s2s-vpn";
 import { S2sSetupModal } from "@/components/vpn/S2sSetupModal";
 import { ToolHelp } from "@/components/ToolHelp";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
+import { 
+    AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
+} from "recharts";
 
 interface FleetSummary {
     total: number;
@@ -112,14 +115,78 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
     const [isDiagOpen, setIsDiagOpen] = useState<boolean>(false);
     const [copiedCli, setCopiedCli] = useState<boolean>(false);
 
-    // Investigate Modal Sub-Tabs: Diagnostics, Audits, Notes
-    const [investigateTab, setInvestigateTab] = useState<"diagnostics" | "audits" | "notes">("diagnostics");
+    // Investigate Modal Sub-Tabs: Diagnostics, Health, Audits, Notes
+    const [investigateTab, setInvestigateTab] = useState<"diagnostics" | "health" | "audits" | "notes">("diagnostics");
+    const [peerHealthHistory, setPeerHealthHistory] = useState<any[]>([]);
+    const [loadingPeerHealth, setLoadingPeerHealth] = useState<boolean>(false);
+    const [probingPeerHealth, setProbingPeerHealth] = useState<boolean>(false);
     const [tunnelAudits, setTunnelAudits] = useState<S2sAuditItem[]>([]);
     const [loadingAudits, setLoadingAudits] = useState<boolean>(false);
     const [tunnelNotes, setTunnelNotes] = useState<S2sNoteItem[]>([]);
     const [loadingNotes, setLoadingNotes] = useState<boolean>(false);
     const [newNoteText, setNewNoteText] = useState<string>("");
     const [submittingNote, setSubmittingNote] = useState<boolean>(false);
+
+    const fetchTunnelHealthHistory = useCallback(async (peerIp: string) => {
+        if (!peerIp) return;
+        setLoadingPeerHealth(true);
+        try {
+            const res = await fetch(`/api/vpn/health/history?target=${encodeURIComponent(peerIp)}`);
+            if (res.ok) {
+                const data = await res.json();
+                setPeerHealthHistory(data.samples || []);
+            }
+        } catch (e) {
+            console.error("Failed to fetch peer health history:", e);
+        } finally {
+            setLoadingPeerHealth(false);
+        }
+    }, []);
+
+    const handleProbeTunnelPeer = async (peerIp: string, tunnelName?: string) => {
+        if (!peerIp) return;
+        setProbingPeerHealth(true);
+        try {
+            const res = await fetch("/api/vpn/health/ping", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    target: peerIp,
+                    label: tunnelName || peerIp,
+                    type: "s2s_peer"
+                })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.sample) {
+                    setPeerHealthHistory(prev => [...prev, data.sample]);
+                    setPingState(prev => ({
+                        ...prev,
+                        [peerIp]: {
+                            loading: false,
+                            reachable: data.sample.alive,
+                            latencyMs: Math.round(data.sample.rttAvg),
+                            packetLossPercent: data.sample.packetLoss,
+                            message: data.sample.alive ? `Peer responded in ${Math.round(data.sample.rttAvg)}ms` : "Peer probe timed out"
+                        }
+                    }));
+                }
+            }
+        } catch (e) {
+            console.error("Failed to probe tunnel peer:", e);
+        } finally {
+            setProbingPeerHealth(false);
+        }
+    };
+
+    const peerChartData = useMemo(() => {
+        return peerHealthHistory.map(s => ({
+            time: new Date(s.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            timestamp: new Date(s.timestamp).getTime(),
+            latency: s.alive ? Math.round(s.rttAvg) : null,
+            packetLoss: s.packetLoss ?? (s.alive ? 0 : 100)
+        })).sort((a, b) => a.timestamp - b.timestamp).slice(-24);
+    }, [peerHealthHistory]);
 
     const fetchTunnelAudits = useCallback(async (peerIp: string, tunnelId?: string, tunnelName?: string) => {
         if (!peerIp && !tunnelId && !tunnelName) return;
@@ -421,6 +488,7 @@ export default function VpnS2sDashboardClient({ role }: { role: string }) {
             setInvestigateTab("diagnostics");
             fetchTunnelAudits(data.report.peerIp, data.report.tunnelId, data.report.tunnelName);
             fetchTunnelNotes(data.report.peerIp, data.report.tunnelId);
+            fetchTunnelHealthHistory(data.report.peerIp);
         } catch (err: any) {
             alert(`Diagnostic error: ${err.message}`);
         } finally {
@@ -1328,6 +1396,32 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
 
                             <button
                                 type="button"
+                                onClick={() => setInvestigateTab("health")}
+                                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                    investigateTab === "health"
+                                        ? "bg-accent-primary text-white shadow-sm"
+                                        : "bg-bg-surface-hover/50 text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover border border-border-color/60"
+                                }`}
+                            >
+                                <Activity size={14} />
+                                <span>ICMP Health & Latency</span>
+                                {peerHealthHistory.length > 0 && (
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+                                        investigateTab === "health"
+                                            ? "bg-white/20 text-white"
+                                            : peerHealthHistory[peerHealthHistory.length - 1]?.alive
+                                            ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                                            : "bg-rose-500/15 text-rose-300 border border-rose-500/30"
+                                    }`}>
+                                        {peerHealthHistory[peerHealthHistory.length - 1]?.alive 
+                                            ? `${Math.round(peerHealthHistory[peerHealthHistory.length - 1]?.rttAvg)}ms` 
+                                            : "Offline"}
+                                    </span>
+                                )}
+                            </button>
+
+                            <button
+                                type="button"
                                 onClick={() => setInvestigateTab("audits")}
                                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                                     investigateTab === "audits"
@@ -1841,6 +1935,145 @@ ${report.correlatedSyslogs.map(l => `[${l.timestamp}] ${l.messageId} (L${l.level
                             </div>
                         </div>
                     </>
+                )}
+
+                {/* ICMP Health & Latency Tab */}
+                {investigateTab === "health" && (
+                    <div className="space-y-4 animate-in fade-in duration-150">
+                        {/* Header Banner */}
+                        <div className="flex items-center justify-between flex-wrap gap-3 p-4 rounded-xl border border-border-color bg-bg-surface-hover/30">
+                            <div>
+                                <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                                    <Activity size={16} className="text-emerald-400" />
+                                    <span>Peer Reachability & ICMP Latency Profile</span>
+                                </h3>
+                                <p className="text-xs text-text-secondary mt-0.5">
+                                    Measures end-to-end network health to remote peer <span className="font-mono text-cyan-400 font-semibold">{activeDiagReport.peerIp}</span> directly from this server.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => handleProbeTunnelPeer(activeDiagReport.peerIp, activeDiagReport.tunnelName)}
+                                disabled={probingPeerHealth}
+                                className="px-3.5 py-1.5 rounded-lg border border-border-color bg-bg-surface hover:bg-bg-surface-hover text-xs font-semibold text-text-primary flex items-center gap-1.5 transition-all cursor-pointer hover:border-emerald-500/40"
+                            >
+                                <RefreshCw size={13} className={probingPeerHealth ? "animate-spin text-emerald-400" : "text-emerald-400"} />
+                                <span>{probingPeerHealth ? "Pinging Peer..." : "Test Ping Now"}</span>
+                            </button>
+                        </div>
+
+                        {/* Metric Highlights */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div className="p-3.5 rounded-xl border border-border-color bg-[var(--bg-background)]/50">
+                                <div className="text-[11px] text-text-muted font-medium uppercase tracking-wider">Remote Peer Status</div>
+                                <div className="text-base font-bold text-text-primary mt-1 flex items-center gap-2">
+                                    <span className={`w-2 h-2 rounded-full ${
+                                        peerHealthHistory.length > 0 && peerHealthHistory[peerHealthHistory.length - 1]?.alive
+                                            ? "bg-emerald-400"
+                                            : peerHealthHistory.length > 0
+                                            ? "bg-rose-400"
+                                            : "bg-amber-400"
+                                    }`} />
+                                    <span>
+                                        {peerHealthHistory.length > 0 
+                                            ? (peerHealthHistory[peerHealthHistory.length - 1]?.alive ? "Reachable" : "Unresponsive")
+                                            : "Awaiting Probe"}
+                                    </span>
+                                </div>
+                                <div className="text-[11px] font-mono text-text-secondary mt-0.5">
+                                    {activeDiagReport.peerIp}
+                                </div>
+                            </div>
+
+                            <div className="p-3.5 rounded-xl border border-border-color bg-[var(--bg-background)]/50">
+                                <div className="text-[11px] text-text-muted font-medium uppercase tracking-wider">Average Round-Trip Time</div>
+                                <div className="text-base font-bold text-text-primary mt-1 font-mono">
+                                    {peerHealthHistory.length > 0 && peerHealthHistory[peerHealthHistory.length - 1]?.alive
+                                        ? `${Math.round(peerHealthHistory[peerHealthHistory.length - 1]?.rttAvg)} ms`
+                                        : "—"}
+                                </div>
+                                <div className="text-[11px] text-text-secondary mt-0.5">
+                                    {peerHealthHistory.length > 0
+                                        ? `Min: ${Math.round(peerHealthHistory[peerHealthHistory.length - 1]?.rttMin ?? 0)}ms · Max: ${Math.round(peerHealthHistory[peerHealthHistory.length - 1]?.rttMax ?? 0)}ms`
+                                        : "Direct ICMP ping"}
+                                </div>
+                            </div>
+
+                            <div className="p-3.5 rounded-xl border border-border-color bg-[var(--bg-background)]/50">
+                                <div className="text-[11px] text-text-muted font-medium uppercase tracking-wider">Packet Loss & Stability</div>
+                                <div className="text-base font-bold text-text-primary mt-1 font-mono">
+                                    {peerHealthHistory.length > 0
+                                        ? `${peerHealthHistory[peerHealthHistory.length - 1]?.packetLoss ?? 0}%`
+                                        : "—"}
+                                </div>
+                                <div className="text-[11px] text-text-secondary mt-0.5">
+                                    {peerHealthHistory.length > 0 && (peerHealthHistory[peerHealthHistory.length - 1]?.packetLoss ?? 0) === 0
+                                        ? "Optimal line quality"
+                                        : "Direct probe response"}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Historical Trend Chart */}
+                        <div className="p-4 rounded-xl border border-border-color bg-[var(--bg-background)]/50 flex flex-col gap-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-text-primary">
+                                    24-Hour ICMP Latency Trend (ms)
+                                </span>
+                                <span className="text-[11px] text-text-muted">
+                                    {peerChartData.length} probe data points
+                                </span>
+                            </div>
+
+                            {peerChartData.length > 0 ? (
+                                <div className="h-48 w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={peerChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                            <defs>
+                                                <linearGradient id="s2sPeerColor" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
+                                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" opacity={0.3} />
+                                            <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={10} />
+                                            <YAxis stroke="var(--text-muted)" fontSize={10} domain={[0, 'auto']} unit="ms" />
+                                            <Tooltip
+                                                contentStyle={{
+                                                    backgroundColor: "var(--bg-surface)",
+                                                    borderColor: "var(--border-color)",
+                                                    borderRadius: "8px",
+                                                    fontSize: "12px"
+                                                }}
+                                            />
+                                            <Area 
+                                                type="monotone" 
+                                                dataKey="latency" 
+                                                stroke="#10b981" 
+                                                strokeWidth={2}
+                                                fillOpacity={1} 
+                                                fill="url(#s2sPeerColor)" 
+                                                name="Latency (ms)"
+                                            />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            ) : (
+                                <div className="py-10 text-center text-text-muted flex flex-col items-center justify-center gap-2">
+                                    <Activity size={24} className="opacity-40 text-text-muted" />
+                                    <span className="text-xs">No historical latency records for this peer yet.</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleProbeTunnelPeer(activeDiagReport.peerIp, activeDiagReport.tunnelName)}
+                                        disabled={probingPeerHealth}
+                                        className="text-xs text-accent-primary hover:underline font-semibold mt-1"
+                                    >
+                                        Click here to send first ICMP ping
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 )}
 
                 {/* Audit Trail Tab */}
