@@ -43,11 +43,6 @@ export async function POST(req: Request) {
         }
 
         if (action === "ping") {
-            let isReachable = false;
-            let latencyMs: number | null = null;
-            let packetLossPercent = 100;
-            let message = "";
-
             const { pingHost } = await import("@/lib/vpn-ping-service");
             const sample = await pingHost(peerIp, tunnelName || peerIp, "s2s_tunnel", 2, 2000, gatewayId);
 
