@@ -221,6 +221,26 @@ export async function GET(req: NextRequest) {
                 };
 
                 cachedSessions = { data: result, timestamp: Date.now() };
+
+                // Track in BackgroundJob for System Health dashboard monitor
+                try {
+                    const { prisma } = await import("@/lib/prisma");
+                    await prisma.backgroundJob.upsert({
+                        where: { name: "AnyConnect Cache Pre-Warm" },
+                        create: {
+                            name: "AnyConnect Cache Pre-Warm",
+                            lastRun: new Date(),
+                            status: "SUCCESS",
+                            message: `Warmed ${deduplicated.length} active sessions across cluster nodes`
+                        },
+                        update: {
+                            lastRun: new Date(),
+                            status: "SUCCESS",
+                            message: `Warmed ${deduplicated.length} active sessions across cluster nodes`
+                        }
+                    });
+                } catch {}
+
                 return result;
             };
 
