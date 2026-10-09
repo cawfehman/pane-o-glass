@@ -160,7 +160,7 @@ export function VpnLiveGatewayTab({
                     <div className="flex items-center gap-2.5">
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
                         <h2 className="text-lg font-bold text-text-primary tracking-tight m-0">
-                            Remote Access Perimeter Gateways & Live Telemetry
+                            VPN Sessions & Perimeter Telemetry
                         </h2>
                         <span className="text-xs text-text-muted">
                             (Direct Cisco FTD Lina Engine CLI Interrogation)
@@ -521,7 +521,7 @@ export function VpnLiveGatewayTab({
                     <div>
                         <div className="flex items-center gap-2">
                             <h3 className="text-base font-bold text-text-primary m-0">
-                                Live AnyConnect Active Sessions
+                                Active VPN Sessions (AnyConnect)
                             </h3>
                             <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold">
                                 {filteredSessions.length} Active

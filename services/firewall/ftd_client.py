@@ -949,7 +949,7 @@ def main():
     )
 
     if args.json:
-        print(json.dumps(results, indent=2))
+        print(json.dumps(results, separators=(',', ':')))
     else:
         print(f"\n=== FTD / ASA Operation Results: [{args.action.upper()}] ===")
         if args.action in ["shun", "unshun"]:

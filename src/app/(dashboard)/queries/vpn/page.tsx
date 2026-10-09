@@ -766,7 +766,7 @@ export default function VpnTroubleshootingPage() {
                     }}
                 >
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>Live Gateway Sessions</span>
+                    <span>VPN Sessions</span>
                 </button>
                 <button 
                     onClick={() => setActiveTab("feed")}
