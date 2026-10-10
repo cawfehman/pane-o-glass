@@ -128,3 +128,40 @@ Every action performed in the tool is permanently recorded in the system audit l
 * `VPN_S2S_INVESTIGATE`: Logs user ID, target tunnel, remote peer IP, and diagnostic health score.
 * `VPN_S2S_BOUNCE`: Logs user ID, action (`clear_ipsec` or `clear_ike`), mode (`DRY-RUN` vs `LIVE`), target firewall, and command issued.
 * `VPN_S2S_PING`: Logs reachability test results and latency.
+
+## 8. CLI Help Output
+``text
+usage: ftd_client.py [-h] [--list] [--target TARGET]
+                     [--action {version,check,show_all,unshun,shun,s2s_status,s2s_troubleshoot,s2s_bounce,ra_summary,ra_sessions,ra_pools,ra_terminate,ping}]
+                     [--ip IP] [--interface INTERFACE] [--username USERNAME]
+                     [--filter-type {name,a-ipaddress,p-ipaddress,tunnel-group}]
+                     [--filter-val FILTER_VAL]
+                     [--session-type {name,ipaddress}]
+                     [--bounce-type {ipsec,ike}] [--live] [--json]
+
+Netmiko Cisco FTD / ASA Operations Client
+
+options:
+  -h, --help            show this help message and exit
+  --list                List all configured firewalls without credentials
+  --target TARGET       Target firewall ID/Name or 'fleet' / 'ra' for all
+                        (default: fleet)
+  --action {version,check,show_all,unshun,shun,s2s_status,s2s_troubleshoot,s2s_bounce,ra_summary,ra_sessions,ra_pools,ra_terminate,ping}
+                        Action to execute (default: version)
+  --ip IP               Target IPv4 address
+  --interface INTERFACE
+                        Optional egress interface for ping (e.g. outside)
+  --username USERNAME   Target username for Remote Access VPN operations
+  --filter-type {name,a-ipaddress,p-ipaddress,tunnel-group}
+                        Filter field for AnyConnect sessions
+  --filter-val FILTER_VAL
+                        Filter value for AnyConnect sessions
+  --session-type {name,ipaddress}
+                        Session termination type (default: name)
+  --bounce-type {ipsec,ike}
+                        Type of SA to bounce (default: ipsec)
+  --live                Execute live mutation (disables default safe dry-run
+                        mode)
+  --json                Emit output strictly as formatted JSON
+
+``

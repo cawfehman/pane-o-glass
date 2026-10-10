@@ -183,3 +183,26 @@ python main.py trace --src 10.10.10.50 --dst 10.20.50.88
 # 4. Compare two crawl snapshots to detect configuration drift
 python main.py diff --snap1 1 --snap2 2
 ```
+
+### CLI Help Output
+``text
+usage: main.py [-h] [--config CONFIG]
+               {crawl,map,trace,failed,diff,web,audit} ...
+
+NetCrawl: Cisco IOS Network Crawler, Topology Analyzer & Path Tracer
+
+positional arguments:
+  {crawl,map,trace,failed,diff,web,audit}
+    crawl               Run network crawl
+    map                 Generate network topology map
+    trace               Simulate hop-by-hop packet path
+    failed              List unreachable devices flagged for investigation
+    diff                Compare two snapshots
+    web                 Start web dashboard server
+    audit               Query security and operational audit trail
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       Path to config.yaml
+
+``
