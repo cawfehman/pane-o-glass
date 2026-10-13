@@ -13,6 +13,7 @@ import {
     Tooltip, CartesianGrid, Legend 
 } from "recharts";
 import { PaginationControls } from "@/components/common/PaginationControls";
+import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
 interface AdSecurityEvent {
     id: string;
@@ -114,9 +115,9 @@ export default function AccountLockoutClient() {
     const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
-    const handleSearch = async (e?: React.FormEvent, overrideRange?: number) => {
+    const handleSearch = async (e?: React.FormEvent, overrideRange?: number, overrideUser?: string) => {
         if (e) e.preventDefault();
-        const user = usernameInput.trim();
+        const user = (overrideUser !== undefined ? overrideUser : usernameInput).trim();
         if (!user) return;
 
         const effectiveRange = overrideRange || rangeHours;
@@ -328,69 +329,75 @@ export default function AccountLockoutClient() {
                     </p>
                 </div>
 
-                {/* Search Toolbar */}
+                {/* Primary Unified Smart Search Bar */}
                 <div className="p-4 rounded-xl border border-border-color bg-[var(--bg-surface)] shadow-sm space-y-3">
-                <form onSubmit={(e) => handleSearch(e)} className="flex flex-wrap items-center gap-3">
-                    <div className="relative flex-1 min-w-[240px]">
-                        <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-secondary" />
-                        <input
-                            type="text"
-                            value={usernameInput}
-                            onChange={(e) => setUsernameInput(e.target.value)}
-                            placeholder="Enter username (e.g. jdoe or jdoe@cooperhealth.edu)..."
-                            className="w-full pl-10 pr-4 py-2 text-xs rounded-xl border border-border-color bg-[var(--bg-background)] text-text-primary focus:outline-none focus:border-accent-primary"
-                        />
+                    <SmartSearchBar
+                        value={usernameInput}
+                        onChange={setUsernameInput}
+                        onSearch={(cleanTerm) => handleSearch(undefined, undefined, cleanTerm)}
+                        onReset={() => {
+                            setUsernameInput("");
+                            setData(null);
+                            setError(null);
+                        }}
+                        placeholder="Search Active Directory username or UPN (e.g. jdoe or jdoe@cooperhealth.edu)..."
+                        buttonLabel="Investigate Account"
+                        loading={loading}
+                        supportedFields={["TargetUserName", "sAMAccountName", "UPN (user@cooperhealth.edu)"]}
+                        examples={["jdoe", "jdoe@cooperhealth.edu", "smith-jane"]}
+                        enableBooleanHelp={false}
+                        autoTrimOnSearch={true}
+                        typeDetector={(term) => {
+                            const clean = term.trim();
+                            if (clean.includes("@")) {
+                                return { label: "UPN / Email", colorClass: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30" };
+                            }
+                            if (/^[a-zA-Z0-9._-]+$/.test(clean) && clean.length > 0) {
+                                return { label: "AD Account", colorClass: "bg-cyan-500/15 text-cyan-300 border-cyan-500/30" };
+                            }
+                            return null;
+                        }}
+                        filterControls={
+                            <div className="flex items-center gap-1 bg-[var(--bg-background)] p-1 rounded-xl border border-border-color">
+                                {[
+                                    { label: "1h", hours: 1 },
+                                    { label: "4h", hours: 4 },
+                                    { label: "12h", hours: 12 },
+                                    { label: "24h", hours: 24 },
+                                    { label: "7d", hours: 168 }
+                                ].map((btn) => (
+                                    <button
+                                        key={btn.hours}
+                                        type="button"
+                                        onClick={() => {
+                                            setRangeHours(btn.hours);
+                                            if (data) handleSearch(undefined, btn.hours);
+                                        }}
+                                        className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                                            rangeHours === btn.hours
+                                                ? "bg-accent-primary text-white shadow-sm"
+                                                : "text-text-secondary hover:text-text-primary hover:bg-[var(--bg-surface-hover)]"
+                                        }`}
+                                    >
+                                        {btn.label}
+                                    </button>
+                                ))}
+                            </div>
+                        }
+                    />
+
+                    {/* Sub-label showing queried systems */}
+                    <div className="flex items-center justify-between text-[11px] text-text-muted font-mono pt-1">
+                        <span className="flex items-center gap-1.5">
+                            <HardDrive size={12} className="text-indigo-400" />
+                            AD Security Stream: <strong className="text-text-secondary">5d72ac00b209026ab42decf9</strong>
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                            <Radio size={12} className="text-cyan-400" />
+                            ISE-PSN Detection: <strong className="text-text-secondary">ise-psn01 - 04 (Wireless EAP)</strong>
+                        </span>
                     </div>
-
-                    {/* Time Window Buttons */}
-                    <div className="flex items-center gap-1 bg-[var(--bg-background)] p-1 rounded-xl border border-border-color">
-                        {[
-                            { label: "1h", hours: 1 },
-                            { label: "4h", hours: 4 },
-                            { label: "12h", hours: 12 },
-                            { label: "24h", hours: 24 },
-                            { label: "7d", hours: 168 }
-                        ].map((btn) => (
-                            <button
-                                key={btn.hours}
-                                type="button"
-                                onClick={() => {
-                                    setRangeHours(btn.hours);
-                                    if (data) handleSearch(undefined, btn.hours);
-                                }}
-                                className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
-                                    rangeHours === btn.hours
-                                        ? "bg-accent-primary text-white shadow-sm"
-                                        : "text-text-secondary hover:text-text-primary hover:bg-[var(--bg-surface-hover)]"
-                                }`}
-                            >
-                                {btn.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={loading || !usernameInput.trim()}
-                        className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-accent-primary hover:bg-accent-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-                    >
-                        {loading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
-                        <span>{loading ? "Investigating..." : "Investigate Account"}</span>
-                    </button>
-                </form>
-
-                {/* Sub-label showing queried systems */}
-                <div className="flex items-center justify-between text-[11px] text-text-muted font-mono pt-1">
-                    <span className="flex items-center gap-1.5">
-                        <HardDrive size={12} className="text-indigo-400" />
-                        AD Security Stream: <strong className="text-text-secondary">5d72ac00b209026ab42decf9</strong>
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                        <Radio size={12} className="text-cyan-400" />
-                        ISE-PSN Detection: <strong className="text-text-secondary">ise-psn01 - 04 (Wireless EAP)</strong>
-                    </span>
                 </div>
-            </div>
         </div>
 
         {/* Scrollable Content Stream */}
@@ -859,29 +866,23 @@ export default function AccountLockoutClient() {
                         {/* Column Filter Toolbar */}
                         <div className="flex flex-wrap items-center justify-between gap-2.5 bg-[var(--bg-background)]/60 p-2.5 rounded-xl border border-border-color/60 text-xs">
                             <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
-                                <div className="relative flex-1 min-w-[180px] max-w-xs">
-                                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" />
-                                    <input
-                                        type="text"
+                                <div className="flex-1 min-w-[220px] max-w-sm">
+                                    <SmartSearchBar
                                         value={tableSearch}
-                                        onChange={(e) => {
-                                            setTableSearch(e.target.value);
+                                        onChange={(val) => {
+                                            setTableSearch(val);
                                             setPage(1);
                                         }}
-                                        placeholder="Search IP, caller, DC, reason..."
-                                        className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border-color bg-[var(--bg-surface)] text-text-primary focus:outline-none focus:border-accent-primary font-mono placeholder:text-text-muted"
+                                        onReset={() => {
+                                            setTableSearch("");
+                                            setPage(1);
+                                        }}
+                                        placeholder="Filter IP, caller, DC, reason..."
+                                        enableLiveFiltering={true}
+                                        hideSubmitButton={true}
+                                        enableBooleanHelp={false}
+                                        autoTrimOnSearch={false}
                                     />
-                                    {tableSearch && (
-                                        <button
-                                            onClick={() => {
-                                                setTableSearch("");
-                                                setPage(1);
-                                            }}
-                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary cursor-pointer"
-                                        >
-                                            <X size={12} />
-                                        </button>
-                                    )}
                                 </div>
 
                                 {/* Caller Machine Filter Dropdown */}
