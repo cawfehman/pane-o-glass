@@ -1,16 +1,18 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
     Search, UserX, AlertCircle, Shield, Wifi, Laptop, Clock, 
     Calendar, CheckCircle2, AlertTriangle, Terminal, ChevronDown, 
     ChevronUp, Copy, Check, Download, RefreshCw, Radio, HardDrive, 
-    Info, ArrowRight, UserCheck, Layers, ExternalLink
+    Info, ArrowRight, UserCheck, Layers, ExternalLink, Filter,
+    ArrowUpDown, ArrowUp, ArrowDown, X, RotateCcw
 } from "lucide-react";
 import { 
     ResponsiveContainer, AreaChart, Area, XAxis, YAxis, 
     Tooltip, CartesianGrid, Legend 
 } from "recharts";
+import { PaginationControls } from "@/components/common/PaginationControls";
 
 interface AdSecurityEvent {
     id: string;
@@ -99,9 +101,16 @@ export default function AccountLockoutClient() {
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<LockoutInvestigationResult | null>(null);
 
-    // Table state
+    // Table filter, sort & pagination state
     const [eventFilter, setEventFilter] = useState<"all" | "4740" | "4625" | "4771" | "4776">("all");
+    const [callerFilter, setCallerFilter] = useState<string>("all");
+    const [dcFilter, setDcFilter] = useState<string>("all");
+    const [logonTypeFilter, setLogonTypeFilter] = useState<string>("all");
     const [tableSearch, setTableSearch] = useState("");
+    const [page, setPage] = useState<number>(1);
+    const [limit, setLimit] = useState<number>(25);
+    const [sortField, setSortField] = useState<"timestamp" | "eventId" | "callerDevice" | "sourceIp" | "domainController" | "status">("timestamp");
+    const [sortAsc, setSortAsc] = useState<boolean>(false);
     const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -129,6 +138,7 @@ export default function AccountLockoutClient() {
 
             setData(json.data);
             setExpandedEventId(null);
+            setPage(1);
         } catch (err: any) {
             setError(err.message || "Failed to execute investigation");
         } finally {
@@ -169,11 +179,60 @@ export default function AccountLockoutClient() {
         document.body.removeChild(link);
     };
 
-    // Filtered events for the table
+    // Unique callers from results
+    const uniqueCallers = useMemo(() => {
+        if (!data) return [];
+        const set = new Set<string>();
+        data.events.forEach(e => {
+            if (e.callerDevice && e.callerDevice !== "-") set.add(e.callerDevice);
+        });
+        return Array.from(set).sort();
+    }, [data]);
+
+    // Unique Domain Controllers from results
+    const uniqueDcs = useMemo(() => {
+        if (!data) return [];
+        const set = new Set<string>();
+        data.events.forEach(e => {
+            if (e.domainController && e.domainController !== "-") set.add(e.domainController);
+        });
+        return Array.from(set).sort();
+    }, [data]);
+
+    // Unique Logon Types / Failure Reasons from results
+    const uniqueLogonTypes = useMemo(() => {
+        if (!data) return [];
+        const set = new Set<string>();
+        data.events.forEach(e => {
+            const desc = e.logonTypeDesc || (e.logonType !== undefined ? `Type ${e.logonType}` : null) || e.subStatusDesc;
+            if (desc) set.add(desc);
+        });
+        return Array.from(set).sort();
+    }, [data]);
+
+    // Counts per event ID
+    const eventCounts = useMemo(() => {
+        if (!data) return { all: 0, "4740": 0, "4625": 0, "4771": 0, "4776": 0 };
+        const counts = { all: data.events.length, "4740": 0, "4625": 0, "4771": 0, "4776": 0 };
+        data.events.forEach(e => {
+            if (e.eventId in counts) {
+                (counts as any)[e.eventId]++;
+            }
+        });
+        return counts;
+    }, [data]);
+
+    // Filtered and sorted events for the table
     const filteredEvents = useMemo(() => {
         if (!data) return [];
         return data.events.filter(ev => {
             if (eventFilter !== "all" && ev.eventId !== eventFilter) return false;
+            if (callerFilter !== "all" && ev.callerDevice !== callerFilter) return false;
+            if (dcFilter !== "all" && ev.domainController !== dcFilter) return false;
+            if (logonTypeFilter !== "all") {
+                const desc = ev.logonTypeDesc || (ev.logonType !== undefined ? `Type ${ev.logonType}` : null) || ev.subStatusDesc;
+                if (desc !== logonTypeFilter) return false;
+            }
             if (tableSearch.trim()) {
                 const q = tableSearch.toLowerCase();
                 return (
@@ -182,12 +241,75 @@ export default function AccountLockoutClient() {
                     ev.sourceIp.toLowerCase().includes(q) ||
                     ev.eventId.includes(q) ||
                     (ev.subStatusDesc && ev.subStatusDesc.toLowerCase().includes(q)) ||
-                    (ev.logonTypeDesc && ev.logonTypeDesc.toLowerCase().includes(q))
+                    (ev.logonTypeDesc && ev.logonTypeDesc.toLowerCase().includes(q)) ||
+                    (ev.failureReason && ev.failureReason.toLowerCase().includes(q))
                 );
             }
             return true;
+        }).sort((a, b) => {
+            let valA: string | number = "";
+            let valB: string | number = "";
+
+            if (sortField === "timestamp") {
+                valA = new Date(a.timestamp).getTime();
+                valB = new Date(b.timestamp).getTime();
+            } else if (sortField === "eventId") {
+                valA = a.eventId;
+                valB = b.eventId;
+            } else if (sortField === "callerDevice") {
+                valA = a.callerDevice.toLowerCase();
+                valB = b.callerDevice.toLowerCase();
+            } else if (sortField === "sourceIp") {
+                valA = a.sourceIp.toLowerCase();
+                valB = b.sourceIp.toLowerCase();
+            } else if (sortField === "domainController") {
+                valA = a.domainController.toLowerCase();
+                valB = b.domainController.toLowerCase();
+            } else if (sortField === "status") {
+                valA = (a.subStatusDesc || a.logonTypeDesc || "").toLowerCase();
+                valB = (b.subStatusDesc || b.logonTypeDesc || "").toLowerCase();
+            }
+
+            if (valA < valB) return sortAsc ? -1 : 1;
+            if (valA > valB) return sortAsc ? 1 : -1;
+            return 0;
         });
-    }, [data, eventFilter, tableSearch]);
+    }, [data, eventFilter, callerFilter, dcFilter, logonTypeFilter, tableSearch, sortField, sortAsc]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredEvents.length / limit));
+
+    const paginatedEvents = useMemo(() => {
+        const start = (page - 1) * limit;
+        return filteredEvents.slice(start, start + limit);
+    }, [filteredEvents, page, limit]);
+
+    // Keep page in bounds
+    useEffect(() => {
+        if (page > totalPages && totalPages > 0) {
+            setPage(1);
+        }
+    }, [totalPages, page]);
+
+    const handleSort = (field: "timestamp" | "eventId" | "callerDevice" | "sourceIp" | "domainController" | "status") => {
+        if (sortField === field) {
+            setSortAsc(!sortAsc);
+        } else {
+            setSortField(field);
+            setSortAsc(field === "timestamp" ? false : true);
+        }
+        setPage(1);
+    };
+
+    const hasActiveFilters = eventFilter !== "all" || callerFilter !== "all" || dcFilter !== "all" || logonTypeFilter !== "all" || tableSearch.trim() !== "";
+
+    const resetFilters = () => {
+        setEventFilter("all");
+        setCallerFilter("all");
+        setDcFilter("all");
+        setLogonTypeFilter("all");
+        setTableSearch("");
+        setPage(1);
+    };
 
     return (
         <div className="flex flex-col flex-1 h-full min-h-0 gap-4 w-full">
@@ -684,138 +806,421 @@ export default function AccountLockoutClient() {
                     )}
 
                     {/* Detailed Event Stream Table */}
-                    <div className="p-4 rounded-xl border border-border-color bg-[var(--bg-surface)] space-y-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="p-4 rounded-xl border border-border-color bg-[var(--bg-surface)] space-y-3 shadow-sm">
+                        {/* Table Header & Event ID Tabs */}
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-border-color/60 pb-3">
                             <div className="flex items-center gap-2">
-                                <Terminal size={16} className="text-indigo-400" />
-                                <h3 className="text-xs font-bold uppercase tracking-wider text-text-primary">
-                                    Correlated Active Directory Event Stream ({filteredEvents.length})
-                                </h3>
+                                <Terminal size={18} className="text-indigo-400 shrink-0" />
+                                <div>
+                                    <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                                        Correlated Active Directory Event Stream
+                                        <span className="text-xs px-2 py-0.5 rounded-full font-mono font-normal bg-indigo-950/60 text-indigo-300 border border-indigo-800/40">
+                                            {filteredEvents.length} {filteredEvents.length === 1 ? "event" : "events"}
+                                        </span>
+                                    </h3>
+                                    <p className="text-[11px] text-text-secondary mt-0.5">
+                                        Click any row to expand the full forensic payload and Windows security event message inline.
+                                    </p>
+                                </div>
                             </div>
 
-                            {/* Filters */}
-                            <div className="flex flex-wrap items-center gap-2">
-                                <input
-                                    type="text"
-                                    value={tableSearch}
-                                    onChange={(e) => setTableSearch(e.target.value)}
-                                    placeholder="Filter by caller, DC, IP..."
-                                    className="px-2.5 py-1 text-xs rounded-lg border border-border-color bg-[var(--bg-background)] text-text-primary focus:outline-none focus:border-accent-primary font-mono w-44"
-                                />
-
-                                <div className="flex items-center gap-1 bg-[var(--bg-background)] p-0.5 rounded-lg border border-border-color text-[11px] font-mono">
-                                    {[
-                                        { id: "all", label: "All" },
-                                        { id: "4740", label: "4740 (Lockout)" },
-                                        { id: "4625", label: "4625 (Fail)" },
-                                        { id: "4771", label: "4771 (Kerb)" },
-                                        { id: "4776", label: "4776 (NTLM)" }
-                                    ].map(tab => (
-                                        <button
-                                            key={tab.id}
-                                            onClick={() => setEventFilter(tab.id as any)}
-                                            className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
-                                                eventFilter === tab.id
-                                                    ? "bg-accent-primary text-white font-bold"
-                                                    : "text-text-secondary hover:text-text-primary"
-                                            }`}
-                                        >
-                                            {tab.label}
-                                        </button>
-                                    ))}
-                                </div>
+                            {/* Event ID Filter Tabs */}
+                            <div className="flex items-center gap-1 bg-[var(--bg-background)] p-1 rounded-xl border border-border-color text-xs font-mono flex-wrap">
+                                {[
+                                    { id: "all", label: "All", count: eventCounts.all },
+                                    { id: "4740", label: "4740 (Lockout)", count: eventCounts["4740"] },
+                                    { id: "4625", label: "4625 (Fail)", count: eventCounts["4625"] },
+                                    { id: "4771", label: "4771 (Kerb)", count: eventCounts["4771"] },
+                                    { id: "4776", label: "4776 (NTLM)", count: eventCounts["4776"] }
+                                ].map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => {
+                                            setEventFilter(tab.id as any);
+                                            setPage(1);
+                                        }}
+                                        className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                                            eventFilter === tab.id
+                                                ? "bg-accent-primary text-white font-bold shadow-sm"
+                                                : "text-text-secondary hover:text-text-primary hover:bg-[var(--bg-surface-hover)]"
+                                        }`}
+                                    >
+                                        <span>{tab.label}</span>
+                                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                                            eventFilter === tab.id ? "bg-white/20 text-white" : "bg-white/5 text-text-muted"
+                                        }`}>
+                                            {tab.count}
+                                        </span>
+                                    </button>
+                                ))}
                             </div>
                         </div>
 
+                        {/* Column Filter Toolbar */}
+                        <div className="flex flex-wrap items-center justify-between gap-2.5 bg-[var(--bg-background)]/60 p-2.5 rounded-xl border border-border-color/60 text-xs">
+                            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+                                <div className="relative flex-1 min-w-[180px] max-w-xs">
+                                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" />
+                                    <input
+                                        type="text"
+                                        value={tableSearch}
+                                        onChange={(e) => {
+                                            setTableSearch(e.target.value);
+                                            setPage(1);
+                                        }}
+                                        placeholder="Search IP, caller, DC, reason..."
+                                        className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border-color bg-[var(--bg-surface)] text-text-primary focus:outline-none focus:border-accent-primary font-mono placeholder:text-text-muted"
+                                    />
+                                    {tableSearch && (
+                                        <button
+                                            onClick={() => {
+                                                setTableSearch("");
+                                                setPage(1);
+                                            }}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary cursor-pointer"
+                                        >
+                                            <X size={12} />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Caller Machine Filter Dropdown */}
+                                <div className="flex items-center gap-1">
+                                    <select
+                                        value={callerFilter}
+                                        onChange={(e) => {
+                                            setCallerFilter(e.target.value);
+                                            setPage(1);
+                                        }}
+                                        className="px-2.5 py-1.5 text-xs rounded-lg border border-border-color bg-[var(--bg-surface)] text-text-primary focus:outline-none focus:border-accent-primary font-mono cursor-pointer max-w-[180px] truncate"
+                                        title="Filter by Caller Machine"
+                                    >
+                                        <option value="all">All Callers ({uniqueCallers.length})</option>
+                                        {uniqueCallers.map(caller => (
+                                            <option key={caller} value={caller}>
+                                                {caller}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Domain Controller Filter Dropdown */}
+                                <div className="flex items-center gap-1">
+                                    <select
+                                        value={dcFilter}
+                                        onChange={(e) => {
+                                            setDcFilter(e.target.value);
+                                            setPage(1);
+                                        }}
+                                        className="px-2.5 py-1.5 text-xs rounded-lg border border-border-color bg-[var(--bg-surface)] text-text-primary focus:outline-none focus:border-accent-primary font-mono cursor-pointer max-w-[160px] truncate"
+                                        title="Filter by Domain Controller"
+                                    >
+                                        <option value="all">All DCs ({uniqueDcs.length})</option>
+                                        {uniqueDcs.map(dc => (
+                                            <option key={dc} value={dc}>
+                                                {dc}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Logon Type / Reason Filter Dropdown */}
+                                {uniqueLogonTypes.length > 0 && (
+                                    <div className="flex items-center gap-1">
+                                        <select
+                                            value={logonTypeFilter}
+                                            onChange={(e) => {
+                                                setLogonTypeFilter(e.target.value);
+                                                setPage(1);
+                                            }}
+                                            className="px-2.5 py-1.5 text-xs rounded-lg border border-border-color bg-[var(--bg-surface)] text-text-primary focus:outline-none focus:border-accent-primary font-mono cursor-pointer max-w-[200px] truncate"
+                                            title="Filter by Logon Type or Reason"
+                                        >
+                                            <option value="all">All Logon Types ({uniqueLogonTypes.length})</option>
+                                            {uniqueLogonTypes.map(t => (
+                                                <option key={t} value={t}>
+                                                    {t}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {hasActiveFilters && (
+                                    <button
+                                        onClick={resetFilters}
+                                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-950/30 rounded-lg border border-rose-500/30 transition-all cursor-pointer font-semibold"
+                                        title="Reset all table filters"
+                                    >
+                                        <RotateCcw size={12} />
+                                        <span>Reset Filters</span>
+                                    </button>
+                                )}
+                            </div>
+
+                            <button
+                                onClick={handleExportCsv}
+                                title="Export filtered events to CSV"
+                                className="px-3 py-1.5 rounded-lg border border-border-color bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-hover)] text-text-primary text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm font-semibold ml-auto"
+                            >
+                                <Download size={13} className="text-accent-primary" />
+                                <span>Export CSV</span>
+                            </button>
+                        </div>
+
+                        {/* Top Pagination Toolbar */}
+                        {filteredEvents.length > 0 && (
+                            <div className="pt-1 pb-1">
+                                <PaginationControls
+                                    totalRecords={filteredEvents.length}
+                                    page={page}
+                                    limit={limit}
+                                    limitOptions={[10, 25, 50, 100]}
+                                    onPageChange={setPage}
+                                    onLimitChange={(newLimit) => {
+                                        setLimit(newLimit);
+                                        setPage(1);
+                                    }}
+                                    showLimitSelector={true}
+                                />
+                            </div>
+                        )}
+
                         {/* Table */}
-                        <div className="border border-border-color rounded-xl overflow-hidden text-xs">
+                        <div className="border border-border-color rounded-xl overflow-hidden text-xs bg-[var(--bg-background)]">
                             <div className="overflow-x-auto">
-                                <table className="w-full text-left">
-                                    <thead className="bg-[var(--bg-surface-hover)] border-b border-border-color text-text-secondary text-[11px] uppercase tracking-wider">
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="bg-[var(--bg-surface-hover)] border-b border-border-color text-text-secondary text-[11px] uppercase tracking-wider sticky top-0 z-10 select-none">
                                         <tr>
-                                            <th className="p-2.5">Time</th>
-                                            <th className="p-2.5">Event</th>
-                                            <th className="p-2.5">Caller / Machine</th>
-                                            <th className="p-2.5">Source IP</th>
-                                            <th className="p-2.5">Domain Controller</th>
-                                            <th className="p-2.5">Logon Type / Status</th>
-                                            <th className="p-2.5 text-right">Details</th>
+                                            <th 
+                                                onClick={() => handleSort("timestamp")}
+                                                className="p-2.5 cursor-pointer hover:text-text-primary transition-colors whitespace-nowrap"
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>Time</span>
+                                                    {sortField === "timestamp" ? (
+                                                        sortAsc ? <ArrowUp size={12} className="text-accent-primary" /> : <ArrowDown size={12} className="text-accent-primary" />
+                                                    ) : (
+                                                        <ArrowUpDown size={11} className="text-text-muted opacity-50" />
+                                                    )}
+                                                </div>
+                                            </th>
+                                            <th 
+                                                onClick={() => handleSort("eventId")}
+                                                className="p-2.5 cursor-pointer hover:text-text-primary transition-colors whitespace-nowrap"
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>Event</span>
+                                                    {sortField === "eventId" ? (
+                                                        sortAsc ? <ArrowUp size={12} className="text-accent-primary" /> : <ArrowDown size={12} className="text-accent-primary" />
+                                                    ) : (
+                                                        <ArrowUpDown size={11} className="text-text-muted opacity-50" />
+                                                    )}
+                                                </div>
+                                            </th>
+                                            <th 
+                                                onClick={() => handleSort("callerDevice")}
+                                                className="p-2.5 cursor-pointer hover:text-text-primary transition-colors whitespace-nowrap"
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>Caller / Machine</span>
+                                                    {sortField === "callerDevice" ? (
+                                                        sortAsc ? <ArrowUp size={12} className="text-accent-primary" /> : <ArrowDown size={12} className="text-accent-primary" />
+                                                    ) : (
+                                                        <ArrowUpDown size={11} className="text-text-muted opacity-50" />
+                                                    )}
+                                                </div>
+                                            </th>
+                                            <th 
+                                                onClick={() => handleSort("sourceIp")}
+                                                className="p-2.5 cursor-pointer hover:text-text-primary transition-colors whitespace-nowrap"
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>Source IP</span>
+                                                    {sortField === "sourceIp" ? (
+                                                        sortAsc ? <ArrowUp size={12} className="text-accent-primary" /> : <ArrowDown size={12} className="text-accent-primary" />
+                                                    ) : (
+                                                        <ArrowUpDown size={11} className="text-text-muted opacity-50" />
+                                                    )}
+                                                </div>
+                                            </th>
+                                            <th 
+                                                onClick={() => handleSort("domainController")}
+                                                className="p-2.5 cursor-pointer hover:text-text-primary transition-colors whitespace-nowrap"
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>Domain Controller</span>
+                                                    {sortField === "domainController" ? (
+                                                        sortAsc ? <ArrowUp size={12} className="text-accent-primary" /> : <ArrowDown size={12} className="text-accent-primary" />
+                                                    ) : (
+                                                        <ArrowUpDown size={11} className="text-text-muted opacity-50" />
+                                                    )}
+                                                </div>
+                                            </th>
+                                            <th 
+                                                onClick={() => handleSort("status")}
+                                                className="p-2.5 cursor-pointer hover:text-text-primary transition-colors whitespace-nowrap"
+                                            >
+                                                <div className="flex items-center gap-1.5">
+                                                    <span>Logon Type / Status</span>
+                                                    {sortField === "status" ? (
+                                                        sortAsc ? <ArrowUp size={12} className="text-accent-primary" /> : <ArrowDown size={12} className="text-accent-primary" />
+                                                    ) : (
+                                                        <ArrowUpDown size={11} className="text-text-muted opacity-50" />
+                                                    )}
+                                                </div>
+                                            </th>
+                                            <th className="p-2.5 text-right whitespace-nowrap">Details</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border-color/60 font-mono text-[11px]">
-                                        {filteredEvents.map((ev) => {
-                                            const isExpanded = expandedEventId === ev.id;
-                                            const isLockout = ev.eventId === "4740";
-                                            return (
-                                                <tr 
-                                                    key={ev.id} 
-                                                    className={`hover:bg-[var(--bg-surface-hover)]/60 cursor-pointer transition-colors ${
-                                                        isLockout ? "bg-rose-950/15" : ""
-                                                    }`}
-                                                    onClick={() => setExpandedEventId(isExpanded ? null : ev.id)}
-                                                >
-                                                    <td className="p-2.5 text-text-secondary whitespace-nowrap">
-                                                        {new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                                    </td>
-                                                    <td className="p-2.5 whitespace-nowrap">
-                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                                            isLockout
-                                                                ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
-                                                                : ev.eventId === "4625"
-                                                                ? "bg-amber-500/20 text-amber-300"
-                                                                : "bg-indigo-500/20 text-indigo-300"
-                                                        }`}>
-                                                            {ev.eventId}
-                                                        </span>
-                                                    </td>
-                                                    <td className="p-2.5 text-cyan-300 font-bold whitespace-nowrap">
-                                                        {ev.callerDevice}
-                                                    </td>
-                                                    <td className="p-2.5 text-text-muted whitespace-nowrap">
-                                                        {ev.sourceIp}
-                                                    </td>
-                                                    <td className="p-2.5 text-text-secondary whitespace-nowrap">
-                                                        {ev.domainController}
-                                                    </td>
-                                                    <td className="p-2.5 text-text-secondary max-w-xs truncate" title={ev.subStatusDesc || ev.logonTypeDesc}>
-                                                        {ev.subStatusDesc || ev.logonTypeDesc || (ev.subStatus ? `Code ${ev.subStatus}` : "-")}
-                                                    </td>
-                                                    <td className="p-2.5 text-right whitespace-nowrap text-text-muted">
-                                                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
+                                        {paginatedEvents.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={7} className="p-8 text-center text-text-muted font-sans">
+                                                    No Active Directory events match your filter criteria.
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            paginatedEvents.map((ev) => {
+                                                const isExpanded = expandedEventId === ev.id;
+                                                const isLockout = ev.eventId === "4740";
+                                                return (
+                                                    <React.Fragment key={ev.id}>
+                                                        <tr 
+                                                            className={`hover:bg-[var(--bg-surface-hover)]/60 cursor-pointer transition-colors ${
+                                                                isExpanded ? "bg-[var(--bg-surface-hover)]" : isLockout ? "bg-rose-950/20" : ""
+                                                            }`}
+                                                            onClick={() => setExpandedEventId(isExpanded ? null : ev.id)}
+                                                        >
+                                                            <td className="p-2.5 text-text-secondary whitespace-nowrap font-mono">
+                                                                {new Date(ev.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                            </td>
+                                                            <td className="p-2.5 whitespace-nowrap">
+                                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                                    isLockout
+                                                                        ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                                                                        : ev.eventId === "4625"
+                                                                        ? "bg-amber-500/20 text-amber-300"
+                                                                        : "bg-indigo-500/20 text-indigo-300"
+                                                                }`}>
+                                                                    {ev.eventId}
+                                                                </span>
+                                                            </td>
+                                                            <td className="p-2.5 text-cyan-300 font-bold whitespace-nowrap font-mono">
+                                                                {ev.callerDevice}
+                                                            </td>
+                                                            <td className="p-2.5 text-text-muted whitespace-nowrap font-mono">
+                                                                {ev.sourceIp}
+                                                            </td>
+                                                            <td className="p-2.5 text-text-secondary whitespace-nowrap font-mono">
+                                                                {ev.domainController}
+                                                            </td>
+                                                            <td className="p-2.5 text-text-secondary max-w-xs truncate" title={ev.subStatusDesc || ev.logonTypeDesc}>
+                                                                {ev.subStatusDesc || ev.logonTypeDesc || (ev.subStatus ? `Code ${ev.subStatus}` : "-")}
+                                                            </td>
+                                                            <td className="p-2.5 text-right whitespace-nowrap text-text-muted">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setExpandedEventId(isExpanded ? null : ev.id);
+                                                                    }}
+                                                                    className="p-1 rounded hover:bg-white/10 transition-colors text-text-secondary hover:text-white cursor-pointer"
+                                                                    title={isExpanded ? "Collapse event payload" : "Expand event payload"}
+                                                                >
+                                                                    {isExpanded ? <ChevronUp size={16} className="text-cyan-400" /> : <ChevronDown size={16} />}
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+
+                                                        {/* Inline Expanded Row */}
+                                                        {isExpanded && (
+                                                            <tr className="bg-black/75 border-b border-indigo-500/30">
+                                                                <td colSpan={7} className="p-4 space-y-3 font-sans">
+                                                                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-color/60 pb-2">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <Terminal size={14} className="text-cyan-400" />
+                                                                            <span className="font-bold text-text-primary text-xs">
+                                                                                Windows Event {ev.eventId} — {ev.eventTitle || "Logon Audit"}
+                                                                            </span>
+                                                                            <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-800 text-cyan-300 font-mono">
+                                                                                {ev.domainController}
+                                                                            </span>
+                                                                            <span className="text-[10px] text-text-muted font-mono">
+                                                                                {new Date(ev.timestamp).toLocaleString()}
+                                                                            </span>
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleCopy(ev.rawMessage, ev.id);
+                                                                            }}
+                                                                            className="px-2.5 py-1 rounded text-[11px] border border-border-color bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-hover)] text-text-secondary hover:text-text-primary flex items-center gap-1.5 transition-all cursor-pointer shadow-sm font-semibold"
+                                                                        >
+                                                                            {copiedId === ev.id ? (
+                                                                                <>
+                                                                                    <Check size={12} className="text-emerald-400" />
+                                                                                    <span className="text-emerald-400">Copied!</span>
+                                                                                </>
+                                                                            ) : (
+                                                                                <>
+                                                                                    <Copy size={12} />
+                                                                                    <span>Copy Raw Log</span>
+                                                                                </>
+                                                                            )}
+                                                                        </button>
+                                                                    </div>
+
+                                                                    {/* Triage Badges */}
+                                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                                                                        <div className="p-2 rounded bg-white/5 border border-white/5">
+                                                                            <span className="text-text-muted text-[10px] block uppercase font-sans">Target User</span>
+                                                                            <span className="text-text-primary font-bold">{ev.targetUser}</span>
+                                                                        </div>
+                                                                        <div className="p-2 rounded bg-white/5 border border-white/5">
+                                                                            <span className="text-text-muted text-[10px] block uppercase font-sans">Caller Device</span>
+                                                                            <span className="text-cyan-300 font-bold">{ev.callerDevice}</span>
+                                                                        </div>
+                                                                        <div className="p-2 rounded bg-white/5 border border-white/5">
+                                                                            <span className="text-text-muted text-[10px] block uppercase font-sans">Source IP</span>
+                                                                            <span className="text-text-secondary">{ev.sourceIp}</span>
+                                                                        </div>
+                                                                        <div className="p-2 rounded bg-white/5 border border-white/5">
+                                                                            <span className="text-text-muted text-[10px] block uppercase font-sans">Logon Type / SubStatus</span>
+                                                                            <span className="text-amber-300 truncate block" title={ev.subStatusDesc || ev.logonTypeDesc}>
+                                                                                {ev.logonTypeDesc || ev.subStatusDesc || (ev.subStatus ? `0x${ev.subStatus}` : "-")}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    {/* Raw Security Event Payload */}
+                                                                    <pre className="text-[11px] text-zinc-300 overflow-x-auto whitespace-pre-wrap leading-relaxed p-3 bg-black/95 rounded-lg border border-border-color max-h-60 overflow-y-auto font-mono select-text">
+                                                                        {ev.rawMessage}
+                                                                    </pre>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </React.Fragment>
+                                                );
+                                            })
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
                         </div>
 
-                        {/* Collapsible Raw Message Drawer */}
-                        {expandedEventId && (() => {
-                            const selected = filteredEvents.find(e => e.id === expandedEventId);
-                            if (!selected) return null;
-                            return (
-                                <div className="p-4 rounded-xl border border-indigo-500/30 bg-black/80 space-y-2 font-mono text-xs animate-in fade-in duration-100">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-cyan-300 font-bold flex items-center gap-1.5">
-                                            <Terminal size={13} />
-                                            Raw Windows Security Event ({selected.eventId} - {selected.domainController})
-                                        </span>
-                                        <button
-                                            onClick={() => handleCopy(selected.rawMessage, "raw")}
-                                            className="text-text-muted hover:text-white flex items-center gap-1 text-[11px]"
-                                        >
-                                            {copiedId === "raw" ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                                            <span>{copiedId === "raw" ? "Copied" : "Copy Raw Log"}</span>
-                                        </button>
-                                    </div>
-                                    <pre className="text-[11px] text-zinc-300 overflow-x-auto whitespace-pre-wrap leading-relaxed p-3 bg-black/90 rounded-lg border border-white/5 max-h-72 overflow-y-auto">
-                                        {selected.rawMessage}
-                                    </pre>
-                                </div>
-                            );
-                        })()}
+                        {/* Bottom Pinned Pagination Footer */}
+                        {filteredEvents.length > 0 && (
+                            <div className="pt-2 border-t border-border-color/60">
+                                <PaginationControls
+                                    totalRecords={filteredEvents.length}
+                                    page={page}
+                                    limit={limit}
+                                    onPageChange={setPage}
+                                    showLimitSelector={false}
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
