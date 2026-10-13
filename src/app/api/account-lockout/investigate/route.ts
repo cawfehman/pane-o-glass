@@ -13,12 +13,10 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // Allow access if user has 'ise', 'audit', or explicit 'account-lockout' permission
+        // Allow access only if user has explicit 'account-lockout' permission or is ADMIN
         const isPermitted = 
             role === "ADMIN" ||
-            (await hasPermission(role, "account-lockout")) ||
-            (await hasPermission(role, "ise")) ||
-            (await hasPermission(role, "audit"));
+            (await hasPermission(role, "account-lockout"));
 
         if (!isPermitted) {
             return NextResponse.json(

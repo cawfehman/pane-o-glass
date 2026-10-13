@@ -66,7 +66,7 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                     {(isAnalyst || permissions.length > 0) && (
                         <>
                             {/* Perimeter & Access Group */}
-                            {(hasPermission('firewall') || hasPermission('ise') || hasPermission('ise-tacacs')) && (
+                            {(hasPermission('firewall') || hasPermission('ise') || hasPermission('ise-tacacs') || hasPermission('account-lockout')) && (
                                 <>
                                     <div className="nav-section mt-3">Perimeter & Access</div>
                                     <div className={isCollapsed ? "flex flex-col gap-1" : "ml-4 flex flex-col gap-1"}>
@@ -92,7 +92,7 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                                 <span className="nav-text">Cisco ISE Center</span>
                                             </Link>
                                         )}
-                                        {(hasPermission('ise') || hasPermission('account-lockout')) && (
+                                        {hasPermission('account-lockout') && (
                                             <Link 
                                                 href="/queries/account-lockout" 
                                                 onClick={closeMobile}
