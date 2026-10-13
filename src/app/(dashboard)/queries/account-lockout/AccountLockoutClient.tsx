@@ -190,22 +190,24 @@ export default function AccountLockoutClient() {
     }, [data, eventFilter, tableSearch]);
 
     return (
-        <div className="internal-scroll-layout max-w-7xl mx-auto w-full h-full pb-8 space-y-6">
-            {/* Header */}
-            <div>
-                <div className="flex items-center gap-2.5">
-                    <UserX size={24} className="text-amber-400" />
-                    <h1 className="text-xl font-bold text-text-primary">
-                        Account Lockout & Auth Failure Investigator
-                    </h1>
+        <div className="flex flex-col flex-1 h-full min-h-0 gap-4 w-full">
+            {/* Locked Top Section: Header & Search Toolbar */}
+            <div className="shrink-0 flex flex-col gap-3">
+                {/* Header */}
+                <div>
+                    <div className="flex items-center gap-2.5">
+                        <UserX size={24} className="text-amber-400" />
+                        <h1 className="text-xl font-bold text-text-primary">
+                            Account Lockout & Auth Failure Investigator
+                        </h1>
+                    </div>
+                    <p className="text-xs text-text-secondary mt-1">
+                        Correlates Domain Controller security logs (Events 4740, 4625, 4771, 4776) in Graylog with Cisco ISE Wireless telemetry to isolate lockout sources.
+                    </p>
                 </div>
-                <p className="text-xs text-text-secondary mt-1">
-                    Correlates Domain Controller security logs (Events 4740, 4625, 4771, 4776) in Graylog with Cisco ISE Wireless telemetry to isolate lockout sources.
-                </p>
-            </div>
 
-            {/* Search Toolbar */}
-            <div className="p-4 rounded-xl border border-border-color bg-[var(--bg-surface)] shadow-sm space-y-3">
+                {/* Search Toolbar */}
+                <div className="p-4 rounded-xl border border-border-color bg-[var(--bg-surface)] shadow-sm space-y-3">
                 <form onSubmit={(e) => handleSearch(e)} className="flex flex-wrap items-center gap-3">
                     <div className="relative flex-1 min-w-[240px]">
                         <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-secondary" />
@@ -267,7 +269,10 @@ export default function AccountLockoutClient() {
                     </span>
                 </div>
             </div>
+        </div>
 
+        {/* Scrollable Content Stream */}
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-10 space-y-6">
             {/* Error Message */}
             {error && (
                 <div className="p-4 rounded-xl border border-rose-500/40 bg-rose-950/20 text-rose-300 text-xs flex items-center gap-2">
@@ -814,6 +819,7 @@ export default function AccountLockoutClient() {
                     </div>
                 </div>
             )}
+            </div>
         </div>
     );
 }
