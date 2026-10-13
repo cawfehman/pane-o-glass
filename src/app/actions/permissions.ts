@@ -105,6 +105,14 @@ export async function getPermissionsForRole(role: string) {
                 list.push('vpn-s2s');
             }
         }
+        if ((roleUpper === 'ADMIN' || roleUpper === 'ANALYST' || list.includes('ise')) && !list.includes('account-lockout')) {
+            const explicitlyDisabled = await prisma.toolPermission.findFirst({
+                where: { role: roleUpper, toolId: 'account-lockout', isEnabled: false }
+            });
+            if (!explicitlyDisabled) {
+                list.push('account-lockout');
+            }
+        }
         return list;
     } catch (error) {
         logInternalError(`Error fetching permissions for role ${role}`, error);
@@ -152,6 +160,18 @@ export async function hasPermission(role: string, toolId: string) {
             if (roleUpper === 'ADMIN' || roleUpper === 'ANALYST' || roleUpper === 'NETWORK') {
                 return true;
             }
+        }
+
+        // Fallback for account-lockout: default to true for ADMIN, ANALYST, or users with ISE permission
+        if (!permission && toolId === 'account-lockout') {
+            const roleUpper = String(role).toUpperCase();
+            if (roleUpper === 'ADMIN' || roleUpper === 'ANALYST') {
+                return true;
+            }
+            const isePerm = await prisma.toolPermission.findFirst({
+                where: { role: roleUpper, toolId: 'ise', isEnabled: true }
+            });
+            if (isePerm) return true;
         }
 
         return !!permission;

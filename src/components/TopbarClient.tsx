@@ -15,6 +15,7 @@ export default function TopbarClient({ userName }: { userName: string }) {
         if (path === "/") return "Command Center";
         if (path === "/queries") return "System Tools";
         if (path.startsWith("/queries/firewall")) return "Forensics / Cisco Firewalls";
+        if (path.startsWith("/queries/account-lockout")) return "Forensics / Account Lockout Investigator";
         if (path.startsWith("/queries/ise")) return "Forensics / Cisco ISE";
         if (path.startsWith("/queries/vpn")) return "Forensics / VPN Troubleshooting";
         if (path.startsWith("/queries/tacacs")) return "Administration / TACACS+";

@@ -6,7 +6,7 @@ import {
     LayoutDashboard, Wrench, Shield, Server, Network, Lock, 
     ShieldAlert, ShieldCheck, Globe, Map, Users, Key, 
     ClipboardList, Activity, MessageSquare, Mail, BellRing, FileText, Layers,
-    DownloadCloud, Link2
+    DownloadCloud, Link2, UserX
 } from "lucide-react";
 import packageJson from "../../package.json";
 import FeedbackModal from "./FeedbackModal";
@@ -90,6 +90,17 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                                             >
                                                 <Server size={18} className="shrink-0" />
                                                 <span className="nav-text">Cisco ISE Center</span>
+                                            </Link>
+                                        )}
+                                        {(hasPermission('ise') || hasPermission('account-lockout')) && (
+                                            <Link 
+                                                href="/queries/account-lockout" 
+                                                onClick={closeMobile}
+                                                title={isCollapsed ? "Account Lockout Investigator" : undefined}
+                                                className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/account-lockout") ? "active" : ""}`}
+                                            >
+                                                <UserX size={18} className="shrink-0 text-amber-400" />
+                                                <span className="nav-text">Account Lockouts</span>
                                             </Link>
                                         )}
                                         {hasPermission('ise-tacacs') && (
