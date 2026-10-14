@@ -233,12 +233,19 @@ async function updateJobStatus(status: "SUCCESS" | "FAILURE", message: string) {
 
 // CLI Execution Handlers
 if (require.main === module) {
-    const isOnce = process.argv.includes("--once");
+    const isOnce = process.argv.includes("--once") || process.argv.includes("--seed");
     const rangeArgIdx = process.argv.indexOf("--range");
-    const customRange = rangeArgIdx !== -1 && process.argv[rangeArgIdx + 1] ? parseInt(process.argv[rangeArgIdx + 1], 10) : 900;
+    const daysArgIdx = process.argv.indexOf("--days") !== -1 ? process.argv.indexOf("--days") : process.argv.indexOf("--seed");
+    
+    let customRange = 900;
+    if (daysArgIdx !== -1 && process.argv[daysArgIdx + 1] && !isNaN(parseInt(process.argv[daysArgIdx + 1], 10))) {
+        customRange = parseInt(process.argv[daysArgIdx + 1], 10) * 86400;
+    } else if (rangeArgIdx !== -1 && process.argv[rangeArgIdx + 1]) {
+        customRange = parseInt(process.argv[rangeArgIdx + 1], 10);
+    }
 
     if (isOnce) {
-        log(`Executing single sync pass (range: ${customRange}s)...`);
+        log(`Executing single sync pass (range: ${customRange}s / ${(customRange / 3600).toFixed(1)}h)...`);
         syncAccountLifecycleEvents(customRange)
             .then(res => {
                 log(`Single pass completed successfully. Inserted: ${res.totalInserted}`);

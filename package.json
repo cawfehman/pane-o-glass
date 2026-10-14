@@ -16,6 +16,7 @@
     "daemon:vpn-health": "node dist-scripts/cron/ping-health-probes.js --daemon",
     "cron:lifecycle-sync": "node dist-scripts/cron/sync-account-lifecycle.js --once",
     "daemon:lifecycle-sync": "node dist-scripts/cron/sync-account-lifecycle.js",
+    "seed:lifecycle": "node dist-scripts/cron/sync-account-lifecycle.js --seed 7",
     "start": "next start",
     "lint": "next lint",
     "deploy": "git push origin main --follow-tags && git push production main --follow-tags",
