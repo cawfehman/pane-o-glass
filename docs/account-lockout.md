@@ -10,9 +10,10 @@ It solves a common enterprise challenge: Active Directory security event 4740 re
 flowchart TD
     UserQuery["User Searches Username in UI\n(/queries/account-lockout)"] --> API["/api/account-lockout/investigate"]
     API --> GraylogAD["OG Graylog AD Stream\n(5d72ac00b209026ab42decf9)"]
-    GraylogAD --> Events["Query Event IDs:\n4740 (Lockout)\n4625 (Logon Failure)\n4771 (Kerberos Pre-Auth)\n4776 (NTLM Validation)"]
+    GraylogAD --> Events["Query Event IDs:\n4740 (Lockout), 4767 (Unlock)\n4723/24 (Password Change/Reset)\n4625 (Fail), 4771/76 (Kerb/NTLM)\n4768/69 (Ticket Fail), 4648 (Explicit)"]
     
-    Events --> Triage{"Is Caller Computer an\nISE-PSN Node? (ise-psn01-04)"}
+    Events --> Correlation["Correlate Banners:\n- Password Change Correlation\n- Active Lockout Loop Warning"]
+    Correlation --> Triage{"Is Caller Computer an\nISE-PSN Node? (ise-psn01-04)"}
     
     Triage -->|Yes: Wireless EAP| ISETier{"Is Query Window\n<= 24 Hours?"}
     ISETier -->|Yes| ISEMnt["Cisco ISE MnT REST API\n(/admin/API/mnt/AuthStatus)"]
@@ -21,7 +22,7 @@ flowchart TD
     ISEMnt --> WirelessResult["Isolate Wireless Endpoint:\nMAC Address, SSID, AP Name, Site Code"]
     GraylogISE --> WirelessResult
     
-    Triage -->|No: Workstation / Server| HostTriage["Workstation / NTLM Triage:\nExtract Caller Hostname, IP,\nLogon Type (RDP, Network, Service)"]
+    Triage -->|No: Workstation / Server| HostTriage["Workstation / NTLM Triage:\nExtract Caller Hostname, IP, SPN,\nLogon Type (RDP, Network, Service)"]
     
     WirelessResult --> Verdict["Executive Root Cause Verdict\n& Interactive Event Timeline"]
     HostTriage --> Verdict
@@ -94,12 +95,12 @@ When the calling device is not an ISE-PSN node, the tool parses the Windows Logo
 ### 4. Interactive Event Stream Table
 - **Standard `PaginationControls`:** Top and bottom pagination with selectable limits (`10`, `25`, `50`, `100` rows per page).
 - **Column Filtering:**
-  - Filter tabs for Event IDs: `All`, `4740 (Lockout)`, `4625 (Fail)`, `4771 (Kerb)`, `4776 (NTLM)`.
+  - Dynamic filter tabs for Event IDs: `All`, `4740 (Lockout)`, `4625 (Fail)`, `4771 (Kerb)`, `4776 (NTLM)`, `4767 (Unlock)`, `4723/24 (Pwd)`, `4768/69 (Ticket)`, and `4648 (Explicit)`.
   - Dropdowns for **Caller Machine**, **Domain Controller**, and **Logon Type**.
-  - Client-side search bar for instant keyword filtering.
+  - Client-side search bar for instant keyword filtering (supports filtering by caller, IP, DC, error reason, Subject user, SPN, or process name).
   - Reset filters button to return to default view with 1 click.
 - **Sortable Columns:** Clickable headers for Time, Event ID, Caller, Source IP, Domain Controller, and Logon Type with visual sort direction indicators.
-- **Inline Expandable Rows:** Clicking any row or its chevron button (`^` / `v`) expands the full forensic payload and formatted triage breakdown directly in place with a 1-click **Copy Raw Log** button.
+- **Inline Expandable Rows:** Clicking any row or its chevron button (`^` / `v`) expands the full forensic payload directly in place. Displays formatted triage badges for Target User, Caller Device, Source IP, Logon Type / SubStatus, Subject / Admin User, Target Service SPN, Calling Process, and a 1-click **Copy Raw Log** button.
 
 ---
 
