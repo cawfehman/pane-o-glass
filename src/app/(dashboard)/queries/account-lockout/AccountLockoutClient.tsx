@@ -6,7 +6,8 @@ import {
     Calendar, CheckCircle2, AlertTriangle, Terminal, ChevronDown, 
     ChevronUp, Copy, Check, Download, RefreshCw, Radio, HardDrive, 
     Info, ArrowRight, UserCheck, Layers, ExternalLink, Filter,
-    ArrowUpDown, ArrowUp, ArrowDown, X, RotateCcw, KeyRound, Repeat
+    ArrowUpDown, ArrowUp, ArrowDown, X, RotateCcw, KeyRound, Repeat,
+    History
 } from "lucide-react";
 import { 
     ResponsiveContainer, AreaChart, Area, XAxis, YAxis, 
@@ -37,6 +38,22 @@ interface AdSecurityEvent {
     rawMessage: string;
 }
 
+interface AccountLifecycleHistoryItem {
+    id: string;
+    timestamp: string;
+    eventId: string;
+    eventType: string;
+    eventTitle: string;
+    targetUsername: string;
+    canonicalUsername: string;
+    performedBy: string | null;
+    domainController: string | null;
+    callerComputer: string | null;
+    status: "SUCCESS" | "FAILURE";
+    subStatus?: string | null;
+    rawMessage?: string | null;
+}
+
 interface PasswordChangeActivity {
     detected: boolean;
     type: "USER_CHANGE" | "ADMIN_RESET" | null;
@@ -45,6 +62,9 @@ interface PasswordChangeActivity {
     lockoutsAfterChange: number;
     failuresAfterChange: number;
     minutesBeforeFirstLockout: number | null;
+    isHistorical?: boolean;
+    daysSinceChange?: number;
+    hoursSinceChange?: number;
 }
 
 interface UnlockActivity {
@@ -130,6 +150,7 @@ interface LockoutInvestigationResult {
     uniqueCallers: string[];
     timeline: FailureTimelineBucket[];
     events: AdSecurityEvent[];
+    lifecycleHistory?: AccountLifecycleHistoryItem[];
     queriedSources: {
         adGraylogStream: string;
         iseQueryMode: "ISE_MNT" | "GRAYLOG_ISE" | "SKIPPED";
@@ -156,6 +177,8 @@ export default function AccountLockoutClient() {
     const [sortField, setSortField] = useState<"timestamp" | "eventId" | "callerDevice" | "sourceIp" | "domainController" | "status">("timestamp");
     const [sortAsc, setSortAsc] = useState<boolean>(false);
     const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+    const [expandedLifecycleId, setExpandedLifecycleId] = useState<string | null>(null);
+    const [showAllLifecycle, setShowAllLifecycle] = useState<boolean>(false);
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
     const handleSearch = async (e?: React.FormEvent, overrideRange?: number, overrideUser?: string) => {
@@ -739,6 +762,11 @@ export default function AccountLockoutClient() {
                                     <span className="font-bold text-cyan-300 uppercase tracking-wide text-[11px]">
                                         Password Change Correlated ({data.passwordChangeActivity.type === "USER_CHANGE" ? "User Self-Service 4723" : "Administrative Reset 4724"})
                                     </span>
+                                    {data.passwordChangeActivity.isHistorical && (
+                                        <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 font-mono font-bold flex items-center gap-1">
+                                            <History size={10} /> Persistent DB Sync
+                                        </span>
+                                    )}
                                     {data.passwordChangeActivity.lockoutsAfterChange > 0 && (
                                         <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono font-bold">
                                             {data.passwordChangeActivity.lockoutsAfterChange} lockout(s) post-change
@@ -746,7 +774,10 @@ export default function AccountLockoutClient() {
                                     )}
                                 </div>
                                 <p className="text-zinc-300 leading-relaxed text-xs">
-                                    Password was updated at {new Date(data.passwordChangeActivity.timestamp!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                    Password was updated on <strong className="text-white">{new Date(data.passwordChangeActivity.timestamp!).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</strong> at {new Date(data.passwordChangeActivity.timestamp!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                    {data.passwordChangeActivity.daysSinceChange !== undefined && (
+                                        <span className="text-cyan-200"> ({data.passwordChangeActivity.daysSinceChange >= 1 ? `${data.passwordChangeActivity.daysSinceChange} day(s) ago` : `${data.passwordChangeActivity.hoursSinceChange || 1} hr(s) ago`})</span>
+                                    )}
                                     {data.passwordChangeActivity.performedBy ? ` by ${data.passwordChangeActivity.performedBy}` : ""}.
                                     {data.passwordChangeActivity.minutesBeforeFirstLockout !== null && (
                                         <span> First lockout occurred <strong>{data.passwordChangeActivity.minutesBeforeFirstLockout} min</strong> after rotation.</span>
@@ -999,6 +1030,148 @@ export default function AccountLockoutClient() {
                                         />
                                     </AreaChart>
                                 </ResponsiveContainer>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Active Directory Account Lifecycle & Password History Card */}
+                    {data.lifecycleHistory && data.lifecycleHistory.length > 0 && (
+                        <div className="p-4 rounded-xl border border-cyan-500/30 bg-[var(--bg-surface)] space-y-3 shadow-sm">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border-color/60 pb-3">
+                                <div className="flex items-center gap-2">
+                                    <History size={18} className="text-cyan-400 shrink-0" />
+                                    <div>
+                                        <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                                            Active Directory Account Lifecycle & Password History
+                                            <span className="text-xs px-2 py-0.5 rounded-full font-mono font-normal bg-cyan-950/60 text-cyan-300 border border-cyan-800/40">
+                                                {data.lifecycleHistory.length} recorded {data.lifecycleHistory.length === 1 ? "event" : "events"}
+                                            </span>
+                                        </h3>
+                                        <p className="text-[11px] text-text-secondary mt-0.5">
+                                            Continuously synchronized to PostgreSQL from Graylog Stream <strong className="font-mono text-zinc-300">5d72ac00b209026ab42decf9</strong> every 10 minutes.
+                                        </p>
+                                    </div>
+                                </div>
+                                {data.lifecycleHistory.length > 5 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowAllLifecycle(!showAllLifecycle)}
+                                        className="text-xs font-semibold text-accent-primary hover:underline flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+                                    >
+                                        <span>{showAllLifecycle ? "Show Top 5" : `Show All (${data.lifecycleHistory.length})`}</span>
+                                        {showAllLifecycle ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                {(showAllLifecycle ? data.lifecycleHistory : data.lifecycleHistory.slice(0, 5)).map((item) => {
+                                    const isExpanded = expandedLifecycleId === item.id;
+                                    const isPwd = item.eventId === "4723" || item.eventId === "4724";
+                                    const isUnlock = item.eventId === "4767";
+                                    const isFail = item.status === "FAILURE";
+
+                                    return (
+                                        <div
+                                            key={item.id}
+                                            className={`rounded-xl border transition-all text-xs ${
+                                                isPwd
+                                                    ? "bg-cyan-950/15 border-cyan-500/30"
+                                                    : isUnlock
+                                                    ? "bg-amber-950/15 border-amber-500/30"
+                                                    : "bg-[var(--bg-background)]/70 border-border-color"
+                                            }`}
+                                        >
+                                            <div
+                                                onClick={() => setExpandedLifecycleId(isExpanded ? null : item.id)}
+                                                className="p-3 flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:bg-white/[0.02]"
+                                            >
+                                                <div className="flex items-center gap-2.5 flex-wrap">
+                                                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                                                        isPwd
+                                                            ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
+                                                            : isUnlock
+                                                            ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                                            : "bg-indigo-500/20 text-indigo-300 border-indigo-500/40"
+                                                    }`}>
+                                                        Event {item.eventId}
+                                                    </span>
+
+                                                    <span className="font-bold text-text-primary">
+                                                        {item.eventTitle}
+                                                    </span>
+
+                                                    <span className={`text-[10px] font-bold px-2 py-0.2 rounded-full border ${
+                                                        isFail
+                                                            ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                                                            : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                                    }`}>
+                                                        {item.status}
+                                                    </span>
+                                                </div>
+
+                                                <div className="flex items-center gap-4 text-text-secondary text-[11px] font-mono ml-auto">
+                                                    {item.performedBy && (
+                                                        <span>
+                                                            Actor: <strong className="text-zinc-200">{item.performedBy}</strong>
+                                                        </span>
+                                                    )}
+                                                    {item.domainController && (
+                                                        <span className="hidden md:inline">
+                                                            DC: <strong className="text-zinc-300">{item.domainController}</strong>
+                                                        </span>
+                                                    )}
+                                                    <span>
+                                                        {new Date(item.timestamp).toLocaleDateString([], { month: "short", day: "numeric" })} {new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                                    </span>
+                                                    <span className="text-text-muted">
+                                                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {isExpanded && (
+                                                <div className="p-3 border-t border-border-color/60 bg-black/40 space-y-2">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] font-mono">
+                                                        <div>
+                                                            <span className="text-text-muted block text-[10px] uppercase">Target User</span>
+                                                            <span className="text-text-primary font-bold">{item.canonicalUsername || item.targetUsername}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-text-muted block text-[10px] uppercase">Domain Controller</span>
+                                                            <span className="text-text-primary font-bold">{item.domainController || "Unknown"}</span>
+                                                        </div>
+                                                        <div>
+                                                            <span className="text-text-muted block text-[10px] uppercase">Caller / Workstation</span>
+                                                            <span className="text-text-primary font-bold">{item.callerComputer || "N/A"}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {item.rawMessage && (
+                                                        <div className="pt-2">
+                                                            <div className="flex items-center justify-between text-[10px] text-text-muted uppercase mb-1">
+                                                                <span>Raw Security Event Log</span>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleCopy(item.rawMessage!, item.id);
+                                                                    }}
+                                                                    className="flex items-center gap-1 text-accent-primary hover:underline cursor-pointer"
+                                                                >
+                                                                    {copiedId === item.id ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                                                                    <span>{copiedId === item.id ? "Copied" : "Copy Payload"}</span>
+                                                                </button>
+                                                            </div>
+                                                            <pre className="p-2.5 rounded bg-black/60 border border-border-color text-[11px] font-mono text-zinc-300 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                                                                {item.rawMessage}
+                                                            </pre>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}

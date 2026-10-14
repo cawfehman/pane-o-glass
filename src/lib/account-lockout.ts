@@ -4,6 +4,7 @@ import { parseStringPromise } from "xml2js";
 import { parseCalledStationId, normalizeMacAddress, getIseUrls, executeWithPanFailover } from "./ise";
 import { resolveIpHostname } from "./ise";
 import { getUserDetails } from "./ldap";
+import { prisma } from "./prisma";
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false
@@ -45,6 +46,22 @@ export interface AdSecurityEvent {
     rawMessage: string;
 }
 
+export interface AccountLifecycleHistoryItem {
+    id: string;
+    timestamp: string;
+    eventId: string;
+    eventType: string;
+    eventTitle: string;
+    targetUsername: string;
+    canonicalUsername: string;
+    performedBy: string | null;
+    domainController: string | null;
+    callerComputer: string | null;
+    status: "SUCCESS" | "FAILURE";
+    subStatus?: string | null;
+    rawMessage?: string | null;
+}
+
 export interface PasswordChangeActivity {
     detected: boolean;
     type: "USER_CHANGE" | "ADMIN_RESET" | null;
@@ -53,6 +70,9 @@ export interface PasswordChangeActivity {
     lockoutsAfterChange: number;
     failuresAfterChange: number;
     minutesBeforeFirstLockout: number | null;
+    isHistorical?: boolean;
+    daysSinceChange?: number;
+    hoursSinceChange?: number;
 }
 
 export interface UnlockActivity {
@@ -137,6 +157,7 @@ export interface LockoutInvestigationResult {
     uniqueCallers: string[];
     timeline: FailureTimelineBucket[];
     events: AdSecurityEvent[];
+    lifecycleHistory: AccountLifecycleHistoryItem[];
     queriedSources: {
         adGraylogStream: string;
         iseQueryMode: "ISE_MNT" | "GRAYLOG_ISE" | "SKIPPED";
@@ -628,6 +649,51 @@ async function queryGraylogIseStreamForUser(usernames: string[], rangeSeconds: n
 }
 
 /**
+ * Queries persistent AD account lifecycle events (password changes, resets, unlocks, etc.) from PostgreSQL.
+ */
+export async function getAccountLifecycleHistory(
+    usernames: string | string[],
+    limit: number = 20
+): Promise<AccountLifecycleHistoryItem[]> {
+    try {
+        const usernameList = (Array.isArray(usernames) ? usernames : [usernames])
+            .map(u => u.toLowerCase().replace(/^(?:chsmail|cooperhealth)\\/i, "").replace(/@(?:chsmail\.root\.)?cooperhealth\.edu$/i, "").trim())
+            .filter(Boolean);
+
+        if (usernameList.length === 0) return [];
+
+        const records = await prisma.accountLifecycleEvent.findMany({
+            where: {
+                targetUsername: { in: usernameList }
+            },
+            orderBy: {
+                timestamp: "desc"
+            },
+            take: limit
+        });
+
+        return records.map(r => ({
+            id: r.id,
+            timestamp: r.timestamp.toISOString(),
+            eventId: r.eventId,
+            eventType: r.eventType,
+            eventTitle: r.eventTitle,
+            targetUsername: r.targetUsername,
+            canonicalUsername: r.canonicalUsername,
+            performedBy: r.performedBy,
+            domainController: r.domainController,
+            callerComputer: r.callerComputer,
+            status: r.status as "SUCCESS" | "FAILURE",
+            subStatus: r.subStatus,
+            rawMessage: r.rawMessage
+        }));
+    } catch (err: any) {
+        console.warn("[Account-Lockout] Could not query lifecycle history from DB:", err?.message || err);
+        return [];
+    }
+}
+
+/**
  * Main Orchestrator: Conducts end-to-end investigation for a user account lockout.
  */
 export async function investigateAccountLockout(
@@ -671,6 +737,9 @@ export async function investigateAccountLockout(
     // 2. Fetch AD Security Events from Graylog
     const events = await fetchAdSecurityEventsFromGraylog(variants, baseUser, rangeSeconds);
 
+    // 2b. Fetch persistent lifecycle events (password changes, resets, unlocks) from PostgreSQL
+    const lifecycleHistory = await getAccountLifecycleHistory([baseUser, canonicalUser, ...variants], 20);
+
     // Filter lockouts, failures, unlocks, and password changes
     const lockoutEvents = events.filter(e => e.eventId === "4740");
     const failureEvents = events.filter(e => e.eventId === "4625" || e.eventId === "4771" || e.eventId === "4776" || e.eventId === "4768" || e.eventId === "4769");
@@ -687,27 +756,75 @@ export async function investigateAccountLockout(
     const latestPwd = sortedPwdChanges[0];
 
     const passwordChangeActivity: PasswordChangeActivity = {
-        detected: sortedPwdChanges.length > 0,
-        type: latestPwd ? (latestPwd.eventId === "4723" ? "USER_CHANGE" : "ADMIN_RESET") : null,
-        timestamp: latestPwd?.timestamp || null,
-        performedBy: latestPwd?.subjectUser || null,
+        detected: false,
+        type: null,
+        timestamp: null,
+        performedBy: null,
         lockoutsAfterChange: 0,
         failuresAfterChange: 0,
-        minutesBeforeFirstLockout: null
+        minutesBeforeFirstLockout: null,
+        isHistorical: false,
+        daysSinceChange: undefined,
+        hoursSinceChange: undefined
     };
 
     if (latestPwd?.timestamp) {
+        // Real-time detection within the Graylog search window
         const pwdMs = new Date(latestPwd.timestamp).getTime();
         const subsequentLockouts = lockoutEvents.filter(e => new Date(e.timestamp).getTime() >= pwdMs);
         const subsequentFailures = failureEvents.filter(e => new Date(e.timestamp).getTime() >= pwdMs);
+        const ageHours = (Date.now() - pwdMs) / (3600 * 1000);
 
+        passwordChangeActivity.detected = true;
+        passwordChangeActivity.type = latestPwd.eventId === "4723" ? "USER_CHANGE" : "ADMIN_RESET";
+        passwordChangeActivity.timestamp = latestPwd.timestamp;
+        passwordChangeActivity.performedBy = latestPwd.subjectUser || null;
         passwordChangeActivity.lockoutsAfterChange = subsequentLockouts.length;
         passwordChangeActivity.failuresAfterChange = subsequentFailures.length;
+        passwordChangeActivity.isHistorical = false;
+        passwordChangeActivity.hoursSinceChange = Math.round(ageHours * 10) / 10;
+        passwordChangeActivity.daysSinceChange = Math.round((ageHours / 24) * 10) / 10;
 
         if (subsequentLockouts.length > 0) {
             const earliestPostLockout = [...subsequentLockouts].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())[0];
             const diffMs = new Date(earliestPostLockout.timestamp).getTime() - pwdMs;
             passwordChangeActivity.minutesBeforeFirstLockout = Math.max(0, Math.round(diffMs / 60000));
+        }
+    } else if (lifecycleHistory.length > 0) {
+        // Fallback: Check persistent PostgreSQL database for recent password changes (up to 30 days)
+        const latestDbPwd = lifecycleHistory.find(e =>
+            (e.eventType === "USER_PWD_CHANGE" || e.eventType === "ADMIN_PWD_RESET" || e.eventId === "4723" || e.eventId === "4724") &&
+            e.status === "SUCCESS"
+        );
+
+        if (latestDbPwd) {
+            const pwdMs = new Date(latestDbPwd.timestamp).getTime();
+            const ageHours = (Date.now() - pwdMs) / (3600 * 1000);
+            const ageDays = Math.round((ageHours / 24) * 10) / 10;
+
+            // Correlate if changed within the last 30 days (720h)
+            if (ageHours <= 720) {
+                const subsequentLockouts = lockoutEvents.filter(e => new Date(e.timestamp).getTime() >= pwdMs);
+                const subsequentFailures = failureEvents.filter(e => new Date(e.timestamp).getTime() >= pwdMs);
+
+                passwordChangeActivity.detected = true;
+                passwordChangeActivity.type = (latestDbPwd.eventType === "USER_PWD_CHANGE" || latestDbPwd.eventId === "4723") ? "USER_CHANGE" : "ADMIN_RESET";
+                passwordChangeActivity.timestamp = latestDbPwd.timestamp;
+                passwordChangeActivity.performedBy = latestDbPwd.performedBy || null;
+                passwordChangeActivity.lockoutsAfterChange = subsequentLockouts.length > 0 ? subsequentLockouts.length : lockoutEvents.length;
+                passwordChangeActivity.failuresAfterChange = subsequentFailures.length > 0 ? subsequentFailures.length : failureEvents.length;
+                passwordChangeActivity.isHistorical = true;
+                passwordChangeActivity.hoursSinceChange = Math.round(ageHours * 10) / 10;
+                passwordChangeActivity.daysSinceChange = ageDays;
+
+                if (lockoutEvents.length > 0) {
+                    const earliestPostLockout = [...lockoutEvents].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())[0];
+                    const diffMs = new Date(earliestPostLockout.timestamp).getTime() - pwdMs;
+                    if (diffMs > 0) {
+                        passwordChangeActivity.minutesBeforeFirstLockout = Math.round(diffMs / 60000);
+                    }
+                }
+            }
         }
     }
 
@@ -859,7 +976,9 @@ export async function investigateAccountLockout(
         const profileText = iseDetails?.deviceProfile ? `[${iseDetails.deviceProfile}]` : "mobile device/laptop";
 
         const pwdNote = passwordChangeActivity.detected && passwordChangeActivity.lockoutsAfterChange > 0
-            ? ` Password was updated ${passwordChangeActivity.minutesBeforeFirstLockout !== null ? `${passwordChangeActivity.minutesBeforeFirstLockout} min before lockouts` : "recently"}; device continues using the old password.`
+            ? (passwordChangeActivity.isHistorical
+                ? ` Password was updated ${passwordChangeActivity.daysSinceChange && passwordChangeActivity.daysSinceChange >= 1 ? `${passwordChangeActivity.daysSinceChange} days ago` : `${passwordChangeActivity.hoursSinceChange || 1} hr(s) ago`} (from lifecycle history); wireless device is likely caching the old credentials.`
+                : ` Password was updated ${passwordChangeActivity.minutesBeforeFirstLockout !== null ? `${passwordChangeActivity.minutesBeforeFirstLockout} min before lockouts` : "recently"}; device continues using the old password.`)
             : "";
 
         executiveSummary = hasLockout
@@ -870,7 +989,14 @@ export async function investigateAccountLockout(
     } else if (passwordChangeActivity.detected && passwordChangeActivity.lockoutsAfterChange > 0) {
         rootCauseCategory = "POST_PASSWORD_CHANGE_STALE";
         const performedStr = passwordChangeActivity.performedBy ? ` (by ${passwordChangeActivity.performedBy})` : "";
-        executiveSummary = `Stale Credentials Post-Password Reset: Password was changed at ${new Date(passwordChangeActivity.timestamp!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${performedStr}. Following the change, ${passwordChangeActivity.lockoutsAfterChange} lockout(s) and ${passwordChangeActivity.failuresAfterChange} failure(s) occurred from '${primaryCaller}'.`;
+        if (passwordChangeActivity.isHistorical) {
+            const timeAgoStr = passwordChangeActivity.daysSinceChange && passwordChangeActivity.daysSinceChange >= 1 
+                ? `${passwordChangeActivity.daysSinceChange} day(s) ago` 
+                : `${passwordChangeActivity.hoursSinceChange || 1} hour(s) ago`;
+            executiveSummary = `Stale Credentials Post-Password Reset (Historical): Password was changed ${timeAgoStr}${performedStr} on ${new Date(passwordChangeActivity.timestamp!).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}. Lockouts from '${primaryCaller}' are persisting due to cached/stale credentials.`;
+        } else {
+            executiveSummary = `Stale Credentials Post-Password Reset: Password was changed at ${new Date(passwordChangeActivity.timestamp!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${performedStr}. Following the change, ${passwordChangeActivity.lockoutsAfterChange} lockout(s) and ${passwordChangeActivity.failuresAfterChange} failure(s) occurred from '${primaryCaller}'.`;
+        }
         recommendation = `Instruct the user to reboot or log off '${primaryCaller}' and clear any cached credentials in Windows Credential Manager.`;
     } else if (explicitLogons.length > 0 && primaryCaller !== "Unknown Caller") {
         rootCauseCategory = "EXPLICIT_CREDENTIALS";
@@ -930,6 +1056,7 @@ export async function investigateAccountLockout(
         uniqueCallers,
         timeline,
         events,
+        lifecycleHistory,
         queriedSources: {
             adGraylogStream: OG_GRAYLOG_AD_STREAM_ID,
             iseQueryMode,

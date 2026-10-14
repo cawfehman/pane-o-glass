@@ -607,3 +607,26 @@ model S2sTunnelNote {
   @@index([tunnelId])
   @@index([createdAt])
 }
+
+model AccountLifecycleEvent {
+  id                String   @id
+  timestamp         DateTime
+  eventId           String
+  eventType         String
+  eventTitle        String
+  targetUsername    String
+  canonicalUsername String
+  performedBy       String?
+  domainController  String?
+  callerComputer    String?
+  status            String   @default("SUCCESS")
+  subStatus         String?
+  subStatusDesc     String?
+  rawMessage        String?  @db.Text
+  createdAt         DateTime @default(now())
+
+  @@index([targetUsername, timestamp])
+  @@index([timestamp])
+  @@index([eventId])
+}
+
