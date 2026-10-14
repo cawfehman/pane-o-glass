@@ -105,7 +105,7 @@ export async function getPermissionsForRole(role: string) {
                 list.push('vpn-s2s');
             }
         }
-        if (roleUpper === 'ADMIN' && !list.includes('account-lockout')) {
+        if (roleUpper !== 'USER' && !list.includes('account-lockout')) {
             const explicitlyDisabled = await prisma.toolPermission.findFirst({
                 where: { role: roleUpper, toolId: 'account-lockout', isEnabled: false }
             });
@@ -162,9 +162,14 @@ export async function hasPermission(role: string, toolId: string) {
             }
         }
 
-        // Fallback for account-lockout: default to true only for ADMIN
+        // Fallback for account-lockout: default to true for everyone except USER
         if (!permission && toolId === 'account-lockout') {
-            return String(role).toUpperCase() === 'ADMIN';
+            const roleUpper = String(role).toUpperCase();
+            if (roleUpper === 'USER') return false;
+            const explicitlyDisabled = await prisma.toolPermission.findFirst({
+                where: { role: roleUpper, toolId: 'account-lockout', isEnabled: false }
+            });
+            return !explicitlyDisabled;
         }
 
         return !!permission;
@@ -281,7 +286,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'crawler', role: 'ANALYST', isEnabled: false },
             { toolId: 'netscaler', role: 'ANALYST', isEnabled: true },
             { toolId: 'graylog-exporter', role: 'ANALYST', isEnabled: true },
-            { toolId: 'account-lockout', role: 'ANALYST', isEnabled: false },
+            { toolId: 'account-lockout', role: 'ANALYST', isEnabled: true },
 
             { toolId: 'firewall', role: 'USER', isEnabled: false },
             { toolId: 'ise', role: 'USER', isEnabled: false },
@@ -315,7 +320,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'crawler', role: 'NETWORK', isEnabled: true },
             { toolId: 'netscaler', role: 'NETWORK', isEnabled: true },
             { toolId: 'graylog-exporter', role: 'NETWORK', isEnabled: false },
-            { toolId: 'account-lockout', role: 'NETWORK', isEnabled: false },
+            { toolId: 'account-lockout', role: 'NETWORK', isEnabled: true },
 
             { toolId: 'firewall', role: 'DESKTOP', isEnabled: true },
             { toolId: 'ise', role: 'DESKTOP', isEnabled: false },
@@ -331,7 +336,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'etd', role: 'DESKTOP', isEnabled: false },
             { toolId: 'crawler', role: 'DESKTOP', isEnabled: false },
             { toolId: 'graylog-exporter', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'account-lockout', role: 'DESKTOP', isEnabled: false },
+            { toolId: 'account-lockout', role: 'DESKTOP', isEnabled: true },
 
             { toolId: 'firewall', role: 'SYSTEMS', isEnabled: false },
             { toolId: 'ise', role: 'SYSTEMS', isEnabled: false },
@@ -345,7 +350,7 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'etd', role: 'SYSTEMS', isEnabled: true },
             { toolId: 'crawler', role: 'SYSTEMS', isEnabled: false },
             { toolId: 'graylog-exporter', role: 'SYSTEMS', isEnabled: false },
-            { toolId: 'account-lockout', role: 'SYSTEMS', isEnabled: false },
+            { toolId: 'account-lockout', role: 'SYSTEMS', isEnabled: true },
 
             { toolId: 'vectra', role: 'ADMIN', isEnabled: true },
             { toolId: 'vectra', role: 'ANALYST', isEnabled: true },

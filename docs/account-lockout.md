@@ -107,8 +107,8 @@ When the calling device is not an ISE-PSN node, the tool parses the Windows Logo
 ## 5. Security & RBAC Permissions
 
 Access to `/queries/account-lockout` is governed by the Pane-o-Glass dynamic permission matrix:
-- **Default Permissions:** Registered across all 6 roles (`ADMIN`, `ANALYST`, `NETWORK`, `DESKTOP`, `SYSTEMS`, `USER`), but enabled **only for `ADMIN` by default**.
-- **Admin Configuration:** Administrators can enable access for other roles (e.g. `ANALYST` or `DESKTOP`) via `/users/permissions`.
+- **Default Permissions:** Enabled by default for all operational roles (`ADMIN`, `ANALYST`, `NETWORK`, `DESKTOP`, `SYSTEMS`), and disabled only for basic `USER`.
+- **Admin Configuration:** Administrators can customize or toggle access per role at any time via `/users/permissions`.
 - **Defense-in-Depth:**
   - Sidebar link is hidden unless the user has the `account-lockout` entitlement.
   - Page route displays a server-side `Access Denied` screen if unauthorized.

@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { getPermissionsForRole } from "@/app/actions/permissions";
-import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe, Shield, Server, Network, Mail, FileText, Link2 } from "lucide-react";
+import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe, Shield, Server, Network, Mail, FileText, Link2, UserX } from "lucide-react";
 import QueriesPageClient from "./QueriesPageClient";
 
 export default async function QueriesPage() {
@@ -29,6 +29,14 @@ export default async function QueriesPage() {
             href: "/queries/ise",
             description: "Monitor real-time network authentication sessions and identity services for wired and wireless clients.",
             icon: <Server size={24} />
+        },
+        {
+            id: 'account-lockout',
+            category: 'Perimeter & Access',
+            title: "Account Lockout & Auth Failure Investigator",
+            href: "/queries/account-lockout",
+            description: "Correlate Active Directory security logs with Cisco ISE EAP wireless telemetry to triage domain account lockouts.",
+            icon: <UserX size={24} className="text-amber-400" />
         },
         {
             id: 'ise-tacacs',

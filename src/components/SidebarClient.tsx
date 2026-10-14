@@ -16,8 +16,9 @@ import { useSidebar } from "./SidebarContext";
 export default function SidebarClient({ role, permissions = [] }: { role: string, permissions?: string[] }) {
     const pathname = usePathname();
     const { isCollapsed, isMobileOpen, closeMobile } = useSidebar();
-    const isAdmin = role === "ADMIN";
-    const isAnalyst = role === "ANALYST" || isAdmin;
+    const normalizedRole = String(role || "USER").toUpperCase();
+    const isAdmin = normalizedRole === "ADMIN";
+    const isAnalyst = normalizedRole === "ANALYST" || isAdmin;
 
     const hasPermission = (toolId: string) => isAdmin || permissions.includes(toolId);
 
@@ -161,110 +162,114 @@ export default function SidebarClient({ role, permissions = [] }: { role: string
                             )}
 
                             {/* Threat Intelligence & Telemetry Group */}
-                            <div className="nav-section mt-3">Threat & Mail Telemetry</div>
-                            <div className={isCollapsed ? "flex flex-col gap-1" : "ml-4 flex flex-col gap-1"}>
-                            {hasPermission('hibp-account') && (
-                                <Link 
-                                    href="/queries/hibp/account" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "HIBP Account Security" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/hibp/account") ? "active" : ""}`}
-                                >
-                                    <ShieldAlert size={18} className="shrink-0" />
-                                    <span className="nav-text">HIBP Account Security</span>
-                                </Link>
+                            {(hasPermission('hibp-account') || hasPermission('hibp-domain') || hasPermission('threat-intel') || hasPermission('ironport') || hasPermission('bec') || hasPermission('etd') || hasPermission('netscaler') || hasPermission('notification-center') || hasPermission('crawler')) && (
+                                <>
+                                    <div className="nav-section mt-3">Threat & Mail Telemetry</div>
+                                    <div className={isCollapsed ? "flex flex-col gap-1" : "ml-4 flex flex-col gap-1"}>
+                                    {hasPermission('hibp-account') && (
+                                        <Link 
+                                            href="/queries/hibp/account" 
+                                            onClick={closeMobile}
+                                            title={isCollapsed ? "HIBP Account Security" : undefined}
+                                            className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/hibp/account") ? "active" : ""}`}
+                                        >
+                                            <ShieldAlert size={18} className="shrink-0" />
+                                            <span className="nav-text">HIBP Account Security</span>
+                                        </Link>
+                                    )}
+                                    {hasPermission('hibp-domain') && (
+                                        <Link 
+                                            href="/queries/hibp/domain" 
+                                            onClick={closeMobile}
+                                            title={isCollapsed ? "HIBP Domain Security" : undefined}
+                                            className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/hibp/domain") ? "active" : ""}`}
+                                        >
+                                            <ShieldCheck size={18} className="shrink-0" />
+                                            <span className="nav-text">HIBP Domain Security</span>
+                                        </Link>
+                                    )}
+                                    {hasPermission('threat-intel') && (
+                                        <Link 
+                                            href="/queries/threat-intel" 
+                                            onClick={closeMobile}
+                                            title={isCollapsed ? "Threat Intelligence" : undefined}
+                                            className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/threat-intel") ? "active" : ""}`}
+                                        >
+                                            <Globe size={18} className="shrink-0" />
+                                            <span className="nav-text">Threat Intelligence</span>
+                                        </Link>
+                                    )}
+                                    {hasPermission('ironport') && (
+                                        <Link 
+                                            href="/queries/ironport" 
+                                            onClick={closeMobile}
+                                            title={isCollapsed ? "IronPort Telemetry" : undefined}
+                                            className={`nav-link text-[0.9rem] ${pathname === "/queries/ironport" ? "active" : ""}`}
+                                        >
+                                            <Mail size={18} className="shrink-0" />
+                                            <span className="nav-text">IronPort Telemetry</span>
+                                        </Link>
+                                    )}
+                                    {hasPermission('bec') && (
+                                        <Link 
+                                            href="/queries/bec" 
+                                            onClick={closeMobile}
+                                            title={isCollapsed ? "M365 BEC Threat Hunter" : undefined}
+                                            className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/bec") ? "active" : ""}`}
+                                        >
+                                            <ShieldAlert size={18} className="shrink-0 text-amber-400" />
+                                            <span className="nav-text">M365 BEC Threat Hunter</span>
+                                        </Link>
+                                    )}
+                                    {hasPermission('etd') && (
+                                        <Link 
+                                            href="/queries/etd" 
+                                            onClick={closeMobile}
+                                            title={isCollapsed ? "Cisco ETD Center" : undefined}
+                                            className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/etd") ? "active" : ""}`}
+                                        >
+                                            <ShieldAlert size={18} className="shrink-0 text-red-400" />
+                                            <span className="nav-text">Cisco ETD Center</span>
+                                        </Link>
+                                    )}
+                                    {hasPermission('netscaler') && (
+                                        <Link 
+                                            href="/queries/netscaler" 
+                                            onClick={closeMobile}
+                                            title={isCollapsed ? "NetScaler Gateway & ADC" : undefined}
+                                            className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/netscaler") ? "active" : ""}`}
+                                        >
+                                            <Layers size={18} className="shrink-0 text-teal-400" />
+                                            <span className="nav-text">NetScaler Gateway</span>
+                                        </Link>
+                                    )}
+                                    {hasPermission('notification-center') && (
+                                        <Link 
+                                            href="/notifications" 
+                                            onClick={closeMobile}
+                                            title={isCollapsed ? "Notification Center" : undefined}
+                                            className={`nav-link text-[0.9rem] ${pathname.startsWith("/notifications") ? "active" : ""}`}
+                                        >
+                                            <BellRing size={18} className="shrink-0 text-amber-400" />
+                                            <span className="nav-text">Notification Center</span>
+                                        </Link>
+                                    )}
+                                    {hasPermission('crawler') && (
+                                        <Link 
+                                            href="/admin/crawler" 
+                                            onClick={closeMobile}
+                                            title={isCollapsed ? "Network Crawler" : undefined}
+                                            className={`nav-link text-[0.9rem] ${pathname.startsWith("/admin/crawler") ? "active" : ""}`}
+                                        >
+                                            <Network size={18} className="shrink-0 text-cyan-400" />
+                                            <span className="nav-text">Network Crawler</span>
+                                        </Link>
+                                    )}
+                                    </div>
+                                </>
                             )}
-                            {hasPermission('hibp-domain') && (
-                                <Link 
-                                    href="/queries/hibp/domain" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "HIBP Domain Security" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/hibp/domain") ? "active" : ""}`}
-                                >
-                                    <ShieldCheck size={18} className="shrink-0" />
-                                    <span className="nav-text">HIBP Domain Security</span>
-                                </Link>
-                            )}
-                            {hasPermission('threat-intel') && (
-                                <Link 
-                                    href="/queries/threat-intel" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "Threat Intelligence" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/threat-intel") ? "active" : ""}`}
-                                >
-                                    <Globe size={18} className="shrink-0" />
-                                    <span className="nav-text">Threat Intelligence</span>
-                                </Link>
-                            )}
-                            {hasPermission('ironport') && (
-                                <Link 
-                                    href="/queries/ironport" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "IronPort Telemetry" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname === "/queries/ironport" ? "active" : ""}`}
-                                >
-                                    <Mail size={18} className="shrink-0" />
-                                    <span className="nav-text">IronPort Telemetry</span>
-                                </Link>
-                            )}
-                            {hasPermission('bec') && (
-                                <Link 
-                                    href="/queries/bec" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "M365 BEC Threat Hunter" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/bec") ? "active" : ""}`}
-                                >
-                                    <ShieldAlert size={18} className="shrink-0 text-amber-400" />
-                                    <span className="nav-text">M365 BEC Threat Hunter</span>
-                                </Link>
-                            )}
-                            {hasPermission('etd') && (
-                                <Link 
-                                    href="/queries/etd" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "Cisco ETD Center" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/etd") ? "active" : ""}`}
-                                >
-                                    <ShieldAlert size={18} className="shrink-0 text-red-400" />
-                                    <span className="nav-text">Cisco ETD Center</span>
-                                </Link>
-                            )}
-                            {hasPermission('netscaler') && (
-                                <Link 
-                                    href="/queries/netscaler" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "NetScaler Gateway & ADC" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/queries/netscaler") ? "active" : ""}`}
-                                >
-                                    <Layers size={18} className="shrink-0 text-teal-400" />
-                                    <span className="nav-text">NetScaler Gateway</span>
-                                </Link>
-                            )}
-                            {hasPermission('notification-center') && (
-                                <Link 
-                                    href="/notifications" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "Notification Center" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/notifications") ? "active" : ""}`}
-                                >
-                                    <BellRing size={18} className="shrink-0 text-amber-400" />
-                                    <span className="nav-text">Notification Center</span>
-                                </Link>
-                            )}
-                            {hasPermission('crawler') && (
-                                <Link 
-                                    href="/admin/crawler" 
-                                    onClick={closeMobile}
-                                    title={isCollapsed ? "Network Crawler" : undefined}
-                                    className={`nav-link text-[0.9rem] ${pathname.startsWith("/admin/crawler") ? "active" : ""}`}
-                                >
-                                    <Network size={18} className="shrink-0 text-cyan-400" />
-                                    <span className="nav-text">Network Crawler</span>
-                                </Link>
-                            )}
-                        </div>
-                    </>
-                )}
+                        </>
+                    )}
 
                     {(isAdmin || hasPermission('graylog-exporter')) && (
                         <>

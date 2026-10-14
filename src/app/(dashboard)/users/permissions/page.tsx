@@ -50,7 +50,7 @@ const DEFAULT_PERMISSIONS_MAP: Record<string, Record<string, boolean>> = {
     'notification-center': { ADMIN: true, ANALYST: true, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
     'graylog-exporter': { ADMIN: true, ANALYST: true, NETWORK: false, DESKTOP: false, SYSTEMS: false, USER: false },
     'vpn-s2s': { ADMIN: true, ANALYST: true, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
-    'account-lockout': { ADMIN: true, ANALYST: false, NETWORK: false, DESKTOP: false, SYSTEMS: false, USER: false }
+    'account-lockout': { ADMIN: true, ANALYST: true, NETWORK: true, DESKTOP: true, SYSTEMS: true, USER: false }
 };
 
 export default function PermissionsPage() {
