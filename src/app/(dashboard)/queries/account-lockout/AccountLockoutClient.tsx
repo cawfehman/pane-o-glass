@@ -6,7 +6,7 @@ import {
     Calendar, CheckCircle2, AlertTriangle, Terminal, ChevronDown, 
     ChevronUp, Copy, Check, Download, RefreshCw, Radio, HardDrive, 
     Info, ArrowRight, UserCheck, Layers, ExternalLink, Filter,
-    ArrowUpDown, ArrowUp, ArrowDown, X, RotateCcw
+    ArrowUpDown, ArrowUp, ArrowDown, X, RotateCcw, KeyRound, Repeat
 } from "lucide-react";
 import { 
     ResponsiveContainer, AreaChart, Area, XAxis, YAxis, 
@@ -30,7 +30,29 @@ interface AdSecurityEvent {
     subStatus?: string;
     subStatusDesc?: string;
     failureReason?: string;
+    subjectUser?: string;
+    serviceName?: string;
+    processName?: string;
     rawMessage: string;
+}
+
+interface PasswordChangeActivity {
+    detected: boolean;
+    type: "USER_CHANGE" | "ADMIN_RESET" | null;
+    timestamp: string | null;
+    performedBy: string | null;
+    lockoutsAfterChange: number;
+    failuresAfterChange: number;
+    minutesBeforeFirstLockout: number | null;
+}
+
+interface UnlockActivity {
+    detected: boolean;
+    unlockCount: number;
+    latestUnlockTimestamp: string | null;
+    unlockedBy: string | null;
+    isLoop: boolean;
+    relockTimeSeconds: number | null;
 }
 
 interface IseWirelessDetails {
@@ -65,6 +87,8 @@ interface FailureTimelineBucket {
     failedLogons: number;
     kerberosFailures: number;
     ntlmFailures: number;
+    unlocks?: number;
+    passwordChanges?: number;
     total: number;
 }
 
@@ -75,6 +99,8 @@ interface LockoutInvestigationResult {
     lockoutCount: number;
     latestLockoutTimestamp: string | null;
     totalFailureEvents: number;
+    passwordChangeActivity?: PasswordChangeActivity;
+    unlockActivity?: UnlockActivity;
     rootCauseCategory: string;
     executiveSummary: string;
     recommendation: string;
@@ -104,7 +130,7 @@ export default function AccountLockoutClient() {
     const [data, setData] = useState<LockoutInvestigationResult | null>(null);
 
     // Table filter, sort & pagination state
-    const [eventFilter, setEventFilter] = useState<"all" | "4740" | "4625" | "4771" | "4776">("all");
+    const [eventFilter, setEventFilter] = useState<"all" | "4740" | "4625" | "4771" | "4776" | "4767" | "pwd_change" | "ticket_fail" | "4648">("all");
     const [callerFilter, setCallerFilter] = useState<string>("all");
     const [dcFilter, setDcFilter] = useState<string>("all");
     const [logonTypeFilter, setLogonTypeFilter] = useState<string>("all");
@@ -214,11 +240,27 @@ export default function AccountLockoutClient() {
 
     // Counts per event ID
     const eventCounts = useMemo(() => {
-        if (!data) return { all: 0, "4740": 0, "4625": 0, "4771": 0, "4776": 0 };
-        const counts = { all: data.events.length, "4740": 0, "4625": 0, "4771": 0, "4776": 0 };
+        if (!data) return { all: 0, "4740": 0, "4625": 0, "4771": 0, "4776": 0, "4767": 0, pwd_change: 0, ticket_fail: 0, "4648": 0 };
+        const counts: Record<string, number> = {
+            all: data.events.length,
+            "4740": 0,
+            "4625": 0,
+            "4771": 0,
+            "4776": 0,
+            "4767": 0,
+            pwd_change: 0,
+            ticket_fail: 0,
+            "4648": 0
+        };
         data.events.forEach(e => {
             if (e.eventId in counts) {
-                (counts as any)[e.eventId]++;
+                counts[e.eventId]++;
+            }
+            if (e.eventId === "4723" || e.eventId === "4724") {
+                counts.pwd_change++;
+            }
+            if (e.eventId === "4768" || e.eventId === "4769") {
+                counts.ticket_fail++;
             }
         });
         return counts;
@@ -228,7 +270,15 @@ export default function AccountLockoutClient() {
     const filteredEvents = useMemo(() => {
         if (!data) return [];
         return data.events.filter(ev => {
-            if (eventFilter !== "all" && ev.eventId !== eventFilter) return false;
+            if (eventFilter !== "all") {
+                if (eventFilter === "pwd_change") {
+                    if (ev.eventId !== "4723" && ev.eventId !== "4724") return false;
+                } else if (eventFilter === "ticket_fail") {
+                    if (ev.eventId !== "4768" && ev.eventId !== "4769") return false;
+                } else if (ev.eventId !== eventFilter) {
+                    return false;
+                }
+            }
             if (callerFilter !== "all" && ev.callerDevice !== callerFilter) return false;
             if (dcFilter !== "all" && ev.domainController !== dcFilter) return false;
             if (logonTypeFilter !== "all") {
@@ -244,7 +294,10 @@ export default function AccountLockoutClient() {
                     ev.eventId.includes(q) ||
                     (ev.subStatusDesc && ev.subStatusDesc.toLowerCase().includes(q)) ||
                     (ev.logonTypeDesc && ev.logonTypeDesc.toLowerCase().includes(q)) ||
-                    (ev.failureReason && ev.failureReason.toLowerCase().includes(q))
+                    (ev.failureReason && ev.failureReason.toLowerCase().includes(q)) ||
+                    (ev.subjectUser && ev.subjectUser.toLowerCase().includes(q)) ||
+                    (ev.serviceName && ev.serviceName.toLowerCase().includes(q)) ||
+                    (ev.processName && ev.processName.toLowerCase().includes(q))
                 );
             }
             return true;
@@ -568,6 +621,56 @@ export default function AccountLockoutClient() {
                         </div>
                     </div>
 
+                    {/* Active Lockout Loop Alert Banner */}
+                    {data.unlockActivity?.isLoop && (
+                        <div className="p-3.5 rounded-xl border border-rose-500/50 bg-rose-950/30 text-xs flex items-start gap-3 animate-pulse shadow-sm">
+                            <Repeat size={18} className="text-rose-400 shrink-0 mt-0.5" />
+                            <div className="space-y-1 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-rose-300 uppercase tracking-wide text-[11px]">
+                                        Critical: Active Lockout Loop Detected
+                                    </span>
+                                    {data.unlockActivity.relockTimeSeconds !== null && (
+                                        <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-200 border border-rose-500/40 font-mono font-bold">
+                                            Re-locked in {data.unlockActivity.relockTimeSeconds}s
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-zinc-200 leading-relaxed text-xs">
+                                    The account was unlocked {data.unlockActivity.unlockedBy ? `by ${data.unlockActivity.unlockedBy}` : ""} at {new Date(data.unlockActivity.latestUnlockTimestamp!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}, but was immediately re-locked by continuous authentication failures from <strong className="text-rose-300 font-mono">{data.primaryCulprit.callerName}</strong>. 
+                                    <strong className="text-white block mt-0.5">⚠️ Do NOT unlock the account again until device {data.primaryCulprit.callerName} is disconnected, has forgotten Wi-Fi, or cleared cached credentials.</strong>
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Password Change Correlation Banner */}
+                    {data.passwordChangeActivity?.detected && (
+                        <div className="p-3.5 rounded-xl border border-cyan-500/40 bg-cyan-950/20 text-xs flex items-start gap-3 shadow-sm">
+                            <KeyRound size={18} className="text-cyan-400 shrink-0 mt-0.5" />
+                            <div className="space-y-1 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-cyan-300 uppercase tracking-wide text-[11px]">
+                                        Password Change Correlated ({data.passwordChangeActivity.type === "USER_CHANGE" ? "User Self-Service 4723" : "Administrative Reset 4724"})
+                                    </span>
+                                    {data.passwordChangeActivity.lockoutsAfterChange > 0 && (
+                                        <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono font-bold">
+                                            {data.passwordChangeActivity.lockoutsAfterChange} lockout(s) post-change
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-zinc-300 leading-relaxed text-xs">
+                                    Password was updated at {new Date(data.passwordChangeActivity.timestamp!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                    {data.passwordChangeActivity.performedBy ? ` by ${data.passwordChangeActivity.performedBy}` : ""}.
+                                    {data.passwordChangeActivity.minutesBeforeFirstLockout !== null && (
+                                        <span> First lockout occurred <strong>{data.passwordChangeActivity.minutesBeforeFirstLockout} min</strong> after rotation.</span>
+                                    )}
+                                    <span> Originating machine <strong className="text-cyan-300 font-mono">{data.primaryCulprit.callerName}</strong> is attempting authentication with outdated credentials.</span>
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Executive Verdict Banner */}
                     <div className={`p-4 rounded-xl border ${
                         data.hasLockout
@@ -840,8 +943,12 @@ export default function AccountLockoutClient() {
                                     { id: "4740", label: "4740 (Lockout)", count: eventCounts["4740"] },
                                     { id: "4625", label: "4625 (Fail)", count: eventCounts["4625"] },
                                     { id: "4771", label: "4771 (Kerb)", count: eventCounts["4771"] },
-                                    { id: "4776", label: "4776 (NTLM)", count: eventCounts["4776"] }
-                                ].map(tab => (
+                                    { id: "4776", label: "4776 (NTLM)", count: eventCounts["4776"] },
+                                    { id: "4767", label: "4767 (Unlock)", count: eventCounts["4767"] },
+                                    { id: "pwd_change", label: "4723/24 (Pwd)", count: eventCounts.pwd_change },
+                                    { id: "ticket_fail", label: "4768/69 (Ticket)", count: eventCounts.ticket_fail },
+                                    { id: "4648", label: "4648 (Explicit)", count: eventCounts["4648"] }
+                                ].filter(tab => tab.id === "all" || tab.count > 0 || ["4740", "4625", "4771", "4776"].includes(tab.id)).map(tab => (
                                     <button
                                         key={tab.id}
                                         onClick={() => {
@@ -1087,11 +1194,13 @@ export default function AccountLockoutClient() {
                                             paginatedEvents.map((ev) => {
                                                 const isExpanded = expandedEventId === ev.id;
                                                 const isLockout = ev.eventId === "4740";
+                                                const isUnlock = ev.eventId === "4767";
+                                                const isPwdChange = ev.eventId === "4723" || ev.eventId === "4724";
                                                 return (
                                                     <React.Fragment key={ev.id}>
                                                         <tr 
                                                             className={`hover:bg-[var(--bg-surface-hover)]/60 cursor-pointer transition-colors ${
-                                                                isExpanded ? "bg-[var(--bg-surface-hover)]" : isLockout ? "bg-rose-950/20" : ""
+                                                                isExpanded ? "bg-[var(--bg-surface-hover)]" : isLockout ? "bg-rose-950/20" : isUnlock ? "bg-emerald-950/20" : isPwdChange ? "bg-cyan-950/20" : ""
                                                             }`}
                                                             onClick={() => setExpandedEventId(isExpanded ? null : ev.id)}
                                                         >
@@ -1102,9 +1211,17 @@ export default function AccountLockoutClient() {
                                                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                                                     isLockout
                                                                         ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                                                                        : isUnlock
+                                                                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                                                                        : isPwdChange
+                                                                        ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                                                                        : ev.eventId === "4768" || ev.eventId === "4769"
+                                                                        ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                                                                        : ev.eventId === "4648"
+                                                                        ? "bg-blue-500/20 text-blue-300 border border-blue-500/40"
                                                                         : ev.eventId === "4625"
-                                                                        ? "bg-amber-500/20 text-amber-300"
-                                                                        : "bg-indigo-500/20 text-indigo-300"
+                                                                        ? "bg-rose-950/40 text-rose-300 border border-rose-800/40"
+                                                                        : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
                                                                 }`}>
                                                                     {ev.eventId}
                                                                 </span>
@@ -1194,6 +1311,24 @@ export default function AccountLockoutClient() {
                                                                                 {ev.logonTypeDesc || ev.subStatusDesc || (ev.subStatus ? `0x${ev.subStatus}` : "-")}
                                                                             </span>
                                                                         </div>
+                                                                        {ev.subjectUser && (
+                                                                            <div className="p-2 rounded bg-cyan-950/30 border border-cyan-800/40">
+                                                                                <span className="text-cyan-400 text-[10px] block uppercase font-sans">Subject / Performed By</span>
+                                                                                <span className="text-cyan-200 font-bold">{ev.subjectUser}</span>
+                                                                            </div>
+                                                                        )}
+                                                                        {ev.serviceName && (
+                                                                            <div className="p-2 rounded bg-purple-950/30 border border-purple-800/40">
+                                                                                <span className="text-purple-400 text-[10px] block uppercase font-sans">Target Service (SPN)</span>
+                                                                                <span className="text-purple-200 font-bold truncate block" title={ev.serviceName}>{ev.serviceName}</span>
+                                                                            </div>
+                                                                        )}
+                                                                        {ev.processName && (
+                                                                            <div className="p-2 rounded bg-blue-950/30 border border-blue-800/40">
+                                                                                <span className="text-blue-400 text-[10px] block uppercase font-sans">Calling Process</span>
+                                                                                <span className="text-blue-200 font-bold truncate block" title={ev.processName}>{ev.processName}</span>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
 
                                                                     {/* Raw Security Event Payload */}

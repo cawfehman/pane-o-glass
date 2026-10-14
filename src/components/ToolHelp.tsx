@@ -799,14 +799,24 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     "account-lockout": {
         title: "Active Directory & Cisco ISE Account Lockout Investigator",
-        version: "1.0.0",
+        version: "1.1.0",
         category: "Identity Forensics & Auth Failure Correlation",
-        description: "Enterprise triage engine that correlates Windows Active Directory security logs (Events 4740, 4625, 4771, 4776) in Graylog with Cisco ISE 802.1X Wireless EAP telemetry to isolate lockout sources down to the exact workstation, mobile MAC, SSID, and access point.",
+        description: "Enterprise triage engine that correlates Windows Active Directory security logs (Events 4740, 4625, 4771, 4776, 4767, 4723, 4724, 4768, 4769, 4648) in Graylog with Cisco ISE 802.1X Wireless EAP telemetry to isolate lockout sources down to the exact workstation, mobile MAC, SSID, and access point.",
         capabilities: [
             {
                 title: "AD Security Log Stream Correlation",
-                detail: "Interrogates OG Graylog stream 5d72ac00b209026ab42decf9 for Event 4740 (Lockout), 4625 (Logon Failure), 4771 (Kerberos Pre-Auth Failure), and 4776 (NTLM Validation). Prioritizes authoritative 4740 lockout caller computer names over intermediate NTLM domain controllers.",
-                tag: "AD Stream 4740"
+                detail: "Interrogates OG Graylog stream 5d72ac00b209026ab42decf9 for Event 4740 (Lockout), 4625 (Logon Failure), 4771 (Kerberos Pre-Auth Failure), 4776 (NTLM Validation), 4767 (Unlocked), 4723/4724 (Password Change/Reset), 4768/4769 (Kerberos Ticket Failures), and 4648 (Explicit Credentials).",
+                tag: "AD Stream 4740+"
+            },
+            {
+                title: "Password Change & Stale Credential Correlation",
+                detail: "Automatically detects user self-service password changes (4723) and administrative resets (4724). Calculates the exact minutes elapsed between rotation and subsequent lockout storms, confirming stale cached credentials.",
+                tag: "Password Correlation"
+            },
+            {
+                title: "Lockout Loop & Rapid Re-Lock Detection",
+                detail: "Correlates Account Unlocked (4767) events with subsequent lockouts (4740). Warns analysts in real time when an account is trapped in a rapid re-lock loop and identifies the administrator who performed the unlock.",
+                tag: "Loop Detection"
             },
             {
                 title: "Cisco ISE-PSN Wireless EAP Pivot",
@@ -819,9 +829,9 @@ export const helpData: Record<string, TooltipDetails> = {
                 tag: "Tiered Query Engine"
             },
             {
-                title: "Workstation & NTLM Logon Type Classification",
-                detail: "For non-ISE lockouts, parses Windows logon types (Type 10 RDP, Type 3 Network Share/SMB, Type 4/5 Scheduled Task or Service, Type 2 Console) and performs reverse DNS resolution to pinpoint the source machine.",
-                tag: "Logon Type Triage"
+                title: "Workstation, Kerberos SPN & Process Triage",
+                detail: "Parses Windows logon types (Type 10 RDP, Type 3 Share, Type 4/5 Service), targeted Kerberos service names (SPNs from 4769), and calling process names (from 4648 explicit logons) to isolate the root software component.",
+                tag: "Service & SPN Triage"
             },
             {
                 title: "Executive Root Cause Verdict & Guidance",
@@ -829,28 +839,28 @@ export const helpData: Record<string, TooltipDetails> = {
                 tag: "Verdict Engine"
             },
             {
-                title: "Failure Timeline & Spike Detection",
-                detail: "Plots interactive area charts to distinguish between sudden lockout spikes (e.g. mistyped password) versus relentless background spam (e.g. mobile device with expired Wi-Fi profile).",
-                tag: "Timeline Chart"
-            },
-            {
                 title: "Inline Forensic Event Inspection & CSV Export",
-                detail: "Clicking any event in the table expands an inline forensic drawer with structured metadata and raw Windows event log message. 1-click export of filtered events to audit-ready CSV.",
+                detail: "Clicking any event in the table expands an inline forensic drawer with structured metadata, calling process, SPN, and raw Windows event log message. 1-click export of filtered events to audit-ready CSV.",
                 tag: "Forensic Table"
             }
         ],
         colors: [
-            { name: "🔴 Event 4740 (Account Lockout)", meaning: "Authoritative Active Directory event generated when a user account exceeds bad password thresholds.", rgb: "#ef4444" },
-            { name: "🟡 Event 4625 (Logon Failure)", meaning: "Authentication failure with specific sub-status code (e.g. 0xC000006A for bad password).", rgb: "#f59e0b" },
-            { name: "🔵 Event 4771 / 4776 (Kerberos / NTLM)", meaning: "Kerberos pre-authentication failure or NTLM domain controller validation failure.", rgb: "#6366f1" },
-            { name: "🔷 Cyan Chip (Cisco ISE Wireless)", meaning: "Calling device is an ISE-PSN node executing 802.1X EAP wireless authentications.", rgb: "#06b6d4" },
-            { name: "🟣 Indigo Chip (Workstation / Host)", meaning: "Calling device is a physical laptop, desktop, server, or RDP terminal session.", rgb: "#818cf8" }
+            { name: "🔴 Event 4740 (Account Lockout)", meaning: "Active Directory event generated when a user account exceeds bad password thresholds.", rgb: "#ef4444" },
+            { name: "🟢 Event 4767 (Account Unlocked)", meaning: "Account was unlocked by Helpdesk, an administrator, or an automated service.", rgb: "#10b981" },
+            { name: "🔷 Event 4723 / 4724 (Password Changed / Reset)", meaning: "Account password was changed by the user (4723) or reset by an administrator (4724).", rgb: "#06b6d4" },
+            { name: "🟣 Event 4768 / 4769 (Kerberos Ticket Failed)", meaning: "Kerberos TGT or service ticket (TGS) request failed with bad password, locked account, or expired ticket.", rgb: "#a855f7" },
+            { name: "🔵 Event 4648 (Explicit Credential Logon)", meaning: "Logon attempted using explicit credentials (runas, scheduled task, or background service).", rgb: "#3b82f6" },
+            { name: "🟡 Event 4625 / 4771 / 4776 (Auth Failures)", meaning: "Logon failure, Kerberos pre-authentication failure (0x18), or NTLM validation failure.", rgb: "#f59e0b" },
+            { name: "Cyan Chip (Cisco ISE Wireless)", meaning: "Calling device is an ISE-PSN node executing 802.1X EAP wireless authentications.", rgb: "#06b6d4" },
+            { name: "Indigo Chip (Workstation / Host)", meaning: "Calling device is a physical laptop, desktop, server, or RDP terminal session.", rgb: "#818cf8" }
         ],
         shortcuts: [
             "Search by standard sAMAccountName (e.g. 'jdoe') or full User Principal Name (e.g. 'jdoe@cooperhealth.edu').",
             "Use the time window buttons (1h, 4h, 12h, 24h, 7d) in the search bar to widen or narrow forensic lookback.",
             "Click on any row in the event stream table to expand full raw Windows security event message inline.",
-            "Use the Event ID tabs (4740, 4625, 4771, 4776) or column dropdowns to filter down to specific caller machines or DCs.",
+            "Use the Event ID tabs (4740, 4625, 4771, 4776, 4767, 4723/24, 4768/69, 4648) or column dropdowns to filter down.",
+            "Inspect the Password Change Banner to confirm if lockouts started immediately after a password rotation.",
+            "Review the Active Lockout Loop Banner before unlocking to verify the offending device has been stopped.",
             "Click [Copy Raw Log] inside an expanded row to copy the full domain controller event directly to your clipboard.",
             "Click [Export CSV] to download the complete correlated investigation event log."
         ],

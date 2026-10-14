@@ -35,12 +35,22 @@ flowchart TD
 - **Source:** OG Graylog (`https://graylog.cooperhealth.edu:9000`)
 - **Stream ID:** `5d72ac00b209026ab42decf9`
 - **Monitored Event IDs:**
-  - **`4740`**: A user account was locked out. Authoritative event that records the exact timestamp, Domain Controller, and `CallerComputerName`.
-  - **`4625`**: An account failed to log on. Contains logon type (e.g. Type 10 for RDP, Type 3 for network share), failure status, and sub-status codes.
-  - **`4771`**: Kerberos pre-authentication failed. Usually indicates bad password (`0x18`) or expired password (`0x17`).
-  - **`4776`**: Domain Controller attempted to validate credentials for an account (NTLM authentication package).
+  - **`4740`**: **A user account was locked out.** Authoritative event recording the exact timestamp, Domain Controller, and `CallerComputerName`.
+  - **`4767`**: **A user account was unlocked.** Captures when Helpdesk, an administrator, or an automated service cleared a lockout. Used to identify **Active Lockout Loops** when immediately followed by `4740`.
+  - **`4723`**: **An attempt was made to change an account's password (by user).** Correlated against subsequent lockouts to prove stale credentials post-change.
+  - **`4724`**: **An attempt was made to reset an account's password (by admin/helpdesk).** Records `SubjectUserName` (who executed the reset).
+  - **`4625`**: **An account failed to log on.** Contains logon type (e.g. Type 10 for RDP, Type 3 for network share), failure status, and sub-status codes.
+  - **`4771`**: **Kerberos pre-authentication failed.** Indicates bad password (`0x18`) or expired password (`0x17`).
+  - **`4776`**: **Domain Controller attempted to validate credentials for an account (NTLM).**
+  - **`4768`**: **Kerberos TGT request failed.** Filtered to exclude `0x0` success codes.
+  - **`4769`**: **Kerberos Service Ticket (TGS) request failed.** Extracts the targeted SPN / Service Name (`ServiceName`, e.g. `cifs/fs01`).
+  - **`4648`**: **A logon was attempted using explicit credentials.** Identifies background processes, RunAs commands, or batch scripts submitting static credentials.
 
-### 2. Cisco ISE Policy Service Nodes (Wireless 802.1X EAP)
+### 2. Forensic Correlation Banners
+- **Password Change Correlated:** Displays whenever Event 4723 or 4724 appears in the query window. Highlights the time elapsed between the password change and the first lockout event, confirming stale cached credentials.
+- **Active Lockout Loop Detected:** Fires when an account was unlocked (Event 4767) but was re-locked by recurring failed authentications. Discloses the exact re-lock interval in seconds and advises Helpdesk not to unlock until the source device is isolated.
+
+### 3. Cisco ISE Policy Service Nodes (Wireless 802.1X EAP)
 - **Hostnames:** `ise-psn01`, `ise-psn02`, `ise-psn03`, `ise-psn04`
 - **Wireless Correlation Engine:**
   - When the caller device in event 4740 or failure events matches `/ise-psn0[1-4]/i`, the tool pivots to Cisco ISE telemetry.

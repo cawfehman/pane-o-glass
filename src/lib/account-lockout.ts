@@ -14,7 +14,7 @@ export const OG_GRAYLOG_ISE_STREAM_ID = "60ff11b8950aa8572f333457";
 export interface AdSecurityEvent {
     id: string;
     timestamp: string;
-    eventId: "4740" | "4625" | "4771" | "4776" | string;
+    eventId: "4740" | "4625" | "4771" | "4776" | "4767" | "4723" | "4724" | "4768" | "4769" | "4648" | string;
     eventTitle: string;
     targetUser: string;
     callerDevice: string;
@@ -25,7 +25,29 @@ export interface AdSecurityEvent {
     subStatus?: string;
     subStatusDesc?: string;
     failureReason?: string;
+    subjectUser?: string;
+    serviceName?: string;
+    processName?: string;
     rawMessage: string;
+}
+
+export interface PasswordChangeActivity {
+    detected: boolean;
+    type: "USER_CHANGE" | "ADMIN_RESET" | null;
+    timestamp: string | null;
+    performedBy: string | null;
+    lockoutsAfterChange: number;
+    failuresAfterChange: number;
+    minutesBeforeFirstLockout: number | null;
+}
+
+export interface UnlockActivity {
+    detected: boolean;
+    unlockCount: number;
+    latestUnlockTimestamp: string | null;
+    unlockedBy: string | null;
+    isLoop: boolean;
+    relockTimeSeconds: number | null;
 }
 
 export interface IseWirelessDetails {
@@ -60,6 +82,8 @@ export interface FailureTimelineBucket {
     failedLogons: number;
     kerberosFailures: number;
     ntlmFailures: number;
+    unlocks: number;
+    passwordChanges: number;
     total: number;
 }
 
@@ -70,6 +94,8 @@ export interface LockoutInvestigationResult {
     lockoutCount: number;
     latestLockoutTimestamp: string | null;
     totalFailureEvents: number;
+    passwordChangeActivity: PasswordChangeActivity;
+    unlockActivity: UnlockActivity;
     rootCauseCategory:
         | "WIRELESS_EAP_ISE"
         | "WORKSTATION_RDP"
@@ -78,6 +104,9 @@ export interface LockoutInvestigationResult {
         | "WORKSTATION_INTERACTIVE"
         | "WORKSTATION_OTHER"
         | "EXCHANGE_ACTIVESYNC"
+        | "POST_PASSWORD_CHANGE_STALE"
+        | "LOCKOUT_LOOP"
+        | "EXPLICIT_CREDENTIALS"
         | "NO_FAILURES_FOUND"
         | "UNKNOWN";
     executiveSummary: string;
@@ -166,6 +195,9 @@ export function describeLogonType(type?: number | string | null): { name: string
 /**
  * Translates common Windows NTSTATUS / Kerberos error codes into clear explanations.
  */
+/**
+ * Translates common Windows NTSTATUS / Kerberos error codes into clear explanations.
+ */
 export function describeSubStatus(code?: string | null): string {
     if (!code) return "Authentication Failure";
     const clean = code.trim().toUpperCase();
@@ -186,17 +218,75 @@ export function describeSubStatus(code?: string | null): string {
             return "Logon outside authorized hours";
         case "0XC0000070":
             return "Logon from unauthorized workstation";
+        case "0X0":
+        case "0X00":
+            return "Success / Validated";
+        case "0X6":
+            return "Kerberos: Client not found in Kerberos database";
         case "0X18":
             return "Kerberos Pre-Auth Failed: Bad password entered";
         case "0X12":
-            return "Kerberos Pre-Auth Failed: Account locked or disabled";
+            return "Kerberos Ticket Failed: Account locked, disabled, or unauthorized";
         case "0X17":
-            return "Kerberos Pre-Auth Failed: Password expired";
+            return "Kerberos Ticket Failed: Password expired";
         case "0X19":
-            return "Kerberos Pre-Auth Failed: Workstation clock skew too great";
+        case "0X25":
+            return "Kerberos Ticket Failed: Workstation clock skew too great";
+        case "0X1B":
+            return "Kerberos Ticket Failed: Server / Service not found";
+        case "0X20":
+            return "Kerberos Ticket Failed: Ticket expired";
         default:
             return `Status Code ${clean}`;
     }
+}
+
+/**
+ * Extracts Subject User Name (e.g. administrator or service performing an action) from Winlogbeat message.
+ */
+function extractSubjectUser(msg: any): string | undefined {
+    if (msg.winlog_event_data_SubjectUserName && String(msg.winlog_event_data_SubjectUserName).trim() !== "-") {
+        return String(msg.winlog_event_data_SubjectUserName).trim();
+    }
+    const raw = String(msg.message || "");
+    const match = raw.match(/Subject:\s*[\s\S]*?Account Name:\s*([^\r\n\t]+)/i);
+    if (match && match[1].trim() && match[1].trim() !== "-") {
+        return match[1].trim();
+    }
+    return undefined;
+}
+
+/**
+ * Extracts requested Kerberos Service Name / SPN or Target Server from Winlogbeat message.
+ */
+function extractServiceName(msg: any): string | undefined {
+    if (msg.winlog_event_data_ServiceName && String(msg.winlog_event_data_ServiceName).trim() !== "-") {
+        return String(msg.winlog_event_data_ServiceName).trim();
+    }
+    if (msg.winlog_event_data_TargetServerName && String(msg.winlog_event_data_TargetServerName).trim() !== "-") {
+        return String(msg.winlog_event_data_TargetServerName).trim();
+    }
+    const raw = String(msg.message || "");
+    const match = raw.match(/Service Name:\s*([^\r\n\t]+)/i) || raw.match(/Target Server Name:\s*([^\r\n\t]+)/i);
+    if (match && match[1].trim() && match[1].trim() !== "-") {
+        return match[1].trim();
+    }
+    return undefined;
+}
+
+/**
+ * Extracts Calling Process Name (for Event 4648 explicit credentials) from Winlogbeat message.
+ */
+function extractProcessName(msg: any): string | undefined {
+    if (msg.winlog_event_data_ProcessName && String(msg.winlog_event_data_ProcessName).trim() !== "-") {
+        return String(msg.winlog_event_data_ProcessName).trim();
+    }
+    const raw = String(msg.message || "");
+    const match = raw.match(/Process Name:\s*([^\r\n\t]+)/i);
+    if (match && match[1].trim() && match[1].trim() !== "-") {
+        return match[1].trim();
+    }
+    return undefined;
 }
 
 /**
@@ -220,7 +310,13 @@ function extractCallerName(msg: any): string {
         return String(msg.winlog_event_data_TargetDomainName).trim();
     }
 
-    // 3. Regex parser directly on the raw Event Log body
+    // 3. For administrative events (4767, 4723, 4724), if no caller device exists, fallback to Subject Domain / DC
+    if (evId === "4767" || evId === "4723" || evId === "4724") {
+        if (msg.winlog_computer_name) return String(msg.winlog_computer_name).trim();
+        if (msg.source) return String(msg.source).trim();
+    }
+
+    // 4. Regex parser directly on the raw Event Log body
     const raw = String(msg.message || "");
     const callerMatch = raw.match(/Caller Computer Name:\s*([^\r\n\t]+)/i);
     if (callerMatch && callerMatch[1].trim() && callerMatch[1].trim() !== "-") {
@@ -267,8 +363,18 @@ async function fetchAdSecurityEventsFromGraylog(username: string, rangeSeconds: 
     const authHeader = "Basic " + Buffer.from(`${ogToken}:token`).toString("base64");
     const cleanUser = username.trim().toLowerCase().replace(/^chsmail\\/i, "").replace(/@cooperhealth\.edu$/i, "");
 
-    // Query targeting Event IDs 4740 (Lockout), 4625 (Logon Failure), 4771 (Kerberos Failure), 4776 (NTLM Failure)
-    const luceneQuery = `winlog_event_data_TargetUserName:"${cleanUser}" AND winlog_event_id:(4740 OR 4625 OR 4771 OR 4776)`;
+    // Query targeting Event IDs:
+    // - 4740: Account Locked Out
+    // - 4625: Failed Logon Attempt
+    // - 4771: Kerberos Pre-Auth Failed
+    // - 4776: NTLM Credential Validation Failed
+    // - 4767: Account Unlocked
+    // - 4723: Password Change Attempt (User)
+    // - 4724: Password Reset Attempt (Admin)
+    // - 4648: Explicit Credential Logon
+    // - 4768: Kerberos TGT Failed (Exclude 0x0 success)
+    // - 4769: Kerberos Service Ticket Failed (Exclude 0x0 success)
+    const luceneQuery = `winlog_event_data_TargetUserName:"${cleanUser}" AND (winlog_event_id:(4740 OR 4625 OR 4771 OR 4776 OR 4767 OR 4723 OR 4724 OR 4648) OR (winlog_event_id:(4768 OR 4769) AND NOT winlog_event_data_Status:0x0))`;
 
     const params = new URLSearchParams({
         query: luceneQuery,
@@ -313,11 +419,18 @@ async function fetchAdSecurityEventsFromGraylog(username: string, rangeSeconds: 
                 if (ltMatch) logonType = parseInt(ltMatch[1], 10);
             }
 
-            // SubStatus
-            let subStatus = m.winlog_event_data_SubStatus || m.winlog_event_data_Status || m.winlog_event_data_FailureCode;
+            // SubStatus / Status / ResultCode
+            let subStatus = m.winlog_event_data_SubStatus || m.winlog_event_data_Status || m.winlog_event_data_FailureCode || m.winlog_event_data_ResultCode;
             if (!subStatus) {
                 const stMatch = raw.match(/Sub Status:\s*(0x[0-9a-fA-F]+)/i) || raw.match(/Failure Code:\s*(0x[0-9a-fA-F]+)/i) || raw.match(/Status:\s*(0x[0-9a-fA-F]+)/i);
                 if (stMatch) subStatus = stMatch[1];
+            }
+
+            const cleanStatus = subStatus ? String(subStatus).trim() : undefined;
+
+            // Skip successful Kerberos ticket events (0x0)
+            if ((evId === "4768" || evId === "4769") && (cleanStatus === "0x0" || cleanStatus === "0X0" || cleanStatus === "0" || cleanStatus === "0x00")) {
+                continue;
             }
 
             let eventTitle = `Event ${evId}`;
@@ -325,8 +438,17 @@ async function fetchAdSecurityEventsFromGraylog(username: string, rangeSeconds: 
             else if (evId === "4625") eventTitle = "Failed Logon Attempt";
             else if (evId === "4771") eventTitle = "Kerberos Pre-Auth Failed";
             else if (evId === "4776") eventTitle = "NTLM Credential Validation Failed";
+            else if (evId === "4767") eventTitle = "Account Unlocked";
+            else if (evId === "4723") eventTitle = "User Password Change Attempt";
+            else if (evId === "4724") eventTitle = "Administrative Password Reset";
+            else if (evId === "4768") eventTitle = "Kerberos TGT Request Failed";
+            else if (evId === "4769") eventTitle = "Kerberos Service Ticket (TGS) Failed";
+            else if (evId === "4648") eventTitle = "Logon Attempt with Explicit Credentials";
 
             const dc = m.source || m.agent_name || m.winlog_computer_name || "Domain Controller";
+            const subjectUser = extractSubjectUser(m);
+            const serviceName = extractServiceName(m);
+            const processName = extractProcessName(m);
 
             events.push({
                 id: m._id || m.gl2_message_id || `${evId}-${m.timestamp}`,
@@ -339,8 +461,11 @@ async function fetchAdSecurityEventsFromGraylog(username: string, rangeSeconds: 
                 domainController: dc,
                 logonType,
                 logonTypeDesc: logonType !== undefined ? describeLogonType(logonType).name : undefined,
-                subStatus: subStatus ? String(subStatus).trim() : undefined,
-                subStatusDesc: subStatus ? describeSubStatus(String(subStatus)) : undefined,
+                subStatus: cleanStatus,
+                subStatusDesc: cleanStatus ? describeSubStatus(cleanStatus) : undefined,
+                subjectUser,
+                serviceName,
+                processName,
                 rawMessage: raw
             });
         }
@@ -502,13 +627,68 @@ export async function investigateAccountLockout(
     // 1. Fetch AD Security Events from Graylog
     const events = await fetchAdSecurityEventsFromGraylog(cleanUser, rangeSeconds);
 
-    // Filter lockouts and failures
+    // Filter lockouts, failures, unlocks, and password changes
     const lockoutEvents = events.filter(e => e.eventId === "4740");
-    const failureEvents = events.filter(e => e.eventId === "4625" || e.eventId === "4771" || e.eventId === "4776");
+    const failureEvents = events.filter(e => e.eventId === "4625" || e.eventId === "4771" || e.eventId === "4776" || e.eventId === "4768" || e.eventId === "4769");
+    const unlockEvents = events.filter(e => e.eventId === "4767");
+    const pwdChangeEvents = events.filter(e => e.eventId === "4723" || e.eventId === "4724");
+    const explicitLogons = events.filter(e => e.eventId === "4648");
 
     const hasLockout = lockoutEvents.length > 0;
     const lockoutCount = lockoutEvents.length;
     const latestLockoutTimestamp = lockoutEvents.length > 0 ? lockoutEvents[0].timestamp : null;
+
+    // Analyze Password Change Activity (4723/4724)
+    const sortedPwdChanges = [...pwdChangeEvents].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const latestPwd = sortedPwdChanges[0];
+
+    const passwordChangeActivity: PasswordChangeActivity = {
+        detected: sortedPwdChanges.length > 0,
+        type: latestPwd ? (latestPwd.eventId === "4723" ? "USER_CHANGE" : "ADMIN_RESET") : null,
+        timestamp: latestPwd?.timestamp || null,
+        performedBy: latestPwd?.subjectUser || null,
+        lockoutsAfterChange: 0,
+        failuresAfterChange: 0,
+        minutesBeforeFirstLockout: null
+    };
+
+    if (latestPwd?.timestamp) {
+        const pwdMs = new Date(latestPwd.timestamp).getTime();
+        const subsequentLockouts = lockoutEvents.filter(e => new Date(e.timestamp).getTime() >= pwdMs);
+        const subsequentFailures = failureEvents.filter(e => new Date(e.timestamp).getTime() >= pwdMs);
+
+        passwordChangeActivity.lockoutsAfterChange = subsequentLockouts.length;
+        passwordChangeActivity.failuresAfterChange = subsequentFailures.length;
+
+        if (subsequentLockouts.length > 0) {
+            const earliestPostLockout = [...subsequentLockouts].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())[0];
+            const diffMs = new Date(earliestPostLockout.timestamp).getTime() - pwdMs;
+            passwordChangeActivity.minutesBeforeFirstLockout = Math.max(0, Math.round(diffMs / 60000));
+        }
+    }
+
+    // Analyze Unlock & Lockout Loop Activity (4767)
+    const sortedUnlocks = [...unlockEvents].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const latestUnlock = sortedUnlocks[0];
+
+    const unlockActivity: UnlockActivity = {
+        detected: sortedUnlocks.length > 0,
+        unlockCount: sortedUnlocks.length,
+        latestUnlockTimestamp: latestUnlock?.timestamp || null,
+        unlockedBy: latestUnlock?.subjectUser || null,
+        isLoop: false,
+        relockTimeSeconds: null
+    };
+
+    if (latestUnlock?.timestamp) {
+        const unlockMs = new Date(latestUnlock.timestamp).getTime();
+        const relockEvent = lockoutEvents.find(e => new Date(e.timestamp).getTime() > unlockMs);
+        if (relockEvent) {
+            unlockActivity.isLoop = true;
+            const relockMs = new Date(relockEvent.timestamp).getTime();
+            unlockActivity.relockTimeSeconds = Math.max(0, Math.round((relockMs - unlockMs) / 1000));
+        }
+    }
 
     // Tally unique callers across events
     const callerCountMap = new Map<string, number>();
@@ -616,8 +796,12 @@ export async function investigateAccountLockout(
 
     if (!hasLockout && events.length === 0) {
         rootCauseCategory = "NO_FAILURES_FOUND";
-        executiveSummary = `No account lockout events (4740) or logon failures (4625/4771/4776) recorded for '${cleanUser}' in the last ${rangeHours} hours.`;
+        executiveSummary = `No account lockout events (4740) or logon failures recorded for '${cleanUser}' in the last ${rangeHours} hours.`;
         recommendation = "The account is not showing recent authentication failures on Domain Controllers. Verify the username spelling or expand the time window.";
+    } else if (unlockActivity.isLoop) {
+        rootCauseCategory = "LOCKOUT_LOOP";
+        executiveSummary = `Active Lockout Loop: Account was unlocked by '${unlockActivity.unlockedBy || "Helpdesk"}' at ${new Date(unlockActivity.latestUnlockTimestamp!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, but immediately re-locked ${unlockActivity.relockTimeSeconds !== null ? `${unlockActivity.relockTimeSeconds} seconds later` : "shortly after"} due to rapid authentication failures from '${primaryCaller}'.`;
+        recommendation = `CRITICAL: Do not unlock the account again until device '${primaryCaller}' is disconnected from the network, has its wireless connection forgotten, or stale session terminated.`;
     } else if (callerIsIse) {
         rootCauseCategory = "WIRELESS_EAP_ISE";
         const apText = iseDetails?.apName ? `via AP '${iseDetails.apName}'` : "";
@@ -625,11 +809,25 @@ export async function investigateAccountLockout(
         const macText = iseDetails?.endpointMac ? `(MAC: ${iseDetails.endpointMac})` : "";
         const profileText = iseDetails?.deviceProfile ? `[${iseDetails.deviceProfile}]` : "mobile device/laptop";
 
+        const pwdNote = passwordChangeActivity.detected && passwordChangeActivity.lockoutsAfterChange > 0
+            ? ` Password was updated ${passwordChangeActivity.minutesBeforeFirstLockout !== null ? `${passwordChangeActivity.minutesBeforeFirstLockout} min before lockouts` : "recently"}; device continues using the old password.`
+            : "";
+
         executiveSummary = hasLockout
-            ? `Account '${cleanUser}' locked out ${lockoutCount} time(s). Root cause: Rapid 802.1X wireless EAP authentication failures originating from an ISE Policy Service Node (${primaryCaller}). Device: ${profileText} ${macText} ${apText} ${ssidText}.`
-            : `Multiple wireless authentication failures detected from ISE PSN (${primaryCaller}) for '${cleanUser}' ${macText} ${ssidText}. Risk of account lockout if cached credentials are not updated.`;
+            ? `Account '${cleanUser}' locked out ${lockoutCount} time(s). Root cause: Rapid 802.1X wireless EAP authentication failures originating from an ISE Policy Service Node (${primaryCaller}). Device: ${profileText} ${macText} ${apText} ${ssidText}.${pwdNote}`
+            : `Multiple wireless authentication failures detected from ISE PSN (${primaryCaller}) for '${cleanUser}' ${macText} ${ssidText}. Risk of account lockout if cached credentials are not updated.${pwdNote}`;
 
         recommendation = `Have the user locate their wireless device ${macText ? `(${macText})` : ""} connected ${ssidText}. Instruct them to 'Forget' the network or re-enter their current Active Directory password to stop continuous failed auth probes.`;
+    } else if (passwordChangeActivity.detected && passwordChangeActivity.lockoutsAfterChange > 0) {
+        rootCauseCategory = "POST_PASSWORD_CHANGE_STALE";
+        const performedStr = passwordChangeActivity.performedBy ? ` (by ${passwordChangeActivity.performedBy})` : "";
+        executiveSummary = `Stale Credentials Post-Password Reset: Password was changed at ${new Date(passwordChangeActivity.timestamp!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${performedStr}. Following the change, ${passwordChangeActivity.lockoutsAfterChange} lockout(s) and ${passwordChangeActivity.failuresAfterChange} failure(s) occurred from '${primaryCaller}'.`;
+        recommendation = `Instruct the user to reboot or log off '${primaryCaller}' and clear any cached credentials in Windows Credential Manager.`;
+    } else if (explicitLogons.length > 0 && primaryCaller !== "Unknown Caller") {
+        rootCauseCategory = "EXPLICIT_CREDENTIALS";
+        const proc = explicitLogons[0].processName || "Background Process";
+        executiveSummary = `Account authentication failed during explicit credential logon (Event 4648) from '${proc}' on '${primaryCaller}'.`;
+        recommendation = `Check background scheduled tasks, batch scripts, or RunAs configurations executing '${proc}' on '${primaryCaller}'.`;
     } else if (workstationDetails?.logonType === 10) {
         rootCauseCategory = "WORKSTATION_RDP";
         executiveSummary = `Account locked out by Remote Desktop (RDP / Logon Type 10) session on workstation '${primaryCaller}'.`;
@@ -652,7 +850,7 @@ export async function investigateAccountLockout(
         recommendation = `Investigate workstation/server '${primaryCaller}'. Check for cached credentials, background processes, or mapped resources.`;
     } else {
         rootCauseCategory = "UNKNOWN";
-        executiveSummary = `Detected ${events.length} authentication failure events for '${cleanUser}' across ${uniqueCallers.length || 1} source devices.`;
+        executiveSummary = `Detected ${events.length} authentication events for '${cleanUser}' across ${uniqueCallers.length || 1} source devices.`;
         recommendation = "Review the failure event timeline below to identify repeating patterns and source machines.";
     }
 
@@ -666,6 +864,8 @@ export async function investigateAccountLockout(
         lockoutCount,
         latestLockoutTimestamp,
         totalFailureEvents: failureEvents.length,
+        passwordChangeActivity,
+        unlockActivity,
         rootCauseCategory,
         executiveSummary,
         recommendation,
@@ -715,6 +915,8 @@ function buildTimelineBuckets(events: AdSecurityEvent[], rangeHours: number): Fa
                 failedLogons: 0,
                 kerberosFailures: 0,
                 ntlmFailures: 0,
+                unlocks: 0,
+                passwordChanges: 0,
                 total: 0
             };
             bucketsMap.set(bucketKey, b);
@@ -722,8 +924,10 @@ function buildTimelineBuckets(events: AdSecurityEvent[], rangeHours: number): Fa
 
         if (e.eventId === "4740") b.lockouts += 1;
         else if (e.eventId === "4625") b.failedLogons += 1;
-        else if (e.eventId === "4771") b.kerberosFailures += 1;
+        else if (e.eventId === "4771" || e.eventId === "4768" || e.eventId === "4769") b.kerberosFailures += 1;
         else if (e.eventId === "4776") b.ntlmFailures += 1;
+        else if (e.eventId === "4767") b.unlocks += 1;
+        else if (e.eventId === "4723" || e.eventId === "4724") b.passwordChanges += 1;
         b.total += 1;
     }
 
