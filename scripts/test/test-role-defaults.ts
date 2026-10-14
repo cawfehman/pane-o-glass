@@ -1,10 +1,10 @@
 import { prisma } from "../../src/lib/prisma";
 import { 
     getResolvedRoleDefaults, 
-    SYSTEM_DEFAULT_PERMISSIONS_MAP,
     hasPermission,
     getPermissionsForRole
 } from "../../src/app/actions/permissions";
+import { SYSTEM_DEFAULT_PERMISSIONS_MAP } from "../../src/lib/permissions-constants";
 
 async function runRoleDefaultsTests() {
     console.log("[TEST] Testing Role Default Permissions & Persistence");

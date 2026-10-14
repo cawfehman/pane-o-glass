@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 import { auth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import { SYSTEM_DEFAULT_PERMISSIONS_MAP } from "@/lib/permissions-constants";
 import fs from "fs";
 import path from "path";
 
@@ -81,26 +82,7 @@ export async function updateToolPermission(toolId: string, role: string, isEnabl
     }
 }
 
-export const SYSTEM_DEFAULT_PERMISSIONS_MAP: Record<string, Record<string, boolean>> = {
-    'firewall': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: true, SYSTEMS: false, USER: false },
-    'ise': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
-    'ise-tacacs': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
-    'vpn': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
-    'vpn-reporting': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
-    'vpn-s2s': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
-    'netscaler': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
-    'ironport': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
-    'bec': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
-    'etd': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
-    'hibp-account': { ADMIN: true, ANALYST: true, IAM: true, NETWORK: true, DESKTOP: true, SYSTEMS: true, USER: true },
-    'hibp-domain': { ADMIN: true, ANALYST: false, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
-    'vectra': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: false, USER: false },
-    'crawler': { ADMIN: true, ANALYST: false, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
-    'threat-intel': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
-    'notification-center': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
-    'graylog-exporter': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: false, USER: false },
-    'account-lockout': { ADMIN: true, ANALYST: true, IAM: true, NETWORK: true, DESKTOP: true, SYSTEMS: true, USER: false }
-};
+
 
 export async function getResolvedRoleDefaults(): Promise<{
     defaults: Record<string, Record<string, boolean>>;

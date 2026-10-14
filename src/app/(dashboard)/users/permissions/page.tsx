@@ -12,9 +12,9 @@ import {
     updateRoleDefaultPermission,
     saveAllRoleDefaultPermissions,
     saveCurrentAsRoleDefaults,
-    resetRoleDefaultsToFactory,
-    SYSTEM_DEFAULT_PERMISSIONS_MAP
+    resetRoleDefaultsToFactory
 } from "@/app/actions/permissions";
+import { SYSTEM_DEFAULT_PERMISSIONS_MAP } from "@/lib/permissions-constants";
 import { 
     Shield, 
     Sliders, 

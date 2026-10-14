@@ -1,0 +1,43 @@
+export const TOOLS = [
+    { id: 'firewall', name: 'Cisco Firewall' },
+    { id: 'ise', name: 'Cisco ISE Center' },
+    { id: 'ise-tacacs', name: 'Cisco ISE TACACS' },
+    { id: 'vpn', name: 'VPN Troubleshooting' },
+    { id: 'vpn-reporting', name: 'VPN Reporting & Audit Suite' },
+    { id: 'vpn-s2s', name: 'Cisco S2S VPN Monitor' },
+    { id: 'netscaler', name: 'NetScaler Gateway & ADC' },
+    { id: 'ironport', name: 'Cisco IronPort Telemetry' },
+    { id: 'bec', name: 'M365 BEC Threat Hunter' },
+    { id: 'etd', name: 'Cisco ETD Retrospective Center' },
+    { id: 'hibp-account', name: 'HIBP Account Security' },
+    { id: 'hibp-domain', name: 'HIBP Domain Security' },
+    { id: 'vectra', name: 'Vectra Forensic Analysis' },
+    { id: 'crawler', name: 'Netcrawler & Site Hierarchy' },
+    { id: 'threat-intel', name: 'Threat Intelligence reputation' },
+    { id: 'notification-center', name: 'Breach Notification Center' },
+    { id: 'graylog-exporter', name: 'Graylog Bulk Exporter' },
+    { id: 'account-lockout', name: 'Account Lockout Investigator' },
+];
+
+export const ROLES = ["ADMIN", "ANALYST", "IAM", "NETWORK", "DESKTOP", "SYSTEMS", "USER"];
+
+export const SYSTEM_DEFAULT_PERMISSIONS_MAP: Record<string, Record<string, boolean>> = {
+    'firewall': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: true, SYSTEMS: false, USER: false },
+    'ise': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'ise-tacacs': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'vpn': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'vpn-reporting': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'vpn-s2s': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'netscaler': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'ironport': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
+    'bec': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
+    'etd': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
+    'hibp-account': { ADMIN: true, ANALYST: true, IAM: true, NETWORK: true, DESKTOP: true, SYSTEMS: true, USER: true },
+    'hibp-domain': { ADMIN: true, ANALYST: false, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
+    'vectra': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: false, USER: false },
+    'crawler': { ADMIN: true, ANALYST: false, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'threat-intel': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'notification-center': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
+    'graylog-exporter': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: false, USER: false },
+    'account-lockout': { ADMIN: true, ANALYST: true, IAM: true, NETWORK: true, DESKTOP: true, SYSTEMS: true, USER: false }
+};
