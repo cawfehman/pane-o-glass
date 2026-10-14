@@ -5,15 +5,19 @@ import { updateUser, deleteUser } from "@/app/actions/users";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { PaginationControls } from "@/components/common/PaginationControls";
 import SmartSearchBar from "@/components/common/SmartSearchBar";
-import { Search, Edit2, Trash2 } from "lucide-react";
+import { Search, Edit2, Trash2, KeyRound } from "lucide-react";
+import UserToolOverrideModal from "@/components/UserToolOverrideModal";
+import { useRouter } from "next/navigation";
 
 export default function UserTableClient({ initialUsers }: { initialUsers: any[] }) {
+    const router = useRouter();
     const [users, setUsers] = useState(initialUsers);
     const [searchQuery, setSearchQuery] = useState("");
     const [sortField, setSortField] = useState<string>("username");
     const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(25);
+    const [overrideUser, setOverrideUser] = useState<any | null>(null);
 
     const [editingUserId, setEditingUserId] = useState<string | null>(null);
     const [editingUserData, setEditingUserData] = useState<any>({
@@ -38,6 +42,10 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
         onConfirm: () => {},
         variant: "danger",
     });
+
+    React.useEffect(() => {
+        setUsers(initialUsers);
+    }, [initialUsers]);
 
     // Filter and Sort
     const filteredUsers = useMemo(() => {
@@ -378,6 +386,16 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                                     OVERRIDE
                                                 </span>
                                             )}
+                                            {user.toolOverrides && user.toolOverrides.length > 0 && (
+                                                <button
+                                                    onClick={() => setOverrideUser(user)}
+                                                    className="px-1.5 py-0.5 rounded text-[0.7rem] bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold cursor-pointer hover:bg-amber-500/20 transition-all flex items-center gap-1"
+                                                    title={`${user.toolOverrides.length} tool overrides active. Click to edit.`}
+                                                >
+                                                    <KeyRound size={10} />
+                                                    <span>+{user.toolOverrides.length} TOOLS</span>
+                                                </button>
+                                            )}
                                         </div>
                                     </td>
                                     <td className="p-3 text-text-muted text-xs">
@@ -388,6 +406,16 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                     </td>
                                     <td className="p-3 text-right">
                                         <div className="flex justify-end gap-2 items-center">
+                                            <button
+                                                onClick={() => setOverrideUser(user)}
+                                                className="p-1.5 rounded text-text-secondary hover:text-amber-400 hover:bg-amber-500/10 transition-colors border-none bg-transparent cursor-pointer relative"
+                                                title="Manage Tool Access Overrides"
+                                            >
+                                                <KeyRound size={14} />
+                                                {user.toolOverrides && user.toolOverrides.length > 0 && (
+                                                    <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-400 ring-1 ring-bg-surface" />
+                                                )}
+                                            </button>
                                             <button
                                                 onClick={() => startEdit(user)}
                                                 className="p-1.5 rounded text-text-secondary hover:text-accent-primary hover:bg-bg-surface-hover transition-colors border-none bg-transparent cursor-pointer"
@@ -437,6 +465,16 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                 variant={confirmModal.variant}
                 onConfirm={confirmModal.onConfirm}
                 onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+            />
+
+            {/* Tool Access Overrides Modal */}
+            <UserToolOverrideModal
+                isOpen={!!overrideUser}
+                onClose={() => setOverrideUser(null)}
+                user={overrideUser}
+                onSaved={() => {
+                    router.refresh();
+                }}
             />
         </div>
     );

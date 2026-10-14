@@ -6,7 +6,7 @@ import {
     Shield, Network, Server, Globe, Lock, ShieldAlert, 
     ShieldCheck, Mail, Map, ArrowRight, UserCheck, Sparkles, UserX
 } from "lucide-react";
-import { getPermissionsForRole } from "@/app/actions/permissions";
+import { getEffectivePermissions } from "@/app/actions/permissions";
 
 export default async function DashboardHome() {
     const session = await auth();
@@ -17,8 +17,9 @@ export default async function DashboardHome() {
 
     const user = session.user as any;
     const role = user?.role || 'USER';
+    const userId = session.user?.id;
     const normalizedRole = String(role).toUpperCase();
-    const permissions: string[] = await getPermissionsForRole(normalizedRole);
+    const permissions: string[] = await getEffectivePermissions(userId, normalizedRole);
     const isAdmin = normalizedRole === 'ADMIN';
     const isAnalyst = normalizedRole === 'ANALYST' || isAdmin;
 

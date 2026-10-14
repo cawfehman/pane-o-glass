@@ -26,6 +26,7 @@ model User {
   auditLogs      AuditLog[]
   firewallQueries FirewallQueryHistory[]
   feedback       Feedback[]
+  toolOverrides  UserToolOverride[]
 }
 
 model FirewallQueryHistory {
@@ -70,6 +71,18 @@ model ToolPermission {
   updatedAt DateTime @updatedAt
 
   @@unique([toolId, role])
+}
+
+model UserToolOverride {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  toolId    String   // e.g. "netscaler", "vpn-s2s", "account-lockout"
+  isEnabled Boolean  @default(true) // true = granted access, false = explicit deny
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, toolId])
 }
 
 model Feedback {

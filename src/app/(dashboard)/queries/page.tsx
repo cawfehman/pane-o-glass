@@ -1,16 +1,17 @@
 import { auth } from "@/lib/auth";
-import { getPermissionsForRole } from "@/app/actions/permissions";
+import { getEffectivePermissions } from "@/app/actions/permissions";
 import { ShieldAlert, Activity, Lock, Terminal, ShieldCheck, Wifi, Globe, Shield, Server, Network, Mail, FileText, Link2, UserX } from "lucide-react";
 import QueriesPageClient from "./QueriesPageClient";
 
 export default async function QueriesPage() {
     const session = await auth();
     const role = (session?.user as any)?.role || "USER";
+    const userId = session?.user?.id;
     const normalizedRole = String(role).toUpperCase();
     const isAdmin = normalizedRole === "ADMIN";
     
-    // Fetch dynamic permissions from DB
-    const permissions = await getPermissionsForRole(normalizedRole);
+    // Fetch dynamic effective permissions (role + user overrides)
+    const permissions = await getEffectivePermissions(userId, normalizedRole);
     const hasPermission = (toolId: string) => isAdmin || permissions.includes(toolId);
 
     const tools = [

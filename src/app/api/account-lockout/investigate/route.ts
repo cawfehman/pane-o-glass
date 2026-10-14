@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
         // Allow access only if user has explicit 'account-lockout' permission or is ADMIN
         const isPermitted = 
             role === "ADMIN" ||
-            (await hasPermission(role, "account-lockout"));
+            (await hasPermission(role, "account-lockout", session.user.id));
 
         if (!isPermitted) {
             return NextResponse.json(

@@ -15,7 +15,7 @@ export default async function AccountLockoutPage() {
     }
 
     const role = (session.user as any)?.role || "USER";
-    const allowed = await hasPermission(role, "account-lockout");
+    const allowed = await hasPermission(role, "account-lockout", session.user.id);
 
     if (!allowed) {
         return (

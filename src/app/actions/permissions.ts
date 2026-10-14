@@ -128,10 +128,56 @@ export async function getPermissionsForRole(role: string) {
     }
 }
 
-export async function hasPermission(role: string, toolId: string) {
+export async function getEffectivePermissions(userId?: string | null, role?: string | null): Promise<string[]> {
+    noStore();
+    try {
+        const roleUpper = String(role || 'USER').toUpperCase();
+        const baseRolePerms = await getPermissionsForRole(roleUpper);
+
+        if (!userId) {
+            return baseRolePerms;
+        }
+
+        const overrides = await prisma.userToolOverride.findMany({
+            where: { userId }
+        });
+
+        if (overrides.length === 0) {
+            return baseRolePerms;
+        }
+
+        const grants = overrides.filter(o => o.isEnabled).map(o => o.toolId);
+        const denys = new Set(overrides.filter(o => !o.isEnabled).map(o => o.toolId));
+
+        const effective = new Set([...baseRolePerms, ...grants]);
+        for (const deniedTool of denys) {
+            effective.delete(deniedTool);
+        }
+
+        return Array.from(effective);
+    } catch (error) {
+        logInternalError(`Error calculating effective permissions for user ${userId} (role: ${role})`, error);
+        return getPermissionsForRole(role || 'USER');
+    }
+}
+
+export async function hasPermission(role: string, toolId: string, userId?: string | null) {
     if (role === 'ADMIN') return true;
     try {
         try { noStore(); } catch {}
+
+        // Check user-specific override first if userId is provided
+        if (userId) {
+            const userOverride = await prisma.userToolOverride.findUnique({
+                where: {
+                    userId_toolId: { userId, toolId }
+                }
+            });
+            if (userOverride !== null && userOverride !== undefined) {
+                return userOverride.isEnabled;
+            }
+        }
+
         const targetId = (toolId === 'ise-failures' || toolId === 'ise-tacacs') ? 'ise' : toolId;
         
         // Check explicit permission for toolId first
@@ -195,6 +241,106 @@ export async function hasPermission(role: string, toolId: string) {
     } catch (error) {
         logInternalError(`Error checking permission ${toolId} for role ${role}`, error);
         return false;
+    }
+}
+
+export async function getUserToolOverrides(targetUserId: string) {
+    noStore();
+    await ensureAdmin();
+    try {
+        const overrides = await prisma.userToolOverride.findMany({
+            where: { userId: targetUserId }
+        });
+        return overrides;
+    } catch (error) {
+        logInternalError(`Error fetching tool overrides for user ${targetUserId}`, error);
+        return [];
+    }
+}
+
+export async function updateUserToolOverride(targetUserId: string, toolId: string, isEnabled: boolean | null) {
+    const session = await ensureAdmin();
+    try {
+        const targetUser = await prisma.user.findUnique({
+            where: { id: targetUserId },
+            select: { username: true, role: true }
+        });
+
+        if (isEnabled === null) {
+            await prisma.userToolOverride.deleteMany({
+                where: { userId: targetUserId, toolId }
+            });
+            await logAudit(
+                "USER_PERMISSION_OVERRIDE",
+                `Removed tool override for '${toolId}' on user '${targetUser?.username}' (reverted to role inheritance)`,
+                session.user?.id
+            );
+        } else {
+            await prisma.userToolOverride.upsert({
+                where: {
+                    userId_toolId: { userId: targetUserId, toolId }
+                },
+                update: { isEnabled },
+                create: { userId: targetUserId, toolId, isEnabled }
+            });
+            await logAudit(
+                "USER_PERMISSION_OVERRIDE",
+                `Set tool override for '${toolId}' on user '${targetUser?.username}' to ${isEnabled ? 'GRANTED (Enhanced Access)' : 'DENIED'}`,
+                session.user?.id
+            );
+        }
+
+        revalidatePath("/", "layout");
+        revalidatePath("/queries", "page");
+        revalidatePath("/users", "page");
+        return { success: true };
+    } catch (error) {
+        logInternalError(`Error updating tool override for user ${targetUserId} tool ${toolId}`, error);
+        throw error;
+    }
+}
+
+export async function saveAllUserToolOverrides(
+    targetUserId: string, 
+    overrides: Record<string, boolean | null>
+) {
+    const session = await ensureAdmin();
+    try {
+        const targetUser = await prisma.user.findUnique({
+            where: { id: targetUserId },
+            select: { username: true, role: true }
+        });
+
+        const changes: string[] = [];
+        for (const [toolId, state] of Object.entries(overrides)) {
+            if (state === null) {
+                await prisma.userToolOverride.deleteMany({
+                    where: { userId: targetUserId, toolId }
+                });
+                changes.push(`${toolId}: INHERIT`);
+            } else {
+                await prisma.userToolOverride.upsert({
+                    where: { userId_toolId: { userId: targetUserId, toolId } },
+                    update: { isEnabled: state },
+                    create: { userId: targetUserId, toolId, isEnabled: state }
+                });
+                changes.push(`${toolId}: ${state ? 'GRANTED' : 'DENIED'}`);
+            }
+        }
+
+        await logAudit(
+            "USER_PERMISSION_OVERRIDE",
+            `Updated tool overrides for user '${targetUser?.username}': [${changes.join(', ')}]`,
+            session.user?.id
+        );
+
+        revalidatePath("/", "layout");
+        revalidatePath("/queries", "page");
+        revalidatePath("/users", "page");
+        return { success: true };
+    } catch (error) {
+        logInternalError(`Error batch saving tool overrides for user ${targetUserId}`, error);
+        throw error;
     }
 }
 

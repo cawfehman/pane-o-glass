@@ -13,6 +13,9 @@ export default async function UsersPage() {
     }
 
     const users = await prisma.user.findMany({
+        include: {
+            toolOverrides: true
+        },
         orderBy: { username: 'asc' }
     });
 
