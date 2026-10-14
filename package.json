@@ -22,7 +22,8 @@
     "deploy:major": "npm version major && npm run deploy",
     "test": "playwright test",
     "test:ui": "playwright test --ui",
-    "test:setup": "ts-node tests/setup/seed-test-users.ts"
+    "test:setup": "ts-node tests/setup/seed-test-users.ts",
+    "test:overrides": "npx tsx scripts/test/test-user-overrides.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
