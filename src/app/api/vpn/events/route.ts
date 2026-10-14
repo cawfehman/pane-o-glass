@@ -547,7 +547,7 @@ export async function GET(req: NextRequest) {
 
             const events = await prisma.vpnEvent.findMany({
                 where: {
-                    username: detailUsername,
+                    username: { equals: detailUsername, mode: 'insensitive' },
                     status: "FAILURE",
                     createdAt: securityDateFilter
                 },

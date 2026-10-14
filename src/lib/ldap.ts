@@ -136,29 +136,36 @@ export async function getUserDetails(username: string) {
         const { searchEntries } = await client.search(baseDN, {
             filter: `(|(sAMAccountName=${escapedUsername})(userPrincipalName=${escapedUsername}@cooperhealth.edu)(userPrincipalName=${escapedOriginal}))`,
             scope: "sub",
-            attributes: ["displayName", "department", "title", "telephoneNumber", "mail", "lockoutTime"],
+            attributes: ["displayName", "department", "title", "telephoneNumber", "mail", "lockoutTime", "sAMAccountName", "userPrincipalName", "userAccountControl"],
         });
 
         if (searchEntries.length === 0) {
             return {
                 exists: false,
+                sAMAccountName: cleanUsername,
+                userPrincipalName: "",
                 displayName: "Account Not Found",
                 department: "",
                 title: "",
                 phone: "",
                 email: "",
+                isEnabled: false,
                 isLockedOut: false,
             };
         }
 
         const entry = searchEntries[0];
+        const uac = Number(entry.userAccountControl || 0);
         return {
             exists: true,
+            sAMAccountName: String(entry.sAMAccountName || cleanUsername),
+            userPrincipalName: String(entry.userPrincipalName || ""),
             displayName: String(entry.displayName || ""),
             department: String(entry.department || ""),
             title: String(entry.title || ""),
             phone: String(entry.telephoneNumber || ""),
             email: String(entry.mail || ""),
+            isEnabled: !(uac & 2),
             isLockedOut: entry.lockoutTime && String(entry.lockoutTime) !== "0" && parseInt(String(entry.lockoutTime), 10) > 0 ? true : false,
         };
     } catch (err: any) {

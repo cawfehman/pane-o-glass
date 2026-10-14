@@ -319,24 +319,49 @@ export async function fetchIseSession(query: string) {
                 // Username - Query direct endpoint AND ActiveList to aggregate all concurrent sessions
                 const sessionMap = new Map<string, any>();
 
-                try {
-                    const endpoint = `${targetUrl}/admin/API/mnt/Session/UserName/${encodeURIComponent(formattedQuery)}`;
-                    const res = await axios.get(endpoint, {
-                        headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
-                        httpsAgent: agent,
-                        timeout: 5000
-                    });
-                    const data = await parseStringPromise(res.data, { explicitArray: false });
-                    const node = data.sessionParameters || data.activeSession;
-                    if (node) {
-                        const arr = Array.isArray(node) ? node : [node];
-                        arr.forEach((s: any) => {
-                            const key = s.calling_station_id?._ || s.calling_station_id || s.framed_ip_address?._ || s.framed_ip_address;
-                            if (key) sessionMap.set(key.toUpperCase(), s);
+                // Strip domain prefix (e.g. chsmail\) and UPN suffix (e.g. @cooperhealth.edu)
+                const cleanName = formattedQuery.trim()
+                    .replace(/^(?:chsmail|cooperhealth)\\/i, "")
+                    .replace(/@(?:chsmail\.root\.)?cooperhealth\.edu$/i, "");
+
+                // Generate TitleCase variant for hyphenated compound names (e.g. "hammons-shanada" -> "Hammons-Shanada")
+                const titleCased = cleanName
+                    .split(/([-_])/)
+                    .map(part => (part === '-' || part === '_') ? part : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+                    .join("");
+
+                const candidateUsers = Array.from(new Set([
+                    cleanName,
+                    titleCased,
+                    cleanName.toLowerCase(),
+                    cleanName.toUpperCase(),
+                    formattedQuery
+                ].filter(Boolean)));
+
+                // Try candidates on the direct UserName endpoint (ISE MnT is case-sensitive!)
+                for (const cand of candidateUsers) {
+                    try {
+                        const endpoint = `${targetUrl}/admin/API/mnt/Session/UserName/${encodeURIComponent(cand)}`;
+                        const res = await axios.get(endpoint, {
+                            headers: { "Authorization": `Basic ${basicAuth}`, "Accept": "application/xml", "X-ERS-Internal-User": "true" },
+                            httpsAgent: agent,
+                            timeout: 5000
                         });
+                        const data = await parseStringPromise(res.data, { explicitArray: false });
+                        const node = data.sessionParameters || data.activeSession;
+                        if (node) {
+                            const arr = Array.isArray(node) ? node : [node];
+                            arr.forEach((s: any) => {
+                                const key = s.calling_station_id?._ || s.calling_station_id || s.framed_ip_address?._ || s.framed_ip_address;
+                                if (key) sessionMap.set(key.toUpperCase(), s);
+                            });
+                            if (sessionMap.size > 0) {
+                                break; // Successfully matched session(s)
+                            }
+                        }
+                    } catch (userErr: any) {
+                        // Continue to next candidate variant
                     }
-                } catch (userErr: any) {
-                    console.warn(`[ISE-LIB] Direct UserName query yielded no active session: ${userErr.message}`);
                 }
 
                 // Query ActiveList to find all other concurrently active devices authenticated with this username
@@ -347,7 +372,8 @@ export async function fetchIseSession(query: string) {
                         timeout: 8000
                     });
                     const activeXml = alRes.data;
-                    const sessionRegex = new RegExp('<activeSession>[\\s\\S]*?<user_name>' + formattedQuery + '<\\/user_name>[\\s\\S]*?<\\/activeSession>', 'gi');
+                    const escapedPatterns = candidateUsers.map(u => u.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+                    const sessionRegex = new RegExp('<activeSession>[\\s\\S]*?<user_name>(?:' + escapedPatterns + ')<\\/user_name>[\\s\\S]*?<\\/activeSession>', 'gi');
                     const matches = activeXml.match(sessionRegex) || [];
                     for (const m of matches) {
                         try {

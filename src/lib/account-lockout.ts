@@ -3,6 +3,7 @@ import * as https from "https";
 import { parseStringPromise } from "xml2js";
 import { parseCalledStationId, normalizeMacAddress, getIseUrls, executeWithPanFailover } from "./ise";
 import { resolveIpHostname } from "./ise";
+import { getUserDetails } from "./ldap";
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false
@@ -10,6 +11,19 @@ const httpsAgent = new https.Agent({
 
 export const OG_GRAYLOG_AD_STREAM_ID = "5d72ac00b209026ab42decf9";
 export const OG_GRAYLOG_ISE_STREAM_ID = "60ff11b8950aa8572f333457";
+
+export interface AdUserDetails {
+    exists: boolean;
+    sAMAccountName?: string;
+    userPrincipalName?: string;
+    displayName: string;
+    department: string;
+    title: string;
+    phone: string;
+    email: string;
+    isEnabled?: boolean;
+    isLockedOut: boolean;
+}
 
 export interface AdSecurityEvent {
     id: string;
@@ -89,6 +103,8 @@ export interface FailureTimelineBucket {
 
 export interface LockoutInvestigationResult {
     searchedUser: string;
+    canonicalUser?: string;
+    adUserDetails?: AdUserDetails | null;
     rangeHours: number;
     hasLockout: boolean;
     lockoutCount: number;
@@ -353,7 +369,7 @@ function extractSourceIp(msg: any): string {
 /**
  * Searches OG Graylog for AD security events (Stream: 5d72ac00b209026ab42decf9)
  */
-async function fetchAdSecurityEventsFromGraylog(username: string, rangeSeconds: number): Promise<AdSecurityEvent[]> {
+async function fetchAdSecurityEventsFromGraylog(variants: string[], baseUser: string, rangeSeconds: number): Promise<AdSecurityEvent[]> {
     const ogUrl = (process.env.OG_GRAYLOG_URL || "https://graylog.cooperhealth.edu:9000").replace(/\/$/, "");
     const ogToken = process.env.OG_GRAYLOG_API_TOKEN || "";
     if (!ogToken) {
@@ -361,20 +377,12 @@ async function fetchAdSecurityEventsFromGraylog(username: string, rangeSeconds: 
     }
 
     const authHeader = "Basic " + Buffer.from(`${ogToken}:token`).toString("base64");
-    const cleanUser = username.trim().toLowerCase().replace(/^chsmail\\/i, "").replace(/@cooperhealth\.edu$/i, "");
 
-    // Query targeting Event IDs:
-    // - 4740: Account Locked Out
-    // - 4625: Failed Logon Attempt
-    // - 4771: Kerberos Pre-Auth Failed
-    // - 4776: NTLM Credential Validation Failed
-    // - 4767: Account Unlocked
-    // - 4723: Password Change Attempt (User)
-    // - 4724: Password Reset Attempt (Admin)
-    // - 4648: Explicit Credential Logon
-    // - 4768: Kerberos TGT Failed (Exclude 0x0 success)
-    // - 4769: Kerberos Service Ticket Failed (Exclude 0x0 success)
-    const luceneQuery = `winlog_event_data_TargetUserName:"${cleanUser}" AND (winlog_event_id:(4740 OR 4625 OR 4771 OR 4776 OR 4767 OR 4723 OR 4724 OR 4648) OR (winlog_event_id:(4768 OR 4769) AND NOT winlog_event_data_Status:0x0))`;
+    // In Graylog / OpenSearch, winlog_event_data_TargetUserName is an exact keyword field.
+    // Querying all case variants (canonical AD sAMAccountName, entered casing, lowercase, TitleCase)
+    // combined with the fulltext message phrase matches all security events regardless of logging casing.
+    const targetUserTerms = variants.map(v => `winlog_event_data_TargetUserName:"${v}"`).join(" OR ");
+    const luceneQuery = `(${targetUserTerms} OR "${baseUser.toLowerCase()}") AND (winlog_event_id:(4740 OR 4625 OR 4771 OR 4776 OR 4767 OR 4723 OR 4724 OR 4648) OR (winlog_event_id:(4768 OR 4769) AND NOT winlog_event_data_Status:0x0))`;
 
     const params = new URLSearchParams({
         query: luceneQuery,
@@ -455,7 +463,7 @@ async function fetchAdSecurityEventsFromGraylog(username: string, rangeSeconds: 
                 timestamp: m.timestamp || new Date().toISOString(),
                 eventId: evId,
                 eventTitle,
-                targetUser: m.winlog_event_data_TargetUserName || cleanUser,
+                targetUser: m.winlog_event_data_TargetUserName || m.TargetUserName || m.user_name || variants[0] || baseUser,
                 callerDevice: caller,
                 sourceIp: srcIp,
                 domainController: dc,
@@ -480,58 +488,64 @@ async function fetchAdSecurityEventsFromGraylog(username: string, rangeSeconds: 
 /**
  * Queries Cisco ISE MnT REST API for live authentication telemetry (last 24h).
  */
-async function queryIseMntForUser(username: string): Promise<IseWirelessDetails | null> {
+async function queryIseMntForUser(usernames: string[]): Promise<IseWirelessDetails | null> {
     try {
         const { basicAuth } = getIseUrls();
-        const cleanUser = username.trim().toLowerCase().replace(/^chsmail\\/i, "").replace(/@cooperhealth\.edu$/i, "");
 
-        const xmlText = await executeWithPanFailover(async (baseUrl) => {
-            const endpoint = `${baseUrl}/admin/API/mnt/AuthStatus/userName/${encodeURIComponent(cleanUser)}/86400/50/All`;
-            const response = await axios.get(endpoint, {
-                headers: {
-                    Authorization: `Basic ${basicAuth}`,
-                    Accept: "application/xml",
-                    "X-ERS-Internal-User": "true"
-                },
-                httpsAgent,
-                timeout: 6000
-            });
-            return response.data;
-        });
+        for (const user of usernames) {
+            try {
+                const xmlText = await executeWithPanFailover(async (baseUrl) => {
+                    const endpoint = `${baseUrl}/admin/API/mnt/AuthStatus/userName/${encodeURIComponent(user)}/86400/50/All`;
+                    const response = await axios.get(endpoint, {
+                        headers: {
+                            Authorization: `Basic ${basicAuth}`,
+                            Accept: "application/xml",
+                            "X-ERS-Internal-User": "true"
+                        },
+                        httpsAgent,
+                        timeout: 5000
+                    });
+                    return response.data;
+                });
 
-        const parsed = await parseStringPromise(xmlText, {
-            explicitArray: false,
-            tagNameProcessors: [(name: string) => name.split(":").pop() || name]
-        });
+                const parsed = await parseStringPromise(xmlText, {
+                    explicitArray: false,
+                    tagNameProcessors: [(name: string) => name.split(":").pop() || name]
+                });
 
-        const records = parsed?.authStatusList?.authStatusRecord;
-        if (!records) return null;
+                const records = parsed?.authStatusList?.authStatusRecord;
+                if (!records) continue;
 
-        const recordList = Array.isArray(records) ? records : [records];
-        if (recordList.length === 0) return null;
+                const recordList = Array.isArray(records) ? records : [records];
+                if (recordList.length === 0) continue;
 
-        // Prioritize failed attempts, or take most recent
-        const failedRecord = recordList.find((r: any) => String(r.passed) === "false" || String(r.execution_steps).includes("5400")) || recordList[0];
+                // Prioritize failed attempts, or take most recent
+                const failedRecord = recordList.find((r: any) => String(r.passed) === "false" || String(r.execution_steps).includes("5400")) || recordList[0];
 
-        const rawMac = failedRecord.calling_station_id || failedRecord.mac || "";
-        const endpointMac = normalizeMacAddress(rawMac) || rawMac;
-        const calledStation = failedRecord.called_station_id || "";
-        const { ssid, apName, siteCode } = parseCalledStationId(calledStation);
+                const rawMac = failedRecord.calling_station_id || failedRecord.mac || "";
+                const endpointMac = normalizeMacAddress(rawMac) || rawMac;
+                const calledStation = failedRecord.called_station_id || "";
+                const { ssid, apName, siteCode } = parseCalledStationId(calledStation);
 
-        return {
-            source: "ISE_MNT",
-            endpointMac,
-            ssid: ssid !== "N/A" ? ssid : "Corporate Wireless",
-            apName: apName !== "N/A" ? apName : (failedRecord.nas_identifier || "Unknown AP"),
-            siteCode: siteCode !== "N/A" ? siteCode : "CDC",
-            deviceProfile: failedRecord.endpoint_profile || failedRecord.identity_group || undefined,
-            failureReason: failedRecord.failure_reason || failedRecord.response || "Wireless EAP Authentication Failed",
-            nasIp: failedRecord.nas_ip_address,
-            nasPortId: failedRecord.nas_port_id,
-            callingStationId: rawMac,
-            calledStationId: calledStation,
-            authTimestamp: failedRecord.timestamp || failedRecord.time
-        };
+                return {
+                    source: "ISE_MNT",
+                    endpointMac,
+                    ssid: ssid !== "N/A" ? ssid : "Corporate Wireless",
+                    apName: apName !== "N/A" ? apName : (failedRecord.nas_identifier || "Unknown AP"),
+                    siteCode: siteCode !== "N/A" ? siteCode : "CDC",
+                    deviceProfile: failedRecord.endpoint_profile || failedRecord.identity_group || undefined,
+                    failureReason: failedRecord.failure_reason || failedRecord.response || "Wireless EAP Authentication Failed",
+                    nasIp: failedRecord.nas_ip_address,
+                    nasPortId: failedRecord.nas_port_id,
+                    callingStationId: rawMac,
+                    calledStationId: calledStation,
+                    authTimestamp: failedRecord.timestamp || failedRecord.time
+                };
+            } catch {
+                continue;
+            }
+        }
+        return null;
     } catch (e: any) {
         console.warn("[Account-Lockout] ISE MnT lookup note:", e.message);
         return null;
@@ -542,15 +556,14 @@ async function queryIseMntForUser(username: string): Promise<IseWirelessDetails 
  * Historical Fallback: Queries Graylog ISE 3.0 Stream (Stream: 60ff11b8950aa8572f333457)
  * Used when events are > 24 hours old or ISE MnT API lacks records.
  */
-async function queryGraylogIseStreamForUser(username: string, rangeSeconds: number): Promise<IseWirelessDetails | null> {
+async function queryGraylogIseStreamForUser(usernames: string[], rangeSeconds: number): Promise<IseWirelessDetails | null> {
     const ogUrl = (process.env.OG_GRAYLOG_URL || "https://graylog.cooperhealth.edu:9000").replace(/\/$/, "");
     const ogToken = process.env.OG_GRAYLOG_API_TOKEN || "";
     if (!ogToken) return null;
 
     const authHeader = "Basic " + Buffer.from(`${ogToken}:token`).toString("base64");
-    const cleanUser = username.trim().toLowerCase().replace(/^chsmail\\/i, "").replace(/@cooperhealth\.edu$/i, "");
-
-    const query = `"${cleanUser}" AND (CISE_Failed_Attempts OR CISE_Passed_Authentications OR "Radius-Accounting")`;
+    const userPhrases = usernames.map(u => `"${u}"`).join(" OR ");
+    const query = `(${userPhrases}) AND (CISE_Failed_Attempts OR CISE_Passed_Authentications OR "Radius-Accounting")`;
 
     const params = new URLSearchParams({
         query,
@@ -621,11 +634,42 @@ export async function investigateAccountLockout(
     username: string,
     rangeHours: number = 24
 ): Promise<LockoutInvestigationResult> {
-    const cleanUser = username.trim().toLowerCase().replace(/^chsmail\\/i, "").replace(/@cooperhealth\.edu$/i, "");
+    const trimmedInput = username.trim();
+    const baseUser = trimmedInput
+        .replace(/^(?:chsmail|cooperhealth)\\/i, "")
+        .replace(/@(?:chsmail\.root\.)?cooperhealth\.edu$/i, "");
+
+    // 1. Resolve Active Directory canonical account details & real-time lockout status via LDAP
+    let adUserDetails: AdUserDetails | null = null;
+    try {
+        const ldapRes = await getUserDetails(baseUser);
+        if (ldapRes && ldapRes.exists) {
+            adUserDetails = ldapRes as AdUserDetails;
+        }
+    } catch (err: any) {
+        console.warn("[Account-Lockout] LDAP user lookup note:", err.message);
+    }
+
+    const canonicalUser = adUserDetails?.sAMAccountName || baseUser;
+
+    // Generate comprehensive case variations for keyword-indexed fields in Graylog
+    const titleCased = baseUser
+        .split(/([-_])/)
+        .map(part => (part === '-' || part === '_') ? part : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+        .join("");
+
+    const variants = Array.from(new Set([
+        canonicalUser,
+        baseUser,
+        baseUser.toLowerCase(),
+        baseUser.toUpperCase(),
+        titleCased
+    ].filter(Boolean) as string[]));
+
     const rangeSeconds = Math.max(3600, rangeHours * 3600);
 
-    // 1. Fetch AD Security Events from Graylog
-    const events = await fetchAdSecurityEventsFromGraylog(cleanUser, rangeSeconds);
+    // 2. Fetch AD Security Events from Graylog
+    const events = await fetchAdSecurityEventsFromGraylog(variants, baseUser, rangeSeconds);
 
     // Filter lockouts, failures, unlocks, and password changes
     const lockoutEvents = events.filter(e => e.eventId === "4740");
@@ -739,7 +783,7 @@ export async function investigateAccountLockout(
         const ageHours = (Date.now() - latestTime) / (3600 * 1000);
 
         if (ageHours <= 24) {
-            iseDetails = await queryIseMntForUser(cleanUser);
+            iseDetails = await queryIseMntForUser(variants);
             if (iseDetails) {
                 iseQueryMode = "ISE_MNT";
             }
@@ -747,7 +791,7 @@ export async function investigateAccountLockout(
 
         // Fallback to Graylog ISE Stream if MnT yielded nothing or event is older
         if (!iseDetails) {
-            iseDetails = await queryGraylogIseStreamForUser(cleanUser, rangeSeconds);
+            iseDetails = await queryGraylogIseStreamForUser(variants, rangeSeconds);
             if (iseDetails) {
                 iseQueryMode = "GRAYLOG_ISE";
             }
@@ -796,8 +840,13 @@ export async function investigateAccountLockout(
 
     if (!hasLockout && events.length === 0) {
         rootCauseCategory = "NO_FAILURES_FOUND";
-        executiveSummary = `No account lockout events (4740) or logon failures recorded for '${cleanUser}' in the last ${rangeHours} hours.`;
-        recommendation = "The account is not showing recent authentication failures on Domain Controllers. Verify the username spelling or expand the time window.";
+        if (adUserDetails?.isLockedOut) {
+            executiveSummary = `Account '${canonicalUser}' is currently LOCKED OUT in Active Directory (lockout flag is active), but no new lockout events (4740) or logon failures were recorded in the last ${rangeHours} hours.`;
+            recommendation = `The account has an active lockout flag in Active Directory that originated prior to the last ${rangeHours} hour(s). Expand the search timeframe (e.g. 7 days / 168h) to view the initial lockout event and originating device.`;
+        } else {
+            executiveSummary = `No account lockout events (4740) or logon failures recorded for '${canonicalUser}' in the last ${rangeHours} hours.`;
+            recommendation = "The account is not showing recent authentication failures on Domain Controllers. Verify the username spelling or expand the time window.";
+        }
     } else if (unlockActivity.isLoop) {
         rootCauseCategory = "LOCKOUT_LOOP";
         executiveSummary = `Active Lockout Loop: Account was unlocked by '${unlockActivity.unlockedBy || "Helpdesk"}' at ${new Date(unlockActivity.latestUnlockTimestamp!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, but immediately re-locked ${unlockActivity.relockTimeSeconds !== null ? `${unlockActivity.relockTimeSeconds} seconds later` : "shortly after"} due to rapid authentication failures from '${primaryCaller}'.`;
@@ -814,8 +863,8 @@ export async function investigateAccountLockout(
             : "";
 
         executiveSummary = hasLockout
-            ? `Account '${cleanUser}' locked out ${lockoutCount} time(s). Root cause: Rapid 802.1X wireless EAP authentication failures originating from an ISE Policy Service Node (${primaryCaller}). Device: ${profileText} ${macText} ${apText} ${ssidText}.${pwdNote}`
-            : `Multiple wireless authentication failures detected from ISE PSN (${primaryCaller}) for '${cleanUser}' ${macText} ${ssidText}. Risk of account lockout if cached credentials are not updated.${pwdNote}`;
+            ? `Account '${canonicalUser}' locked out ${lockoutCount} time(s). Root cause: Rapid 802.1X wireless EAP authentication failures originating from an ISE Policy Service Node (${primaryCaller}). Device: ${profileText} ${macText} ${apText} ${ssidText}.${pwdNote}`
+            : `Multiple wireless authentication failures detected from ISE PSN (${primaryCaller}) for '${canonicalUser}' ${macText} ${ssidText}. Risk of account lockout if cached credentials are not updated.${pwdNote}`;
 
         recommendation = `Have the user locate their wireless device ${macText ? `(${macText})` : ""} connected ${ssidText}. Instruct them to 'Forget' the network or re-enter their current Active Directory password to stop continuous failed auth probes.`;
     } else if (passwordChangeActivity.detected && passwordChangeActivity.lockoutsAfterChange > 0) {
@@ -831,15 +880,15 @@ export async function investigateAccountLockout(
     } else if (workstationDetails?.logonType === 10) {
         rootCauseCategory = "WORKSTATION_RDP";
         executiveSummary = `Account locked out by Remote Desktop (RDP / Logon Type 10) session on workstation '${primaryCaller}'.`;
-        recommendation = `Log into workstation '${primaryCaller}' or ask an administrator to disconnect/log off stale RDP sessions for '${cleanUser}'.`;
+        recommendation = `Log into workstation '${primaryCaller}' or ask an administrator to disconnect/log off stale RDP sessions for '${canonicalUser}'.`;
     } else if (workstationDetails?.logonType === 3) {
         rootCauseCategory = "WORKSTATION_NETWORK_SHARE";
         executiveSummary = `Account locked out by network resource / SMB connection (Logon Type 3) originating from '${primaryCaller}'.`;
-        recommendation = `Check Windows Credential Manager on '${primaryCaller}' for saved network drive or printer credentials associated with '${cleanUser}'.`;
+        recommendation = `Check Windows Credential Manager on '${primaryCaller}' for saved network drive or printer credentials associated with '${canonicalUser}'.`;
     } else if (workstationDetails?.logonType === 4 || workstationDetails?.logonType === 5) {
         rootCauseCategory = "WORKSTATION_SERVICE";
         executiveSummary = `Account locked out by a background Scheduled Task or Windows Service (Logon Type ${workstationDetails.logonType}) on '${primaryCaller}'.`;
-        recommendation = `Check Task Scheduler and Windows Services on '${primaryCaller}' for any entries configured to run under '${cleanUser}' with an outdated password.`;
+        recommendation = `Check Task Scheduler and Windows Services on '${primaryCaller}' for any entries configured to run under '${canonicalUser}' with an outdated password.`;
     } else if (workstationDetails?.logonType === 2) {
         rootCauseCategory = "WORKSTATION_INTERACTIVE";
         executiveSummary = `Account locked out by physical console / interactive logon attempts (Logon Type 2) on workstation '${primaryCaller}'.`;
@@ -850,7 +899,7 @@ export async function investigateAccountLockout(
         recommendation = `Investigate workstation/server '${primaryCaller}'. Check for cached credentials, background processes, or mapped resources.`;
     } else {
         rootCauseCategory = "UNKNOWN";
-        executiveSummary = `Detected ${events.length} authentication events for '${cleanUser}' across ${uniqueCallers.length || 1} source devices.`;
+        executiveSummary = `Detected ${events.length} authentication events for '${canonicalUser}' across ${uniqueCallers.length || 1} source devices.`;
         recommendation = "Review the failure event timeline below to identify repeating patterns and source machines.";
     }
 
@@ -858,7 +907,9 @@ export async function investigateAccountLockout(
     const timeline = buildTimelineBuckets(events, rangeHours);
 
     return {
-        searchedUser: cleanUser,
+        searchedUser: canonicalUser,
+        canonicalUser,
+        adUserDetails,
         rangeHours,
         hasLockout,
         lockoutCount,

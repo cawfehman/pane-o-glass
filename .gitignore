@@ -48,6 +48,7 @@ next-env.d.ts
 *.sqlite
 *.sqlite3
 .vpn_ping_samples.json
+data/
 
 # Playwright
 playwright-report/

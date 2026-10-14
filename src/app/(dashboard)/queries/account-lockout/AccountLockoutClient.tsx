@@ -93,8 +93,23 @@ interface FailureTimelineBucket {
     total: number;
 }
 
+interface AdUserDetails {
+    exists: boolean;
+    sAMAccountName?: string;
+    userPrincipalName?: string;
+    displayName: string;
+    department: string;
+    title: string;
+    phone: string;
+    email: string;
+    isEnabled?: boolean;
+    isLockedOut: boolean;
+}
+
 interface LockoutInvestigationResult {
     searchedUser: string;
+    canonicalUser?: string;
+    adUserDetails?: AdUserDetails | null;
     rangeHours: number;
     hasLockout: boolean;
     lockoutCount: number;
@@ -653,6 +668,44 @@ export default function AccountLockoutClient() {
                             </div>
                         </div>
                     </div>
+
+                    {/* Active Directory Identity & Real-Time Status Card */}
+                    {data.adUserDetails?.exists && (
+                        <div className="p-3.5 rounded-xl border border-indigo-500/30 bg-indigo-950/15 flex flex-wrap items-center justify-between gap-3 text-xs">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold shrink-0">
+                                    <Shield size={16} />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-bold text-text-primary text-sm">
+                                            {data.adUserDetails.displayName || data.searchedUser}
+                                        </span>
+                                        <span className="text-[11px] text-text-muted font-mono">
+                                            ({data.searchedUser})
+                                        </span>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                            data.adUserDetails.isLockedOut
+                                                ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                                                : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                                        }`}>
+                                            {data.adUserDetails.isLockedOut ? "AD Flag: LOCKED OUT" : "AD Flag: Normal (Not Locked)"}
+                                        </span>
+                                        {data.adUserDetails.isEnabled === false && (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-zinc-500/20 text-zinc-300 border-zinc-500/40">
+                                                Account Disabled
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-[11px] text-text-secondary mt-0.5 flex items-center gap-3 flex-wrap">
+                                        {data.adUserDetails.title && <span>Title: <strong className="text-zinc-200">{data.adUserDetails.title}</strong></span>}
+                                        {data.adUserDetails.department && <span>Dept: <strong className="text-zinc-200">{data.adUserDetails.department}</strong></span>}
+                                        {data.adUserDetails.email && <span>Email: <strong className="text-zinc-200">{data.adUserDetails.email}</strong></span>}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Active Lockout Loop Alert Banner */}
                     {data.unlockActivity?.isLoop && (
