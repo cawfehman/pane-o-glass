@@ -114,3 +114,4 @@ Access to `/queries/account-lockout` is governed by the Pane-o-Glass dynamic per
   - Page route displays a server-side `Access Denied` screen if unauthorized.
   - API endpoint (`/api/account-lockout/investigate`) enforces 403 Forbidden checks.
   - All investigation queries log an audit event (`ACCOUNT_LOCKOUT_INVESTIGATE`) to the database.
+  - All CSV forensic exports (both full event streams and filtered table slices) are permanently recorded to the audit trail under `ACCOUNT_LOCKOUT_EXPORT`, capturing the authenticated user, client IP address, target account, lookback window, record count, and active filter parameters.

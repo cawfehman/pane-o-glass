@@ -6,6 +6,7 @@ const ALLOWED_CLIENT_ACTIONS = new Set([
     "HIBP_DOMAIN_EXPORT",
     "HIBP_ACCOUNT_EXPORT",
     "HIBP_CAMPAIGN_STAGED",
+    "ACCOUNT_LOCKOUT_EXPORT",
 ]);
 
 export async function POST(request: Request) {

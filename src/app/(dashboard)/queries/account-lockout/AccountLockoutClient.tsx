@@ -15,6 +15,7 @@ import {
 import { PaginationControls } from "@/components/common/PaginationControls";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 import { ToolHelp } from "@/components/ToolHelp";
+import { sendClientAuditLog } from "@/lib/audit-client";
 
 interface AdSecurityEvent {
     id: string;
@@ -180,33 +181,6 @@ export default function AccountLockoutClient() {
         setTimeout(() => setCopiedId(null), 2000);
     };
 
-    const handleExportCsv = () => {
-        if (!data || data.events.length === 0) return;
-
-        const headers = ["Timestamp", "Event ID", "Event Title", "Target User", "Caller Device", "Source IP", "Domain Controller", "Logon Type", "SubStatus", "SubStatus Description"];
-        const rows = data.events.map(ev => [
-            `"${ev.timestamp}"`,
-            `"${ev.eventId}"`,
-            `"${ev.eventTitle}"`,
-            `"${ev.targetUser}"`,
-            `"${ev.callerDevice}"`,
-            `"${ev.sourceIp}"`,
-            `"${ev.domainController}"`,
-            `"${ev.logonTypeDesc || (ev.logonType !== undefined ? `Type ${ev.logonType}` : '')}"`,
-            `"${ev.subStatus || ''}"`,
-            `"${ev.subStatusDesc || ''}"`
-        ]);
-
-        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `account_lockout_${data.searchedUser}_${Date.now()}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
     // Unique callers from results
     const uniqueCallers = useMemo(() => {
         if (!data) return [];
@@ -364,6 +338,65 @@ export default function AccountLockoutClient() {
         setLogonTypeFilter("all");
         setTableSearch("");
         setPage(1);
+    };
+
+    const handleExportCsv = (onlyFiltered: boolean = false) => {
+        if (!data || data.events.length === 0) return;
+
+        const isFiltered = onlyFiltered && hasActiveFilters;
+        const eventsToExport = isFiltered ? filteredEvents : data.events;
+
+        if (eventsToExport.length === 0) return;
+
+        const headers = [
+            "Timestamp",
+            "Event ID",
+            "Event Title",
+            "Target User",
+            "Caller Device",
+            "Source IP",
+            "Domain Controller",
+            "Logon Type",
+            "SubStatus / Reason",
+            "Subject / Admin User",
+            "Target Service (SPN)",
+            "Calling Process"
+        ];
+
+        const rows = eventsToExport.map(ev => [
+            `"${ev.timestamp}"`,
+            `"${ev.eventId}"`,
+            `"${ev.eventTitle || ''}"`,
+            `"${ev.targetUser}"`,
+            `"${ev.callerDevice}"`,
+            `"${ev.sourceIp}"`,
+            `"${ev.domainController}"`,
+            `"${ev.logonTypeDesc || (ev.logonType !== undefined ? `Type ${ev.logonType}` : '')}"`,
+            `"${ev.subStatusDesc || ev.subStatus || ''}"`,
+            `"${ev.subjectUser || ''}"`,
+            `"${ev.serviceName || ''}"`,
+            `"${ev.processName || ''}"`
+        ]);
+
+        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        const filterTag = isFiltered ? "_filtered" : "";
+        link.setAttribute("download", `account_lockout_${data.searchedUser}${filterTag}_${Date.now()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Audit log the export action
+        const filterDetails = isFiltered
+            ? `Filtered view (${eventsToExport.length} of ${data.events.length} events, eventFilter: ${eventFilter}, callerFilter: ${callerFilter}, dcFilter: ${dcFilter})`
+            : `Full event stream (${eventsToExport.length} events)`;
+
+        sendClientAuditLog(
+            "ACCOUNT_LOCKOUT_EXPORT",
+            `Exported ${filterDetails} to CSV for user '${data.searchedUser}' (${data.rangeHours}h lookback). Lockouts: ${data.lockoutCount}, Failures: ${data.totalFailureEvents}, Primary Culprit: ${data.primaryCulprit.callerName}`
+        );
     };
 
     return (
@@ -602,12 +635,12 @@ export default function AccountLockoutClient() {
                                     Queried Target
                                 </span>
                                 <button
-                                    onClick={handleExportCsv}
+                                    onClick={() => handleExportCsv(false)}
                                     title="Export full event audit stream to CSV"
                                     className="text-xs text-accent-primary hover:underline flex items-center gap-1 cursor-pointer"
                                 >
                                     <Download size={13} />
-                                    <span>Export CSV</span>
+                                    <span>Export All CSV</span>
                                 </button>
                             </div>
                             <div className="mt-2">
@@ -1069,12 +1102,12 @@ export default function AccountLockoutClient() {
                             </div>
 
                             <button
-                                onClick={handleExportCsv}
-                                title="Export filtered events to CSV"
+                                onClick={() => handleExportCsv(true)}
+                                title={hasActiveFilters ? "Export filtered events to CSV" : "Export full event stream to CSV"}
                                 className="px-3 py-1.5 rounded-lg border border-border-color bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-hover)] text-text-primary text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm font-semibold ml-auto"
                             >
                                 <Download size={13} className="text-accent-primary" />
-                                <span>Export CSV</span>
+                                <span>{hasActiveFilters ? `Export Filtered (${filteredEvents.length})` : "Export CSV"}</span>
                             </button>
                         </div>
 

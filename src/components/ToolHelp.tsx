@@ -840,7 +840,7 @@ export const helpData: Record<string, TooltipDetails> = {
             },
             {
                 title: "Inline Forensic Event Inspection & CSV Export",
-                detail: "Clicking any event in the table expands an inline forensic drawer with structured metadata, calling process, SPN, and raw Windows event log message. 1-click export of filtered events to audit-ready CSV.",
+                detail: "Clicking any event in the table expands an inline forensic drawer with structured metadata, calling process, SPN, and raw Windows event log message. 1-click export of filtered or full event streams to CSV (permanently logged in the audit trail under ACCOUNT_LOCKOUT_EXPORT).",
                 tag: "Forensic Table"
             }
         ],
@@ -862,7 +862,7 @@ export const helpData: Record<string, TooltipDetails> = {
             "Inspect the Password Change Banner to confirm if lockouts started immediately after a password rotation.",
             "Review the Active Lockout Loop Banner before unlocking to verify the offending device has been stopped.",
             "Click [Copy Raw Log] inside an expanded row to copy the full domain controller event directly to your clipboard.",
-            "Click [Export CSV] to download the complete correlated investigation event log."
+            "Click [Export CSV] or [Export Filtered] to download correlated investigation events. (All exports are recorded in the system audit trail under ACCOUNT_LOCKOUT_EXPORT)."
         ],
         backgroundJobs: [
             "OG Graylog AD Stream: 5d72ac00b209026ab42decf9 (Active Directory Security Logs).",
