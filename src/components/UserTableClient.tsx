@@ -291,7 +291,14 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                         <td className="py-3 px-3">
                                             <select
                                                 value={editingUserData.role}
-                                                onChange={(e) => setEditingUserData({ ...editingUserData, role: e.target.value })}
+                                                onChange={(e) => {
+                                                    const newRole = e.target.value;
+                                                    setEditingUserData({
+                                                        ...editingUserData,
+                                                        role: newRole,
+                                                        isRoleOverridden: editingUserData.isExternal ? true : editingUserData.isRoleOverridden
+                                                    });
+                                                }}
                                                 className="w-full py-1.5 px-2 bg-bg-dark border border-border-color rounded-md text-text-primary text-xs outline-none focus:border-accent-primary cursor-pointer"
                                             >
                                                 <option value="USER">USER</option>
@@ -309,7 +316,14 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                                     <input
                                                         type="checkbox"
                                                         checked={editingUserData.isExternal}
-                                                        onChange={(e) => setEditingUserData({ ...editingUserData, isExternal: e.target.checked })}
+                                                        onChange={(e) => {
+                                                            const isExt = e.target.checked;
+                                                            setEditingUserData({
+                                                                ...editingUserData,
+                                                                isExternal: isExt,
+                                                                isRoleOverridden: isExt && editingUserData.role !== "USER" ? true : editingUserData.isRoleOverridden
+                                                            });
+                                                        }}
                                                     />
                                                     Active Directory / External Auth
                                                 </label>
@@ -319,7 +333,12 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                                         checked={editingUserData.isRoleOverridden}
                                                         onChange={(e) => setEditingUserData({ ...editingUserData, isRoleOverridden: e.target.checked })}
                                                     />
-                                                    Override AD Group Role
+                                                    <span>Override AD Group Role</span>
+                                                    {editingUserData.isRoleOverridden && (
+                                                        <span className="text-[10px] text-amber-400 font-bold bg-amber-500/10 px-1 rounded border border-amber-500/20">
+                                                            Locks Role from AD Reset
+                                                        </span>
+                                                    )}
                                                 </label>
                                             </div>
                                         </td>

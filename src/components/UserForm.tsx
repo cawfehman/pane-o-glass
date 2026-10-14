@@ -13,6 +13,7 @@ export default function UserForm({
 }) {
     const router = useRouter();
     const [isExternal, setIsExternal] = useState(user?.isExternal || false);
+    const [isRoleOverridden, setIsRoleOverridden] = useState(user?.isRoleOverridden || false);
     const [error, setError] = useState("");
     const [isPending, setIsPending] = useState(false);
 
@@ -26,6 +27,7 @@ export default function UserForm({
                 const form = document.getElementById("user-form") as HTMLFormElement;
                 form?.reset();
                 setIsExternal(false);
+                setIsRoleOverridden(false);
             } else {
                 await updateUser(user.id, formData);
                 router.push("/users");
@@ -83,6 +85,11 @@ export default function UserForm({
                     name="role" 
                     id="role" 
                     defaultValue={user?.role || "USER"}
+                    onChange={(e) => {
+                        if (isExternal && e.target.value !== "USER") {
+                            setIsRoleOverridden(true);
+                        }
+                    }}
                     disabled={isPending}
                     className="bg-bg-dark border border-border-color py-3 px-4 rounded-[var(--radius-sm)] text-text-primary outline-none font-inherit"
                 >
@@ -117,13 +124,42 @@ export default function UserForm({
                         name="isExternal" 
                         id="isExternal" 
                         checked={isExternal}
-                        onChange={(e) => setIsExternal(e.target.checked)}
+                        onChange={(e) => {
+                            const ext = e.target.checked;
+                            setIsExternal(ext);
+                            const roleSelect = document.getElementById("role") as HTMLSelectElement;
+                            if (ext && roleSelect && roleSelect.value !== "USER") {
+                                setIsRoleOverridden(true);
+                            }
+                        }}
                         className="w-4 h-4" 
                         disabled={isPending}
                     />
                     Use Active Directory (External)
                 </label>
             </div>
+
+            {isExternal && (
+                <div className="input-group">
+                    <label htmlFor="isRoleOverridden" className="flex items-center gap-2 cursor-pointer pb-2">
+                        <input 
+                            type="checkbox" 
+                            name="isRoleOverridden" 
+                            id="isRoleOverridden" 
+                            checked={isRoleOverridden}
+                            onChange={(e) => setIsRoleOverridden(e.target.checked)}
+                            className="w-4 h-4" 
+                            disabled={isPending}
+                        />
+                        <span>Override AD Group Role</span>
+                        {isRoleOverridden && (
+                            <span className="text-[10px] text-amber-400 font-bold bg-amber-500/10 px-1 rounded border border-amber-500/20">
+                                Locks Role
+                            </span>
+                        )}
+                    </label>
+                </div>
+            )}
 
             <div className="flex flex-col gap-2">
                 {error && <p className="text-red-500 text-xs">{error}</p>}

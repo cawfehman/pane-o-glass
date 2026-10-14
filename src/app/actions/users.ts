@@ -22,6 +22,10 @@ export async function createUser(formData: FormData) {
     const lastName = formData.get("lastName") as string || null;
     const role = formData.get("role") as string || "USER";
     const isExternal = formData.get("isExternal") === "on";
+    const isRoleOverriddenForm = formData.get("isRoleOverridden");
+    const isRoleOverridden = isRoleOverriddenForm !== null
+        ? isRoleOverriddenForm === "on"
+        : (isExternal && role !== "USER");
 
     if (!username) {
         throw new Error("Username is required");
@@ -40,11 +44,12 @@ export async function createUser(formData: FormData) {
             firstName,
             lastName,
             role,
-            isExternal
+            isExternal,
+            isRoleOverridden
         }
     });
 
-    await logAudit("USER_CREATE", `Created new user: ${username} (${firstName || ''} ${lastName || ''}) with role ${role}, isExternal: ${isExternal}`, session.user?.id || 'system');
+    await logAudit("USER_CREATE", `Created new user: ${username} (${firstName || ''} ${lastName || ''}) with role ${role}, isExternal: ${isExternal}, isRoleOverridden: ${isRoleOverridden}`, session.user?.id || 'system');
 
     revalidatePath("/users");
     return newUser;
@@ -101,8 +106,22 @@ export async function updateUser(id: string, formData: FormData) {
     if (firstName !== undefined) updateData.firstName = firstName || null;
     if (lastName !== undefined) updateData.lastName = lastName || null;
     if (role) updateData.role = role;
-    if (isExternal !== null) updateData.isExternal = isExternal === "on";
-    if (isRoleOverridden !== null) updateData.isRoleOverridden = isRoleOverridden === "on";
+    
+    const newIsExternal = isExternal !== null ? isExternal === "on" : userToUpdate?.isExternal;
+    if (isExternal !== null) updateData.isExternal = newIsExternal;
+
+    // Automatic role override handling:
+    // If an admin assigns/changes role on an external user, automatically lock isRoleOverridden
+    // so Active Directory group sync does not clobber the administrator's assignment on next login.
+    let finalOverride = userToUpdate?.isRoleOverridden ?? false;
+    if (isRoleOverridden !== null) {
+        finalOverride = isRoleOverridden === "on";
+    }
+    if (role && (role !== userToUpdate?.role || role !== "USER") && newIsExternal) {
+        finalOverride = true;
+    }
+    updateData.isRoleOverridden = finalOverride;
+
     if (password) {
         updateData.password = await bcrypt.hash(password, 10);
     }

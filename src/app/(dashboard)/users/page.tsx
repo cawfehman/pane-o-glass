@@ -12,6 +12,31 @@ export default async function UsersPage() {
         redirect('/');
     }
 
+    // Auto-heal external accounts that were updated by an admin to SYSTEMS but reverted by AD sync
+    await prisma.user.updateMany({
+        where: {
+            username: { in: ['grosz-robert', 'dipalma-vincent'] },
+            role: 'USER',
+            isExternal: true
+        },
+        data: {
+            role: 'SYSTEMS',
+            isRoleOverridden: true
+        }
+    });
+
+    // Auto-protect any external user holding an elevated role against future AD clobbering
+    await prisma.user.updateMany({
+        where: {
+            isExternal: true,
+            role: { not: 'USER' },
+            isRoleOverridden: false
+        },
+        data: {
+            isRoleOverridden: true
+        }
+    });
+
     const users = await prisma.user.findMany({
         include: {
             toolOverrides: true

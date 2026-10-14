@@ -97,11 +97,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                             if (!adRole) {
                                 console.log(`[AUTH] AD user ${cleanUsername} is not in any InfoSecTools groups. Falling back to database role: ${user.role}`);
                             } else if (user.role !== adRole) {
-                                console.log(`[AUTH] Updating AD user ${user.username} role from ${user.role} to ${adRole}`);
-                                user = await prisma.user.update({
-                                    where: { id: user.id },
-                                    data: { role: adRole }
-                                });
+                                // If the user has a specialized role in the database (e.g. SYSTEMS, IAM, ANALYST, etc.)
+                                // and the AD group returned is merely the generic baseline "USER", do not demote them.
+                                // Instead, preserve their assigned role and lock isRoleOverridden so it stays permanent.
+                                if (adRole === "USER" && user.role !== "USER") {
+                                    console.log(`[AUTH] Preserving specialized database role '${user.role}' for AD user ${user.username} (locking role against default 'USER' group)`);
+                                    user = await prisma.user.update({
+                                        where: { id: user.id },
+                                        data: { isRoleOverridden: true }
+                                    });
+                                } else {
+                                    console.log(`[AUTH] Updating AD user ${user.username} role from ${user.role} to ${adRole}`);
+                                    user = await prisma.user.update({
+                                        where: { id: user.id },
+                                        data: { role: adRole }
+                                    });
+                                }
                             }
                         }
                     } else {
