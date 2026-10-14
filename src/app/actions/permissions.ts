@@ -81,47 +81,239 @@ export async function updateToolPermission(toolId: string, role: string, isEnabl
     }
 }
 
+export const SYSTEM_DEFAULT_PERMISSIONS_MAP: Record<string, Record<string, boolean>> = {
+    'firewall': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: true, SYSTEMS: false, USER: false },
+    'ise': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'ise-tacacs': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'vpn': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'vpn-reporting': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'vpn-s2s': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'netscaler': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'ironport': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
+    'bec': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
+    'etd': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
+    'hibp-account': { ADMIN: true, ANALYST: true, IAM: true, NETWORK: true, DESKTOP: true, SYSTEMS: true, USER: true },
+    'hibp-domain': { ADMIN: true, ANALYST: false, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
+    'vectra': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: false, USER: false },
+    'crawler': { ADMIN: true, ANALYST: false, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'threat-intel': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: true, DESKTOP: false, SYSTEMS: false, USER: false },
+    'notification-center': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: true, USER: false },
+    'graylog-exporter': { ADMIN: true, ANALYST: true, IAM: false, NETWORK: false, DESKTOP: false, SYSTEMS: false, USER: false },
+    'account-lockout': { ADMIN: true, ANALYST: true, IAM: true, NETWORK: true, DESKTOP: true, SYSTEMS: true, USER: false }
+};
+
+export async function getResolvedRoleDefaults(): Promise<{
+    defaults: Record<string, Record<string, boolean>>;
+    isCustomized: boolean;
+    customCount: number;
+}> {
+    try {
+        const customDefaults = await prisma.roleDefaultPermission.findMany();
+        const map: Record<string, Record<string, boolean>> = {};
+        
+        for (const [toolId, roleMap] of Object.entries(SYSTEM_DEFAULT_PERMISSIONS_MAP)) {
+            map[toolId] = { ...roleMap };
+        }
+
+        for (const d of customDefaults) {
+            if (!map[d.toolId]) map[d.toolId] = {};
+            map[d.toolId][d.role] = d.isEnabled;
+        }
+
+        return {
+            defaults: map,
+            isCustomized: customDefaults.length > 0,
+            customCount: customDefaults.length,
+        };
+    } catch (e) {
+        logInternalError("Error resolving role defaults", e);
+        return {
+            defaults: SYSTEM_DEFAULT_PERMISSIONS_MAP,
+            isCustomized: false,
+            customCount: 0,
+        };
+    }
+}
+
+export async function getRoleDefaultPermissions() {
+    noStore();
+    await ensureAdmin();
+    return await getResolvedRoleDefaults();
+}
+
+export async function updateRoleDefaultPermission(toolId: string, role: string, isEnabled: boolean) {
+    const session = await ensureAdmin();
+    const roleUpper = String(role).toUpperCase();
+    try {
+        await prisma.roleDefaultPermission.upsert({
+            where: {
+                toolId_role: { toolId, role: roleUpper }
+            },
+            update: { isEnabled },
+            create: { toolId, role: roleUpper, isEnabled }
+        });
+
+        await logAudit(
+            "ROLE_DEFAULT_PERMISSION_CHANGE",
+            `Updated system role default for tool '${toolId}' on role '${roleUpper}' to ${isEnabled ? 'ENABLED' : 'DISABLED'}`,
+            session?.user?.id
+        );
+
+        revalidatePath("/", "layout");
+        revalidatePath("/users/permissions", "page");
+        return { success: true };
+    } catch (error) {
+        logInternalError("Error updating role default permission", error);
+        throw error;
+    }
+}
+
+export async function saveAllRoleDefaultPermissions(
+    defaults: Record<string, Record<string, boolean>>,
+    applyToActive: boolean = false
+) {
+    const session = await ensureAdmin();
+    try {
+        let updateCount = 0;
+        for (const [toolId, roleMap] of Object.entries(defaults)) {
+            for (const [role, isEnabled] of Object.entries(roleMap)) {
+                const roleUpper = role.toUpperCase();
+                await prisma.roleDefaultPermission.upsert({
+                    where: { toolId_role: { toolId, role: roleUpper } },
+                    update: { isEnabled },
+                    create: { toolId, role: roleUpper, isEnabled }
+                });
+                updateCount++;
+
+                if (applyToActive) {
+                    await prisma.toolPermission.upsert({
+                        where: { toolId_role: { toolId, role: roleUpper } },
+                        update: { isEnabled },
+                        create: { toolId, role: roleUpper, isEnabled }
+                    });
+                }
+            }
+        }
+
+        const auditMsg = `Saved ${updateCount} system role defaults in database${applyToActive ? ' (and synchronized active permissions)' : ''}`;
+        await logAudit("ROLE_DEFAULTS_UPDATE", auditMsg, session?.user?.id);
+
+        revalidatePath("/", "layout");
+        revalidatePath("/queries", "page");
+        revalidatePath("/users/permissions", "page");
+        return { success: true, count: updateCount };
+    } catch (error) {
+        logInternalError("Error saving all role default permissions", error);
+        throw error;
+    }
+}
+
+export async function saveCurrentAsRoleDefaults() {
+    const session = await ensureAdmin();
+    try {
+        const activePermissions = await prisma.toolPermission.findMany();
+        const activeMap: Record<string, Record<string, boolean>> = {};
+        for (const p of activePermissions) {
+            if (!activeMap[p.toolId]) activeMap[p.toolId] = {};
+            activeMap[p.toolId][p.role] = p.isEnabled;
+        }
+
+        const merged: Record<string, Record<string, boolean>> = {};
+        for (const [toolId, roleMap] of Object.entries(SYSTEM_DEFAULT_PERMISSIONS_MAP)) {
+            merged[toolId] = { ...roleMap };
+        }
+        for (const [toolId, roleMap] of Object.entries(activeMap)) {
+            if (!merged[toolId]) merged[toolId] = {};
+            for (const [role, isEnabled] of Object.entries(roleMap)) {
+                merged[toolId][role] = isEnabled;
+            }
+        }
+
+        let count = 0;
+        for (const [toolId, roleMap] of Object.entries(merged)) {
+            for (const [role, isEnabled] of Object.entries(roleMap)) {
+                await prisma.roleDefaultPermission.upsert({
+                    where: { toolId_role: { toolId, role: role.toUpperCase() } },
+                    update: { isEnabled },
+                    create: { toolId, role: role.toUpperCase(), isEnabled }
+                });
+                count++;
+            }
+        }
+
+        await logAudit(
+            "ROLE_DEFAULTS_UPDATE",
+            `Promoted current active tool permissions (${count} tool/role cells) as authoritative system role defaults`,
+            session?.user?.id
+        );
+
+        revalidatePath("/", "layout");
+        revalidatePath("/users/permissions", "page");
+        return { success: true, count };
+    } catch (error) {
+        logInternalError("Error promoting active permissions as defaults", error);
+        throw error;
+    }
+}
+
+export async function resetRoleDefaultsToFactory() {
+    const session = await ensureAdmin();
+    try {
+        const deleted = await prisma.roleDefaultPermission.deleteMany({});
+        await logAudit(
+            "ROLE_DEFAULTS_FACTORY_RESET",
+            `Reverted system role defaults back to factory baseline (${deleted.count} custom default records deleted)`,
+            session?.user?.id
+        );
+
+        revalidatePath("/", "layout");
+        revalidatePath("/users/permissions", "page");
+        return { success: true, count: deleted.count };
+    } catch (error) {
+        logInternalError("Error resetting role defaults to factory", error);
+        throw error;
+    }
+}
+
 export async function getPermissionsForRole(role: string) {
     noStore();
     try {
-        const permissions = await prisma.toolPermission.findMany({
-            where: { role: String(role).toUpperCase(), isEnabled: true }
-        });
-        const list = permissions.map((p: any) => p.toolId as string);
         const roleUpper = String(role).toUpperCase();
-        if ((roleUpper === 'ADMIN' || roleUpper === 'ANALYST') && !list.includes('graylog-exporter')) {
-            const explicitlyDisabled = await prisma.toolPermission.findFirst({
-                where: { role: roleUpper, toolId: 'graylog-exporter', isEnabled: false }
-            });
-            if (!explicitlyDisabled) {
-                list.push('graylog-exporter');
+        const permissions = await prisma.toolPermission.findMany({
+            where: { role: roleUpper }
+        });
+
+        const configured = new Map<string, boolean>();
+        for (const p of permissions) {
+            configured.set(p.toolId, p.isEnabled);
+        }
+
+        const { defaults } = await getResolvedRoleDefaults();
+        const allowedTools = new Set<string>();
+
+        for (const [toolId, roleMap] of Object.entries(defaults)) {
+            if (configured.has(toolId)) {
+                if (configured.get(toolId)) allowedTools.add(toolId);
+            } else {
+                if (roleMap[roleUpper]) allowedTools.add(toolId);
             }
         }
-        if ((roleUpper === 'ADMIN' || roleUpper === 'ANALYST' || roleUpper === 'NETWORK') && !list.includes('vpn-s2s')) {
-            const explicitlyDisabled = await prisma.toolPermission.findFirst({
-                where: { role: roleUpper, toolId: 'vpn-s2s', isEnabled: false }
-            });
-            if (!explicitlyDisabled) {
-                list.push('vpn-s2s');
-            }
+
+        // Additional legacy tool fallbacks if needed
+        if ((roleUpper === 'ADMIN' || roleUpper === 'ANALYST') && !configured.has('graylog-exporter')) {
+            allowedTools.add('graylog-exporter');
         }
-        if (roleUpper !== 'USER' && !list.includes('account-lockout')) {
-            const explicitlyDisabled = await prisma.toolPermission.findFirst({
-                where: { role: roleUpper, toolId: 'account-lockout', isEnabled: false }
-            });
-            if (!explicitlyDisabled) {
-                list.push('account-lockout');
-            }
+        if ((roleUpper === 'ADMIN' || roleUpper === 'ANALYST' || roleUpper === 'NETWORK') && !configured.has('vpn-s2s')) {
+            allowedTools.add('vpn-s2s');
         }
-        if ((roleUpper === 'USER' || roleUpper === 'IAM') && !list.includes('hibp-account')) {
-            const explicitlyDisabled = await prisma.toolPermission.findFirst({
-                where: { role: roleUpper, toolId: 'hibp-account', isEnabled: false }
-            });
-            if (!explicitlyDisabled) {
-                list.push('hibp-account');
-            }
+        if (roleUpper !== 'USER' && !configured.has('account-lockout')) {
+            allowedTools.add('account-lockout');
         }
-        return list;
+        if ((roleUpper === 'USER' || roleUpper === 'IAM') && !configured.has('hibp-account')) {
+            allowedTools.add('hibp-account');
+        }
+
+        return Array.from(allowedTools);
     } catch (error) {
         logInternalError(`Error fetching permissions for role ${role}`, error);
         return [];
@@ -178,66 +370,49 @@ export async function hasPermission(role: string, toolId: string, userId?: strin
             }
         }
 
-        const targetId = (toolId === 'ise-failures' || toolId === 'ise-tacacs') ? 'ise' : toolId;
-        
-        // Check explicit permission for toolId first
-        let permission = await prisma.toolPermission.findFirst({
-            where: { 
-                role: String(role).toUpperCase(), 
-                toolId: targetId, 
-                isEnabled: true 
-            }
-        });
+        const roleUpper = String(role).toUpperCase();
+        const checkIds = [toolId];
+        if (toolId === 'ise-tacacs' || toolId === 'ise-failures') checkIds.push('ise');
+        if (toolId === 'etd' || toolId === 'bec') checkIds.push('ironport');
 
-        // Fallback for ETD and BEC: if no explicit entry exists, default to IronPort permission
-        if (!permission && (toolId === 'etd' || toolId === 'bec')) {
-            permission = await prisma.toolPermission.findFirst({
+        for (const tid of checkIds) {
+            const permission = await prisma.toolPermission.findFirst({
                 where: {
-                    role: String(role).toUpperCase(),
-                    toolId: 'ironport',
-                    isEnabled: true
+                    role: roleUpper,
+                    toolId: tid,
                 }
             });
-        }
-
-        // Fallback for graylog-exporter: if no explicit entry exists, default to true for ANALYST and ADMIN
-        if (!permission && toolId === 'graylog-exporter') {
-            const roleUpper = String(role).toUpperCase();
-            if (roleUpper === 'ADMIN' || roleUpper === 'ANALYST') {
-                return true;
+            if (permission !== null) {
+                return permission.isEnabled;
             }
         }
 
-        // Fallback for vpn-s2s: if no explicit entry exists, default to true for ADMIN, ANALYST, and NETWORK
-        if (!permission && toolId === 'vpn-s2s') {
-            const roleUpper = String(role).toUpperCase();
-            if (roleUpper === 'ADMIN' || roleUpper === 'ANALYST' || roleUpper === 'NETWORK') {
-                return true;
-            }
-        }
-
-        // Fallback for account-lockout: default to true for everyone except USER
-        if (!permission && toolId === 'account-lockout') {
-            const roleUpper = String(role).toUpperCase();
-            if (roleUpper === 'USER') return false;
-            const explicitlyDisabled = await prisma.toolPermission.findFirst({
-                where: { role: roleUpper, toolId: 'account-lockout', isEnabled: false }
+        // Check RoleDefaultPermission
+        for (const tid of checkIds) {
+            const customDefault = await prisma.roleDefaultPermission.findUnique({
+                where: {
+                    toolId_role: { toolId: tid, role: roleUpper }
+                }
             });
-            return !explicitlyDisabled;
-        }
-
-        // Fallback for hibp-account: default to true for IAM and USER
-        if (!permission && toolId === 'hibp-account') {
-            const roleUpper = String(role).toUpperCase();
-            if (roleUpper === 'IAM' || roleUpper === 'USER') {
-                const explicitlyDisabled = await prisma.toolPermission.findFirst({
-                    where: { role: roleUpper, toolId: 'hibp-account', isEnabled: false }
-                });
-                return !explicitlyDisabled;
+            if (customDefault !== null) {
+                return customDefault.isEnabled;
             }
         }
 
-        return !!permission;
+        // Fallback to SYSTEM_DEFAULT_PERMISSIONS_MAP
+        for (const tid of checkIds) {
+            if (SYSTEM_DEFAULT_PERMISSIONS_MAP[tid]?.[roleUpper] !== undefined) {
+                return SYSTEM_DEFAULT_PERMISSIONS_MAP[tid][roleUpper];
+            }
+        }
+
+        // Hard-coded legacy fallbacks
+        if (toolId === 'graylog-exporter' && (roleUpper === 'ADMIN' || roleUpper === 'ANALYST')) return true;
+        if (toolId === 'vpn-s2s' && (roleUpper === 'ADMIN' || roleUpper === 'ANALYST' || roleUpper === 'NETWORK')) return true;
+        if (toolId === 'account-lockout' && roleUpper !== 'USER') return true;
+        if (toolId === 'hibp-account' && (roleUpper === 'IAM' || roleUpper === 'USER')) return true;
+
+        return false;
     } catch (error) {
         logInternalError(`Error checking permission ${toolId} for role ${role}`, error);
         return false;
@@ -418,163 +593,38 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             await prisma.toolPermission.deleteMany({});
         }
 
-        const DEFAULT_PERMISSIONS = [
-            { toolId: 'firewall', role: 'ADMIN', isEnabled: true },
-            { toolId: 'ise', role: 'ADMIN', isEnabled: true },
-            { toolId: 'ise-tacacs', role: 'ADMIN', isEnabled: true },
-            { toolId: 'hibp-account', role: 'ADMIN', isEnabled: true },
-            { toolId: 'hibp-domain', role: 'ADMIN', isEnabled: true },
-            { toolId: 'vpn', role: 'ADMIN', isEnabled: true },
-            { toolId: 'vpn-reporting', role: 'ADMIN', isEnabled: true },
-            { toolId: 'vpn-s2s', role: 'ADMIN', isEnabled: true },
-            { toolId: 'threat-intel', role: 'ADMIN', isEnabled: true },
-            { toolId: 'ironport', role: 'ADMIN', isEnabled: true },
-            { toolId: 'bec', role: 'ADMIN', isEnabled: true },
-            { toolId: 'etd', role: 'ADMIN', isEnabled: true },
-            { toolId: 'crawler', role: 'ADMIN', isEnabled: true },
-            { toolId: 'netscaler', role: 'ADMIN', isEnabled: true },
-            { toolId: 'graylog-exporter', role: 'ADMIN', isEnabled: true },
-            { toolId: 'account-lockout', role: 'ADMIN', isEnabled: true },
+        const { defaults } = await getResolvedRoleDefaults();
+        const permissionsToCreate: { toolId: string; role: string; isEnabled: boolean }[] = [];
 
-            { toolId: 'firewall', role: 'ANALYST', isEnabled: true },
-            { toolId: 'ise', role: 'ANALYST', isEnabled: true },
-            { toolId: 'ise-tacacs', role: 'ANALYST', isEnabled: true },
-            { toolId: 'hibp-account', role: 'ANALYST', isEnabled: true },
-            { toolId: 'hibp-domain', role: 'ANALYST', isEnabled: false },
-            { toolId: 'vpn', role: 'ANALYST', isEnabled: true },
-            { toolId: 'vpn-reporting', role: 'ANALYST', isEnabled: true },
-            { toolId: 'vpn-s2s', role: 'ANALYST', isEnabled: true },
-            { toolId: 'threat-intel', role: 'ANALYST', isEnabled: true },
-            { toolId: 'ironport', role: 'ANALYST', isEnabled: true },
-            { toolId: 'bec', role: 'ANALYST', isEnabled: true },
-            { toolId: 'etd', role: 'ANALYST', isEnabled: true },
-            { toolId: 'crawler', role: 'ANALYST', isEnabled: false },
-            { toolId: 'netscaler', role: 'ANALYST', isEnabled: true },
-            { toolId: 'graylog-exporter', role: 'ANALYST', isEnabled: true },
-            { toolId: 'account-lockout', role: 'ANALYST', isEnabled: true },
-
-            { toolId: 'firewall', role: 'USER', isEnabled: false },
-            { toolId: 'ise', role: 'USER', isEnabled: false },
-            { toolId: 'ise-tacacs', role: 'USER', isEnabled: false },
-            { toolId: 'hibp-account', role: 'USER', isEnabled: true },
-            { toolId: 'hibp-domain', role: 'USER', isEnabled: false },
-            { toolId: 'vpn', role: 'USER', isEnabled: false },
-            { toolId: 'vpn-reporting', role: 'USER', isEnabled: false },
-            { toolId: 'vpn-s2s', role: 'USER', isEnabled: false },
-            { toolId: 'threat-intel', role: 'USER', isEnabled: false },
-            { toolId: 'ironport', role: 'USER', isEnabled: false },
-            { toolId: 'bec', role: 'USER', isEnabled: false },
-            { toolId: 'etd', role: 'USER', isEnabled: false },
-            { toolId: 'crawler', role: 'USER', isEnabled: false },
-            { toolId: 'netscaler', role: 'USER', isEnabled: false },
-            { toolId: 'graylog-exporter', role: 'USER', isEnabled: false },
-            { toolId: 'account-lockout', role: 'USER', isEnabled: false },
-
-            { toolId: 'firewall', role: 'NETWORK', isEnabled: true },
-            { toolId: 'ise', role: 'NETWORK', isEnabled: true },
-            { toolId: 'ise-tacacs', role: 'NETWORK', isEnabled: true },
-            { toolId: 'hibp-account', role: 'NETWORK', isEnabled: true },
-            { toolId: 'hibp-domain', role: 'NETWORK', isEnabled: false },
-            { toolId: 'vpn', role: 'NETWORK', isEnabled: true },
-            { toolId: 'vpn-reporting', role: 'NETWORK', isEnabled: true },
-            { toolId: 'vpn-s2s', role: 'NETWORK', isEnabled: true },
-            { toolId: 'threat-intel', role: 'NETWORK', isEnabled: true },
-            { toolId: 'ironport', role: 'NETWORK', isEnabled: false },
-            { toolId: 'bec', role: 'NETWORK', isEnabled: false },
-            { toolId: 'etd', role: 'NETWORK', isEnabled: false },
-            { toolId: 'crawler', role: 'NETWORK', isEnabled: true },
-            { toolId: 'netscaler', role: 'NETWORK', isEnabled: true },
-            { toolId: 'graylog-exporter', role: 'NETWORK', isEnabled: false },
-            { toolId: 'account-lockout', role: 'NETWORK', isEnabled: true },
-
-            { toolId: 'firewall', role: 'DESKTOP', isEnabled: true },
-            { toolId: 'ise', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'ise-tacacs', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'hibp-account', role: 'DESKTOP', isEnabled: true },
-            { toolId: 'hibp-domain', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'vpn', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'vpn-s2s', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'threat-intel', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'ironport', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'bec', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'netscaler', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'etd', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'crawler', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'graylog-exporter', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'account-lockout', role: 'DESKTOP', isEnabled: true },
-
-            { toolId: 'firewall', role: 'SYSTEMS', isEnabled: false },
-            { toolId: 'ise', role: 'SYSTEMS', isEnabled: false },
-            { toolId: 'ise-tacacs', role: 'SYSTEMS', isEnabled: false },
-            { toolId: 'hibp-account', role: 'SYSTEMS', isEnabled: true },
-            { toolId: 'hibp-domain', role: 'SYSTEMS', isEnabled: true },
-            { toolId: 'vpn', role: 'SYSTEMS', isEnabled: false },
-            { toolId: 'threat-intel', role: 'SYSTEMS', isEnabled: false },
-            { toolId: 'ironport', role: 'SYSTEMS', isEnabled: true },
-            { toolId: 'bec', role: 'SYSTEMS', isEnabled: true },
-            { toolId: 'etd', role: 'SYSTEMS', isEnabled: true },
-            { toolId: 'crawler', role: 'SYSTEMS', isEnabled: false },
-            { toolId: 'graylog-exporter', role: 'SYSTEMS', isEnabled: false },
-            { toolId: 'account-lockout', role: 'SYSTEMS', isEnabled: true },
-
-            { toolId: 'firewall', role: 'IAM', isEnabled: false },
-            { toolId: 'ise', role: 'IAM', isEnabled: false },
-            { toolId: 'ise-tacacs', role: 'IAM', isEnabled: false },
-            { toolId: 'hibp-account', role: 'IAM', isEnabled: true },
-            { toolId: 'hibp-domain', role: 'IAM', isEnabled: false },
-            { toolId: 'vpn', role: 'IAM', isEnabled: false },
-            { toolId: 'vpn-reporting', role: 'IAM', isEnabled: false },
-            { toolId: 'vpn-s2s', role: 'IAM', isEnabled: false },
-            { toolId: 'threat-intel', role: 'IAM', isEnabled: false },
-            { toolId: 'ironport', role: 'IAM', isEnabled: false },
-            { toolId: 'bec', role: 'IAM', isEnabled: false },
-            { toolId: 'etd', role: 'IAM', isEnabled: false },
-            { toolId: 'crawler', role: 'IAM', isEnabled: false },
-            { toolId: 'netscaler', role: 'IAM', isEnabled: false },
-            { toolId: 'graylog-exporter', role: 'IAM', isEnabled: false },
-            { toolId: 'account-lockout', role: 'IAM', isEnabled: true },
-            { toolId: 'vectra', role: 'IAM', isEnabled: false },
-            { toolId: 'notification-center', role: 'IAM', isEnabled: false },
-
-            { toolId: 'vectra', role: 'ADMIN', isEnabled: true },
-            { toolId: 'vectra', role: 'ANALYST', isEnabled: true },
-            { toolId: 'vectra', role: 'USER', isEnabled: false },
-            { toolId: 'vectra', role: 'NETWORK', isEnabled: false },
-            { toolId: 'vectra', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'vectra', role: 'SYSTEMS', isEnabled: false },
-
-            { toolId: 'notification-center', role: 'ADMIN', isEnabled: true },
-            { toolId: 'notification-center', role: 'ANALYST', isEnabled: true },
-            { toolId: 'notification-center', role: 'USER', isEnabled: false },
-            { toolId: 'notification-center', role: 'NETWORK', isEnabled: false },
-            { toolId: 'notification-center', role: 'DESKTOP', isEnabled: false },
-            { toolId: 'notification-center', role: 'SYSTEMS', isEnabled: true }
-        ];
-
-        let filteredPermissions = DEFAULT_PERMISSIONS;
-        if (rolesToReset && toolsToReset) {
-            filteredPermissions = DEFAULT_PERMISSIONS.filter(p => rolesToReset.includes(p.role) && toolsToReset.includes(p.toolId));
-        } else if (rolesToReset) {
-            filteredPermissions = DEFAULT_PERMISSIONS.filter(p => rolesToReset.includes(p.role));
-        } else if (toolsToReset) {
-            filteredPermissions = DEFAULT_PERMISSIONS.filter(p => toolsToReset.includes(p.toolId));
+        for (const [toolId, roleMap] of Object.entries(defaults)) {
+            if (toolsToReset && !toolsToReset.includes(toolId)) continue;
+            for (const [role, isEnabled] of Object.entries(roleMap)) {
+                if (rolesToReset && !rolesToReset.includes(role)) continue;
+                permissionsToCreate.push({ toolId, role, isEnabled });
+            }
         }
 
-        for (const perm of filteredPermissions) {
-            await prisma.toolPermission.create({ data: perm });
+        for (const perm of permissionsToCreate) {
+            await prisma.toolPermission.upsert({
+                where: { toolId_role: { toolId: perm.toolId, role: perm.role } },
+                update: { isEnabled: perm.isEnabled },
+                create: perm,
+            });
         }
 
-        let auditMsg = "Admin reset all tool permissions to defaults";
+        let auditMsg = "Admin reset all tool permissions to role defaults";
         if (rolesToReset && toolsToReset) {
-            auditMsg = `Admin reset tool permissions for roles [${rolesToReset.join(', ')}] on tools [${toolsToReset.join(', ')}]`;
+            auditMsg = `Admin reset tool permissions for roles [${rolesToReset.join(', ')}] on tools [${toolsToReset.join(', ')}] to role defaults`;
         } else if (rolesToReset) {
-            auditMsg = `Admin reset tool permissions for roles: ${rolesToReset.join(', ')}`;
+            auditMsg = `Admin reset tool permissions for roles: ${rolesToReset.join(', ')} to role defaults`;
         } else if (toolsToReset) {
-            auditMsg = `Admin reset tool permissions for tools: ${toolsToReset.join(', ')}`;
+            auditMsg = `Admin reset tool permissions for tools: ${toolsToReset.join(', ')} to role defaults`;
         }
 
         await logAudit("PERMISSION_RESET", auditMsg, session?.user?.id);
         revalidatePath("/", "layout");
+        revalidatePath("/queries", "page");
+        revalidatePath("/users/permissions", "page");
         return { success: true };
     } catch (error) {
         logInternalError("Error resetting permissions", error);

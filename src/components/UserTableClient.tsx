@@ -29,6 +29,7 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
         isRoleOverridden: false,
     });
     const [actionLoading, setActionLoading] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
     const [confirmModal, setConfirmModal] = useState<{
         isOpen: boolean;
         title: string;
@@ -44,6 +45,7 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
     });
 
     React.useEffect(() => {
+        setIsMounted(true);
         setUsers(initialUsers);
     }, [initialUsers]);
 
@@ -398,11 +400,13 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                             )}
                                         </div>
                                     </td>
-                                    <td className="p-3 text-text-muted text-xs">
-                                        {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : "Never"}
+                                    <td className="p-3 text-text-muted text-xs" suppressHydrationWarning>
+                                        {user.lastLogin
+                                            ? (isMounted ? new Date(user.lastLogin).toLocaleString() : (typeof user.lastLogin === 'string' ? user.lastLogin.replace('T', ' ').substring(0, 19) : "Never"))
+                                            : "Never"}
                                     </td>
-                                    <td className="p-3 text-text-muted text-xs">
-                                        {new Date(user.createdAt).toLocaleDateString()}
+                                    <td className="p-3 text-text-muted text-xs" suppressHydrationWarning>
+                                        {isMounted ? new Date(user.createdAt).toLocaleDateString() : (typeof user.createdAt === 'string' ? user.createdAt.split('T')[0] : "")}
                                     </td>
                                     <td className="p-3 text-right">
                                         <div className="flex justify-end gap-2 items-center">

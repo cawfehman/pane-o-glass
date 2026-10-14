@@ -19,6 +19,18 @@ export default async function UsersPage() {
         orderBy: { username: 'asc' }
     });
 
+    const serializedUsers = users.map(u => ({
+        ...u,
+        createdAt: u.createdAt.toISOString(),
+        updatedAt: u.updatedAt.toISOString(),
+        lastLogin: u.lastLogin ? u.lastLogin.toISOString() : null,
+        toolOverrides: (u.toolOverrides || []).map(o => ({
+            ...o,
+            createdAt: o.createdAt.toISOString(),
+            updatedAt: o.updatedAt.toISOString(),
+        }))
+    }));
+
     return (
         <div className="internal-scroll-layout">
             <div className="shrink-0">
@@ -35,7 +47,7 @@ export default async function UsersPage() {
             <div className="glass-card flex-1 flex flex-col min-h-0">
                 <h3 className="mb-4 shrink-0">Existing Accounts</h3>
                 <div className="flex-1 overflow-auto">
-                    <UserTableClient initialUsers={users} />
+                    <UserTableClient initialUsers={serializedUsers} />
                 </div>
             </div>
         </div>

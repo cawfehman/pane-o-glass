@@ -73,6 +73,18 @@ model ToolPermission {
   @@unique([toolId, role])
 }
 
+model RoleDefaultPermission {
+  id        String   @id @default(cuid())
+  toolId    String   // e.g. "firewall", "ise", "account-lockout"
+  role      String   // "ADMIN", "ANALYST", "IAM", "NETWORK", "DESKTOP", "SYSTEMS", "USER"
+  isEnabled Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([toolId, role])
+  @@index([role])
+}
+
 model UserToolOverride {
   id        String   @id @default(cuid())
   userId    String
