@@ -891,7 +891,8 @@ export default function SystemHealthPage() {
                                         "Audit Log Cleanup": 24 * 60 * 60 * 1000,
                                         "Telemetry Collector": 5 * 60 * 1000,
                                         "VPN Health Probes": 5 * 60 * 1000,
-                                        "AnyConnect Cache Pre-Warm": 2 * 60 * 1000
+                                        "AnyConnect Cache Pre-Warm": 2 * 60 * 1000,
+                                        "AD Lifecycle & Password Sync": 10 * 60 * 1000
                                     };
                                     
                                     const lastRunTime = new Date(job.lastRun).getTime();

@@ -261,7 +261,8 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
         campaignRecipientCount,
         campaignCount,
         queryHistoryCount,
-        userCount
+        userCount,
+        lifecycleCount
     ] = await Promise.all([
         prisma.vpnEvent.count().catch(() => 0),
         prisma.auditLog.count().catch(() => 0),
@@ -270,14 +271,16 @@ export async function getSqliteTelemetry(): Promise<SqliteTelemetryData> {
         prisma.campaignRecipient.count().catch(() => 0),
         prisma.notificationCampaign.count().catch(() => 0),
         prisma.firewallQueryHistory.count().catch(() => 0),
-        prisma.user.count().catch(() => 0)
+        prisma.user.count().catch(() => 0),
+        prisma.accountLifecycleEvent.count().catch(() => 0)
     ]);
 
-    const totalRows = vpnCount + auditCount + ipCacheCount + shunIpCount + campaignRecipientCount + campaignCount + queryHistoryCount + userCount;
+    const totalRows = vpnCount + auditCount + ipCacheCount + shunIpCount + campaignRecipientCount + campaignCount + queryHistoryCount + userCount + lifecycleCount;
 
     const rawTables = [
         { name: "VpnEvent (VPN Logs)", count: vpnCount },
         { name: "AuditLog (Security Audits)", count: auditCount },
+        { name: "AccountLifecycleEvent (AD Events)", count: lifecycleCount },
         { name: "IpLookupCache (Geolocation)", count: ipCacheCount },
         { name: "ShunDatabaseIp (Firewall Shuns)", count: shunIpCount },
         { name: "CampaignRecipient (Breach Mail)", count: campaignRecipientCount },
