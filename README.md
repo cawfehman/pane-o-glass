@@ -46,6 +46,7 @@ To set up the default admin user and initial permissions, visit: `http://localho
 Detailed help files and usage guides for the backend CLI tools are available in the `docs/` folder:
 - [S2S VPN Monitor & FTD Client Docs](docs/vpn-s2s.md)
 - [NetCrawl Network Topology Docs](docs/crawler.md)
+- [Account Lockout Investigator Docs](docs/account-lockout.md)
 
 ## 🔒 Security Notice
 All sensitive utility executions are permanently logged to the Audit database. Logs are retained for compliance and operational review. Ephemeral credentials supplied during runtime are held strictly in memory and are never persisted to disk.

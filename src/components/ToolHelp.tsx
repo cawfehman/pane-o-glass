@@ -796,6 +796,69 @@ export const helpData: Record<string, TooltipDetails> = {
             "FMC REST Crawler: Synchronizes 48+ S2S VPN policies, endpoint records, and crypto configurations from Cisco FMC.",
             "Netmiko SSH Runner: Multi-threaded Python engine executing live Lina diagnostic probes and failover state detection over SSH port 22."
         ]
+    },
+    "account-lockout": {
+        title: "Active Directory & Cisco ISE Account Lockout Investigator",
+        version: "1.0.0",
+        category: "Identity Forensics & Auth Failure Correlation",
+        description: "Enterprise triage engine that correlates Windows Active Directory security logs (Events 4740, 4625, 4771, 4776) in Graylog with Cisco ISE 802.1X Wireless EAP telemetry to isolate lockout sources down to the exact workstation, mobile MAC, SSID, and access point.",
+        capabilities: [
+            {
+                title: "AD Security Log Stream Correlation",
+                detail: "Interrogates OG Graylog stream 5d72ac00b209026ab42decf9 for Event 4740 (Lockout), 4625 (Logon Failure), 4771 (Kerberos Pre-Auth Failure), and 4776 (NTLM Validation). Prioritizes authoritative 4740 lockout caller computer names over intermediate NTLM domain controllers.",
+                tag: "AD Stream 4740"
+            },
+            {
+                title: "Cisco ISE-PSN Wireless EAP Pivot",
+                detail: "Detects when the calling computer is an ISE Policy Service Node (ise-psn01 through ise-psn04). Automatically pivots to Cisco ISE wireless telemetry to extract the endpoint MAC, SSID, and AP location.",
+                tag: "ISE PSN Pivot"
+            },
+            {
+                title: "Tiered ISE MnT vs. Graylog Query Engine",
+                detail: "Smart lookback engine: queries Cisco ISE MnT REST API for events within 24 hours; automatically cascades to OG Graylog ISE 3.0 stream (60ff11b8950aa8572f333457) for historical lockouts older than 24 hours.",
+                tag: "Tiered Query Engine"
+            },
+            {
+                title: "Workstation & NTLM Logon Type Classification",
+                detail: "For non-ISE lockouts, parses Windows logon types (Type 10 RDP, Type 3 Network Share/SMB, Type 4/5 Scheduled Task or Service, Type 2 Console) and performs reverse DNS resolution to pinpoint the source machine.",
+                tag: "Logon Type Triage"
+            },
+            {
+                title: "Executive Root Cause Verdict & Guidance",
+                detail: "Synthesizes failure frequency, caller identity, and failure sub-statuses into high-confidence root cause verdicts with concrete operational remediation steps.",
+                tag: "Verdict Engine"
+            },
+            {
+                title: "Failure Timeline & Spike Detection",
+                detail: "Plots interactive area charts to distinguish between sudden lockout spikes (e.g. mistyped password) versus relentless background spam (e.g. mobile device with expired Wi-Fi profile).",
+                tag: "Timeline Chart"
+            },
+            {
+                title: "Inline Forensic Event Inspection & CSV Export",
+                detail: "Clicking any event in the table expands an inline forensic drawer with structured metadata and raw Windows event log message. 1-click export of filtered events to audit-ready CSV.",
+                tag: "Forensic Table"
+            }
+        ],
+        colors: [
+            { name: "🔴 Event 4740 (Account Lockout)", meaning: "Authoritative Active Directory event generated when a user account exceeds bad password thresholds.", rgb: "#ef4444" },
+            { name: "🟡 Event 4625 (Logon Failure)", meaning: "Authentication failure with specific sub-status code (e.g. 0xC000006A for bad password).", rgb: "#f59e0b" },
+            { name: "🔵 Event 4771 / 4776 (Kerberos / NTLM)", meaning: "Kerberos pre-authentication failure or NTLM domain controller validation failure.", rgb: "#6366f1" },
+            { name: "🔷 Cyan Chip (Cisco ISE Wireless)", meaning: "Calling device is an ISE-PSN node executing 802.1X EAP wireless authentications.", rgb: "#06b6d4" },
+            { name: "🟣 Indigo Chip (Workstation / Host)", meaning: "Calling device is a physical laptop, desktop, server, or RDP terminal session.", rgb: "#818cf8" }
+        ],
+        shortcuts: [
+            "Search by standard sAMAccountName (e.g. 'jdoe') or full User Principal Name (e.g. 'jdoe@cooperhealth.edu').",
+            "Use the time window buttons (1h, 4h, 12h, 24h, 7d) in the search bar to widen or narrow forensic lookback.",
+            "Click on any row in the event stream table to expand full raw Windows security event message inline.",
+            "Use the Event ID tabs (4740, 4625, 4771, 4776) or column dropdowns to filter down to specific caller machines or DCs.",
+            "Click [Copy Raw Log] inside an expanded row to copy the full domain controller event directly to your clipboard.",
+            "Click [Export CSV] to download the complete correlated investigation event log."
+        ],
+        backgroundJobs: [
+            "OG Graylog AD Stream: 5d72ac00b209026ab42decf9 (Active Directory Security Logs).",
+            "Cisco ISE MnT REST API: Real-time authentication session cache (last 24 hours).",
+            "OG Graylog ISE 3.0 Stream: 60ff11b8950aa8572f333457 (High-volume RADIUS accounting archive > 24 hours)."
+        ]
     }
 };
 

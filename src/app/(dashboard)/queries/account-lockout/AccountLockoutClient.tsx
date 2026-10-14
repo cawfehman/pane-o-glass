@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import { PaginationControls } from "@/components/common/PaginationControls";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
+import { ToolHelp } from "@/components/ToolHelp";
 
 interface AdSecurityEvent {
     id: string;
@@ -320,8 +321,9 @@ export default function AccountLockoutClient() {
                 <div>
                     <div className="flex items-center gap-2.5">
                         <UserX size={24} className="text-amber-400" />
-                        <h1 className="text-xl font-bold text-text-primary">
-                            Account Lockout & Auth Failure Investigator
+                        <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
+                            <span>Account Lockout & Auth Failure Investigator</span>
+                            <ToolHelp toolId="account-lockout" iconSize={18} />
                         </h1>
                     </div>
                     <p className="text-xs text-text-secondary mt-1">
