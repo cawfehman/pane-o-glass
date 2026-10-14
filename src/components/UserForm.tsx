@@ -87,6 +87,7 @@ export default function UserForm({
                     className="bg-bg-dark border border-border-color py-3 px-4 rounded-[var(--radius-sm)] text-text-primary outline-none font-inherit"
                 >
                     <option value="USER">User</option>
+                    <option value="IAM">IAM</option>
                     <option value="ANALYST">Analyst</option>
                     <option value="NETWORK">Network</option>
                     <option value="DESKTOP">Desktop</option>

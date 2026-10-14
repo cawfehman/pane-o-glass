@@ -285,6 +285,7 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                                 className="w-full py-1.5 px-2 bg-bg-dark border border-border-color rounded-md text-text-primary text-xs outline-none focus:border-accent-primary cursor-pointer"
                                             >
                                                 <option value="USER">USER</option>
+                                                <option value="IAM">IAM</option>
                                                 <option value="ANALYST">ANALYST</option>
                                                 <option value="NETWORK">NETWORK</option>
                                                 <option value="DESKTOP">DESKTOP</option>
@@ -354,6 +355,8 @@ export default function UserTableClient({ initialUsers }: { initialUsers: any[] 
                                                             ? "var(--accent-primary)"
                                                             : user.role === "SYSTEMS"
                                                             ? "rgb(45, 212, 191)"
+                                                            : user.role === "IAM"
+                                                            ? "rgb(234, 179, 8)"
                                                             : user.role === "ANALYST"
                                                             ? "rgb(192, 132, 252)"
                                                             : user.role === "NETWORK"

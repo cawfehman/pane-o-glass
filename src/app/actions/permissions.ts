@@ -113,6 +113,14 @@ export async function getPermissionsForRole(role: string) {
                 list.push('account-lockout');
             }
         }
+        if ((roleUpper === 'USER' || roleUpper === 'IAM') && !list.includes('hibp-account')) {
+            const explicitlyDisabled = await prisma.toolPermission.findFirst({
+                where: { role: roleUpper, toolId: 'hibp-account', isEnabled: false }
+            });
+            if (!explicitlyDisabled) {
+                list.push('hibp-account');
+            }
+        }
         return list;
     } catch (error) {
         logInternalError(`Error fetching permissions for role ${role}`, error);
@@ -170,6 +178,17 @@ export async function hasPermission(role: string, toolId: string) {
                 where: { role: roleUpper, toolId: 'account-lockout', isEnabled: false }
             });
             return !explicitlyDisabled;
+        }
+
+        // Fallback for hibp-account: default to true for IAM and USER
+        if (!permission && toolId === 'hibp-account') {
+            const roleUpper = String(role).toUpperCase();
+            if (roleUpper === 'IAM' || roleUpper === 'USER') {
+                const explicitlyDisabled = await prisma.toolPermission.findFirst({
+                    where: { role: roleUpper, toolId: 'hibp-account', isEnabled: false }
+                });
+                return !explicitlyDisabled;
+            }
         }
 
         return !!permission;
@@ -351,6 +370,25 @@ export async function resetPermissions(targetRoles?: string[], targetTools?: str
             { toolId: 'crawler', role: 'SYSTEMS', isEnabled: false },
             { toolId: 'graylog-exporter', role: 'SYSTEMS', isEnabled: false },
             { toolId: 'account-lockout', role: 'SYSTEMS', isEnabled: true },
+
+            { toolId: 'firewall', role: 'IAM', isEnabled: false },
+            { toolId: 'ise', role: 'IAM', isEnabled: false },
+            { toolId: 'ise-tacacs', role: 'IAM', isEnabled: false },
+            { toolId: 'hibp-account', role: 'IAM', isEnabled: true },
+            { toolId: 'hibp-domain', role: 'IAM', isEnabled: false },
+            { toolId: 'vpn', role: 'IAM', isEnabled: false },
+            { toolId: 'vpn-reporting', role: 'IAM', isEnabled: false },
+            { toolId: 'vpn-s2s', role: 'IAM', isEnabled: false },
+            { toolId: 'threat-intel', role: 'IAM', isEnabled: false },
+            { toolId: 'ironport', role: 'IAM', isEnabled: false },
+            { toolId: 'bec', role: 'IAM', isEnabled: false },
+            { toolId: 'etd', role: 'IAM', isEnabled: false },
+            { toolId: 'crawler', role: 'IAM', isEnabled: false },
+            { toolId: 'netscaler', role: 'IAM', isEnabled: false },
+            { toolId: 'graylog-exporter', role: 'IAM', isEnabled: false },
+            { toolId: 'account-lockout', role: 'IAM', isEnabled: true },
+            { toolId: 'vectra', role: 'IAM', isEnabled: false },
+            { toolId: 'notification-center', role: 'IAM', isEnabled: false },
 
             { toolId: 'vectra', role: 'ADMIN', isEnabled: true },
             { toolId: 'vectra', role: 'ANALYST', isEnabled: true },

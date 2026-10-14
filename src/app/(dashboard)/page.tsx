@@ -4,8 +4,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { 
     Shield, Network, Server, Globe, Lock, ShieldAlert, 
-    ShieldCheck, Mail, Map, ArrowRight, UserCheck, Sparkles 
+    ShieldCheck, Mail, Map, ArrowRight, UserCheck, Sparkles, UserX
 } from "lucide-react";
+import { getPermissionsForRole } from "@/app/actions/permissions";
 
 export default async function DashboardHome() {
     const session = await auth();
@@ -16,9 +17,10 @@ export default async function DashboardHome() {
 
     const user = session.user as any;
     const role = user?.role || 'USER';
-    const permissions: string[] = user?.permissions || [];
-    const isAdmin = role === 'ADMIN';
-    const isAnalyst = role === 'ANALYST' || isAdmin;
+    const normalizedRole = String(role).toUpperCase();
+    const permissions: string[] = await getPermissionsForRole(normalizedRole);
+    const isAdmin = normalizedRole === 'ADMIN';
+    const isAnalyst = normalizedRole === 'ANALYST' || isAdmin;
 
     const hasPermission = (toolId: string) => isAdmin || permissions.includes(toolId);
 
@@ -62,6 +64,15 @@ export default async function DashboardHome() {
                 icon: Server,
                 badge: 'Forensics',
                 badgeColor: 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+            },
+            {
+                id: 'account-lockout',
+                title: 'Account Lockout Investigator',
+                desc: 'Correlate Active Directory security logs with Cisco ISE EAP wireless telemetry to triage domain account lockouts.',
+                href: '/queries/account-lockout',
+                icon: UserX,
+                badge: 'AD & ISE',
+                badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/20'
             },
             {
                 id: 'threat-intel',
