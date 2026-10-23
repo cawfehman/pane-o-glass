@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { hasPermission } from "@/app/actions/permissions";
 import { logAudit } from "@/lib/audit";
+import { parseBooleanSearchQuery } from "@/lib/booleanQueryParser";
 
 export async function GET(req: Request) {
     try {
@@ -15,56 +16,33 @@ export async function GET(req: Request) {
 
         const url = new URL(req.url);
         const search = url.searchParams.get("search") || "";
+        const statusFilter = url.searchParams.get("status") || "all";
         const sortField = url.searchParams.get("sortField") || "isActive";
         const sortDir = url.searchParams.get("sortDir") === "asc" ? "asc" : "desc";
 
         const where: any = {};
 
+        if (statusFilter === "active") {
+            where.isActive = true;
+        } else if (statusFilter === "cleared") {
+            where.isActive = false;
+        }
+
         if (search) {
-            const orClauses = [];
-            
-            const isExact = search.startsWith('"') && search.endsWith('"') && search.length > 1;
-            const searchTerm = isExact ? search.slice(1, -1) : search;
-            
-            if (isExact) {
-                // For exact match, we want it to be case-insensitive. Prisma's equals is case-sensitive in SQLite.
-                // SQLite's LIKE without wildcards performs a case-insensitive exact match.
-                const matchingRows = await prisma.$queryRaw<any[]>`
-                    SELECT DISTINCT ip FROM "ShunDatabaseIp"
-                    WHERE ip LIKE ${searchTerm}
-                       OR ipAsn LIKE ${searchTerm}
-                       OR org LIKE ${searchTerm}
-                       OR ipCountry LIKE ${searchTerm}
-                       OR EXISTS (
-                           SELECT 1 FROM "FirewallShunStats"
-                           WHERE "FirewallShunStats".ip = "ShunDatabaseIp".ip
-                             AND firewall LIKE ${searchTerm}
-                       )
-                `;
-                const ips = matchingRows.map(r => r.ip);
-                if (ips.length > 0) {
-                    orClauses.push({ ip: { in: ips } });
-                } else {
-                    orClauses.push({ ip: 'NO_MATCH_WILDCARD' });
-                }
-            } else if (searchTerm.includes('*')) {
-                const likeString = searchTerm.replace(/\*/g, '%');
-                const matchingRows = await prisma.$queryRaw<any[]>`SELECT ip FROM "ShunDatabaseIp" WHERE ip LIKE ${likeString}`;
-                const ips = matchingRows.map(r => r.ip);
-                if (ips.length > 0) {
-                    orClauses.push({ ip: { in: ips } });
-                } else {
-                    orClauses.push({ ip: 'NO_MATCH_WILDCARD' });
-                }
-            } else {
-                orClauses.push({ ip: { contains: searchTerm } });
-                orClauses.push({ firewall: { contains: searchTerm } });
-                orClauses.push({ shunIp: { ipAsn: { contains: searchTerm } } });
-                orClauses.push({ shunIp: { org: { contains: searchTerm } } });
-                orClauses.push({ shunIp: { ipCountry: { contains: searchTerm } } });
+            const parsedWhere = parseBooleanSearchQuery(search, (term) => ({
+                OR: [
+                    { ip: { contains: term } },
+                    { firewall: { contains: term } },
+                    { shunIp: { ipAsn: { contains: term } } },
+                    { shunIp: { org: { contains: term } } },
+                    { shunIp: { ipCountry: { contains: term } } }
+                ]
+            }));
+            if (parsedWhere) {
+                if (parsedWhere.AND) where.AND = parsedWhere.AND;
+                else if (parsedWhere.OR) where.OR = parsedWhere.OR;
+                else Object.assign(where, parsedWhere);
             }
-            
-            where.OR = orClauses;
         }
 
         let orderBy: any = [];
@@ -118,7 +96,7 @@ export async function GET(req: Request) {
 
         await logAudit(
             "FIREWALL_SHUN_EXPORT",
-            `Exported ${rows.length} firewall shun database entries to CSV${search ? ` (Filter: "${search}")` : ""}`,
+            `Exported ${rows.length} firewall shun database entries to CSV${search ? ` (Filter: "${search}")` : ""}${statusFilter !== "all" ? ` (Status: ${statusFilter})` : ""}`,
             session.user?.id,
             clientIp
         );

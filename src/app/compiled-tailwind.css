@@ -1698,6 +1698,12 @@
       border-color: color-mix(in oklab, var(--accent-primary) 40%, transparent);
     }
   }
+  .border-\[var\(--accent-primary\)\]\/50 {
+    border-color: var(--accent-primary);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--accent-primary) 50%, transparent);
+    }
+  }
   .border-\[var\(--border-color\)\] {
     border-color: var(--border-color);
   }
@@ -2221,6 +2227,12 @@
     border-color: color-mix(in srgb, oklch(63.7% 0.237 25.331) 20%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-red-500) 20%, transparent);
+    }
+  }
+  .border-red-500\/25 {
+    border-color: color-mix(in srgb, oklch(63.7% 0.237 25.331) 25%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-red-500) 25%, transparent);
     }
   }
   .border-red-500\/30 {
@@ -5803,6 +5815,14 @@
         border-color: color-mix(in oklab, var(--color-amber-500) 30%, transparent);
       }
     }
+    .hover\:border-amber-500\/40:hover {
+      border-color: color-mix(in srgb, oklch(76.9% 0.188 70.08) 40%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:border-amber-500\/40:hover {
+        border-color: color-mix(in oklab, var(--color-amber-500) 40%, transparent);
+      }
+    }
     .hover\:border-blue-400\/60:hover {
       border-color: color-mix(in srgb, oklch(70.7% 0.165 254.624) 60%, transparent);
     }
@@ -5892,6 +5912,14 @@
     }
     .hover\:bg-\[var\(--accent-primary\)\]:hover {
       background-color: var(--accent-primary);
+    }
+    .hover\:bg-\[var\(--accent-primary\)\]\/90:hover {
+      background-color: var(--accent-primary);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-\[var\(--accent-primary\)\]\/90:hover {
+        background-color: color-mix(in oklab, var(--accent-primary) 90%, transparent);
+      }
     }
     .hover\:bg-\[var\(--accent-primary-hover\)\]:hover {
       background-color: var(--accent-primary-hover);
@@ -6376,6 +6404,14 @@
     @supports (color: color-mix(in lab, red, red)) {
       .hover\:bg-red-500\/10:hover {
         background-color: color-mix(in oklab, var(--color-red-500) 10%, transparent);
+      }
+    }
+    .hover\:bg-red-500\/15:hover {
+      background-color: color-mix(in srgb, oklch(63.7% 0.237 25.331) 15%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:bg-red-500\/15:hover {
+        background-color: color-mix(in oklab, var(--color-red-500) 15%, transparent);
       }
     }
     .hover\:bg-red-500\/20:hover {
@@ -6894,6 +6930,9 @@
   }
   .disabled\:opacity-50:disabled {
     opacity: 50%;
+  }
+  .disabled\:opacity-60:disabled {
+    opacity: 60%;
   }
   @media (width >= 40rem) {
     .sm\:right-0 {

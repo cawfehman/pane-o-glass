@@ -59,15 +59,9 @@ async function run() {
 
         const todayDate = new Date();
         const todayString = todayDate.toISOString().split('T')[0];
+        const startOfToday = new Date(`${todayString}T00:00:00.000Z`);
 
-        // 1. Set all current Firewall stats to inactive
-        console.log("Setting previous active shuns to inactive...");
-        await prisma.firewallShunStats.updateMany({
-            where: { isActive: true },
-            data: { isActive: false }
-        });
-
-        // 2. SSH into firewalls and parse IPs
+        // 1. SSH into firewalls and parse IPs
         const ipRegex = /\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/g;
         
         for (const fw of firewalls) {
@@ -146,6 +140,21 @@ async function run() {
                 ssh.dispose();
                 console.log(`Found ${fwIps.size} shuns on ${fwName}. Updating database...`);
 
+                // Mark only this firewall's previous active shuns as inactive now that SSH succeeded
+                await prisma.firewallShunStats.updateMany({
+                    where: { firewall: fwName, isActive: true },
+                    data: { isActive: false }
+                });
+
+                const todaySnapshots = await prisma.firewallShunSnapshot.findMany({
+                    where: {
+                        firewall: fwName,
+                        snapshotDate: { gte: startOfToday }
+                    },
+                    select: { ip: true }
+                });
+                const snapshottedToday = new Set(todaySnapshots.map(s => s.ip));
+
                 // 3. Upsert into DB for this firewall
                 for (const ip of Array.from(fwIps)) {
                     // Upsert Master
@@ -185,14 +194,16 @@ async function run() {
                         });
                     }
 
-                    // Create Snapshot Audit Trail
-                    await prisma.firewallShunSnapshot.create({
-                        data: {
-                            ip,
-                            firewall: fwName,
-                            snapshotDate: todayDate
-                        }
-                    });
+                    // Create Snapshot Audit Trail (avoid duplicate snapshot row if already snapshotted today)
+                    if (!snapshottedToday.has(ip)) {
+                        await prisma.firewallShunSnapshot.create({
+                            data: {
+                                ip,
+                                firewall: fwName,
+                                snapshotDate: todayDate
+                            }
+                        });
+                    }
                 }
             } catch (err) {
                 console.error(`[cron] Failed to process firewall ${fwName}:`, err);

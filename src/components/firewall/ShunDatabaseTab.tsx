@@ -1,15 +1,31 @@
 import { useState, useEffect, useCallback } from "react";
-import { Search, Server, Filter, ShieldAlert, Clock, ShieldCheck, SearchX, LayoutTemplate, Check, Download, Info } from "lucide-react";
+import { Server, ShieldAlert, Clock, SearchX, LayoutTemplate, Check, Download, Info, RefreshCw, CheckCircle2, AlertTriangle, X } from "lucide-react";
 import { EnrichmentDetailsModal } from "./EnrichmentDetailsModal";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 
+interface ShunSummary {
+    activeTotal: number;
+    uniqueActiveIps: number;
+    clearedTotal: number;
+    totalTracked: number;
+    lastSyncedAt: string | null;
+    byFirewall: Array<{
+        firewall: string;
+        activeCount: number;
+        clearedCount: number;
+        totalCount: number;
+    }>;
+}
+
 export function ShunDatabaseTab() {
     const [records, setRecords] = useState<any[]>([]);
+    const [summary, setSummary] = useState<ShunSummary | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     
     const [search, setSearch] = useState("");
     const [activeSearch, setActiveSearch] = useState("");
+    const [statusFilter, setStatusFilter] = useState<"all" | "active" | "cleared">("all");
     
     const [page, setPage] = useState(1);
     const [limit, setLimit] = useState(50);
@@ -21,6 +37,13 @@ export function ShunDatabaseTab() {
 
     const [selectedIp, setSelectedIp] = useState<string | null>(null);
     const [isExporting, setIsExporting] = useState(false);
+
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncBanner, setSyncBanner] = useState<{
+        type: "success" | "warning" | "error";
+        message: string;
+        details?: string;
+    } | null>(null);
 
     const [visibleColumns, setVisibleColumns] = useState({
         status: true,
@@ -71,6 +94,7 @@ export function ShunDatabaseTab() {
             const query = new URLSearchParams();
             const term = (activeSearch || search).trim();
             if (term) query.append("search", term);
+            if (statusFilter !== "all") query.append("status", statusFilter);
             query.append("sortField", sortField);
             query.append("sortDir", sortDir);
             
@@ -86,16 +110,18 @@ export function ShunDatabaseTab() {
         }
     };
 
-    const fetchRecords = useCallback(async (searchOverride?: string) => {
+    const fetchRecords = useCallback(async (searchOverride?: string, statusOverride?: "all" | "active" | "cleared") => {
         setLoading(true);
         setError("");
         try {
             const currentSearch = searchOverride !== undefined ? searchOverride : activeSearch;
+            const currentStatus = statusOverride !== undefined ? statusOverride : statusFilter;
             const query = new URLSearchParams({ 
                 page: page.toString(), 
                 limit: limit.toString(),
                 sortField,
-                sortDir 
+                sortDir,
+                status: currentStatus
             });
             if (currentSearch) query.append("search", currentSearch);
 
@@ -103,6 +129,7 @@ export function ShunDatabaseTab() {
             if (res.ok) {
                 const data = await res.json();
                 setRecords(data.records);
+                if (data.summary) setSummary(data.summary);
                 setTotalPages(data.pagination.pages);
                 setTotalRecords(data.pagination.total);
             } else {
@@ -114,24 +141,204 @@ export function ShunDatabaseTab() {
         } finally {
             setLoading(false);
         }
-    }, [page, limit, activeSearch, sortField, sortDir]);
+    }, [page, limit, activeSearch, statusFilter, sortField, sortDir]);
 
     useEffect(() => {
         fetchRecords();
     }, [fetchRecords]);
 
+    const handleManualSync = async () => {
+        setIsSyncing(true);
+        setSyncBanner(null);
+        try {
+            const res = await fetch("/api/firewall/shun-database", {
+                method: "POST"
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                if (data.summary) setSummary(data.summary);
+                const okFws = (data.firewalls || []).filter((f: any) => f.success);
+                const failedFws = (data.firewalls || []).filter((f: any) => !f.success);
+                const durationSec = ((data.durationMs || 0) / 1000).toFixed(1);
+                const perFwSummary = (data.firewalls || [])
+                    .map((f: any) => f.success ? `${f.firewall}: ${f.activeShuns}` : `${f.firewall}: failed`)
+                    .join(" • ");
+
+                setSyncBanner({
+                    type: failedFws.length > 0 ? "warning" : "success",
+                    message: `Synced ${data.totalActiveShuns?.toLocaleString() || 0} active shuns (${data.uniqueActiveIps?.toLocaleString() || 0} unique IPs) across ${okFws.length}/${(data.firewalls || []).length} firewalls in ${durationSec}s (+${data.newlyAddedTotal || 0} new, -${data.clearedTotal || 0} cleared).`,
+                    details: perFwSummary
+                });
+                await fetchRecords();
+            } else {
+                setSyncBanner({
+                    type: "error",
+                    message: data.error || "Failed to sync live shuns from firewalls."
+                });
+            }
+        } catch (err: any) {
+            setSyncBanner({
+                type: "error",
+                message: err?.message || "Network error while syncing shun database."
+            });
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     const clearFilters = () => {
         setSearch("");
         setActiveSearch("");
+        setStatusFilter("all");
         setPage(1);
         setSortField("isActive");
         setSortDir("desc");
-        fetchRecords("");
+        fetchRecords("", "all");
+    };
+
+    const handleFirewallChipClick = (fwName: string) => {
+        const nextTerm = activeSearch.trim().toLowerCase() === fwName.toLowerCase() ? "" : fwName;
+        setSearch(nextTerm);
+        setActiveSearch(nextTerm);
+        setPage(1);
+        fetchRecords(nextTerm);
     };
 
     return (
         <div className="flex flex-col gap-0 h-full overflow-hidden">
             <div className="bg-[var(--bg-surface)] p-4 border-b border-[var(--border-color)] shadow-sm shrink-0 flex flex-col gap-3">
+                {/* Current Numbers & Manual Sync Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border-color)]">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                        {/* Status Filter / Metric Pills */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const next = statusFilter === "active" ? "all" : "active";
+                                setStatusFilter(next);
+                                setPage(1);
+                            }}
+                            className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-2 ${
+                                statusFilter === "active"
+                                    ? "bg-red-500/20 border-red-500/50 text-red-300 shadow-sm"
+                                    : "bg-red-500/10 border-red-500/25 text-red-400 hover:bg-red-500/15"
+                            }`}
+                            title="Click to filter Active shuns only"
+                        >
+                            <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                            </span>
+                            <span>Active Shuns:</span>
+                            <span className="font-bold text-sm text-[var(--text-primary)]">
+                                {summary ? summary.activeTotal.toLocaleString() : "—"}
+                            </span>
+                            {summary && (
+                                <span className="text-[11px] text-[var(--text-secondary)] border-l border-red-500/30 pl-2">
+                                    {summary.uniqueActiveIps.toLocaleString()} unique IPs
+                                </span>
+                            )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const next = statusFilter === "cleared" ? "all" : "cleared";
+                                setStatusFilter(next);
+                                setPage(1);
+                            }}
+                            className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all flex items-center gap-1.5 ${
+                                statusFilter === "cleared"
+                                    ? "bg-[var(--accent-primary)]/20 border-[var(--accent-primary)]/50 text-[var(--text-primary)]"
+                                    : "bg-[var(--bg-default)] border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                            }`}
+                            title="Click to filter Cleared historical shuns"
+                        >
+                            <span>Cleared:</span>
+                            <span className="font-semibold text-[var(--text-primary)]">
+                                {summary ? summary.clearedTotal.toLocaleString() : "—"}
+                            </span>
+                        </button>
+
+                        {/* Per-Firewall Live Counts */}
+                        {summary?.byFirewall && summary.byFirewall.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1.5 pl-1 border-l border-[var(--border-color)]">
+                                {summary.byFirewall.map(fw => {
+                                    const isSelected = activeSearch.trim().toLowerCase() === fw.firewall.toLowerCase();
+                                    return (
+                                        <button
+                                            key={fw.firewall}
+                                            type="button"
+                                            onClick={() => handleFirewallChipClick(fw.firewall)}
+                                            className={`px-2.5 py-1 rounded-md border text-[11px] font-mono transition-all flex items-center gap-1.5 ${
+                                                isSelected
+                                                    ? "bg-amber-500/20 border-amber-500/50 text-amber-300"
+                                                    : "bg-[var(--bg-default)] border-[var(--border-color)] text-[var(--text-secondary)] hover:border-amber-500/40 hover:text-[var(--text-primary)]"
+                                            }`}
+                                            title={`Filter by ${fw.firewall} (${fw.activeCount} active / ${fw.totalCount} total)`}
+                                        >
+                                            <Server className="w-3 h-3 text-amber-400" />
+                                            <span>{fw.firewall}:</span>
+                                            <span className="font-bold text-[var(--text-primary)]">{fw.activeCount.toLocaleString()}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                        {summary?.lastSyncedAt && (
+                            <span className="text-xs text-[var(--text-muted)] flex items-center gap-1.5" title={new Date(summary.lastSyncedAt).toLocaleString()}>
+                                <Clock className="w-3.5 h-3.5" />
+                                Last Synced: <span className="text-[var(--text-secondary)] font-medium">{new Date(summary.lastSyncedAt).toLocaleString()}</span>
+                            </span>
+                        )}
+                        <button
+                            type="button"
+                            onClick={handleManualSync}
+                            disabled={isSyncing}
+                            className="px-3.5 py-2 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/90 text-white text-xs font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-sm whitespace-nowrap"
+                            title="SSH into all configured firewalls now and refresh active shun counts"
+                        >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
+                            {isSyncing ? "Querying Firewalls..." : "Update Shun DB Now"}
+                        </button>
+                    </div>
+                </div>
+
+                {syncBanner && (
+                    <div
+                        className={`px-3.5 py-2.5 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+                            syncBanner.type === "success"
+                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                                : syncBanner.type === "warning"
+                                ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                                : "bg-red-500/10 border-red-500/30 text-red-300"
+                        }`}
+                    >
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {syncBanner.type === "success" ? (
+                                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                            ) : (
+                                <AlertTriangle className="w-4 h-4 shrink-0" />
+                            )}
+                            <span className="font-medium">{syncBanner.message}</span>
+                            {syncBanner.details && (
+                                <span className="text-[11px] opacity-80 font-mono">({syncBanner.details})</span>
+                            )}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setSyncBanner(null)}
+                            className="p-1 rounded hover:bg-white/10 transition-colors"
+                            aria-label="Dismiss notification"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                )}
+
                 <SmartSearchBar
                     value={search}
                     onChange={setSearch}
@@ -213,7 +420,7 @@ export function ShunDatabaseTab() {
                 
                 <div className="flex justify-between items-center text-sm text-[var(--text-secondary)] pt-2 border-t border-[var(--border-color)]">
                     <div className="flex items-center gap-4">
-                        <span>Showing <span className="font-medium text-[var(--text-primary)]">{totalRecords > 0 ? (page - 1) * limit + 1 : 0}</span> to <span className="font-medium text-[var(--text-primary)]">{Math.min(page * limit, totalRecords)}</span> of <span className="font-medium text-[var(--text-primary)]">{totalRecords}</span> entries</span>
+                        <span>Showing <span className="font-medium text-[var(--text-primary)]">{totalRecords > 0 ? (page - 1) * limit + 1 : 0}</span> to <span className="font-medium text-[var(--text-primary)]">{Math.min(page * limit, totalRecords)}</span> of <span className="font-medium text-[var(--text-primary)]">{totalRecords.toLocaleString()}</span> entries</span>
                         <div className="flex items-center gap-2">
                             <span>Rows:</span>
                             <select 
@@ -432,7 +639,7 @@ export function ShunDatabaseTab() {
                 </div>
                 {/* Bottom Pagination */}
                 <div className="sticky bottom-0 bg-[var(--bg-surface)] p-3 border-t border-[var(--border-color)] flex justify-between items-center text-sm shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-                    <span className="text-[var(--text-secondary)]">Showing {totalRecords > 0 ? (page - 1) * limit + 1 : 0} to {Math.min(page * limit, totalRecords)} of {totalRecords} entries</span>
+                    <span className="text-[var(--text-secondary)]">Showing {totalRecords > 0 ? (page - 1) * limit + 1 : 0} to {Math.min(page * limit, totalRecords)} of {totalRecords.toLocaleString()} entries</span>
                     <div className="flex items-center gap-2">
                         <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1.5 rounded border border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-50 transition-colors bg-[var(--bg-default)] text-[var(--text-primary)]">Previous</button>
                         <span className="px-3 font-medium text-[var(--accent-primary)]">Page {page} of {totalPages || 1}</span>
