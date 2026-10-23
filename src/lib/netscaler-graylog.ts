@@ -180,8 +180,10 @@ export interface NetscalerStats {
     totalVolumeChart: NetscalerHistogramData[];
     authVolume: number;
     authSuccessCount: number;
+    authLogoutCount?: number;
     authFailureCount: number;
     icaSessionCount: number;
+    icaEndCount?: number;
     geoTrafficCount: number;
     usTrafficCount: number;
     foreignTrafficCount: number;
@@ -379,17 +381,21 @@ export class NetscalerGraylogClient {
      * Retrieves overall NetScaler telemetry overview statistics.
      */
     async getOverviewStats(rangeSeconds: number = 86400): Promise<NetscalerStats> {
-        const authFailureQuery = '(ns_action:LOGIN_FAILED OR (ns_module:(AAA OR SSLVPN OR AAATM OR ICA) AND (LOGIN_FAILED OR "Failed policy" OR "denied access" OR "STA ticket validation failed" OR "Invalid tass cookie" OR FAILURE OR FAILED OR DENIED OR "type 5") AND NOT "invalid opcode" AND NOT "NAS_NAC_PROXY" AND NOT "CONSOLE_CLOUD_AGENT"))';
-        const authSuccessQuery = '(ns_action:LOGIN OR (ns_module:SSLVPN AND ("LOGIN" OR "response-200")))';
+        const authFailureQuery = '(ns_action:LOGIN_FAILED OR (ns_module:(AAA OR SSLVPN OR AAATM) AND ("Failed policy" OR "denied access" OR "STA ticket validation failed" OR "Invalid tass cookie") AND NOT "invalid opcode" AND NOT "NAS_NAC_PROXY" AND NOT "CONSOLE_CLOUD_AGENT"))';
+        const authSuccessQuery = '(ns_module:SSLVPN AND ns_action:LOGIN)';
+        const authLogoutQuery = '(ns_module:SSLVPN AND ns_action:LOGOUT)';
+        const icaStartQuery = '(ns_action:ICASTART)';
+        const icaEndQuery = '(ns_action:ICAEND_CONNSTAT)';
         const usQuery = '(src_ip_country_code:US OR client_ip_country_code:US OR source_ip_country_code:US)';
         const foreignQuery = '((_exists_:src_ip_country_code AND NOT src_ip_country_code:US) OR (_exists_:client_ip_country_code AND NOT client_ip_country_code:US) OR (_exists_:source_ip_country_code AND NOT source_ip_country_code:US))';
 
         const [
             histogramRes,
-            authRes,
             authSuccessRes,
+            authLogoutRes,
             authFailureRes,
-            icaRes,
+            icaStartRes,
+            icaEndRes,
             usRes,
             foreignRes,
             geoEventsRes,
@@ -397,16 +403,19 @@ export class NetscalerGraylogClient {
             topUsersRes
         ] = await Promise.all([
             this.getHistogram("*", rangeSeconds),
-            this.queryCount("ns_module:(SSLVPN OR AAA OR AAATM)", rangeSeconds),
             this.queryCount(authSuccessQuery, rangeSeconds),
+            this.queryCount(authLogoutQuery, rangeSeconds),
             this.queryCount(authFailureQuery, rangeSeconds),
-            this.queryCount("ns_module:ICA OR ns_action:(ICASTART OR ICAEND_CONNSTAT) OR ICA OR HDX", rangeSeconds),
+            this.queryCount(icaStartQuery, rangeSeconds),
+            this.queryCount(icaEndQuery, rangeSeconds),
             this.queryCount(usQuery, rangeSeconds),
             this.queryCount(foreignQuery, rangeSeconds),
             this.getRecentGeoEvents(rangeSeconds, 250, "all"),
             this.getRecentFailureEvents(rangeSeconds, 250),
             this.getTopUsers(rangeSeconds, 10)
         ]);
+        const authRes = authSuccessRes + authLogoutRes + authFailureRes;
+        const icaRes = icaStartRes;
 
         // Aggregate top countries, foreign countries, and US cities
         const countryMap: Record<string, number> = {};
@@ -563,8 +572,10 @@ export class NetscalerGraylogClient {
             totalVolumeChart: histogramRes.series,
             authVolume: authRes,
             authSuccessCount: authSuccessRes,
+            authLogoutCount: authLogoutRes,
             authFailureCount: authFailureRes,
             icaSessionCount: icaRes,
+            icaEndCount: icaEndRes,
             geoTrafficCount: usRes + foreignRes,
             usTrafficCount: usRes,
             foreignTrafficCount: foreignRes,

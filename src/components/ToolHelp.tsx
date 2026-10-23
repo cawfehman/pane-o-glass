@@ -107,9 +107,9 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     firewall: {
         title: "Cisco Firewall & Guardian",
-        version: "2.0.0",
+        version: "2.2.0",
         category: "Perimeter Defense & ASA Shun Management",
-        description: "Real-time perimeter ASA firewall shun management, automated threat detection, and Active Directory LDAP auto-unshun intelligence.",
+        description: "Real-time perimeter ASA firewall shun management, on-demand live firewall shun table synchronization, automated threat detection, and Active Directory LDAP auto-unshun intelligence.",
         capabilities: [
             {
                 title: "Perimeter ASA Shun Lookup",
@@ -120,6 +120,11 @@ export const helpData: Record<string, TooltipDetails> = {
                 title: "1-Click Manual Unshun Workflow",
                 detail: "Manually remove perimeter shuns to restore false-positive connections. Includes mandatory administrative audit logging with caller username and ticket reference.",
                 tag: "Actionable"
+            },
+            {
+                title: "On-Demand Shun Database Sync ('Sync Live Firewalls Now')",
+                detail: "Trigger an immediate SSH 'show shun' sweep across all 4 perimeter firewalls at any time between daily cron runs. Reconciles active vs. historical shun counts, enriches up to 75 new IPs inline via IPinfo, and records a full sync summary banner.",
+                tag: "Manual Sync"
             },
             {
                 title: "Historical Shun Database & Geolocation",
@@ -138,7 +143,7 @@ export const helpData: Record<string, TooltipDetails> = {
             },
             {
                 title: "Blacklist & Catch-Up Operations",
-                detail: "Maintain a persistent blacklist of IP addresses barred from auto-unshunning. Execute manual catch-up recovery scans with customizable minute ranges (--range <minutes>).",
+                detail: "Maintain a persistent blacklist of IP addresses and ASNs barred from auto-unshunning. Execute manual catch-up recovery scans with customizable minute ranges (--range <minutes>).",
                 tag: "Admin Controls"
             }
         ],
@@ -149,13 +154,14 @@ export const helpData: Record<string, TooltipDetails> = {
             { name: "Purple (Enriched Metadata)", meaning: "Shun record has been enriched with ASN, Geolocation, and Organization details.", rgb: "#a855f7" }
         ],
         shortcuts: [
+            "Click [Sync Live Firewalls Now] in the Shun Database tab to immediately pull current active shuns from all 4 firewalls.",
             "Click [Shun IP] on any external threat log to launch instant firewall shun workflow.",
             "Click [Unshun] to remove an active perimeter block with mandatory audit logging.",
             "Press Esc or click backdrop to close the Help modal."
         ],
         backgroundJobs: [
             "Guardian Automated Scanner: Cron checks host connection statuses and manages threat lists every minute.",
-            "Shun Snapshot Sync: Periodically snapshots active shuns across all firewall pairs into SQLite."
+            "Shun Snapshot Sync: Daily scheduled job + on-demand manual trigger snapshots active shuns across all firewall pairs into PostgreSQL."
         ]
     },
     ise: {
@@ -646,42 +652,68 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     netscaler: {
         title: "NetScaler Gateway & ADC Telemetry",
-        version: "1.0.0",
-        category: "Citrix Gateway Auth & Remote Access Threat Hunting",
-        description: "Real-time Citrix Gateway authentication telemetry, foreign geo-access anomaly detection, and deep user/IP session tracing from the NetScaler Graylog stream.",
+        version: "2.5.0",
+        category: "Citrix Gateway Auth, Smart Guardian Abuse Triage & Zero-Day Threat Hunting",
+        description: "Comprehensive Citrix NetScaler Gateway command center featuring 3rd-party Citrix syslog feed normalization, Smart Guardian Login & Abuse Triage with Active Directory & IPinfo ASN intelligence, Foreign Geo-Access monitoring, CISA KEV Zero-Day IOC hunting (CVE-2026-88771/88772), and 1-click All-Firewalls Perimeter Shun & Guardian Blacklist enforcement.",
         capabilities: [
             {
-                title: "Gateway Telemetry & Volume Monitoring",
-                detail: "Tracks real-time stream volume, authentication flow, session delinks, and Citrix Virtual Apps & Desktops (HDX/ICA) channel updates.",
-                tag: "Telemetry Stream"
+                title: "Cleaned Gateway Session & ICA/HDX Overview Telemetry",
+                detail: "Filters out internal NetScaler PPE session-cache polling noise ('SSLVPN Message' 12s SSID timeout checks) to surface true Gateway Session Logins, Logouts, Auth Failures, and actual ICA/HDX Application Launches (ICASTART / ICAEND_CONNSTAT).",
+                tag: "Overview Telemetry"
             },
             {
-                title: "Foreign Geo-Access & Anomaly Detection",
-                detail: "Flags all incoming gateway connection attempts originating outside the United States, providing geolocation (country, city), source IP, and target vserver.",
-                tag: "Threat Hunting"
+                title: "Citrix Login & Abuse Triage (Smart Guardian Rules)",
+                detail: "Categorizes Citrix Gateway auth failures (AAA Login Failures, Imprivata-prod Policy Rejections, STA Ticket Failures, SAML/IdP Cookie Errors) and evaluates every external IP using configurable Smart Guardian protection rules.",
+                tag: "Login & Abuse Triage"
             },
             {
-                title: "Deep User & IP Timeline Investigator",
-                detail: "Search by Active Directory username or external IP address to build a chronological timeline of authentication attempts, SSO tokens, HTTP requests, and session disconnects.",
+                title: "Active Directory & Residential ISP False-Positive Protection",
+                detail: "Cross-references targeted Citrix usernames against Active Directory LDAP and IPinfo ASN/Company type. Automatically protects legitimate corporate users on domestic residential ISPs (Comcast, Verizon, AT&T) or with prior Citrix/VPN login success ('AUTO_PROTECTED') while flagging foreign origins, hosting/VPS ASNs, non-existent AD user probes, and multi-user password sprays ('ABUSIVE_BLOCK').",
+                tag: "Smart Guardian"
+            },
+            {
+                title: "1-Click Shun & Guardian Blacklist (All Perimeter Firewalls)",
+                detail: "Analyst-driven [Block / Shun IP] action dispatches 'shun <ip>' via SSH across All Perimeter Firewalls (or a selected individual firewall), updates the Shun Database immediately, and adds the IP to the Guardian Do-Not-Unshun Blacklist so background cron jobs never auto-unshun a Citrix attacker.",
+                tag: "Perimeter Block"
+            },
+            {
+                title: "Foreign Geo-Access & Location Intelligence",
+                detail: "Flags incoming gateway connection attempts originating outside the United States or across domestic US cities, providing country/city geolocation, source IP, targeted vserver, and aggressive IP failure rates.",
+                tag: "Geo Intelligence"
+            },
+            {
+                title: "Deep User & IP Chronological Investigator",
+                detail: "Search by Active Directory username or external IP address (with boolean query support) to reconstruct a chronological timeline of authentication attempts, extracted AD groups, ICA app launches, HTTP requests, and session disconnects.",
                 tag: "Investigator"
             },
             {
-                title: "1-Click Firewall Shun Integration",
-                detail: "Quick pivot from suspicious foreign IP connections directly into the Cisco Firewall Shun management tool to check or apply immediate perimeter blocks.",
-                tag: "Firewall Pivot"
+                title: "Zero-Day & IOC Threat Hunting (CVE-2026-88771 / CVE-2026-88772)",
+                detail: "Built-in CISA Sigma & KEV signatures hunting for Pitboss supervisor crashes, shell command injection (${IFS}, b64decode), DTLS memory overflows, WHIPSHOT/SLAPSHOT post-exploitation implants, Citrix Bleed (CVE-2023-4966), and NITRO API abuse.",
+                tag: "Zero-Day Hunt"
+            },
+            {
+                title: "CVE-2026 Auto-Shun Tracker & Graylog Bulk Export",
+                detail: "Dedicated tracker for CVE-2026-88771/72 exploit IPs with toggleable automated perimeter shunning (default paused/manual) and 1-click handoff to the Graylog Bulk Results Exporter.",
+                tag: "CVE Tracker"
             }
         ],
         colors: [
-            { name: "🟢 AUTH SUCCESS", meaning: "User successfully authenticated or completed single sign-on (SSO) to Citrix Gateway.", rgb: "#10b981" },
-            { name: "🔴 AUTH FAILED", meaning: "Authentication denied, invalid credentials, or locked user attempt.", rgb: "#ef4444" },
-            { name: "🔵 CITRIX ICA / HDX", meaning: "Active Citrix Virtual Apps and Desktops HDX session channel activity.", rgb: "#06b6d4" },
-            { name: "🟣 HTTP REQUEST", meaning: "HTTP request routed through NetScaler Gateway context.", rgb: "#6366f1" },
-            { name: "⚪ DISCONNECTED", meaning: "TCP connection delinked, terminated, or session logged out.", rgb: "#64748b" }
+            { name: "🔴 ABUSIVE — RECOMMEND SHUN", meaning: "External IP triggered high-confidence abuse rules (Foreign IP, Hosting/VPS ASN, Non-Existent AD User probe, or Password Spray) with zero legitimate login history.", rgb: "#ef4444" },
+            { name: "amber SUSPICIOUS — WATCH / REVIEW", meaning: "Repeated failures warranting analyst review before shunning.", rgb: "#f59e0b" },
+            { name: "🟢 LEGIT USER ISSUE — PROTECTED", meaning: "Valid Active Directory employee on a US residential/mobile ISP or IP with verified Citrix/VPN login success. Protected from shunning.", rgb: "#10b981" },
+            { name: "🟣 GUARDIAN BLACKLISTED", meaning: "IP is registered on the Guardian Do-Not-Unshun Blacklist so auto-unshun will never remove its firewall block.", rgb: "#a855f7" },
+            { name: "🔵 CITRIX ICA / HDX LAUNCH", meaning: "Active Citrix Virtual Apps and Desktops HDX session launch (ICASTART).", rgb: "#06b6d4" }
         ],
         shortcuts: [
-            "Use the time range pills (1h, 6h, 12h, 24h, 3d, 7d) to expand the analytics window.",
-            "In Foreign Geo Access tab, click [Shun] on any anomalous foreign IP to pivot directly to Cisco Firewall Shun.",
-            "In User & IP Investigator, enter a username (e.g. honeywell-samantha) or IP to view their full chronological audit timeline."
+            "Use the time range pills (1h, 6h, 12h, 24h, 3d, 7d) to adjust the lookback window across all tabs.",
+            "In Citrix Login & Abuse Triage, switch between [Source IP Evaluation], [Impacted Users & Diagnosis], and [Raw Auth Failure Stream].",
+            "Click [Guardian Rules] in Citrix Login & Abuse Triage to tune failure thresholds, spray counts, and residential ISP protection in real time.",
+            "Click [Shun & Blacklist] on any abusive IP to block it across All Perimeter Firewalls and lock it into the Guardian Do-Not-Unshun Blacklist.",
+            "Click any username or IP to pivot directly into the User & IP Investigator timeline."
+        ],
+        backgroundJobs: [
+            "OG Graylog Stream 5c055e3ab20902046cedcfcd: Ingests and extracts 3rd-party Citrix NetScaler syslog feeds (source 172.18.221.60, ns_module, ns_action, client_ip, username).",
+            "CVE-2026 Auto-Shun Engine: Optional toggleable background scanner for critical CVE-2026-88771/72 exploit signatures (manual/paused by default)."
         ]
     },
     "graylog-exporter": {
@@ -799,10 +831,15 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     "account-lockout": {
         title: "Active Directory & Cisco ISE Account Lockout Investigator",
-        version: "1.1.0",
-        category: "Identity Forensics & Auth Failure Correlation",
-        description: "Enterprise triage engine that correlates Windows Active Directory security logs (Events 4740, 4625, 4771, 4776, 4767, 4723, 4724, 4768, 4769, 4648) in Graylog with Cisco ISE 802.1X Wireless EAP telemetry to isolate lockout sources down to the exact workstation, mobile MAC, SSID, and access point.",
+        version: "1.5.0",
+        category: "Organization-Wide Lockout Metrics & Identity Forensics",
+        description: "Enterprise lockout intelligence suite combining an Organization-Wide Lockout Metrics Overview (24h/4h/1h KPIs, timeline velocity, top locked users, top calling devices, and lockout vs. unlock ratio) with deep single-user forensic correlation across Active Directory security logs and Cisco ISE 802.1X Wireless EAP telemetry.",
         capabilities: [
+            {
+                title: "Organization-Wide Lockout Metrics & Overview",
+                detail: "Lands on a real-time executive dashboard displaying 24h/4h/1h Event 4740 lockout counts, Unique Users Locked, Active Lockout Loops (>=3 lockouts), Top Locked Accounts, Top Calling Devices/Workstations, and an interactive Lockout Velocity Chart. Click any user chip to jump straight into a deep investigation.",
+                tag: "Metrics Overview"
+            },
             {
                 title: "AD Security Log Stream Correlation",
                 detail: "Interrogates OG Graylog stream 5d72ac00b209026ab42decf9 for Event 4740 (Lockout), 4625 (Logon Failure), 4771 (Kerberos Pre-Auth Failure), 4776 (NTLM Validation), 4767 (Unlocked), 4723/4724 (Password Change/Reset), 4768/4769 (Kerberos Ticket Failures), and 4648 (Explicit Credentials).",

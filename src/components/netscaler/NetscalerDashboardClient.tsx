@@ -791,37 +791,50 @@ export default function NetscalerDashboardClient() {
                             <div className="text-xs text-slate-500 mt-1">Total stream events</div>
                         </div>
 
-                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
-                            <div className="flex items-center justify-between text-slate-400 mb-2">
-                                <span className="text-xs font-medium uppercase tracking-wider">SSLVPN & Auth</span>
+                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">
+                            <div className="flex items-center justify-between text-slate-400 mb-1">
+                                <span className="text-xs font-medium uppercase tracking-wider">Gateway Sessions & Auth</span>
                                 <Lock size={17} className="text-indigo-400" />
                             </div>
                             <div className="text-2xl font-bold font-mono text-indigo-300">
                                 {loading ? "..." : (stats?.authVolume ?? 0).toLocaleString()}
                             </div>
-                            <div className="text-xs text-slate-500 mt-1">Gateway authentication flow</div>
+                            <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+                                <span className="text-emerald-400/90">Logins: {(stats?.authSuccessCount ?? 0).toLocaleString()}</span>
+                                <span className="text-slate-400">Logouts: {(stats?.authLogoutCount ?? 0).toLocaleString()}</span>
+                            </div>
                         </div>
 
-                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
-                            <div className="flex items-center justify-between text-slate-400 mb-2">
+                        <div
+                            onClick={() => setActiveTab("login-triage")}
+                            className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-amber-500/40 cursor-pointer transition-colors flex flex-col justify-between"
+                            title="Click to open Citrix Login & Abuse Triage"
+                        >
+                            <div className="flex items-center justify-between text-slate-400 mb-1">
                                 <span className="text-xs font-medium uppercase tracking-wider">Auth Failures</span>
                                 <AlertTriangle size={17} className="text-amber-400" />
                             </div>
                             <div className="text-2xl font-bold font-mono text-amber-300">
                                 {loading ? "..." : (stats?.authFailureCount ?? 0).toLocaleString()}
                             </div>
-                            <div className="text-xs text-slate-500 mt-1">Denied or invalid attempts</div>
+                            <div className="text-[11px] text-amber-400/80 mt-1 flex items-center justify-between">
+                                <span>AAA / Policy / Ticket Rejects</span>
+                                <ChevronRight size={13} />
+                            </div>
                         </div>
 
-                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800">
-                            <div className="flex items-center justify-between text-slate-400 mb-2">
-                                <span className="text-xs font-medium uppercase tracking-wider">ICA HDX Channels</span>
+                        <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">
+                            <div className="flex items-center justify-between text-slate-400 mb-1">
+                                <span className="text-xs font-medium uppercase tracking-wider">ICA / HDX App Launches</span>
                                 <Laptop size={17} className="text-emerald-400" />
                             </div>
                             <div className="text-2xl font-bold font-mono text-emerald-300">
                                 {loading ? "..." : (stats?.icaSessionCount ?? 0).toLocaleString()}
                             </div>
-                            <div className="text-xs text-slate-500 mt-1">Citrix app & desktop sessions</div>
+                            <div className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+                                <span>Started: {(stats?.icaSessionCount ?? 0).toLocaleString()}</span>
+                                <span>Closed: {(stats?.icaEndCount ?? 0).toLocaleString()}</span>
+                            </div>
                         </div>
 
                         <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">

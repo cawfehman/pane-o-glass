@@ -594,7 +594,7 @@ export async function analyzeCitrixLoginTriage(
     }
     for (const cs of cveShunEntries) {
         if (!shunMap.has(cs.ip)) shunMap.set(cs.ip, new Set());
-        shunMap.get(cs.ip)!.add(cs.firewalls || "Perimeter Fleet");
+        shunMap.get(cs.ip)!.add((cs as any).firewalls || (cs as any).targetFirewalls || "Perimeter Fleet");
     }
 
     const blacklistMap = new Map<string, string>(
