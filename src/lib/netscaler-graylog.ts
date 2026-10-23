@@ -201,16 +201,104 @@ export class NetscalerGraylogClient {
     private baseUrl: string;
     private apiToken: string;
     private streamId: string;
+    private baseStreamQuery: string;
 
     constructor() {
         this.baseUrl = process.env.OG_GRAYLOG_URL || "https://graylog.cooperhealth.edu:9000";
         this.apiToken = process.env.OG_GRAYLOG_API_TOKEN || "";
         this.streamId = "5c055e3ab20902046cedcfcd";
+        // Matches both the Netscaler Ingest stream and any message with extracted ns_module (for 3rd-party feed logs prior to stream rule routing)
+        this.baseStreamQuery = `(streams:${this.streamId} OR _exists_:ns_module)`;
     }
 
     private get authHeader() {
         if (!this.apiToken) throw new Error("OG_GRAYLOG_API_TOKEN is not configured.");
         return "Basic " + Buffer.from(this.apiToken + ":token").toString("base64");
+    }
+
+    private buildFullQuery(query: string): string {
+        const trimmed = (query || "*").trim();
+        if (!trimmed || trimmed === "*") {
+            return this.baseStreamQuery;
+        }
+        return `${this.baseStreamQuery} AND (${trimmed})`;
+    }
+
+    public static extractSourceIp(msg: any): string {
+        const raw = msg?.message || "";
+        const candidates = [msg?.client_ip, msg?.source_ip, msg?.src_ip, msg?.ns_remote_ip];
+        for (const c of candidates) {
+            if (c && typeof c === "string" && c !== "0.0.0.0" && c !== "127.0.0.1" && c !== "127.0.0.2") {
+                return c.trim();
+            }
+        }
+        const patterns = [
+            /Client_ip\s+([1-9]\d{0,2}\.\d{1,3}\.\d{1,3}\.\d{1,3})/i,
+            /Remote_ip\s+([1-9]\d{0,2}\.\d{1,3}\.\d{1,3}\.\d{1,3})/i,
+            /Remote ip\s*=\s*([1-9]\d{0,2}\.\d{1,3}\.\d{1,3}\.\d{1,3})/i,
+            /clientip\s+([1-9]\d{0,2}\.\d{1,3}\.\d{1,3}\.\d{1,3})/i,
+            /Source\s+([1-9]\d{0,2}\.\d{1,3}\.\d{1,3}\.\d{1,3})/i,
+            /Context\s+[^@\s]+@([1-9]\d{0,2}\.\d{1,3}\.\d{1,3}\.\d{1,3})/i,
+        ];
+        for (const rx of patterns) {
+            const m = raw.match(rx);
+            if (m && m[1] && m[1] !== "127.0.0.1" && m[1] !== "127.0.0.2") {
+                return m[1].trim();
+            }
+        }
+        return "";
+    }
+
+    public static extractCountryCode(msg: any): string {
+        return msg?.client_ip_country_code || msg?.source_ip_country_code || msg?.src_ip_country_code || "Unknown";
+    }
+
+    public static extractCityName(msg: any): string {
+        return msg?.client_ip_city_name || msg?.source_ip_city_name || msg?.src_ip_city_name || "N/A";
+    }
+
+    public static extractUsername(msg: any): string {
+        const raw = msg?.message || "";
+        const candidates = [msg?.username, msg?.user, msg?.ns_username];
+        for (const c of candidates) {
+            if (c && typeof c === "string" && c.trim().length > 0) {
+                return c.trim();
+            }
+        }
+        const patterns = [
+            /username:domainname\s+([a-zA-Z0-9_\-\.@]+):/i,
+            /Failed policy for user\s+([a-zA-Z0-9_\-\.@]+)/i,
+            /\bUser\s+([a-zA-Z0-9_\-\.@]+)\s+-\s+(?:Client_ip|Remote_ip|ADM_User)/i,
+            /\[Username\s*=\s*([^\]]+)\]/i,
+            /Username\s*=\s*([a-zA-Z0-9_\-\.@]+)/i,
+            /\buser\s+([a-zA-Z0-9_\-\.@]+)\s+clientip/i,
+            /Context\s+([a-zA-Z0-9_\-\.]+)(?:@|:)/i,
+            /\buser\s+([a-zA-Z0-9_\-\.@]+)/i,
+        ];
+        for (const rx of patterns) {
+            const m = raw.match(rx);
+            if (m && m[1]) {
+                return m[1].trim();
+            }
+        }
+        return "";
+    }
+
+    public static isAuthFailureMessage(msg: any): boolean {
+        const raw = msg?.message || "";
+        const action = (msg?.ns_action || msg?.status || "").toUpperCase();
+        const mod = (msg?.ns_module || "").toUpperCase();
+        if (action === "LOGIN_FAILED") return true;
+        if (/invalid opcode 8/i.test(raw) || /NAS_NAC_PROXY to INVALID/i.test(raw) || /CONSOLE_CLOUD_AGENT/i.test(raw)) {
+            return false;
+        }
+        if (/Failed policy for user/i.test(raw) || /STA ticket validation failed/i.test(raw) || /Invalid tass cookie/i.test(raw) || /denied access/i.test(raw)) {
+            return true;
+        }
+        if ((mod === "AAA" || mod === "SSLVPN" || mod === "AAATM") && /(?:LOGIN_FAILED|FAILURE|FAILED|DENIED|type 5)/i.test(raw)) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -241,6 +329,7 @@ export class NetscalerGraylogClient {
         let total = 0;
 
         const bucketPromises = [];
+        const fullQuery = this.buildFullQuery(query);
 
         for (let i = bucketCount - 1; i >= 0; i--) {
             const fromMs = endAnchorMs - i * bucketDurationMs;
@@ -250,10 +339,9 @@ export class NetscalerGraylogClient {
             const toIso = new Date(toMs).toISOString();
 
             const bParams = new URLSearchParams({
-                query: query,
+                query: fullQuery,
                 from: fromIso,
                 to: toIso,
-                filter: `streams:${this.streamId}`,
                 limit: "1"
             });
 
@@ -291,15 +379,10 @@ export class NetscalerGraylogClient {
      * Retrieves overall NetScaler telemetry overview statistics.
      */
     async getOverviewStats(rangeSeconds: number = 86400): Promise<NetscalerStats> {
-        // Query counts in parallel
-        const countQueries = [
-            { key: "total", q: "*" },
-            { key: "auth", q: "SSLVPN OR AAA" },
-            { key: "authSuccess", q: 'SSLVPN AND ("response-200" OR "LOGIN")' },
-            { key: "authFailure", q: 'SSLVPN AND (FAILURE OR FAILED OR INVALID OR DENIED OR "type 5")' },
-            { key: "ica", q: "ICA OR HDX" },
-            { key: "foreign", q: "NOT src_ip_country_code:US AND _exists_:src_ip_country_code" }
-        ];
+        const authFailureQuery = '(ns_action:LOGIN_FAILED OR (ns_module:(AAA OR SSLVPN OR AAATM OR ICA) AND (LOGIN_FAILED OR "Failed policy" OR "denied access" OR "STA ticket validation failed" OR "Invalid tass cookie" OR FAILURE OR FAILED OR DENIED OR "type 5") AND NOT "invalid opcode" AND NOT "NAS_NAC_PROXY" AND NOT "CONSOLE_CLOUD_AGENT"))';
+        const authSuccessQuery = '(ns_action:LOGIN OR (ns_module:SSLVPN AND ("LOGIN" OR "response-200")))';
+        const usQuery = '(src_ip_country_code:US OR client_ip_country_code:US OR source_ip_country_code:US)';
+        const foreignQuery = '((_exists_:src_ip_country_code AND NOT src_ip_country_code:US) OR (_exists_:client_ip_country_code AND NOT client_ip_country_code:US) OR (_exists_:source_ip_country_code AND NOT source_ip_country_code:US))';
 
         const [
             histogramRes,
@@ -314,12 +397,12 @@ export class NetscalerGraylogClient {
             topUsersRes
         ] = await Promise.all([
             this.getHistogram("*", rangeSeconds),
-            this.queryCount("SSLVPN OR AAA", rangeSeconds),
-            this.queryCount('SSLVPN AND ("response-200" OR "LOGIN")', rangeSeconds),
-            this.queryCount('SSLVPN AND (FAILURE OR FAILED OR INVALID OR DENIED OR "type 5")', rangeSeconds),
-            this.queryCount("ICA OR HDX", rangeSeconds),
-            this.queryCount("src_ip_country_code:US", rangeSeconds),
-            this.queryCount("NOT src_ip_country_code:US AND _exists_:src_ip_country_code", rangeSeconds),
+            this.queryCount("ns_module:(SSLVPN OR AAA OR AAATM)", rangeSeconds),
+            this.queryCount(authSuccessQuery, rangeSeconds),
+            this.queryCount(authFailureQuery, rangeSeconds),
+            this.queryCount("ns_module:ICA OR ns_action:(ICASTART OR ICAEND_CONNSTAT) OR ICA OR HDX", rangeSeconds),
+            this.queryCount(usQuery, rangeSeconds),
+            this.queryCount(foreignQuery, rangeSeconds),
             this.getRecentGeoEvents(rangeSeconds, 250, "all"),
             this.getRecentFailureEvents(rangeSeconds, 250),
             this.getTopUsers(rangeSeconds, 10)
@@ -331,7 +414,7 @@ export class NetscalerGraylogClient {
         const usCityMap: Record<string, number> = {};
 
         geoEventsRes.forEach(ev => {
-            if (ev.countryCode) {
+            if (ev.countryCode && ev.countryCode !== "Unknown") {
                 countryMap[ev.countryCode] = (countryMap[ev.countryCode] || 0) + 1;
                 if (ev.countryCode !== "US") {
                     foreignCountryMap[ev.countryCode] = (foreignCountryMap[ev.countryCode] || 0) + 1;
@@ -370,7 +453,7 @@ export class NetscalerGraylogClient {
             const isFirst = !seenEvents.has(eventKey);
             seenEvents.add(eventKey);
 
-            const isFail = ev.isFailure || /(?:FAILURE|FAILED|INVALID|DENIED|type 5)/i.test(ev.message);
+            const isFail = ev.isFailure === true;
 
             // Failure locations
             if (isFail && isFirst) {
@@ -407,7 +490,7 @@ export class NetscalerGraylogClient {
 
             // Targeted Users
             const u = ev.username;
-            if (u && u !== "anonymous" && u.length > 1) {
+            if (u && u !== "anonymous" && u !== "nsroot" && u.length > 1) {
                 if (!userTargetMap[u]) {
                     userTargetMap[u] = {
                         totalHits: 0,
@@ -472,7 +555,7 @@ export class NetscalerGraylogClient {
             })
             .slice(0, 10);
 
-        const foreignEventsOnly = geoEventsRes.filter(ev => ev.countryCode !== "US");
+        const foreignEventsOnly = geoEventsRes.filter(ev => ev.countryCode !== "US" && ev.countryCode !== "Unknown");
 
         return {
             rangeSeconds,
@@ -504,9 +587,8 @@ export class NetscalerGraylogClient {
     async queryCount(query: string, rangeSeconds: number = 86400): Promise<number> {
         try {
             const params = new URLSearchParams({
-                query,
+                query: this.buildFullQuery(query),
                 range: rangeSeconds.toString(),
-                filter: `streams:${this.streamId}`,
                 limit: "1"
             });
             const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
@@ -527,16 +609,16 @@ export class NetscalerGraylogClient {
     }
 
     /**
-     * Retrieves top active Citrix users from extracted ns_username field.
+     * Retrieves top active Citrix users from extracted username fields or session messages.
      */
     async getTopUsers(rangeSeconds: number = 86400, limit: number = 10): Promise<{ username: string; count: number }[]> {
         try {
+            const userQuery = '(_exists_:ns_username OR _exists_:username OR _exists_:user OR ns_action:(LOGIN OR LOGOUT OR ICASTART OR ICAEND_CONNSTAT OR LOGIN_FAILED))';
             const params = new URLSearchParams({
-                query: "_exists_:ns_username",
+                query: this.buildFullQuery(userQuery),
                 range: rangeSeconds.toString(),
-                filter: `streams:${this.streamId}`,
-                limit: "300",
-                fields: "ns_username"
+                limit: "350",
+                fields: "ns_username,username,user,message"
             });
             const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
             const res = await axios.get(url, {
@@ -550,8 +632,8 @@ export class NetscalerGraylogClient {
             });
             const counts: Record<string, number> = {};
             (res.data.messages || []).forEach((m: any) => {
-                const u = m.message.ns_username;
-                if (u && u !== "anonymous") {
+                const u = NetscalerGraylogClient.extractUsername(m.message);
+                if (u && u !== "anonymous" && u !== "nsroot") {
                     counts[u] = (counts[u] || 0) + 1;
                 }
             });
@@ -569,14 +651,13 @@ export class NetscalerGraylogClient {
      * Retrieves recent authentication failure events.
      */
     async getRecentFailureEvents(rangeSeconds: number = 86400, limit: number = 250): Promise<NetscalerGeoEvent[]> {
-        const query = 'SSLVPN AND (FAILURE OR FAILED OR INVALID OR DENIED OR "type 5")';
+        const query = '(ns_action:LOGIN_FAILED OR (ns_module:(AAA OR SSLVPN OR AAATM OR ICA) AND (LOGIN_FAILED OR "Failed policy" OR "denied access" OR "STA ticket validation failed" OR "Invalid tass cookie" OR FAILURE OR FAILED OR DENIED OR "type 5") AND NOT "invalid opcode" AND NOT "NAS_NAC_PROXY" AND NOT "CONSOLE_CLOUD_AGENT"))';
         try {
             const params = new URLSearchParams({
-                query,
+                query: this.buildFullQuery(query),
                 range: rangeSeconds.toString(),
-                filter: `streams:${this.streamId}`,
                 limit: limit.toString(),
-                fields: "src_ip,ns_remote_ip,src_ip_country_code,src_ip_city_name,vserver_ip,vserver_port,ns_username,ns_action,ns_event_type,message,facility,level,timestamp",
+                fields: "src_ip,source_ip,client_ip,ns_remote_ip,src_ip_country_code,source_ip_country_code,client_ip_country_code,src_ip_city_name,source_ip_city_name,client_ip_city_name,vserver_ip,vserver_port,ns_username,username,user,ns_module,ns_action,ns_event_type,failure_reason,reason,user_agent,message,facility,level,timestamp",
                 sort: "timestamp:desc"
             });
             const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
@@ -593,23 +674,14 @@ export class NetscalerGraylogClient {
             return (res.data.messages || []).map((m: any) => {
                 const msg = m.message;
                 const raw = msg.message || "";
-                let sourceIp = msg.ns_remote_ip || msg.src_ip || "";
-                if (!sourceIp) {
-                    const ipMatch = raw.match(/(?:Remote_ip|Remote ip\s*=|clientip|Source)\s*[:=]?\s*([0-9\.]+)/i);
-                    if (ipMatch) sourceIp = ipMatch[1];
-                }
-
-                let username = msg.ns_username || "";
-                if (!username) {
-                    const userMatch = raw.match(/(?:Username\s*=\s*|\buser\s+|Context\s+)([a-zA-Z0-9_\-\.@]+)/i);
-                    if (userMatch) username = userMatch[1].trim();
-                }
+                const sourceIp = NetscalerGraylogClient.extractSourceIp(msg);
+                const username = NetscalerGraylogClient.extractUsername(msg);
 
                 return {
                     timestamp: msg.timestamp,
                     sourceIp,
-                    countryCode: msg.src_ip_country_code || "Unknown",
-                    cityName: msg.src_ip_city_name || "N/A",
+                    countryCode: NetscalerGraylogClient.extractCountryCode(msg),
+                    cityName: NetscalerGraylogClient.extractCityName(msg),
                     vserverIp: msg.vserver_ip || "",
                     vserverPort: msg.vserver_port || "",
                     username,
@@ -633,20 +705,19 @@ export class NetscalerGraylogClient {
         limit: number = 100,
         filter: "all" | "foreign" | "us" = "all"
     ): Promise<NetscalerGeoEvent[]> {
-        let query = "_exists_:src_ip_country_code";
+        let query = "(_exists_:src_ip_country_code OR _exists_:client_ip_country_code OR _exists_:source_ip_country_code)";
         if (filter === "foreign") {
-            query = "NOT src_ip_country_code:US AND _exists_:src_ip_country_code";
+            query = "((_exists_:src_ip_country_code AND NOT src_ip_country_code:US) OR (_exists_:client_ip_country_code AND NOT client_ip_country_code:US) OR (_exists_:source_ip_country_code AND NOT source_ip_country_code:US))";
         } else if (filter === "us") {
-            query = "src_ip_country_code:US";
+            query = "(src_ip_country_code:US OR client_ip_country_code:US OR source_ip_country_code:US)";
         }
 
         try {
             const params = new URLSearchParams({
-                query,
+                query: this.buildFullQuery(query),
                 range: rangeSeconds.toString(),
-                filter: `streams:${this.streamId}`,
                 limit: limit.toString(),
-                fields: "src_ip,ns_remote_ip,src_ip_country_code,src_ip_city_name,vserver_ip,vserver_port,ns_username,ns_action,ns_event_type,message,facility,level,timestamp",
+                fields: "src_ip,source_ip,client_ip,ns_remote_ip,src_ip_country_code,source_ip_country_code,client_ip_country_code,src_ip_city_name,source_ip_city_name,client_ip_city_name,vserver_ip,vserver_port,ns_username,username,user,ns_module,ns_action,ns_event_type,message,facility,level,timestamp",
                 sort: "timestamp:desc"
             });
             const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
@@ -663,25 +734,15 @@ export class NetscalerGraylogClient {
             return (res.data.messages || []).map((m: any) => {
                 const msg = m.message;
                 const raw = msg.message || "";
-                let sourceIp = msg.ns_remote_ip || msg.src_ip || "";
-                if (!sourceIp) {
-                    const ipMatch = raw.match(/(?:Remote_ip|Remote ip\s*=|clientip|Source)\s*[:=]?\s*([0-9\.]+)/i);
-                    if (ipMatch) sourceIp = ipMatch[1];
-                }
-
-                let username = msg.ns_username || "";
-                if (!username) {
-                    const userMatch = raw.match(/(?:Username\s*=\s*|\buser\s+|Context\s+)([a-zA-Z0-9_\-\.@]+)/i);
-                    if (userMatch) username = userMatch[1].trim();
-                }
-
-                const isFailure = /(?:FAILURE|FAILED|INVALID|DENIED|type 5)/i.test(raw);
+                const sourceIp = NetscalerGraylogClient.extractSourceIp(msg);
+                const username = NetscalerGraylogClient.extractUsername(msg);
+                const isFailure = NetscalerGraylogClient.isAuthFailureMessage(msg);
 
                 return {
                     timestamp: msg.timestamp,
                     sourceIp,
-                    countryCode: msg.src_ip_country_code || "Unknown",
-                    cityName: msg.src_ip_city_name || "N/A",
+                    countryCode: NetscalerGraylogClient.extractCountryCode(msg),
+                    cityName: NetscalerGraylogClient.extractCityName(msg),
                     vserverIp: msg.vserver_ip || "",
                     vserverPort: msg.vserver_port || "",
                     username,
@@ -712,19 +773,17 @@ export class NetscalerGraylogClient {
         if (!cleanTerm) return [];
 
         let query = cleanTerm;
-        // If it looks like an IP address, query src_ip specifically or broad
         const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(cleanTerm);
         if (isIp) {
-            query = `src_ip:${cleanTerm} OR "${cleanTerm}"`;
+            query = `src_ip:${cleanTerm} OR client_ip:${cleanTerm} OR source_ip:${cleanTerm} OR ns_remote_ip:${cleanTerm} OR "${cleanTerm}"`;
         } else {
-            query = `ns_username:${cleanTerm} OR ns_session_id:${cleanTerm} OR ns_client_device_serial:${cleanTerm} OR "${cleanTerm}"`;
+            query = `ns_username:${cleanTerm} OR username:${cleanTerm} OR user:${cleanTerm} OR ns_session_id:${cleanTerm} OR ns_client_device_serial:${cleanTerm} OR "${cleanTerm}"`;
         }
 
         try {
             const params = new URLSearchParams({
-                query,
+                query: this.buildFullQuery(query),
                 range: rangeSeconds.toString(),
-                filter: `streams:${this.streamId}`,
                 limit: limit.toString(),
                 sort: "timestamp:desc"
             });
@@ -756,25 +815,14 @@ export class NetscalerGraylogClient {
         const timestamp = msg.timestamp || new Date().toISOString();
 
         let eventType: NetscalerTimelineEvent["eventType"] = "OTHER";
-        let username: string | undefined = msg.ns_username;
-        let clientIp: string | undefined = msg.src_ip || msg.ns_remote_ip;
+        const username = NetscalerGraylogClient.extractUsername(msg) || undefined;
+        const clientIp = NetscalerGraylogClient.extractSourceIp(msg) || undefined;
         let clientPort: string | undefined = msg.src_port;
         let sessionId: string | undefined = msg.ns_session_id;
         const deviceSerial: string | undefined = msg.ns_client_device_serial || (raw.match(/device_serial_number\s+(\d+)/i) || [])[1];
         const action: string | undefined = msg.ns_action || msg.ns_event_type;
-        let target: string | undefined = msg.vserver_ip ? `${msg.vserver_ip}:${msg.vserver_port || "443"}` : undefined;
+        const target: string | undefined = msg.vserver_ip ? `${msg.vserver_ip}:${msg.vserver_port || "443"}` : undefined;
 
-        // Fallback extract Username if not in Graylog extracted field
-        if (!username) {
-            const userMatch = raw.match(/Username\s*=\s*([a-zA-Z0-9_\-\.@]+)/i) ||
-                              raw.match(/\buser\s+([a-zA-Z0-9_\-\.@]+)/i) ||
-                              raw.match(/Context\s+([a-zA-Z0-9_\-\.]+)(?:@|:)/i);
-            if (userMatch) {
-                username = userMatch[1].trim();
-            }
-        }
-
-        // Fallback extract Session ID if not in Graylog extracted field
         if (!sessionId) {
             const sessMatch = raw.match(/SessionId:\s*(\d+)/i) ||
                               raw.match(/session-id-(\d+)/i) ||
@@ -784,29 +832,22 @@ export class NetscalerGraylogClient {
             }
         }
 
-        // Extract Client IP from message if not extracted by Graylog
-        if (!clientIp) {
-            const ipMatch = raw.match(/Remote_ip\s+([0-9\.]+)/i) ||
-                            raw.match(/Remote ip\s*=\s*([0-9\.]+)(?::(\d+))?/i) ||
-                            raw.match(/clientip\s+([0-9\.]+)/i) ||
-                            raw.match(/Source\s+([0-9\.]+)(?::(\d+))?/i);
-            if (ipMatch) {
-                clientIp = ipMatch[1];
-                if (ipMatch[2]) clientPort = ipMatch[2];
-            }
+        if (!clientPort) {
+            const portMatch = raw.match(/(?:Remote ip\s*=\s*|Source\s+)[0-9\.]+:(\d+)/i);
+            if (portMatch) clientPort = portMatch[1];
         }
 
         // Classify Event Type using extracted action or raw text
         const actUpper = (action || "").toUpperCase();
         if (actUpper.includes("CMD_EXECUTED") || raw.includes("CMD_EXECUTED") || raw.includes("API CMD")) {
             eventType = "ADMIN_CMD";
-        } else if (raw.includes("response-200") || raw.includes("LOGIN") || (raw.includes("SSO") && !raw.includes("failed"))) {
-            eventType = "AUTH_SUCCESS";
-        } else if (raw.includes("FAILURE") || raw.includes("FAILED") || raw.includes("INVALID") || raw.includes("DENIED") || raw.includes("type 5") || raw.includes("Failed")) {
+        } else if (NetscalerGraylogClient.isAuthFailureMessage(msg)) {
             eventType = "AUTH_FAILURE";
+        } else if (actUpper === "LOGIN" || raw.includes("response-200") || raw.includes("SSLVPN LOGIN") || (raw.includes("SSO") && !raw.includes("failed"))) {
+            eventType = "AUTH_SUCCESS";
         } else if (actUpper.includes("HTTPREQUEST") || raw.includes("HTTPREQUEST") || raw.includes("HTTP")) {
             eventType = "HTTP_REQUEST";
-        } else if (actUpper.includes("CHANNEL_UPDATE") || actUpper.includes("NETWORK_UPDATE") || raw.includes("ICA") || raw.includes("HDX") || raw.includes("CHANNEL_UPDATE")) {
+        } else if (actUpper.includes("ICASTART") || actUpper.includes("ICAEND") || actUpper.includes("CHANNEL_UPDATE") || actUpper.includes("NETWORK_UPDATE") || raw.includes("ICA") || raw.includes("HDX") || raw.includes("CHANNEL_UPDATE")) {
             eventType = "ICA_SESSION";
         } else if (actUpper.includes("CONN_TERMINATE") || actUpper.includes("CONN_DELINK") || actUpper.includes("LOGOUT") || raw.includes("CONN_TERMINATE") || raw.includes("CONN_DELINK") || raw.includes("LOGOUT")) {
             eventType = "CONN_TERMINATE";
@@ -822,8 +863,8 @@ export class NetscalerGraylogClient {
             username,
             clientIp,
             clientPort,
-            countryCode: msg.src_ip_country_code,
-            cityName: msg.src_ip_city_name,
+            countryCode: NetscalerGraylogClient.extractCountryCode(msg),
+            cityName: NetscalerGraylogClient.extractCityName(msg),
             sessionId,
             deviceSerial,
             action,
@@ -848,13 +889,11 @@ export class NetscalerGraylogClient {
 
         const scanPromises = rules.map(async (rule) => {
             try {
-                // Fetch up to 200 matching messages to extract all involved external IPs
                 const params = new URLSearchParams({
-                    query: rule.query,
+                    query: this.buildFullQuery(rule.query),
                     range: rangeSeconds.toString(),
-                    filter: `streams:${this.streamId}`,
                     limit: "200",
-                    fields: "src_ip,ns_remote_ip,src_ip_country_code,src_ip_city_name,ns_username,ns_http_method,ns_http_path,message,timestamp",
+                    fields: "src_ip,source_ip,client_ip,ns_remote_ip,src_ip_country_code,source_ip_country_code,client_ip_country_code,src_ip_city_name,source_ip_city_name,client_ip_city_name,ns_username,username,user,ns_http_method,ns_http_path,message,timestamp",
                     sort: "timestamp:desc"
                 });
                 const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
@@ -871,18 +910,12 @@ export class NetscalerGraylogClient {
                 const messages: any[] = res.data.messages || [];
                 let total = res.data.total_results || 0;
 
-                // Extract all unique external IPs across all matching messages
                 const ipMap = new Map<string, NetscalerMatchedIp>();
 
                 messages.forEach((m: any) => {
                     const rawMsg = m.message.message || "";
-                    let ip = m.message.ns_remote_ip || m.message.src_ip;
+                    let ip = NetscalerGraylogClient.extractSourceIp(m.message);
                     if (!ip) {
-                        const mMatch = rawMsg.match(/(?:Remote_ip|Remote ip\s*=|clientip|Source)\s*[:=]?\s*([0-9\.]+)/i);
-                        if (mMatch) ip = mMatch[1];
-                    }
-                    if (!ip) {
-                        // General IPv4 search in message if it's a command/shell event
                         const anyIp = rawMsg.match(/\b((?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-5])\.(?:\d{1,3}\.){2}(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-5]))\b/);
                         if (anyIp && !isInternalIp(anyIp[1])) ip = anyIp[1];
                     }
@@ -890,8 +923,10 @@ export class NetscalerGraylogClient {
                     if (ip && !isInternalIp(ip)) {
                         const existing = ipMap.get(ip);
                         const ts = m.message.timestamp;
-                        const country = m.message.src_ip_country_code || existing?.countryCode;
-                        const city = m.message.src_ip_city_name || existing?.cityName;
+                        const countryRaw = NetscalerGraylogClient.extractCountryCode(m.message);
+                        const country = (countryRaw && countryRaw !== "Unknown") ? countryRaw : existing?.countryCode;
+                        const cityRaw = NetscalerGraylogClient.extractCityName(m.message);
+                        const city = (cityRaw && cityRaw !== "N/A") ? cityRaw : existing?.cityName;
 
                         if (existing) {
                             existing.count += 1;
@@ -917,22 +952,18 @@ export class NetscalerGraylogClient {
 
                 let sampleEvents = messages.slice(0, 5).map((m: any) => {
                     const rawMsg = m.message.message || "";
-                    let ip = m.message.src_ip ||
-                               m.message.ns_remote_ip ||
-                               (rawMsg.match(/Remote_ip\s+([0-9\.]+)/i) || [])[1] ||
-                               (rawMsg.match(/Source\s+([0-9\.]+)/i) || [])[1];
+                    const ip = NetscalerGraylogClient.extractSourceIp(m.message);
                     return {
                         timestamp: m.message.timestamp,
-                        sourceIp: ip,
-                        username: m.message.ns_username,
+                        sourceIp: ip || undefined,
+                        username: NetscalerGraylogClient.extractUsername(m.message) || undefined,
                         httpMethod: m.message.ns_http_method,
                         httpPath: m.message.ns_http_path,
-                        countryCode: m.message.src_ip_country_code,
+                        countryCode: NetscalerGraylogClient.extractCountryCode(m.message),
                         message: rawMsg
                     };
                 });
 
-                // Post-filter safeguard: for external admin commands, ignore any false positives with internal IPs
                 if (rule.id === "external-admin-cmd") {
                     sampleEvents = sampleEvents.filter(ev => !isInternalIp(ev.sourceIp));
                     if (sampleEvents.length === 0 && total > 0) {
@@ -975,11 +1006,10 @@ export class NetscalerGraylogClient {
 
         try {
             const params = new URLSearchParams({
-                query: ruleQuery,
+                query: this.buildFullQuery(ruleQuery),
                 range: rangeSeconds.toString(),
-                filter: `streams:${this.streamId}`,
                 limit: limit.toString(),
-                fields: "src_ip,ns_remote_ip,src_ip_country_code,src_ip_city_name,ns_username,message,timestamp",
+                fields: "src_ip,source_ip,client_ip,ns_remote_ip,src_ip_country_code,source_ip_country_code,client_ip_country_code,src_ip_city_name,source_ip_city_name,client_ip_city_name,ns_username,username,user,message,timestamp",
                 sort: "timestamp:desc"
             });
             const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
@@ -998,11 +1028,7 @@ export class NetscalerGraylogClient {
 
             messages.forEach((m: any) => {
                 const rawMsg = m.message.message || "";
-                let ip = m.message.ns_remote_ip || m.message.src_ip;
-                if (!ip) {
-                    const mMatch = rawMsg.match(/(?:Remote_ip|Remote ip\s*=|clientip|Source)\s*[:=]?\s*([0-9\.]+)/i);
-                    if (mMatch) ip = mMatch[1];
-                }
+                let ip = NetscalerGraylogClient.extractSourceIp(m.message);
                 if (!ip) {
                     const anyIp = rawMsg.match(/\b((?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-5])\.(?:\d{1,3}\.){2}(?:[1-9]\d?|1\d\d|2[0-4]\d|25[0-5]))\b/);
                     if (anyIp && !isInternalIp(anyIp[1])) ip = anyIp[1];
@@ -1011,8 +1037,10 @@ export class NetscalerGraylogClient {
                 if (ip && !isInternalIp(ip)) {
                     const existing = ipMap.get(ip);
                     const ts = m.message.timestamp;
-                    const country = m.message.src_ip_country_code || existing?.countryCode;
-                    const city = m.message.src_ip_city_name || existing?.cityName;
+                    const countryRaw = NetscalerGraylogClient.extractCountryCode(m.message);
+                    const country = (countryRaw && countryRaw !== "Unknown") ? countryRaw : existing?.countryCode;
+                    const cityRaw = NetscalerGraylogClient.extractCityName(m.message);
+                    const city = (cityRaw && cityRaw !== "N/A") ? cityRaw : existing?.cityName;
 
                     if (existing) {
                         existing.count += 1;

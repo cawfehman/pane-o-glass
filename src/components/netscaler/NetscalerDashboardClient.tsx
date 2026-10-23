@@ -19,6 +19,7 @@ import {
     NetscalerIocRule, NetscalerIocFinding, NetscalerMatchedIp, DEFAULT_CITRIX_IOC_RULES 
 } from "@/lib/netscaler-graylog";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
+import CitrixLoginTriageTab from "@/components/netscaler/CitrixLoginTriageTab";
 
 const COUNTRY_COLORS: Record<string, string> = {
     US: "#3b82f6",
@@ -46,7 +47,7 @@ export default function NetscalerDashboardClient() {
     const [timeframe, setTimeframe] = useState<number>(86400);
 
     // Active tab
-    const [activeTab, setActiveTab] = useState<"overview" | "foreign" | "investigate" | "iocs" | "cve-shuns">("overview");
+    const [activeTab, setActiveTab] = useState<"overview" | "login-triage" | "foreign" | "investigate" | "iocs" | "cve-shuns">("overview");
 
     // CVE-2026 Auto-Shun & Dedicated Tracking State
     const [cveShuns, setCveShuns] = useState<any[]>([]);
@@ -640,6 +641,23 @@ export default function NetscalerDashboardClient() {
                     >
                         <span className="flex items-center gap-2">
                             <Activity size={16} /> Overview Telemetry
+                        </span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("login-triage")}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                            activeTab === "login-triage"
+                                ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 shadow-sm"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                        }`}
+                    >
+                        <span className="flex items-center gap-2">
+                            <Lock size={16} className="text-indigo-400" /> Citrix Login & Abuse Triage
+                            {stats?.authFailureCount ? (
+                                <span className="px-1.5 py-0.5 text-xs rounded-full bg-indigo-500/30 text-indigo-200 font-mono">
+                                    {stats.authFailureCount}
+                                </span>
+                            ) : null}
                         </span>
                     </button>
                     <button
@@ -2908,6 +2926,19 @@ export default function NetscalerDashboardClient() {
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* CITRIX LOGIN & ABUSE TRIAGE TAB */}
+            {activeTab === "login-triage" && (
+                <CitrixLoginTriageTab
+                    timeframe={timeframe}
+                    firewallHosts={firewallHosts}
+                    onInvestigateTarget={(term) => {
+                        setSearchQuery(term);
+                        setActiveTab("investigate");
+                        runInvestigation(term, timeframe);
+                    }}
+                />
             )}
 
             {/* QUICK PERIMETER SHUN MODAL */}
