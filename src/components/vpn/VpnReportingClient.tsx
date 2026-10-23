@@ -47,7 +47,14 @@ export interface VpnReportEvent {
     ipAsDomain?: string | null;
     ipCountry?: string | null;
     ipCountryCode?: string | null;
+    ipCity?: string | null;
     createdAt: string;
+
+    // Imprivata RADIUS Correlation
+    imprivataVerdict?: string | null;
+    imprivataVerdictLabel?: string | null;
+    imprivataMfaMethod?: string | null;
+    imprivataNode?: string | null;
 
     // AD Enrichment
     adStatus?: "ACTIVE" | "DISABLED" | "NOT_FOUND";
@@ -108,6 +115,9 @@ export default function VpnReportingClient() {
     const [successCount, setSuccessCount] = useState<number>(0);
     const [failureCount, setFailureCount] = useState<number>(0);
     const [disconnectCount, setDisconnectCount] = useState<number>(0);
+    const [imprivataBadPasswordCount, setImprivataBadPasswordCount] = useState<number>(0);
+    const [imprivataMfaTimeoutCount, setImprivataMfaTimeoutCount] = useState<number>(0);
+    const [imprivataInvalidUserCount, setImprivataInvalidUserCount] = useState<number>(0);
     const [totalBytes, setTotalBytes] = useState<number>(0);
     const [dbSpeedMs, setDbSpeedMs] = useState<number | null>(null);
 
@@ -164,6 +174,9 @@ export default function VpnReportingClient() {
             setSuccessCount(data.successCount || 0);
             setFailureCount(data.failureCount || 0);
             setDisconnectCount(data.disconnectCount || 0);
+            setImprivataBadPasswordCount(data.imprivataBadPasswordCount || 0);
+            setImprivataMfaTimeoutCount(data.imprivataMfaTimeoutCount || 0);
+            setImprivataInvalidUserCount(data.imprivataInvalidUserCount || 0);
             setTotalBytes(data.totalBytesTransferred || 0);
             if (data.responseTimeMs !== undefined) setDbSpeedMs(data.responseTimeMs);
 
@@ -231,6 +244,8 @@ export default function VpnReportingClient() {
             "VPN Type",
             "Gateway Stream",
             "Failure Reason",
+            "Imprivata RADIUS Verdict",
+            "MFA Method",
             "ASN",
             "ISP / Organization",
             "Country",
@@ -265,6 +280,8 @@ export default function VpnReportingClient() {
             escapeCsv(e.vpnType || ""),
             escapeCsv(e.vpnStream || ""),
             escapeCsv(e.failureReason || ""),
+            escapeCsv(e.imprivataVerdictLabel || ""),
+            escapeCsv(e.imprivataMfaMethod || ""),
             escapeCsv(e.ipAsn || ""),
             escapeCsv(e.ipAsName || ""),
             escapeCsv(e.ipCountry || ""),
@@ -645,6 +662,25 @@ export default function VpnReportingClient() {
                     <span className="text-lg font-bold font-mono text-rose-400">
                         {loading ? "--" : failureCount.toLocaleString()}
                     </span>
+                    {!loading && (imprivataBadPasswordCount > 0 || imprivataMfaTimeoutCount > 0 || imprivataInvalidUserCount > 0) && (
+                        <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[10px] font-mono">
+                            {imprivataBadPasswordCount > 0 && (
+                                <span className="px-1.5 py-0.2 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30" title="Imprivata RADIUS: Bad AD Password or Policy">
+                                    {imprivataBadPasswordCount} Bad Pwd
+                                </span>
+                            )}
+                            {imprivataMfaTimeoutCount > 0 && (
+                                <span className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30" title="Imprivata Confirm ID: MFA Push Timed Out (AD Password OK)">
+                                    {imprivataMfaTimeoutCount} MFA Timeout
+                                </span>
+                            )}
+                            {imprivataInvalidUserCount > 0 && (
+                                <span className="px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30" title="Imprivata RADIUS: Invalid Username">
+                                    {imprivataInvalidUserCount} Invalid User
+                                </span>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-color)] flex flex-col gap-1">
@@ -871,8 +907,60 @@ export default function VpnReportingClient() {
                                             </td>
 
                                             {/* Details / Failure Reason */}
-                                            <td className="p-3 text-xs max-w-[240px] truncate text-[var(--text-secondary)]">
-                                                {evt.failureReason || (evt.status === "SUCCESS" ? "Session Authenticated" : "Clean Teardown")}
+                                            <td className="p-3 text-xs max-w-[290px]">
+                                                <div className="flex flex-col gap-1">
+                                                    {evt.imprivataVerdict && evt.status === "FAILURE" ? (
+                                                        <div className="flex flex-wrap items-center gap-1.5">
+                                                            {evt.imprivataVerdict === "BAD_AD_PASSWORD_OR_POLICY" && (
+                                                                <span
+                                                                    className="px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30 font-mono text-[10px] font-bold uppercase tracking-wide inline-flex items-center gap-1"
+                                                                    title={`Imprivata RADIUS (${evt.imprivataNode || 'as07'}): Bad AD Password or Policy Denied (Increments AD badPwdCount)`}
+                                                                >
+                                                                    🔑 Bad AD Password / Policy
+                                                                </span>
+                                                            )}
+                                                            {evt.imprivataVerdict === "MFA_PUSH_TIMEOUT" && (
+                                                                <span
+                                                                    className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono text-[10px] font-bold uppercase tracking-wide inline-flex items-center gap-1"
+                                                                    title="Imprivata Confirm ID: User entered valid AD password, but did not accept the smartphone Push notification in time"
+                                                                >
+                                                                    📱 MFA Push Timed Out (AD OK)
+                                                                </span>
+                                                            )}
+                                                            {evt.imprivataVerdict === "INVALID_USER" && (
+                                                                <span
+                                                                    className="px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 font-mono text-[10px] font-bold uppercase tracking-wide inline-flex items-center gap-1"
+                                                                    title="Imprivata RADIUS: Username does not exist in Active Directory / OneSign"
+                                                                >
+                                                                    🚫 Invalid Username
+                                                                </span>
+                                                            )}
+                                                            {evt.imprivataVerdict === "MFA_CHALLENGED" && (
+                                                                <span
+                                                                    className="px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-mono text-[10px] font-bold uppercase tracking-wide inline-flex items-center gap-1"
+                                                                    title={`Imprivata Confirm ID: 2FA Challenge sent (${evt.imprivataMfaMethod || 'Push/SMS'}) but not completed`}
+                                                                >
+                                                                    ⏳ 2FA Uncompleted ({evt.imprivataMfaMethod || "2FA"})
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ) : evt.imprivataMfaMethod && evt.status === "SUCCESS" ? (
+                                                        <div className="flex items-center gap-1">
+                                                            <span
+                                                                className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 font-mono text-[10px] font-semibold"
+                                                                title={`Verified via Imprivata Confirm ID (${evt.imprivataNode || 'as07'})`}
+                                                            >
+                                                                2FA: {evt.imprivataMfaMethod}
+                                                            </span>
+                                                        </div>
+                                                    ) : null}
+                                                    <span
+                                                        className="truncate text-[var(--text-secondary)]"
+                                                        title={evt.failureReason || (evt.status === "SUCCESS" ? "Session Authenticated" : "Clean Teardown")}
+                                                    >
+                                                        {evt.failureReason || (evt.status === "SUCCESS" ? "Session Authenticated" : "Clean Teardown")}
+                                                    </span>
+                                                </div>
                                             </td>
                                         </tr>
                                     );

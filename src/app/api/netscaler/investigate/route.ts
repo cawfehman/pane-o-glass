@@ -3,6 +3,11 @@ import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { NetscalerGraylogClient } from "@/lib/netscaler-graylog";
 import { logAudit } from "@/lib/audit";
+import {
+    fetchImprivataBatchIndex,
+    matchEventToImprivataSession,
+    formatImprivataFailureReason,
+} from "@/lib/imprivata-graylog";
 
 export async function POST(req: Request) {
     try {
@@ -22,6 +27,45 @@ export async function POST(req: Request) {
 
         const client = new NetscalerGraylogClient();
         const timeline = await client.investigate(query, range, limit);
+
+        // Enrich NetScaler AAA LOGIN_FAILED / Imprivata-prod policy failures with Imprivata RADIUS verdicts
+        const targetUsers = Array.from(
+            new Set(
+                timeline
+                    .map((ev) => ev.username)
+                    .filter((u): u is string => Boolean(u && u !== "anonymous" && u !== "nsroot"))
+            )
+        );
+        if (targetUsers.length > 0) {
+            const impIndex = await fetchImprivataBatchIndex(
+                range + 600,
+                "CITRIX",
+                400,
+                targetUsers
+            ).catch(() => new Map());
+
+            for (const ev of timeline) {
+                if (
+                    ev.username &&
+                    ev.username !== "anonymous" &&
+                    (ev.eventType === "AUTH_FAILURE" ||
+                        /Imprivata|denied access|Failed policy/i.test(ev.rawMessage || ""))
+                ) {
+                    const matched = matchEventToImprivataSession(
+                        ev.username,
+                        ev.timestamp,
+                        impIndex,
+                        120000,
+                        true
+                    );
+                    if (matched) {
+                        const impLabel = formatImprivataFailureReason(matched);
+                        ev.action = ev.action ? `${ev.action} (${impLabel})` : impLabel;
+                        ev.rawMessage = `[${impLabel}] ${ev.rawMessage}`;
+                    }
+                }
+            }
+        }
 
         // Audit log search
         const clientIp = req.headers.get("x-forwarded-for") || "127.0.0.1";

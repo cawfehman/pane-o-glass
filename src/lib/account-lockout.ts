@@ -5,6 +5,11 @@ import { parseCalledStationId, normalizeMacAddress, getIseUrls, executeWithPanFa
 import { resolveIpHostname } from "./ise";
 import { getUserDetails } from "./ldap";
 import { prisma } from "./prisma";
+import {
+    queryImprivataForUser,
+    ImprivataUserCorrelationSummary,
+    OG_GRAYLOG_IMPRIVATA_RADIUS_STREAM_ID,
+} from "./imprivata-graylog";
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false
@@ -134,6 +139,9 @@ export interface LockoutInvestigationResult {
     unlockActivity: UnlockActivity;
     rootCauseCategory:
         | "WIRELESS_EAP_ISE"
+        | "IMPRIVATA_VPN_RADIUS"
+        | "IMPRIVATA_CITRIX_RADIUS"
+        | "IMPRIVATA_WORKSTATION_ESSO"
         | "WORKSTATION_RDP"
         | "WORKSTATION_NETWORK_SHARE"
         | "WORKSTATION_SERVICE"
@@ -148,21 +156,26 @@ export interface LockoutInvestigationResult {
     executiveSummary: string;
     recommendation: string;
     primaryCulprit: {
-        type: "ISE_WIRELESS" | "WORKSTATION" | "UNKNOWN";
+        type: "ISE_WIRELESS" | "IMPRIVATA_RADIUS" | "WORKSTATION" | "UNKNOWN";
         callerName: string;
         isIsePsn: boolean;
+        isImprivata?: boolean;
         iseDetails?: IseWirelessDetails | null;
         workstationDetails?: WorkstationDetails | null;
     };
+    imprivataDetails?: ImprivataUserCorrelationSummary | null;
     uniqueCallers: string[];
     timeline: FailureTimelineBucket[];
     events: AdSecurityEvent[];
     lifecycleHistory: AccountLifecycleHistoryItem[];
     queriedSources: {
         adGraylogStream: string;
+        imprivataGraylogStream?: string;
         iseQueryMode: "ISE_MNT" | "GRAYLOG_ISE" | "SKIPPED";
         adEventsCount: number;
         iseEventsCount: number;
+        imprivataRadiusEventsCount?: number;
+        imprivataEssoEventsCount?: number;
     };
 }
 
@@ -734,11 +747,76 @@ export async function investigateAccountLockout(
 
     const rangeSeconds = Math.max(3600, rangeHours * 3600);
 
-    // 2. Fetch AD Security Events from Graylog
-    const events = await fetchAdSecurityEventsFromGraylog(variants, baseUser, rangeSeconds);
+    // 2. Fetch AD Security Events, persistent lifecycle events, and Imprivata RADIUS/ESSO correlation in parallel
+    const [events, lifecycleHistory, imprivataDetails] = await Promise.all([
+        fetchAdSecurityEventsFromGraylog(variants, baseUser, rangeSeconds),
+        getAccountLifecycleHistory([baseUser, canonicalUser, ...variants], 20),
+        queryImprivataForUser(variants, rangeSeconds).catch((err) => {
+            console.warn("[Account-Lockout] Imprivata correlation note:", err?.message || err);
+            return null;
+        }),
+    ]);
 
-    // 2b. Fetch persistent lifecycle events (password changes, resets, unlocks) from PostgreSQL
-    const lifecycleHistory = await getAccountLifecycleHistory([baseUser, canonicalUser, ...variants], 20);
+    // 2c. Correlate opaque AD events (where Caller is 'Unknown Caller', '-', a Domain Controller, or an Imprivata node)
+    // with exact Imprivata RADIUS [Session.XX] events within ±20 seconds!
+    if (imprivataDetails && imprivataDetails.radiusSessions.length > 0) {
+        for (const ev of events) {
+            if (ev.eventId !== "4740" && ev.eventId !== "4625" && ev.eventId !== "4776" && ev.eventId !== "4771") {
+                continue;
+            }
+            const caller = ev.callerDevice || "";
+            const isOpaqueDcOrImprivataCaller =
+                caller === "Unknown Caller" ||
+                caller === "-" ||
+                /^(?:cdc|wdc|cdr)-(?:chs|root)0[1-9]/i.test(caller) ||
+                /^(?:as07[a-c]|cdr-impr0[1-2])/i.test(caller);
+
+            if (!isOpaqueDcOrImprivataCaller) continue;
+
+            const evMs = new Date(ev.timestamp).getTime();
+            if (isNaN(evMs)) continue;
+
+            let bestSession = null;
+            let bestDiff = 20000; // ±20 seconds correlation window
+            for (const sess of imprivataDetails.radiusSessions) {
+                const sessMs = new Date(sess.timestamp).getTime();
+                const diff = Math.abs(sessMs - evMs);
+                if (diff <= bestDiff) {
+                    bestDiff = diff;
+                    bestSession = sess;
+                }
+            }
+
+            if (bestSession) {
+                ev.callerDevice = `${bestSession.nasShortLabel} → Imprivata (${bestSession.imprivataNode})`;
+                if (ev.sourceIp === "-" || !ev.sourceIp) {
+                    ev.sourceIp = bestSession.externalClientIp || bestSession.nasClientIp;
+                }
+                ev.failureReason = `[Imprivata ${bestSession.imprivataNode} ${bestSession.sessionTag}] ${bestSession.verdictLabel}: ${bestSession.errorReason}${
+                    bestSession.externalClientIp ? ` (Client IP: ${bestSession.externalClientIp})` : ""
+                }`;
+            }
+        }
+    }
+
+    // Also correlate internal clinical workstation (WKSX...) events with Imprivata ESSO Stream 2
+    if (imprivataDetails && imprivataDetails.essoEvents.length > 0) {
+        for (const ev of events) {
+            const callerUpper = (ev.callerDevice || "").toUpperCase();
+            if (!callerUpper || callerUpper === "UNKNOWN CALLER") continue;
+            const matchedEsso = imprivataDetails.essoEvents.find(
+                (es) => es.workstationHostname && es.workstationHostname.toUpperCase() === callerUpper
+            );
+            if (matchedEsso) {
+                if ((ev.sourceIp === "-" || !ev.sourceIp) && matchedEsso.workstationIp) {
+                    ev.sourceIp = matchedEsso.workstationIp;
+                }
+                if (!ev.failureReason) {
+                    ev.failureReason = `[Imprivata OneSign ESSO] ${matchedEsso.eventType} (${matchedEsso.authMethod || "Password"}) on ${matchedEsso.workstationHostname}`;
+                }
+            }
+        }
+    }
 
     // Filter lockouts, failures, unlocks, and password changes
     const lockoutEvents = events.filter(e => e.eventId === "4740");
@@ -888,6 +966,17 @@ export async function investigateAccountLockout(
     }
 
     const callerIsIse = isIsePsn(primaryCaller) || events.some(e => isIsePsn(e.callerDevice));
+    const isDcOnlyCaller = /^(?:cdc|wdc|cdr)-(?:chs|root)0[1-9]/i.test(primaryCaller) || primaryCaller === "Unknown Caller";
+    const callerIsImprivata =
+        !callerIsIse &&
+        (/Imprivata|as07[a-c]|cdr-impr/i.test(primaryCaller) ||
+            (isDcOnlyCaller && Boolean(imprivataDetails?.isImprivataLockoutCulprit)));
+
+    if (callerIsImprivata && isDcOnlyCaller && imprivataDetails?.primaryGatewayName) {
+        primaryCaller = `${imprivataDetails.primaryGatewayName}${
+            imprivataDetails.primaryImprivataNode ? ` → Imprivata (${imprivataDetails.primaryImprivataNode})` : ""
+        }`;
+    }
 
     let iseDetails: IseWirelessDetails | null = null;
     let iseQueryMode: "ISE_MNT" | "GRAYLOG_ISE" | "SKIPPED" = "SKIPPED";
@@ -986,6 +1075,37 @@ export async function investigateAccountLockout(
             : `Multiple wireless authentication failures detected from ISE PSN (${primaryCaller}) for '${canonicalUser}' ${macText} ${ssidText}. Risk of account lockout if cached credentials are not updated.${pwdNote}`;
 
         recommendation = `Have the user locate their wireless device ${macText ? `(${macText})` : ""} connected ${ssidText}. Instruct them to 'Forget' the network or re-enter their current Active Directory password to stop continuous failed auth probes.`;
+    } else if (callerIsImprivata && imprivataDetails) {
+        const gwCat = imprivataDetails.primaryGatewayCategory;
+        rootCauseCategory =
+            gwCat === "VPN"
+                ? "IMPRIVATA_VPN_RADIUS"
+                : gwCat === "CITRIX"
+                ? "IMPRIVATA_CITRIX_RADIUS"
+                : "IMPRIVATA_WORKSTATION_ESSO";
+
+        const gwLabel = imprivataDetails.primaryGatewayName || primaryCaller;
+        const impNode = imprivataDetails.primaryImprivataNode || "as07a";
+        const extIpText = imprivataDetails.primaryExternalIp
+            ? ` from external Client IP ${imprivataDetails.primaryExternalIp}${
+                  imprivataDetails.primaryExternalLocation ? ` (${imprivataDetails.primaryExternalLocation})` : ""
+              }${imprivataDetails.primaryExternalIsp ? ` [${imprivataDetails.primaryExternalIsp}]` : ""}`
+            : "";
+
+        executiveSummary = hasLockout
+            ? `Account '${canonicalUser}' locked out ${lockoutCount} time(s). Root cause traced through Imprivata RADIUS (${impNode}) to '${gwLabel}'${extIpText}. Imprivata recorded ${imprivataDetails.badPasswordCount} bad AD password failure(s)${
+                  imprivataDetails.mfaTimeoutCount > 0 ? ` and ${imprivataDetails.mfaTimeoutCount} MFA push timeout(s)` : ""
+              }.`
+            : `Detected ${imprivataDetails.radiusFailures} Imprivata RADIUS failure(s) for '${canonicalUser}' via '${gwLabel}' (${impNode})${extIpText}. Primary verdict: ${
+                  imprivataDetails.primaryVerdictLabel || "Authentication Failed"
+              }.`;
+
+        recommendation =
+            gwCat === "VPN"
+                ? `User or external client${extIpText} is submitting invalid AD credentials through Cisco AnyConnect VPN (${gwLabel}) → Imprivata (${impNode}). Verify if the user has a disconnected AnyConnect client auto-retrying an old password, or check VPN Reporting if the external IP is unfamiliar.`
+                : gwCat === "CITRIX"
+                ? `User or external client${extIpText} is failing authentication on Citrix Gateway (${gwLabel}) → Imprivata (${impNode}). Have the user sign out of Citrix Workspace / Receiver apps caching an old password, or inspect the external IP in Citrix Login & Abuse Triage.`
+                : `Check clinical workstation '${imprivataDetails.primaryWorkstationHostname || primaryCaller}' where Imprivata OneSign recorded failed primary login attempts.`;
     } else if (passwordChangeActivity.detected && passwordChangeActivity.lockoutsAfterChange > 0) {
         rootCauseCategory = "POST_PASSWORD_CHANGE_STALE";
         const performedStr = passwordChangeActivity.performedBy ? ` (by ${passwordChangeActivity.performedBy})` : "";
@@ -1047,21 +1167,32 @@ export async function investigateAccountLockout(
         executiveSummary,
         recommendation,
         primaryCulprit: {
-            type: callerIsIse ? "ISE_WIRELESS" : (primaryCaller !== "Unknown Caller" ? "WORKSTATION" : "UNKNOWN"),
+            type: callerIsIse
+                ? "ISE_WIRELESS"
+                : callerIsImprivata
+                ? "IMPRIVATA_RADIUS"
+                : primaryCaller !== "Unknown Caller"
+                ? "WORKSTATION"
+                : "UNKNOWN",
             callerName: primaryCaller,
             isIsePsn: callerIsIse,
+            isImprivata: callerIsImprivata,
             iseDetails,
             workstationDetails
         },
+        imprivataDetails,
         uniqueCallers,
         timeline,
         events,
         lifecycleHistory,
         queriedSources: {
             adGraylogStream: OG_GRAYLOG_AD_STREAM_ID,
+            imprivataGraylogStream: OG_GRAYLOG_IMPRIVATA_RADIUS_STREAM_ID,
             iseQueryMode,
             adEventsCount: events.length,
-            iseEventsCount: iseDetails ? 1 : 0
+            iseEventsCount: iseDetails ? 1 : 0,
+            imprivataRadiusEventsCount: imprivataDetails?.radiusSessions.length || 0,
+            imprivataEssoEventsCount: imprivataDetails?.essoEvents.length || 0
         }
     };
 }

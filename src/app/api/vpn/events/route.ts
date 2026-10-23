@@ -9,6 +9,11 @@ import { auth } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { verifyRotatingPassword } from "@/lib/rotatingPassword";
 import { parseBooleanSearchQuery } from "@/lib/booleanQueryParser";
+import {
+    fetchImprivataBatchIndex,
+    matchEventToImprivataSession,
+    formatImprivataFailureReason,
+} from "@/lib/imprivata-graylog";
 
 // Helper to parse duration string (e.g. 0h:05m:30s or 1d 0h:05m:30s) to seconds
 function parseDuration(durationStr: string): number | null {
@@ -99,6 +104,11 @@ export async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: num
         if (messages.length > 0) {
             console.log(`[VPN-DEBUG] Sample log 0: "${messages[0].message?.message}"`);
         }
+
+        // Pre-fetch Imprivata RADIUS sessions for the sync window so VPN failures get specific AD/MFA verdicts
+        const imprivataIndex = await fetchImprivataBatchIndex(rangeSeconds + 900, "VPN", 600).catch(
+            () => new Map()
+        );
 
         let newEventsCount = 0;
 
@@ -217,6 +227,20 @@ export async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: num
 
             if (!username || !sourceIp) continue;
 
+            // Enrich generic FTD failure reason ("Unspecified" / "Invalid password") with Imprivata RADIUS verdict
+            if (status === "FAILURE") {
+                const matchedImp = matchEventToImprivataSession(
+                    username,
+                    logTimestamp,
+                    imprivataIndex,
+                    120000,
+                    true
+                );
+                if (matchedImp) {
+                    failureReason = formatImprivataFailureReason(matchedImp);
+                }
+            }
+
             const bytesTotal = (bytesSent !== null || bytesReceived !== null) 
                 ? (bytesSent || 0) + (bytesReceived || 0) 
                 : null;
@@ -244,6 +268,17 @@ export async function syncFromGraylog(rangeSeconds = 1800): Promise<{ count: num
                     await prisma.vpnEvent.update({
                         where: { id: existing.id },
                         data: { assignedIp }
+                    });
+                }
+                // Upgrade existing failureReason if it was generic "Unspecified" / "Invalid password" and Imprivata resolved it
+                if (
+                    status === "FAILURE" &&
+                    failureReason?.startsWith("Imprivata") &&
+                    (!existing.failureReason || !existing.failureReason.includes("Imprivata"))
+                ) {
+                    await prisma.vpnEvent.update({
+                        where: { id: existing.id },
+                        data: { failureReason }
                     });
                 }
                 // If it is a disconnect event and we now have a log with actual byte counts, update the existing record
@@ -554,6 +589,36 @@ export async function GET(req: NextRequest) {
                 orderBy: { createdAt: "desc" },
                 take: 100
             });
+
+            if (events.length > 0) {
+                const impIndex = await fetchImprivataBatchIndex(
+                    14 * 86400,
+                    "VPN",
+                    400,
+                    [detailUsername]
+                ).catch(() => new Map());
+                for (const evt of events) {
+                    const matched = matchEventToImprivataSession(
+                        evt.username,
+                        evt.createdAt,
+                        impIndex,
+                        120000,
+                        true
+                    );
+                    if (
+                        matched &&
+                        (!evt.failureReason ||
+                            /^(unspecified|invalid password|authentication failed)$/i.test(
+                                evt.failureReason.replace(/^\[⚠️[^\]]+\]\s*/, "").trim()
+                            ))
+                    ) {
+                        const threatPrefixMatch = evt.failureReason?.match(/^(\[⚠️[^\]]+\])\s*/);
+                        const prefix = threatPrefixMatch ? `${threatPrefixMatch[1]} ` : "";
+                        evt.failureReason = `${prefix}${formatImprivataFailureReason(matched)}`;
+                    }
+                }
+            }
+
             return NextResponse.json({ success: true, events });
         }
 
@@ -1018,6 +1083,45 @@ export async function GET(req: NextRequest) {
                     details: JSON.parse(entry.rawJson)
                 };
             } catch (e) {}
+        }
+
+        // Enrich generic failureReason ("Unspecified" / "Invalid password") on recent/search VPN failure events via Imprivata RADIUS batch index
+        const failureEventsToEnrich = [
+            ...results.filter((e) => e.status === "FAILURE"),
+            ...recentEvents.filter((e) => e.status === "FAILURE"),
+            ...failedIps.filter((e) => e.status === "FAILURE"),
+        ];
+        const failedUsersForImprivata = Array.from(
+            new Set(failureEventsToEnrich.map((e) => e.username).filter(Boolean))
+        );
+        if (failedUsersForImprivata.length > 0) {
+            const impIndex = await fetchImprivataBatchIndex(
+                7 * 86400,
+                "VPN",
+                600,
+                failedUsersForImprivata
+            ).catch(() => new Map());
+
+            for (const evt of failureEventsToEnrich) {
+                const matched = matchEventToImprivataSession(
+                    evt.username,
+                    evt.createdAt,
+                    impIndex,
+                    120000,
+                    true
+                );
+                if (
+                    matched &&
+                    (!evt.failureReason ||
+                        /^(unspecified|invalid password|authentication failed)$/i.test(
+                            evt.failureReason.replace(/^\[⚠️[^\]]+\]\s*/, "").trim()
+                        ))
+                ) {
+                    const threatPrefixMatch = evt.failureReason?.match(/^(\[⚠️[^\]]+\])\s*/);
+                    const prefix = threatPrefixMatch ? `${threatPrefixMatch[1]} ` : "";
+                    evt.failureReason = `${prefix}${formatImprivataFailureReason(matched)}`;
+                }
+            }
         }
 
         if (isSearchMode) {

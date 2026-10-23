@@ -440,6 +440,16 @@ export default function CitrixLoginTriageTab({
                         <span className="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20">
                             STA/Cookie: {(data?.summary.staTicketFailedCount ?? 0) + (data?.summary.cookieInvalidCount ?? 0)}
                         </span>
+                        {(data?.summary.imprivataBadPasswordCount ?? 0) > 0 && (
+                            <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30 font-semibold" title="Correlated via Imprivata RADIUS (ssoradius): Bad AD Password or Policy">
+                                🔑 Bad AD Pwd: {data?.summary.imprivataBadPasswordCount}
+                            </span>
+                        )}
+                        {(data?.summary.imprivataMfaTimeoutCount ?? 0) > 0 && (
+                            <span className="px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-semibold" title="Correlated via Imprivata Confirm ID: AD Password OK, MFA Push Timed Out">
+                                📱 MFA Timeout: {data?.summary.imprivataMfaTimeoutCount}
+                            </span>
+                        )}
                     </div>
                 </div>
 
@@ -711,6 +721,18 @@ export default function CitrixLoginTriageTab({
                                                             <span className="text-amber-300 font-semibold">{item.policyFailedCount}</span>
                                                         </div>
                                                     )}
+                                                    {item.imprivataBadPasswordCount > 0 && (
+                                                        <div className="flex items-center justify-between gap-3 text-rose-300/90">
+                                                            <span>🔑 Imprivata Bad Pwd:</span>
+                                                            <span className="text-rose-300 font-bold">{item.imprivataBadPasswordCount}</span>
+                                                        </div>
+                                                    )}
+                                                    {item.imprivataMfaTimeoutCount > 0 && (
+                                                        <div className="flex items-center justify-between gap-3 text-cyan-300/90">
+                                                            <span>📱 MFA Push Timeout:</span>
+                                                            <span className="text-cyan-300 font-bold">{item.imprivataMfaTimeoutCount}</span>
+                                                        </div>
+                                                    )}
                                                     {item.staFailedCount > 0 && (
                                                         <div className="flex items-center justify-between gap-3 text-slate-400">
                                                             <span>STA Ticket Failed:</span>
@@ -882,6 +904,23 @@ export default function CitrixLoginTriageTab({
                                                 </div>
                                             </td>
                                             <td className="py-3.5 px-4 max-w-md">
+                                                <div className="flex flex-wrap gap-1.5 mb-1">
+                                                    {u.imprivataBadPasswordCount > 0 && (
+                                                        <span className="px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30 font-mono text-[10px] font-bold">
+                                                            🔑 {u.imprivataBadPasswordCount}x Bad AD Password / Policy
+                                                        </span>
+                                                    )}
+                                                    {u.imprivataMfaTimeoutCount > 0 && (
+                                                        <span className="px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-mono text-[10px] font-bold">
+                                                            📱 {u.imprivataMfaTimeoutCount}x MFA Push Timeout (AD OK)
+                                                        </span>
+                                                    )}
+                                                    {u.imprivataInvalidUserCount > 0 && (
+                                                        <span className="px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 font-mono text-[10px] font-bold">
+                                                            🚫 Invalid AD Username
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <p className="text-slate-200 leading-relaxed">{u.diagnosis}</p>
                                                 <div className="flex flex-wrap gap-1 mt-1">
                                                     {u.failureReasons.map((r, i) => (
@@ -961,6 +1000,23 @@ export default function CitrixLoginTriageTab({
                                                 </div>
                                             </td>
                                             <td className="py-3 px-4 max-w-xl">
+                                                <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                                                    {ev.imprivataVerdict === "BAD_AD_PASSWORD_OR_POLICY" && (
+                                                        <span className="px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30 font-mono text-[10px] font-bold uppercase">
+                                                            🔑 Imprivata: Bad AD Password / Policy ({ev.imprivataNode || "as07"})
+                                                        </span>
+                                                    )}
+                                                    {(ev.imprivataVerdict === "MFA_PUSH_TIMEOUT" || ev.imprivataVerdict === "MFA_CHALLENGED") && (
+                                                        <span className="px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-mono text-[10px] font-bold uppercase">
+                                                            📱 Imprivata: MFA Push Timeout — AD Password OK ({ev.imprivataMfaMethod || "2FA"})
+                                                        </span>
+                                                    )}
+                                                    {ev.imprivataVerdict === "INVALID_USER" && (
+                                                        <span className="px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 font-mono text-[10px] font-bold uppercase">
+                                                            🚫 Imprivata: Invalid Username
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <div className="font-medium text-amber-300">{ev.failureReason}</div>
                                                 {ev.userAgent && (
                                                     <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1.5">

@@ -5,6 +5,7 @@ import https from 'https';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { getBulkUserAdStatus } from '../../src/lib/ldap';
+import { fetchImprivataBatchIndex, matchEventToImprivataSession, formatImprivataFailureReason } from '../../src/lib/imprivata-graylog';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const prisma = new PrismaClient();
@@ -261,6 +262,7 @@ async function runSync() {
         const ikev2ConnRegex = /Local:\s*([^\s:]+)(?::\d+)?\s+Remote:\s*([^\s:]+)(?::\d+)?\s+Username:\s*([^\s]+)\s+IKEv2\s+SA\s+UP/i;
         const ikev2LeaseRegex = /Local:\s*[^\s]+\s+Remote:\s*([^\s:]+)(?::\d+)?\s+Username:\s*([^\s]+)\s+IKEv2\s+Group:\s*[^\s]+\s+(?:IPv4\s+)?Address\s*[:=]\s*<?([^>\s]+)>?/i;
 
+        const imprivataIndex = await fetchImprivataBatchIndex(3000, "VPN", 500).catch(() => new Map());
         let addedCount = 0;
 
         for (const msgObj of messages) {
@@ -366,6 +368,10 @@ async function runSync() {
             }
 
             if (!username || !sourceIp) continue;
+            if (status === "FAILURE") {
+                const matchedImp = matchEventToImprivataSession(username, logTimestamp, imprivataIndex, 120000, true);
+                if (matchedImp) failureReason = formatImprivataFailureReason(matchedImp);
+            }
 
             const bytesTotal = (bytesSent !== null || bytesReceived !== null) 
                 ? (bytesSent || 0) + (bytesReceived || 0) 
@@ -447,7 +453,7 @@ async function runSync() {
                 getBulkUserAdStatus([username]).catch(() => ({}))
             ]);
 
-            const adInfo = adMap[username] || {
+            const adInfo = (adMap as Record<string, any>)[username] || {
                 adStatus: "NOT_FOUND",
                 displayName: null,
                 department: null,

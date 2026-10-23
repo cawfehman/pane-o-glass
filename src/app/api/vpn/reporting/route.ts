@@ -5,6 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { getBulkUserAdStatus } from "@/lib/ldap";
 import { parseBooleanSearchQuery } from "@/lib/booleanQueryParser";
 import { logAudit } from "@/lib/audit";
+import {
+    fetchImprivataBatchIndex,
+    matchEventToImprivataSession,
+    formatImprivataFailureReason,
+} from "@/lib/imprivata-graylog";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -96,9 +101,12 @@ export async function GET(req: Request) {
         let disconnectCount = 0;
         let totalBytes = 0;
 
-        // Check if any legacy events are missing adStatus or IP enrichment
+        // Check if any legacy events are missing adStatus or IP enrichment, and collect failed usernames for Imprivata correlation
         const missingAdUsernames = new Set<string>();
         const missingIpSet = new Set<string>();
+        const imprivataTargetUsers = new Set<string>();
+        const fourteenDaysAgoMs = Date.now() - 14 * 86400 * 1000;
+
         for (const evt of events) {
             if (!evt.adStatus && evt.username) {
                 missingAdUsernames.add(evt.username);
@@ -106,34 +114,61 @@ export async function GET(req: Request) {
             if (evt.sourceIp && (!evt.ipAsn || !evt.ipCountry)) {
                 missingIpSet.add(evt.sourceIp);
             }
+            if (
+                evt.username &&
+                new Date(evt.createdAt).getTime() >= fourteenDaysAgoMs &&
+                (evt.status === "FAILURE" || evt.status === "SUCCESS")
+            ) {
+                if (evt.status === "FAILURE" || imprivataTargetUsers.size < 50) {
+                    imprivataTargetUsers.add(evt.username);
+                }
+            }
         }
 
-        // Live fallback lookup for un-enriched legacy AD rows
-        const fallbackAdMap = missingAdUsernames.size > 0 
-            ? await getBulkUserAdStatus(Array.from(missingAdUsernames)).catch(() => ({} as any))
-            : {};
+        const effectiveImprivataRange =
+            rangeSeconds > 0 ? Math.min(rangeSeconds + 3600, 14 * 86400) : 7 * 86400;
+
+        // Live fallback lookup for un-enriched legacy AD rows, IpLookupCache, and Imprivata RADIUS batch index
+        const [fallbackAdMap, cachedIps, imprivataIndex] = await Promise.all([
+            missingAdUsernames.size > 0
+                ? getBulkUserAdStatus(Array.from(missingAdUsernames)).catch(() => ({} as any))
+                : Promise.resolve({} as any),
+            missingIpSet.size > 0
+                ? prisma.ipLookupCache
+                      .findMany({
+                          where: { ip: { in: Array.from(missingIpSet) } },
+                      })
+                      .catch(() => [])
+                : Promise.resolve([]),
+            imprivataTargetUsers.size > 0
+                ? fetchImprivataBatchIndex(
+                      effectiveImprivataRange,
+                      "VPN",
+                      900,
+                      Array.from(imprivataTargetUsers)
+                  ).catch(() => new Map())
+                : Promise.resolve(new Map()),
+        ]);
 
         // Batch lookup IpLookupCache for source IPs missing ASN/Country info
         const ipCacheMap: Record<string, any> = {};
-        if (missingIpSet.size > 0) {
-            const cachedIps = await prisma.ipLookupCache.findMany({
-                where: { ip: { in: Array.from(missingIpSet) } }
-            }).catch(() => []);
-
-            for (const c of cachedIps) {
-                try {
-                    const raw = JSON.parse(c.rawJson);
-                    ipCacheMap[c.ip] = {
-                        ipAsn: raw.asn?.asn || raw.asn || null,
-                        ipAsName: raw.asn?.name || raw.company?.name || raw.org || null,
-                        ipAsDomain: raw.asn?.domain || raw.company?.domain || null,
-                        ipCountry: raw.country || null,
-                        ipCountryCode: raw.country_code || c.countryCode || null,
-                        city: c.city || raw.city || null
-                    };
-                } catch (e) {}
-            }
+        for (const c of cachedIps) {
+            try {
+                const raw = JSON.parse(c.rawJson);
+                ipCacheMap[c.ip] = {
+                    ipAsn: raw.asn?.asn || raw.asn || null,
+                    ipAsName: raw.asn?.name || raw.company?.name || raw.org || null,
+                    ipAsDomain: raw.asn?.domain || raw.company?.domain || null,
+                    ipCountry: raw.country || null,
+                    ipCountryCode: raw.country_code || c.countryCode || null,
+                    city: c.city || raw.city || null,
+                };
+            } catch (e) {}
         }
+
+        let imprivataBadPasswordCount = 0;
+        let imprivataMfaTimeoutCount = 0;
+        let imprivataInvalidUserCount = 0;
 
         const enrichedEvents = events.map(evt => {
             const u = (evt.username || "").toLowerCase();
@@ -171,8 +206,53 @@ export async function GET(req: Request) {
             const ipCountryCode = evt.ipCountryCode || fallbackIp.ipCountryCode || null;
             const ipCity = fallbackIp.city || null;
 
+            // Correlate with Imprivata RADIUS session if within window
+            let imprivataVerdict: string | null = null;
+            let imprivataVerdictLabel: string | null = null;
+            let imprivataMfaMethod: string | null = null;
+            let imprivataNode: string | null = null;
+            let enrichedFailureReason = evt.failureReason;
+
+            if (evt.status === "FAILURE" || evt.status === "SUCCESS") {
+                const matchedImp = matchEventToImprivataSession(
+                    evt.username,
+                    evt.createdAt,
+                    imprivataIndex,
+                    120000,
+                    evt.status === "FAILURE"
+                );
+                if (matchedImp) {
+                    imprivataVerdict = matchedImp.verdict;
+                    imprivataVerdictLabel = matchedImp.verdictLabel;
+                    imprivataMfaMethod = matchedImp.mfaMethod || null;
+                    imprivataNode = matchedImp.imprivataNode || null;
+
+                    if (evt.status === "FAILURE") {
+                        if (matchedImp.verdict === "BAD_AD_PASSWORD_OR_POLICY") imprivataBadPasswordCount++;
+                        else if (matchedImp.verdict === "MFA_PUSH_TIMEOUT") imprivataMfaTimeoutCount++;
+                        else if (matchedImp.verdict === "INVALID_USER") imprivataInvalidUserCount++;
+
+                        if (
+                            !enrichedFailureReason ||
+                            /^(unspecified|invalid password|authentication failed)$/i.test(
+                                enrichedFailureReason.replace(/^\[⚠️[^\]]+\]\s*/, "").trim()
+                            )
+                        ) {
+                            const threatPrefixMatch = enrichedFailureReason?.match(/^(\[⚠️[^\]]+\])\s*/);
+                            const prefix = threatPrefixMatch ? `${threatPrefixMatch[1]} ` : "";
+                            enrichedFailureReason = `${prefix}${formatImprivataFailureReason(matchedImp)}`;
+                        }
+                    }
+                }
+            }
+
             return {
                 ...evt,
+                failureReason: enrichedFailureReason,
+                imprivataVerdict,
+                imprivataVerdictLabel,
+                imprivataMfaMethod,
+                imprivataNode,
                 ipAsn,
                 ipAsName,
                 ipAsDomain,
@@ -216,6 +296,9 @@ export async function GET(req: Request) {
             successCount,
             failureCount,
             disconnectCount,
+            imprivataBadPasswordCount,
+            imprivataMfaTimeoutCount,
+            imprivataInvalidUserCount,
             totalBytesTransferred: totalBytes,
             events: enrichedEvents
         }, {

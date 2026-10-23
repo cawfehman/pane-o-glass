@@ -142,12 +142,72 @@ interface LockoutInvestigationResult {
     executiveSummary: string;
     recommendation: string;
     primaryCulprit: {
-        type: "ISE_WIRELESS" | "WORKSTATION" | "UNKNOWN";
+        type: "ISE_WIRELESS" | "IMPRIVATA_RADIUS" | "WORKSTATION" | "UNKNOWN";
         callerName: string;
         isIsePsn: boolean;
+        isImprivata?: boolean;
         iseDetails?: IseWirelessDetails | null;
         workstationDetails?: WorkstationDetails | null;
     };
+    imprivataDetails?: {
+        hasImprivataActivity: boolean;
+        isImprivataLockoutCulprit: boolean;
+        primaryImprivataNode?: string;
+        primaryGatewayName?: string;
+        primaryGatewayIp?: string;
+        primaryGatewayCategory?: string;
+        primaryVerdict?: string;
+        primaryVerdictLabel?: string;
+        primaryExternalIp?: string;
+        primaryExternalLocation?: string;
+        primaryExternalIsp?: string;
+        primaryWorkstationHostname?: string;
+        primaryWorkstationIp?: string;
+        primaryWorkstationMac?: string;
+        totalRadiusAttempts: number;
+        radiusFailures: number;
+        badPasswordCount: number;
+        invalidUserCount: number;
+        mfaTimeoutCount: number;
+        mfaChallengedCount: number;
+        radiusSuccesses: number;
+        essoFailures: number;
+        radiusSessions: Array<{
+            id: string;
+            timestamp: string;
+            imprivataNode: string;
+            sessionTag: string;
+            username: string;
+            nasClientIp: string;
+            nasClientName: string;
+            nasShortLabel: string;
+            nasCategory: string;
+            status: string;
+            verdict: string;
+            verdictLabel: string;
+            errorReason: string;
+            mfaMethod?: string;
+            externalClientIp?: string;
+            externalCountry?: string;
+            externalCity?: string;
+            externalIsp?: string;
+            rawMessage: string;
+        }>;
+        essoEvents: Array<{
+            id: string;
+            timestamp: string;
+            eventType: string;
+            username: string;
+            serverIp: string;
+            workstationHostname?: string;
+            workstationIp?: string;
+            workstationMac?: string;
+            authMethod?: string;
+            result: string;
+            isFailure: boolean;
+            rawMessage: string;
+        }>;
+    } | null;
     uniqueCallers: string[];
     timeline: FailureTimelineBucket[];
     events: AdSecurityEvent[];
@@ -181,6 +241,7 @@ export default function AccountLockoutClient() {
     const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
     const [expandedLifecycleId, setExpandedLifecycleId] = useState<string | null>(null);
     const [showAllLifecycle, setShowAllLifecycle] = useState<boolean>(false);
+    const [showImprivataSessions, setShowImprivataSessions] = useState<boolean>(false);
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
     const handleSearch = async (e?: React.FormEvent, overrideRange?: number, overrideUser?: string) => {
@@ -551,10 +612,14 @@ export default function AccountLockoutClient() {
                     />
 
                     {/* Sub-label showing queried systems */}
-                    <div className="flex items-center justify-between text-[11px] text-text-muted font-mono pt-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-text-muted font-mono pt-1">
                         <span className="flex items-center gap-1.5">
                             <HardDrive size={12} className="text-indigo-400" />
-                            AD Security Stream: <strong className="text-text-secondary">5d72ac00b209026ab42decf9</strong>
+                            AD Security: <strong className="text-text-secondary">5d72ac00b209026ab42decf9</strong>
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                            <KeyRound size={12} className="text-purple-400" />
+                            Imprivata RADIUS/SSO: <strong className="text-text-secondary">5cb4d070b2090233f76b8852 (Citrix &amp; VPN)</strong>
                         </span>
                         <span className="flex items-center gap-1.5">
                             <Radio size={12} className="text-cyan-400" />
@@ -685,6 +750,8 @@ export default function AccountLockoutClient() {
                                 </span>
                                 {data.primaryCulprit.isIsePsn ? (
                                     <Wifi size={16} className="text-cyan-400" />
+                                ) : data.primaryCulprit.isImprivata ? (
+                                    <KeyRound size={16} className="text-purple-400" />
                                 ) : (
                                     <Laptop size={16} className="text-indigo-400" />
                                 )}
@@ -694,7 +761,11 @@ export default function AccountLockoutClient() {
                                     {data.primaryCulprit.callerName}
                                 </div>
                                 <div className="text-[11px] text-text-secondary mt-0.5">
-                                    {data.primaryCulprit.isIsePsn ? "Cisco ISE Wireless (EAP)" : "Windows Workstation / Host"}
+                                    {data.primaryCulprit.isIsePsn
+                                        ? "Cisco ISE Wireless (EAP)"
+                                        : data.primaryCulprit.isImprivata
+                                        ? `Imprivata RADIUS (${data.imprivataDetails?.primaryGatewayCategory || "VPN / Citrix"})`
+                                        : "Windows Workstation / Host"}
                                 </div>
                             </div>
                         </div>
@@ -948,7 +1019,7 @@ export default function AccountLockoutClient() {
                         )}
 
                         {/* Card 2: Workstation Diagnostics */}
-                        {!data.primaryCulprit.isIsePsn && data.primaryCulprit.workstationDetails && (
+                        {!data.primaryCulprit.isIsePsn && !data.primaryCulprit.isImprivata && data.primaryCulprit.workstationDetails && (
                             <div className="p-4 rounded-xl border border-indigo-500/30 bg-indigo-950/15 space-y-3.5">
                                 <div className="flex items-center justify-between">
                                     <span className="text-xs font-bold text-text-primary flex items-center gap-1.5 uppercase tracking-wider">
@@ -993,6 +1064,147 @@ export default function AccountLockoutClient() {
                                         </span>
                                     </div>
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Card 2b: Imprivata RADIUS & OneSign SSO Diagnostics (Citrix NetScaler / FTD VPN / Clinical Kiosk) */}
+                        {data.imprivataDetails?.hasImprivataActivity && (
+                            <div className="p-4 rounded-xl border border-purple-500/35 bg-purple-950/15 space-y-3.5">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <span className="text-xs font-bold text-text-primary flex items-center gap-1.5 uppercase tracking-wider">
+                                        <KeyRound size={14} className="text-purple-400" />
+                                        Imprivata RADIUS &amp; SSO Forensics ({data.imprivataDetails.primaryImprivataNode || "as07a"})
+                                    </span>
+                                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                                        {data.imprivataDetails.totalRadiusAttempts} RADIUS · {data.imprivataDetails.essoEvents.length} ESSO
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+                                    <div className="p-2 rounded bg-black/40 border border-border-color">
+                                        <span className="text-text-muted block text-[10px] uppercase">Originating Gateway (NAS Client)</span>
+                                        <span className="text-purple-300 font-bold mt-0.5 block truncate" title={data.imprivataDetails.primaryGatewayName}>
+                                            {data.imprivataDetails.primaryGatewayName || "Imprivata OneSign"}
+                                        </span>
+                                    </div>
+
+                                    <div className="p-2 rounded bg-black/40 border border-border-color">
+                                        <span className="text-text-muted block text-[10px] uppercase">External Client IP / Workstation</span>
+                                        <div className="flex items-center justify-between mt-0.5 gap-1">
+                                            <span className="text-amber-300 font-bold truncate">
+                                                {data.imprivataDetails.primaryExternalIp ||
+                                                    data.imprivataDetails.primaryWorkstationHostname ||
+                                                    data.imprivataDetails.primaryGatewayIp ||
+                                                    "Internal"}
+                                            </span>
+                                            {data.imprivataDetails.primaryExternalIp && (
+                                                <a
+                                                    href={
+                                                        data.imprivataDetails.primaryGatewayCategory === "CITRIX"
+                                                            ? `/queries/netscaler?query=${encodeURIComponent(data.imprivataDetails.primaryExternalIp)}`
+                                                            : `/queries/vpn-reporting?q=${encodeURIComponent(data.searchedUser)}`
+                                                    }
+                                                    className="text-[10px] text-cyan-400 hover:underline flex items-center gap-0.5 shrink-0"
+                                                    title="Pivot to Gateway Logs"
+                                                >
+                                                    <span>Pivot</span>
+                                                    <ExternalLink size={10} />
+                                                </a>
+                                            )}
+                                        </div>
+                                        {(data.imprivataDetails.primaryExternalLocation || data.imprivataDetails.primaryExternalIsp) && (
+                                            <span className="text-[10px] text-text-muted block truncate mt-0.5">
+                                                {[data.imprivataDetails.primaryExternalLocation, data.imprivataDetails.primaryExternalIsp]
+                                                    .filter(Boolean)
+                                                    .join(" · ")}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-4 gap-1.5 text-center font-mono text-[11px]">
+                                    <div className="p-1.5 rounded bg-rose-950/30 border border-rose-500/30">
+                                        <span className="block text-[9px] uppercase text-rose-300">Bad AD Pass</span>
+                                        <span className="font-bold text-rose-400">{data.imprivataDetails.badPasswordCount}</span>
+                                    </div>
+                                    <div className="p-1.5 rounded bg-amber-950/30 border border-amber-500/30">
+                                        <span className="block text-[9px] uppercase text-amber-300">MFA Timeout</span>
+                                        <span className="font-bold text-amber-400">{data.imprivataDetails.mfaTimeoutCount}</span>
+                                    </div>
+                                    <div className="p-1.5 rounded bg-emerald-950/30 border border-emerald-500/30">
+                                        <span className="block text-[9px] uppercase text-emerald-300">2FA Passed</span>
+                                        <span className="font-bold text-emerald-400">{data.imprivataDetails.radiusSuccesses}</span>
+                                    </div>
+                                    <div className="p-1.5 rounded bg-indigo-950/30 border border-indigo-500/30">
+                                        <span className="block text-[9px] uppercase text-indigo-300">Kiosk Fails</span>
+                                        <span className="font-bold text-indigo-400">{data.imprivataDetails.essoFailures}</span>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between pt-1">
+                                    <span className="text-[11px] text-text-secondary">
+                                        Verdict:{" "}
+                                        <strong className="text-purple-300">
+                                            {data.imprivataDetails.primaryVerdictLabel || "Imprivata Session Correlated"}
+                                        </strong>
+                                    </span>
+                                    {data.imprivataDetails.radiusSessions.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowImprivataSessions(!showImprivataSessions)}
+                                            className="text-[11px] font-semibold text-purple-300 hover:text-purple-200 flex items-center gap-1 cursor-pointer"
+                                        >
+                                            <span>
+                                                {showImprivataSessions
+                                                    ? "Hide Sessions"
+                                                    : `View ${data.imprivataDetails.radiusSessions.length} RADIUS Sessions`}
+                                            </span>
+                                            {showImprivataSessions ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                        </button>
+                                    )}
+                                </div>
+
+                                {showImprivataSessions && data.imprivataDetails.radiusSessions.length > 0 && (
+                                    <div className="max-h-56 overflow-y-auto rounded-lg border border-border-color bg-black/40 divide-y divide-border-color/60 text-[11px] font-mono">
+                                        {data.imprivataDetails.radiusSessions.slice(0, 25).map((s) => (
+                                            <div key={s.id} className="p-2 flex flex-col gap-1">
+                                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                    <span className="text-text-secondary">
+                                                        {new Date(s.timestamp).toLocaleTimeString([], {
+                                                            hour: "2-digit",
+                                                            minute: "2-digit",
+                                                            second: "2-digit",
+                                                        })}{" "}
+                                                        · <strong className="text-purple-300">{s.imprivataNode}</strong> [{s.sessionTag}]
+                                                    </span>
+                                                    <span
+                                                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                                            s.status === "FAILED"
+                                                                ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                                                                : s.status === "CHALLENGED"
+                                                                ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                                                : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                                        }`}
+                                                    >
+                                                        {s.verdictLabel}
+                                                    </span>
+                                                </div>
+                                                <div className="text-text-muted flex items-center justify-between gap-2 flex-wrap">
+                                                    <span>Gateway: <strong className="text-zinc-200">{s.nasShortLabel}</strong></span>
+                                                    {s.externalClientIp && (
+                                                        <span>
+                                                            Client IP: <strong className="text-amber-300">{s.externalClientIp}</strong>{" "}
+                                                            {s.externalCountry ? `(${s.externalCountry})` : ""}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="text-[10px] text-zinc-400 truncate" title={s.errorReason}>
+                                                    {s.errorReason}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
 

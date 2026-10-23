@@ -6,6 +6,11 @@ import { isPrivateIp } from "@/lib/ipinfo";
 import { NetscalerGraylogClient } from "@/lib/netscaler-graylog";
 import { executeFirewallCommand } from "@/lib/netscaler-auto-shun";
 import { logAudit } from "@/lib/audit";
+import {
+    fetchImprivataBatchIndex,
+    matchEventToImprivataSession,
+    formatImprivataFailureReason,
+} from "@/lib/imprivata-graylog";
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false,
@@ -40,6 +45,10 @@ export interface CitrixLoginFailureEvent {
     failureReason: string;
     policyName?: string;
     userAgent?: string;
+    imprivataVerdict?: string;
+    imprivataVerdictLabel?: string;
+    imprivataMfaMethod?: string;
+    imprivataNode?: string;
     rawMessage: string;
 }
 
@@ -74,6 +83,9 @@ export interface CitrixIpEvaluation {
     policyFailedCount: number;
     staFailedCount: number;
     cookieFailedCount: number;
+    imprivataBadPasswordCount: number;
+    imprivataMfaTimeoutCount: number;
+    imprivataInvalidUserCount: number;
     citrixSuccessCount: number;
     hasVpnSuccessHistory: boolean;
     targetedUsers: {
@@ -109,6 +121,10 @@ export interface CitrixUserIssueSummary {
     adTitle?: string;
     failureCount: number;
     citrixSuccessCount: number;
+    imprivataBadPasswordCount: number;
+    imprivataMfaTimeoutCount: number;
+    imprivataInvalidUserCount: number;
+    imprivataMfaMethod?: string;
     categories: CitrixIssueCategory[];
     sourceIps: string[];
     countries: string[];
@@ -144,6 +160,9 @@ export interface CitrixLoginTriageResponse {
         policyFailedCount: number;
         staTicketFailedCount: number;
         cookieInvalidCount: number;
+        imprivataBadPasswordCount: number;
+        imprivataMfaTimeoutCount: number;
+        imprivataInvalidUserCount: number;
         uniqueExternalIps: number;
         abusiveBlockIpCount: number;
         suspiciousWatchIpCount: number;
@@ -471,10 +490,22 @@ export async function analyzeCitrixLoginTriage(
         }
     }
 
-    const adStatusMap: Record<string, { adStatus: string; displayName: string; department: string; title: string }> =
+    // Enrich against Active Directory and Imprivata RADIUS stream in parallel
+    const [adStatusMap, imprivataIndex] = await Promise.all([
         allUsernamesSet.size > 0
-            ? await getBulkUserAdStatus(Array.from(allUsernamesSet)).catch(() => ({}))
-            : {};
+            ? getBulkUserAdStatus(Array.from(allUsernamesSet)).catch(
+                  () => ({} as Record<string, { adStatus: string; displayName: string; department: string; title: string }>)
+              )
+            : Promise.resolve({} as Record<string, { adStatus: string; displayName: string; department: string; title: string }>),
+        allUsernamesSet.size > 0
+            ? fetchImprivataBatchIndex(
+                  rangeSeconds + 600,
+                  "CITRIX",
+                  900,
+                  Array.from(allUsernamesSet)
+              ).catch(() => new Map())
+            : Promise.resolve(new Map()),
+    ]);
 
     // Check if any of the users have recent ACCOUNT_LOCKOUT (Event 4740) in AccountLifecycleEvent
     if (allUsernamesSet.size > 0) {
@@ -529,6 +560,40 @@ export async function analyzeCitrixLoginTriage(
         const adInfo = adStatusMap[usernameClean] || adStatusMap[usernameRaw];
         const isCorp = isCorporateUsernameFormat(usernameClean);
 
+        // Correlate with Imprivata RADIUS session if available
+        let imprivataVerdict: string | undefined;
+        let imprivataVerdictLabel: string | undefined;
+        let imprivataMfaMethod: string | undefined;
+        let imprivataNode: string | undefined;
+        let enrichedFailureReason = classified.failureReason;
+
+        if (
+            usernameClean !== "anonymous" &&
+            (classified.category === "AAA_LOGIN_FAILED" ||
+                classified.category === "AAA_POLICY_FAILED" ||
+                classified.category === "AUTH_DENIED_OTHER")
+        ) {
+            const matchedImp = matchEventToImprivataSession(
+                usernameRaw,
+                msg.timestamp || new Date().toISOString(),
+                imprivataIndex,
+                120000,
+                true
+            );
+            if (matchedImp) {
+                imprivataVerdict = matchedImp.verdict;
+                imprivataVerdictLabel = matchedImp.verdictLabel;
+                imprivataMfaMethod = matchedImp.mfaMethod;
+                imprivataNode = matchedImp.imprivataNode;
+
+                if (classified.category === "AAA_POLICY_FAILED") {
+                    enrichedFailureReason = `AAA Policy (${classified.policyName || "Imprivata-prod"}) → ${formatImprivataFailureReason(matchedImp)}`;
+                } else {
+                    enrichedFailureReason = formatImprivataFailureReason(matchedImp);
+                }
+            }
+        }
+
         events.push({
             id: msg._id || `${msg.timestamp}-${Math.random().toString(36).slice(2, 8)}`,
             timestamp: msg.timestamp || new Date().toISOString(),
@@ -543,9 +608,13 @@ export async function analyzeCitrixLoginTriage(
             clientIp: clientIp || "Internal / Unattributed",
             countryCode,
             cityName,
-            failureReason: classified.failureReason,
+            failureReason: enrichedFailureReason,
             policyName: classified.policyName,
             userAgent: classified.userAgent,
+            imprivataVerdict,
+            imprivataVerdictLabel,
+            imprivataMfaMethod,
+            imprivataNode,
             rawMessage: raw,
         });
     }
@@ -649,6 +718,9 @@ export async function analyzeCitrixLoginTriage(
         let policyFailedCount = 0;
         let staFailedCount = 0;
         let cookieFailedCount = 0;
+        let ipImpBadPwdCount = 0;
+        let ipImpMfaTimeoutCount = 0;
+        let ipImpInvalidUserCount = 0;
         let firstSeen = ipEvents[0].timestamp;
         let lastSeen = ipEvents[0].timestamp;
 
@@ -667,6 +739,10 @@ export async function analyzeCitrixLoginTriage(
             else if (ev.category === "AAA_POLICY_FAILED") policyFailedCount++;
             else if (ev.category === "STA_TICKET_FAILED") staFailedCount++;
             else if (ev.category === "IDP_COOKIE_INVALID") cookieFailedCount++;
+
+            if (ev.imprivataVerdict === "BAD_AD_PASSWORD_OR_POLICY") ipImpBadPwdCount++;
+            else if (ev.imprivataVerdict === "MFA_PUSH_TIMEOUT" || ev.imprivataVerdict === "MFA_CHALLENGED") ipImpMfaTimeoutCount++;
+            else if (ev.imprivataVerdict === "INVALID_USER") ipImpInvalidUserCount++;
 
             if (ev.timestamp < firstSeen) firstSeen = ev.timestamp;
             if (ev.timestamp > lastSeen) lastSeen = ev.timestamp;
@@ -839,20 +915,36 @@ export async function analyzeCitrixLoginTriage(
             countryCode === "US" &&
             allUsersValidAd &&
             isSingleUser &&
-            (citrixSucc > 0 || hasVpnSuccessHistory || (meta.isResidentialIsp && totalFailures < config.minFailuresForBlock * 2))
+            (citrixSucc > 0 ||
+                hasVpnSuccessHistory ||
+                (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0) ||
+                (meta.isResidentialIsp && totalFailures < config.minFailuresForBlock * 2))
         ) {
             verdict = "LEGIT_USER_ISSUE";
             riskScore = Math.min(riskScore, 15);
             const u = nonAnonUsers[0];
             const userLabel = u.adDisplayName ? `${u.adDisplayName} (${u.username})` : u.username;
-            if (citrixSucc > 0 || u.succeededLater) {
-                verdictReason = `Legitimate AD user ${userLabel} had ${totalFailures} failure(s) (e.g., Imprivata/LDAP retry) and logged into Citrix successfully (${citrixSucc} session events).`;
+            if (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0 && citrixSucc === 0) {
+                verdictReason = `Imprivata Confirmed AD Password OK for ${userLabel}, but user did not accept the smartphone Confirm ID MFA Push in time (${ipImpMfaTimeoutCount}x MFA timeout).`;
+                protectionNote = "Guardian Protected: Imprivata RADIUS verified user's AD password succeeded (only 2FA push timed out).";
+            } else if (citrixSucc > 0 || u.succeededLater) {
+                verdictReason = `Legitimate AD user ${userLabel} had ${totalFailures} failure(s)${
+                    ipImpBadPwdCount > 0
+                        ? ` (${ipImpBadPwdCount}x Imprivata AD password/policy retry)`
+                        : ipImpMfaTimeoutCount > 0
+                        ? ` (${ipImpMfaTimeoutCount}x Imprivata MFA push timeout)`
+                        : " (e.g., Imprivata/LDAP retry)"
+                } and logged into Citrix successfully (${citrixSucc} session events).`;
                 protectionNote = "Guardian Protected: Verified AD user with successful Citrix login from this US IP.";
             } else if (hasVpnSuccessHistory) {
                 verdictReason = `Legitimate AD user ${userLabel} with prior successful AnyConnect VPN history from this IP.`;
                 protectionNote = "Guardian Protected: IP has verified Cooper VPN success history and valid AD user.";
             } else {
-                verdictReason = `Valid AD user ${userLabel} connecting from US ISP (${meta.companyName}). Likely password typo or Imprivata MFA prompt timeout.`;
+                verdictReason = `Valid AD user ${userLabel} connecting from US ISP (${meta.companyName}). ${
+                    ipImpBadPwdCount > 0
+                        ? `Imprivata RADIUS logged ${ipImpBadPwdCount}x Bad AD Password / Policy failure.`
+                        : "Likely password typo or Imprivata MFA prompt timeout."
+                }`;
                 protectionNote = "Guardian Protected: US ISP with verified Active Directory corporate user.";
             }
         } else if (
@@ -899,6 +991,9 @@ export async function analyzeCitrixLoginTriage(
             policyFailedCount,
             staFailedCount,
             cookieFailedCount,
+            imprivataBadPasswordCount: ipImpBadPwdCount,
+            imprivataMfaTimeoutCount: ipImpMfaTimeoutCount,
+            imprivataInvalidUserCount: ipImpInvalidUserCount,
             citrixSuccessCount: citrixSucc,
             hasVpnSuccessHistory,
             targetedUsers,
@@ -948,13 +1043,39 @@ export async function analyzeCitrixLoginTriage(
         const countries = Array.from(new Set(uEvents.map((e) => e.countryCode).filter((c) => c && c !== "Unknown")));
         const reasons = Array.from(new Set(uEvents.map((e) => e.failureReason)));
 
+        const uImpBadPwdCount = uEvents.filter((e) => e.imprivataVerdict === "BAD_AD_PASSWORD_OR_POLICY").length;
+        const uImpMfaTimeoutCount = uEvents.filter(
+            (e) => e.imprivataVerdict === "MFA_PUSH_TIMEOUT" || e.imprivataVerdict === "MFA_CHALLENGED"
+        ).length;
+        const uImpInvalidUserCount = uEvents.filter((e) => e.imprivataVerdict === "INVALID_USER").length;
+        const uImpMfaMethod = uEvents.find((e) => e.imprivataMfaMethod)?.imprivataMfaMethod;
+        const uImpNode = uEvents.find((e) => e.imprivataNode)?.imprivataNode || "Imprivata";
+
         let diagnosis = "";
-        if (firstEv.adStatus === "NOT_FOUND") {
-            diagnosis = "Account does not exist in Active Directory — potential username enumeration or typo.";
+        if (firstEv.adStatus === "NOT_FOUND" || uImpInvalidUserCount > 0) {
+            diagnosis = `Account does not exist in Active Directory${
+                uImpInvalidUserCount > 0 ? ` (Confirmed by ${uImpNode} RADIUS: Invalid user name)` : ""
+            } — potential username enumeration or typo.`;
         } else if (firstEv.adStatus === "LOCKED") {
-            diagnosis = "Active Directory account is currently LOCKED OUT. Check Account Lockout Investigator.";
+            diagnosis = `Active Directory account is currently LOCKED OUT${
+                uImpBadPwdCount > 0
+                    ? ` following ${uImpBadPwdCount}x Bad AD Password attempts via ${uImpNode} RADIUS`
+                    : ""
+            }. Check Account Lockout Investigator.`;
         } else if (firstEv.adStatus === "DISABLED") {
             diagnosis = "Active Directory account is DISABLED (terminated or inactive user attempting Citrix access).";
+        } else if (uImpMfaTimeoutCount > 0 && uImpBadPwdCount === 0) {
+            if (succInfo && succInfo.lastSuccessAt >= firstEv.timestamp) {
+                diagnosis = `AD password verified OK by ${uImpNode}; user timed out on Confirm ID MFA push (${uImpMfaTimeoutCount}x), then accepted MFA and logged in successfully.`;
+            } else {
+                diagnosis = `AD password verified OK by ${uImpNode}, but user did not accept the Confirm ID smartphone push notification (${uImpMfaTimeoutCount}x MFA timeout). Does NOT increment AD badPwdCount.`;
+            }
+        } else if (uImpBadPwdCount > 0) {
+            if (succInfo && succInfo.lastSuccessAt >= firstEv.timestamp) {
+                diagnosis = `Failed AD password validation via ${uImpNode} RADIUS (${uImpBadPwdCount}x bad password / policy denial), then authenticated successfully afterward.`;
+            } else {
+                diagnosis = `Failed AD password or OneSign policy validation via ${uImpNode} RADIUS (${uImpBadPwdCount}x) — increments Active Directory badPwdCount toward lockout.`;
+            }
         } else if (categories.includes("AAA_POLICY_FAILED") && categories.includes("AAA_LOGIN_FAILED")) {
             if (succInfo && succInfo.lastSuccessAt >= firstEv.timestamp) {
                 diagnosis = "Failed Imprivata-prod / AAA policy check (password or MFA push denial), then authenticated successfully afterward.";
@@ -974,6 +1095,10 @@ export async function analyzeCitrixLoginTriage(
             adTitle: adInfo?.title,
             failureCount: uEvents.length,
             citrixSuccessCount: succInfo?.count || 0,
+            imprivataBadPasswordCount: uImpBadPwdCount,
+            imprivataMfaTimeoutCount: uImpMfaTimeoutCount,
+            imprivataInvalidUserCount: uImpInvalidUserCount,
+            imprivataMfaMethod: uImpMfaMethod,
             categories,
             sourceIps,
             countries,
@@ -990,6 +1115,11 @@ export async function analyzeCitrixLoginTriage(
     const policyFailedCount = events.filter((e) => e.category === "AAA_POLICY_FAILED").length;
     const staTicketFailedCount = events.filter((e) => e.category === "STA_TICKET_FAILED").length;
     const cookieInvalidCount = events.filter((e) => e.category === "IDP_COOKIE_INVALID").length;
+    const imprivataBadPasswordCount = events.filter((e) => e.imprivataVerdict === "BAD_AD_PASSWORD_OR_POLICY").length;
+    const imprivataMfaTimeoutCount = events.filter(
+        (e) => e.imprivataVerdict === "MFA_PUSH_TIMEOUT" || e.imprivataVerdict === "MFA_CHALLENGED"
+    ).length;
+    const imprivataInvalidUserCount = events.filter((e) => e.imprivataVerdict === "INVALID_USER").length;
 
     return {
         rangeSeconds,
@@ -1001,6 +1131,9 @@ export async function analyzeCitrixLoginTriage(
             policyFailedCount,
             staTicketFailedCount,
             cookieInvalidCount,
+            imprivataBadPasswordCount,
+            imprivataMfaTimeoutCount,
+            imprivataInvalidUserCount,
             uniqueExternalIps: ipEvaluations.length,
             abusiveBlockIpCount: ipEvaluations.filter((i) => i.verdict === "ABUSIVE_BLOCK").length,
             suspiciousWatchIpCount: ipEvaluations.filter((i) => i.verdict === "SUSPICIOUS_WATCH").length,

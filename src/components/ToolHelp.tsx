@@ -209,10 +209,15 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     vpn: {
         title: "VPN Troubleshooting Dashboard",
-        version: "2.5.0",
+        version: "2.6.0",
         category: "Remote Access & Session Telemetry",
-        description: "Real-time AnyConnect / Secure Client VPN session tracking, interactive global mapping, bandwidth consumer profiling, and Active Directory LDAP hover cards.",
+        description: "Real-time AnyConnect / Secure Client VPN session tracking, Imprivata Confirm ID RADIUS failure correlation, interactive global mapping, bandwidth consumer profiling, and Active Directory LDAP hover cards.",
         capabilities: [
+            {
+                title: "Imprivata Confirm ID RADIUS Failure Correlation",
+                detail: "Automatically correlates generic Cisco FTD authentication failures ('Rejected: reason = Unspecified' or 'Invalid password') against OG Graylog Imprivata RADIUS logs (Stream 5cb4d070b2090233f76b8852) to distinguish Bad AD Password / Policy Denials from MFA Push Timeouts (where the user's AD password was valid) and Invalid Usernames.",
+                tag: "Imprivata RADIUS"
+            },
             {
                 title: "Natural Language Log Search",
                 detail: "Search real-time AnyConnect / Secure Client VPN connection logs using natural date queries (e.g. 'username last 7 days', 'june 6-8', 'last 24 hours').",
@@ -265,10 +270,15 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     'vpn-reporting': {
         title: "VPN Event Reporting & Audit Suite",
-        version: "2.0.0",
+        version: "2.1.0",
         category: "Historical Telemetry & Compliance Audit",
-        description: "Enterprise Remote Access VPN audit engine supporting point-in-time Active Directory identity snapshots, SIEM-grade boolean search queries, unique valid corporate user analytics, and 1-click CSV export.",
+        description: "Enterprise Remote Access VPN audit engine supporting point-in-time Active Directory identity snapshots, Imprivata Confirm ID RADIUS failure & 2FA method correlation, SIEM-grade boolean search queries, unique valid corporate user analytics, and 1-click CSV export.",
         capabilities: [
+            {
+                title: "Imprivata Confirm ID RADIUS Verdict & 2FA Method Enrichment",
+                detail: "Cross-references AnyConnect VPN failures and logins with OG Graylog Imprivata RADIUS logs (as07a / as07b) to display color-coded verdicts (🔑 Bad AD Password / Policy, 📱 MFA Push Timed Out with AD Password OK, 🚫 Invalid Username) and 2FA methods (Imprivata ID Push vs SMS **XXXX) in the table, KPI summary, and CSV export.",
+                tag: "Imprivata Correlation"
+            },
             {
                 title: "Point-in-Time AD Identity Snapshots",
                 detail: "Captures and persists Active Directory Account Status (Active/Disabled/Not Found), Full Display Name, Department, Job Title, and verification date at the exact moment each VPN event is ingested.",
@@ -652,10 +662,15 @@ export const helpData: Record<string, TooltipDetails> = {
     },
     netscaler: {
         title: "NetScaler Gateway & ADC Telemetry",
-        version: "2.5.0",
-        category: "Citrix Gateway Auth, Smart Guardian Abuse Triage & Zero-Day Threat Hunting",
-        description: "Comprehensive Citrix NetScaler Gateway command center featuring 3rd-party Citrix syslog feed normalization, Smart Guardian Login & Abuse Triage with Active Directory & IPinfo ASN intelligence, Foreign Geo-Access monitoring, CISA KEV Zero-Day IOC hunting (CVE-2026-88771/88772), and 1-click All-Firewalls Perimeter Shun & Guardian Blacklist enforcement.",
+        version: "2.6.0",
+        category: "Citrix Gateway Auth, Imprivata RADIUS Correlation, Smart Guardian Abuse Triage & Zero-Day Threat Hunting",
+        description: "Comprehensive Citrix NetScaler Gateway command center featuring 3rd-party Citrix syslog feed normalization, Imprivata Confirm ID RADIUS correlation, Smart Guardian Login & Abuse Triage with Active Directory & IPinfo ASN intelligence, Foreign Geo-Access monitoring, CISA KEV Zero-Day IOC hunting (CVE-2026-88771/88772), and 1-click All-Firewalls Perimeter Shun & Guardian Blacklist enforcement.",
         capabilities: [
+            {
+                title: "Imprivata Confirm ID RADIUS Correlation & MFA Timeout Shield",
+                detail: "Enriches generic NetScaler 'External authentication server denied access' and 'Failed policy = Imprivata-prod' events with the exact Imprivata RADIUS verdict from OG Graylog (5cb4d070b2090233f76b8852). Smart Guardian automatically protects US IPs where Imprivata verified the user's AD password succeeded and only the Confirm ID smartphone push timed out.",
+                tag: "Imprivata RADIUS"
+            },
             {
                 title: "Cleaned Gateway Session & ICA/HDX Overview Telemetry",
                 detail: "Filters out internal NetScaler PPE session-cache polling noise ('SSLVPN Message' 12s SSID timeout checks) to surface true Gateway Session Logins, Logouts, Auth Failures, and actual ICA/HDX Application Launches (ICASTART / ICAEND_CONNSTAT).",
@@ -830,11 +845,16 @@ export const helpData: Record<string, TooltipDetails> = {
         ]
     },
     "account-lockout": {
-        title: "Active Directory & Cisco ISE Account Lockout Investigator",
-        version: "1.5.0",
-        category: "Organization-Wide Lockout Metrics & Identity Forensics",
-        description: "Enterprise lockout intelligence suite combining an Organization-Wide Lockout Metrics Overview (24h/4h/1h KPIs, timeline velocity, top locked users, top calling devices, and lockout vs. unlock ratio) with deep single-user forensic correlation across Active Directory security logs and Cisco ISE 802.1X Wireless EAP telemetry.",
+        title: "Active Directory, Imprivata RADIUS/SSO & Cisco ISE Account Lockout Investigator",
+        version: "1.6.0",
+        category: "Organization-Wide Lockout Metrics & Multi-Hop Identity Forensics",
+        description: "Enterprise lockout intelligence suite combining an Organization-Wide Lockout Metrics Overview with deep single-user multi-hop forensic correlation across Active Directory security logs, Imprivata Confirm ID RADIUS (VPN & Citrix NetScaler) & OneSign Clinical Workstation SSO streams, and Cisco ISE 802.1X Wireless EAP telemetry.",
         capabilities: [
+            {
+                title: "Imprivata RADIUS & OneSign SSO Multi-Hop Attribution",
+                detail: "Unmasks opaque AD lockouts where Event 4740/4625/4776 only records 'CDC-CHS01' or 'Unknown Caller' by correlating within ±20s against OG Graylog Imprivata streams (5cb4d070b2090233f76b8852 & 5d0127d2b20902acd15b35d8). Traces the exact RADIUS NAS Client (Citrix NetScaler 172.18.221.60, StoreFront 172.16.32.224, Keleman VPN 172.16.1.249, Wilmington VPN 172.18.166.138) AND hops to the external Client Public IP, Geo/ISP, or clinical workstation hostname/MAC.",
+                tag: "Imprivata Multi-Hop"
+            },
             {
                 title: "Organization-Wide Lockout Metrics & Overview",
                 detail: "Lands on a real-time executive dashboard displaying 24h/4h/1h Event 4740 lockout counts, Unique Users Locked, Active Lockout Loops (>=3 lockouts), Top Locked Accounts, Top Calling Devices/Workstations, and an interactive Lockout Velocity Chart. Click any user chip to jump straight into a deep investigation.",
