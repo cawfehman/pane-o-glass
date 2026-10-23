@@ -5,6 +5,7 @@ import https from 'https';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { getBulkUserAdStatus } from '../../src/lib/ldap';
+import { getAdaptiveSearchWindow } from '../../src/lib/graylog-backlog-guardian';
 import { fetchImprivataBatchIndex, matchEventToImprivataSession, formatImprivataFailureReason } from '../../src/lib/imprivata-graylog';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
@@ -220,7 +221,9 @@ async function runSync() {
         for (const streamId of streamsToQuery) {
             const params = new URLSearchParams();
             params.append("query", signatures);
-            params.append("range", "2100");
+            const adaptiveVpn = await getAdaptiveSearchWindow("NEW_GRAYLOG", 2100);
+            if (adaptiveVpn.isCompensated) log(`[BACKLOG-GUARDIAN] New Graylog lag ~${Math.round(adaptiveVpn.lagMinutes)}m -> expanding VPN sync range to ${adaptiveVpn.effectiveRangeSeconds}s`);
+            params.append("range", String(adaptiveVpn.effectiveRangeSeconds));
             params.append("limit", "200");
             params.append("decorate", "false");
             if (streamId) {

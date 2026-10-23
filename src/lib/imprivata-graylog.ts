@@ -3,6 +3,7 @@ import https from "https";
 import { prisma } from "@/lib/prisma";
 import { NetscalerGraylogClient } from "@/lib/netscaler-graylog";
 import { getIpInfoLite, isPrivateIp } from "@/lib/ipinfo";
+import { getAdaptiveSearchWindow } from "@/lib/graylog-backlog-guardian";
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false,
@@ -506,13 +507,15 @@ export async function queryImprivataForUser(
     const radiusQuery = `(${userQueryTerms}) AND ("SERVERLOG" OR "RadiusRemoteAuthenticateVO")`;
     const essoQuery = `(${userQueryTerms}) AND "Event Occurrence Notification-Start"`;
 
+    const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
+
     const [radiusRes, essoRes] = await Promise.all([
         axios
             .get(`${ogUrl}/api/search/universal/relative`, {
                 httpsAgent,
                 params: {
                     query: radiusQuery,
-                    range: rangeSeconds.toString(),
+                    range: adaptive.effectiveRangeSeconds.toString(),
                     filter: `streams:${OG_GRAYLOG_IMPRIVATA_RADIUS_STREAM_ID}`,
                     limit: "350",
                     sort: "timestamp:desc",
@@ -533,7 +536,7 @@ export async function queryImprivataForUser(
                 httpsAgent,
                 params: {
                     query: essoQuery,
-                    range: rangeSeconds.toString(),
+                    range: adaptive.effectiveRangeSeconds.toString(),
                     filter: `streams:${OG_GRAYLOG_IMPRIVATA_ESSO_STREAM_ID}`,
                     limit: "100",
                     sort: "timestamp:desc",
@@ -811,11 +814,12 @@ export async function fetchImprivataBatchIndex(
     const query = `${userFilterClause}"SERVERLOG" AND ("Proxy request for Username=" OR "Attempt Remote Authentication" OR "RadiusRemoteAuthenticateVO")`;
 
     try {
+        const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
         const res = await axios.get(`${ogUrl}/api/search/universal/relative`, {
             httpsAgent,
             params: {
                 query,
-                range: Math.max(300, Math.min(rangeSeconds, 30 * 86400)).toString(),
+                range: Math.max(300, Math.min(adaptive.effectiveRangeSeconds, 30 * 86400)).toString(),
                 filter: `streams:${OG_GRAYLOG_IMPRIVATA_RADIUS_STREAM_ID}`,
                 limit: limit.toString(),
                 sort: "timestamp:desc",

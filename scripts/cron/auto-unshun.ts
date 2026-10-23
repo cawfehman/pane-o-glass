@@ -8,6 +8,7 @@ import { Client } from 'ldapts';
 import dotenv from 'dotenv';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 import { runCitrixLoginAutoShunCycle } from '../../src/lib/netscaler-login-triage';
+import { getAdaptiveSearchWindow } from '../../src/lib/graylog-backlog-guardian';
 
 async function isAdUserValid(username: any) {
     const url = process.env.AD_URL!;
@@ -390,7 +391,8 @@ async function runAutoUnshun() {
         for (const streamId of streamsToQuery) {
             const params = new URLSearchParams();
             params.append("query", "401002");
-            params.append("range", rangeSeconds); // query window in seconds
+            const adaptiveShun = await getAdaptiveSearchWindow("NEW_GRAYLOG", parseInt(rangeSeconds, 10) || 240);
+            params.append("range", String(adaptiveShun.effectiveRangeSeconds)); // backlog-compensated query window
             params.append("limit", limitCount);
             params.append("decorate", "false");
             if (streamId) {

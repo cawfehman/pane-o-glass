@@ -10,6 +10,7 @@ import {
     ImprivataUserCorrelationSummary,
     OG_GRAYLOG_IMPRIVATA_RADIUS_STREAM_ID,
 } from "./imprivata-graylog";
+import { getAdaptiveSearchWindow } from "./graylog-backlog-guardian";
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false
@@ -418,9 +419,11 @@ async function fetchAdSecurityEventsFromGraylog(variants: string[], baseUser: st
     const targetUserTerms = variants.map(v => `winlog_event_data_TargetUserName:"${v}"`).join(" OR ");
     const luceneQuery = `(${targetUserTerms} OR "${baseUser.toLowerCase()}") AND (winlog_event_id:(4740 OR 4625 OR 4771 OR 4776 OR 4767 OR 4723 OR 4724 OR 4648) OR (winlog_event_id:(4768 OR 4769) AND NOT winlog_event_data_Status:0x0))`;
 
+    const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
+
     const params = new URLSearchParams({
         query: luceneQuery,
-        range: rangeSeconds.toString(),
+        range: adaptive.effectiveRangeSeconds.toString(),
         filter: `streams:${OG_GRAYLOG_AD_STREAM_ID}`,
         limit: "500",
         sort: "timestamp:desc"

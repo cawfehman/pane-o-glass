@@ -3,6 +3,7 @@ import path from "path";
 import https from "https";
 import axios from "axios";
 import dotenv from "dotenv";
+import { getAdaptiveSearchWindow } from "../../src/lib/graylog-backlog-guardian";
 
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -57,13 +58,18 @@ export async function syncAccountLifecycleEvents(rangeSeconds: number = 900): Pr
     // 4726: Account Deleted
     const query = `winlog_event_id:(4740 OR 4723 OR 4724 OR 4738 OR 4767 OR 4722 OR 4725 OR 4720 OR 4726)`;
 
-    log(`Fetching AD lifecycle events from Graylog (Stream: ${OG_GRAYLOG_AD_STREAM_ID}, Range: ${rangeSeconds}s)...`);
+    const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
+    if (adaptive.isCompensated) {
+        log(`[BACKLOG-GUARDIAN] OG Graylog lag ~${Math.round(adaptive.lagMinutes)}m detected -> expanding search window from ${rangeSeconds}s to ${adaptive.effectiveRangeSeconds}s.`);
+    }
+
+    log(`Fetching AD lifecycle events from Graylog (Stream: ${OG_GRAYLOG_AD_STREAM_ID}, Range: ${adaptive.effectiveRangeSeconds}s)...`);
 
     // Graylog relative search endpoint
     const limit = rangeSeconds > 3600 ? 5000 : 500;
     const params = new URLSearchParams({
         query,
-        range: rangeSeconds.toString(),
+        range: adaptive.effectiveRangeSeconds.toString(),
         filter: `streams:${OG_GRAYLOG_AD_STREAM_ID}`,
         limit: limit.toString(),
         sort: "timestamp:desc"

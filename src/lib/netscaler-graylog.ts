@@ -1,5 +1,6 @@
 import https from "https";
 import axios from "axios";
+import { getAdaptiveSearchWindow } from "@/lib/graylog-backlog-guardian";
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false,
@@ -325,8 +326,9 @@ export class NetscalerGraylogClient {
             bucketCount = 28; // 6-hour resolution for 7d
         }
 
+        const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
         const bucketDurationMs = Math.floor((rangeSeconds * 1000) / bucketCount);
-        const endAnchorMs = Math.floor(Date.now() / bucketDurationMs) * bucketDurationMs;
+        const endAnchorMs = Math.floor(adaptive.anchoredEndMs / bucketDurationMs) * bucketDurationMs;
         const series: NetscalerHistogramData[] = [];
         let total = 0;
 
@@ -597,9 +599,10 @@ export class NetscalerGraylogClient {
      */
     async queryCount(query: string, rangeSeconds: number = 86400): Promise<number> {
         try {
+            const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
             const params = new URLSearchParams({
                 query: this.buildFullQuery(query),
-                range: rangeSeconds.toString(),
+                range: adaptive.effectiveRangeSeconds.toString(),
                 limit: "1"
             });
             const url = `${this.baseUrl.replace(/\/$/, '')}/api/search/universal/relative?${params.toString()}`;
@@ -624,10 +627,11 @@ export class NetscalerGraylogClient {
      */
     async getTopUsers(rangeSeconds: number = 86400, limit: number = 10): Promise<{ username: string; count: number }[]> {
         try {
+            const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
             const userQuery = '(_exists_:ns_username OR _exists_:username OR _exists_:user OR ns_action:(LOGIN OR LOGOUT OR ICASTART OR ICAEND_CONNSTAT OR LOGIN_FAILED))';
             const params = new URLSearchParams({
                 query: this.buildFullQuery(userQuery),
-                range: rangeSeconds.toString(),
+                range: adaptive.effectiveRangeSeconds.toString(),
                 limit: "350",
                 fields: "ns_username,username,user,message"
             });
@@ -664,9 +668,10 @@ export class NetscalerGraylogClient {
     async getRecentFailureEvents(rangeSeconds: number = 86400, limit: number = 250): Promise<NetscalerGeoEvent[]> {
         const query = '(ns_action:LOGIN_FAILED OR (ns_module:(AAA OR SSLVPN OR AAATM OR ICA) AND (LOGIN_FAILED OR "Failed policy" OR "denied access" OR "STA ticket validation failed" OR "Invalid tass cookie" OR FAILURE OR FAILED OR DENIED OR "type 5") AND NOT "invalid opcode" AND NOT "NAS_NAC_PROXY" AND NOT "CONSOLE_CLOUD_AGENT"))';
         try {
+            const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
             const params = new URLSearchParams({
                 query: this.buildFullQuery(query),
-                range: rangeSeconds.toString(),
+                range: adaptive.effectiveRangeSeconds.toString(),
                 limit: limit.toString(),
                 fields: "src_ip,source_ip,client_ip,ns_remote_ip,src_ip_country_code,source_ip_country_code,client_ip_country_code,src_ip_city_name,source_ip_city_name,client_ip_city_name,vserver_ip,vserver_port,ns_username,username,user,ns_module,ns_action,ns_event_type,failure_reason,reason,user_agent,message,facility,level,timestamp",
                 sort: "timestamp:desc"
@@ -724,9 +729,10 @@ export class NetscalerGraylogClient {
         }
 
         try {
+            const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
             const params = new URLSearchParams({
                 query: this.buildFullQuery(query),
-                range: rangeSeconds.toString(),
+                range: adaptive.effectiveRangeSeconds.toString(),
                 limit: limit.toString(),
                 fields: "src_ip,source_ip,client_ip,ns_remote_ip,src_ip_country_code,source_ip_country_code,client_ip_country_code,src_ip_city_name,source_ip_city_name,client_ip_city_name,vserver_ip,vserver_port,ns_username,username,user,ns_module,ns_action,ns_event_type,message,facility,level,timestamp",
                 sort: "timestamp:desc"
@@ -792,9 +798,10 @@ export class NetscalerGraylogClient {
         }
 
         try {
+            const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
             const params = new URLSearchParams({
                 query: this.buildFullQuery(query),
-                range: rangeSeconds.toString(),
+                range: adaptive.effectiveRangeSeconds.toString(),
                 limit: limit.toString(),
                 sort: "timestamp:desc"
             });
@@ -898,11 +905,13 @@ export class NetscalerGraylogClient {
             return /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.)/.test(ip);
         };
 
+        const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
+
         const scanPromises = rules.map(async (rule) => {
             try {
                 const params = new URLSearchParams({
                     query: this.buildFullQuery(rule.query),
-                    range: rangeSeconds.toString(),
+                    range: adaptive.effectiveRangeSeconds.toString(),
                     limit: "200",
                     fields: "src_ip,source_ip,client_ip,ns_remote_ip,src_ip_country_code,source_ip_country_code,client_ip_country_code,src_ip_city_name,source_ip_city_name,client_ip_city_name,ns_username,username,user,ns_http_method,ns_http_path,message,timestamp",
                     sort: "timestamp:desc"

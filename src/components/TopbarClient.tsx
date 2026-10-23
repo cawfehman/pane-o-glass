@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { PanelLeftClose, PanelLeft, Menu } from "lucide-react";
 import { useSidebar } from "./SidebarContext";
 import UserMenu from "./UserMenu";
+import GraylogBacklogBadge from "./GraylogBacklogBadge";
 
 export default function TopbarClient({ userName }: { userName: string }) {
     const { isCollapsed, toggleCollapsed, toggleMobileOpen } = useSidebar();
@@ -66,8 +67,9 @@ export default function TopbarClient({ userName }: { userName: string }) {
                 </div>
             </div>
 
-            {/* Right section: User Menu */}
-            <div className="flex items-center gap-4">
+            {/* Right section: SIEM Backlog Guardian + User Menu */}
+            <div className="flex items-center gap-3">
+                <GraylogBacklogBadge />
                 <UserMenu userName={userName} />
             </div>
         </header>

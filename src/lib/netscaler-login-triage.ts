@@ -11,6 +11,7 @@ import {
     matchEventToImprivataSession,
     formatImprivataFailureReason,
 } from "@/lib/imprivata-graylog";
+import { getAdaptiveSearchWindow } from "@/lib/graylog-backlog-guardian";
 
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false,
@@ -429,11 +430,13 @@ export async function analyzeCitrixLoginTriage(
         "timestamp",
     ].join(",");
 
+    const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
+
     const [failRes, successRes] = await Promise.all([
         axios.get(`${baseUrl}/api/search/universal/relative`, {
             params: {
                 query: failQuery,
-                range: rangeSeconds,
+                range: adaptive.effectiveRangeSeconds,
                 limit: 500,
                 fields,
                 sort: "timestamp:desc",
@@ -449,7 +452,7 @@ export async function analyzeCitrixLoginTriage(
         axios.get(`${baseUrl}/api/search/universal/relative`, {
             params: {
                 query: successQuery,
-                range: rangeSeconds,
+                range: adaptive.effectiveRangeSeconds,
                 limit: 500,
                 fields,
                 sort: "timestamp:desc",
