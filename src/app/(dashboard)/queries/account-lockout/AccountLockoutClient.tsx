@@ -7,7 +7,7 @@ import {
     ChevronUp, Copy, Check, Download, RefreshCw, Radio, HardDrive, 
     Info, ArrowRight, UserCheck, Layers, ExternalLink, Filter,
     ArrowUpDown, ArrowUp, ArrowDown, X, RotateCcw, KeyRound, Repeat,
-    History
+    History, BarChart3
 } from "lucide-react";
 import { 
     ResponsiveContainer, AreaChart, Area, XAxis, YAxis, 
@@ -17,6 +17,7 @@ import { PaginationControls } from "@/components/common/PaginationControls";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
 import { ToolHelp } from "@/components/ToolHelp";
 import { sendClientAuditLog } from "@/lib/audit-client";
+import { AccountLockoutMetricsTab } from "@/components/account-lockout/AccountLockoutMetricsTab";
 
 interface AdSecurityEvent {
     id: string;
@@ -160,6 +161,7 @@ interface LockoutInvestigationResult {
 }
 
 export default function AccountLockoutClient() {
+    const [activeView, setActiveView] = useState<"metrics" | "investigate">("metrics");
     const [usernameInput, setUsernameInput] = useState("");
     const [rangeHours, setRangeHours] = useState<number>(24);
     const [loading, setLoading] = useState(false);
@@ -187,6 +189,7 @@ export default function AccountLockoutClient() {
         if (!user) return;
 
         const effectiveRange = overrideRange || rangeHours;
+        setActiveView("investigate");
         setLoading(true);
         setError(null);
 
@@ -442,17 +445,52 @@ export default function AccountLockoutClient() {
             {/* Locked Top Section: Header & Search Toolbar */}
             <div className="shrink-0 flex flex-col gap-3">
                 {/* Header */}
-                <div>
-                    <div className="flex items-center gap-2.5">
-                        <UserX size={24} className="text-amber-400" />
-                        <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
-                            <span>Account Lockout & Auth Failure Investigator</span>
-                            <ToolHelp toolId="account-lockout" iconSize={18} />
-                        </h1>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <div className="flex items-center gap-2.5">
+                            <UserX size={24} className="text-amber-400" />
+                            <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
+                                <span>Account Lockout & Auth Failure Investigator</span>
+                                <ToolHelp toolId="account-lockout" iconSize={18} />
+                            </h1>
+                        </div>
+                        <p className="text-xs text-text-secondary mt-1">
+                            Correlates Domain Controller security logs (Events 4740, 4625, 4771, 4776) in Graylog with Cisco ISE Wireless telemetry to isolate lockout sources.
+                        </p>
                     </div>
-                    <p className="text-xs text-text-secondary mt-1">
-                        Correlates Domain Controller security logs (Events 4740, 4625, 4771, 4776) in Graylog with Cisco ISE Wireless telemetry to isolate lockout sources.
-                    </p>
+
+                    {/* View Switcher Tabs */}
+                    <div className="flex items-center gap-1 bg-[var(--bg-surface)] p-1 rounded-xl border border-border-color shadow-sm">
+                        <button
+                            type="button"
+                            onClick={() => setActiveView("metrics")}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                activeView === "metrics"
+                                    ? "bg-accent-primary text-white shadow-sm"
+                                    : "text-text-secondary hover:text-text-primary hover:bg-[var(--bg-surface-hover)]"
+                            }`}
+                        >
+                            <BarChart3 size={14} />
+                            <span>Metrics & Overview</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveView("investigate")}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                activeView === "investigate"
+                                    ? "bg-accent-primary text-white shadow-sm"
+                                    : "text-text-secondary hover:text-text-primary hover:bg-[var(--bg-surface-hover)]"
+                            }`}
+                        >
+                            <Search size={14} />
+                            <span>User Investigator</span>
+                            {data?.searchedUser && (
+                                <span className="px-1.5 py-0.2 rounded bg-black/25 text-[10px] font-mono">
+                                    {data.searchedUser}
+                                </span>
+                            )}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Primary Unified Smart Search Bar */}
@@ -528,6 +566,19 @@ export default function AccountLockoutClient() {
 
         {/* Scrollable Content Stream */}
         <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-10 space-y-6">
+            {activeView === "metrics" ? (
+                <AccountLockoutMetricsTab
+                    rangeHours={rangeHours}
+                    onRangeChange={(hours) => setRangeHours(hours)}
+                    onInvestigateUser={(username, hours) => {
+                        setUsernameInput(username);
+                        setRangeHours(hours);
+                        setActiveView("investigate");
+                        handleSearch(undefined, hours, username);
+                    }}
+                />
+            ) : (
+            <>
             {/* Error Message */}
             {error && (
                 <div className="p-4 rounded-xl border border-rose-500/40 bg-rose-950/20 text-rose-300 text-xs flex items-center gap-2">
@@ -1620,6 +1671,8 @@ export default function AccountLockoutClient() {
                         )}
                     </div>
                 </div>
+            )}
+            </>
             )}
             </div>
         </div>

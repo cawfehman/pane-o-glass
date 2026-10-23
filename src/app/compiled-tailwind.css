@@ -933,6 +933,9 @@
   .max-h-\[220px\] {
     max-height: 220px;
   }
+  .max-h-\[275px\] {
+    max-height: 275px;
+  }
   .max-h-\[300px\] {
     max-height: 300px;
   }
@@ -944,6 +947,9 @@
   }
   .max-h-\[400px\] {
     max-height: 400px;
+  }
+  .max-h-\[420px\] {
+    max-height: 420px;
   }
   .max-h-\[550px\] {
     max-height: 550px;
@@ -3323,6 +3329,9 @@
     @supports (color: color-mix(in lab, red, red)) {
       background-color: color-mix(in oklab, var(--color-green-500) 10%, transparent);
     }
+  }
+  .bg-indigo-400 {
+    background-color: var(--color-indigo-400);
   }
   .bg-indigo-500 {
     background-color: var(--color-indigo-500);
@@ -5973,6 +5982,9 @@
         background-color: color-mix(in oklab, var(--color-accent-glow) 10%, transparent);
       }
     }
+    .hover\:bg-accent-primary:hover {
+      background-color: var(--color-accent-primary);
+    }
     .hover\:bg-accent-primary-hover:hover {
       background-color: var(--color-accent-primary-hover);
     }
@@ -7112,6 +7124,12 @@
     .lg\:col-span-2 {
       grid-column: span 2 / span 2;
     }
+    .lg\:col-span-5 {
+      grid-column: span 5 / span 5;
+    }
+    .lg\:col-span-7 {
+      grid-column: span 7 / span 7;
+    }
     .lg\:flex {
       display: flex;
     }
@@ -7144,6 +7162,9 @@
     }
     .lg\:grid-cols-8 {
       grid-template-columns: repeat(8, minmax(0, 1fr));
+    }
+    .lg\:grid-cols-12 {
+      grid-template-columns: repeat(12, minmax(0, 1fr));
     }
     .lg\:grid-cols-\[minmax\(300px\,450px\)_1fr\] {
       grid-template-columns: minmax(300px,450px) 1fr;

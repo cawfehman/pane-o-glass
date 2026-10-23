@@ -46,6 +46,7 @@ export async function syncAccountLifecycleEvents(rangeSeconds: number = 900): Pr
     const authHeader = "Basic " + Buffer.from(`${ogToken}:token`).toString("base64");
 
     // Events:
+    // 4740: Account Locked Out
     // 4723: User Self-Service Password Change Attempt
     // 4724: Administrative Password Reset Attempt
     // 4738: User Account Modified (flags, expiration, etc.)
@@ -54,7 +55,7 @@ export async function syncAccountLifecycleEvents(rangeSeconds: number = 900): Pr
     // 4725: Account Disabled
     // 4720: Account Created
     // 4726: Account Deleted
-    const query = `winlog_event_id:(4723 OR 4724 OR 4738 OR 4767 OR 4722 OR 4725 OR 4720 OR 4726)`;
+    const query = `winlog_event_id:(4740 OR 4723 OR 4724 OR 4738 OR 4767 OR 4722 OR 4725 OR 4720 OR 4726)`;
 
     log(`Fetching AD lifecycle events from Graylog (Stream: ${OG_GRAYLOG_AD_STREAM_ID}, Range: ${rangeSeconds}s)...`);
 
@@ -125,13 +126,16 @@ export async function syncAccountLifecycleEvents(rangeSeconds: number = 900): Pr
         const isFailure = Array.isArray(rawKeywords)
             ? rawKeywords.some(k => /fail/i.test(String(k)))
             : /Audit Failure/i.test(String(m.message || ""));
-        const status = isFailure ? "FAILURE" : "SUCCESS";
+        const status = evId === "4740" ? "FAILURE" : (isFailure ? "FAILURE" : "SUCCESS");
 
         // Event classification
         let eventType = "UNKNOWN";
         let eventTitle = `Event ${evId}`;
 
-        if (evId === "4723") {
+        if (evId === "4740") {
+            eventType = "ACCOUNT_LOCKOUT";
+            eventTitle = "Account Locked Out";
+        } else if (evId === "4723") {
             eventType = "USER_PWD_CHANGE";
             eventTitle = isFailure ? "User Password Change Failed" : "User Password Change";
         } else if (evId === "4724") {
@@ -157,7 +161,18 @@ export async function syncAccountLifecycleEvents(rangeSeconds: number = 900): Pr
             eventTitle = "Account Deleted";
         }
 
-        const callerComputer = m.winlog_event_data_Workstation || m.winlog_event_data_CallerComputerName || m.winlog_event_data_WorkstationName || null;
+        let callerComputer: string | null = m.winlog_event_data_Workstation || m.winlog_event_data_CallerComputerName || m.winlog_event_data_WorkstationName || null;
+        if (!callerComputer && evId === "4740" && m.winlog_event_data_TargetDomainName && !/^chsmail$/i.test(String(m.winlog_event_data_TargetDomainName).trim())) {
+            const td = String(m.winlog_event_data_TargetDomainName).trim();
+            if (td !== "-") callerComputer = td;
+        }
+        if (!callerComputer && m.message) {
+            const rawMsg = String(m.message);
+            const cm = rawMsg.match(/Caller Computer Name:\s*([^\r\n\t]+)/i) || rawMsg.match(/Workstation Name:\s*([^\r\n\t]+)/i);
+            if (cm && cm[1].trim() && cm[1].trim() !== "-") {
+                callerComputer = cm[1].trim();
+            }
+        }
         const domainController = m.source || m.agent_name || m.winlog_computer_name || null;
         const subStatus = m.winlog_event_data_SubStatus || m.winlog_event_data_Status || m.winlog_event_data_FailureCode || null;
         const id = String(m._id || m.gl2_message_id || `${evId}-${m.timestamp}-${cleanTarget}`);
