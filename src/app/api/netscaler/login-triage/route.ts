@@ -4,6 +4,8 @@ import { hasPermission } from "@/app/actions/permissions";
 import {
     analyzeCitrixLoginTriage,
     blockCitrixAbusiveIps,
+    updateCitrixAutoShunConfig,
+    runCitrixLoginAutoShunCycle,
     DEFAULT_CITRIX_TRIAGE_CONFIG,
     CitrixTriageConfig,
 } from "@/lib/netscaler-login-triage";
@@ -73,13 +75,40 @@ export async function POST(req: NextRequest) {
             addToGuardianBlacklist = true,
         } = body;
 
+        const userId = session.user.id || "unknown";
+        const username = (session.user as any)?.username || session.user.name || userId;
+        const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0] || "127.0.0.1";
+
+        if (action === "update_auto_shun_config") {
+            const updated = await updateCitrixAutoShunConfig(
+                {
+                    ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
+                    ...(typeof body.windowSeconds === "number" ? { windowSeconds: Math.max(60, body.windowSeconds) } : {}),
+                    ...(typeof body.minAuthFailuresIn10m === "number"
+                        ? { minAuthFailuresIn10m: Math.max(1, body.minAuthFailuresIn10m) }
+                        : {}),
+                    ...(typeof body.shunSingleFailureOnBlacklistedAsn === "boolean"
+                        ? { shunSingleFailureOnBlacklistedAsn: body.shunSingleFailureOnBlacklistedAsn }
+                        : {}),
+                    ...(typeof body.targetHost === "string" ? { targetHost: body.targetHost } : {}),
+                },
+                username
+            );
+            return NextResponse.json({ success: true, autoShunConfig: updated });
+        }
+
+        if (action === "run_auto_shun_cycle") {
+            const cycleResult = await runCitrixLoginAutoShunCycle({
+                forceRun: true,
+                triggeredBy: userId,
+            });
+            return NextResponse.json({ success: true, cycleResult });
+        }
+
         const targetIps: string[] = Array.isArray(ips) && ips.length > 0 ? ips : ip ? [ip] : [];
         if (targetIps.length === 0) {
             return NextResponse.json({ error: "No target IP addresses provided" }, { status: 400 });
         }
-
-        const userId = session.user.id || "unknown";
-        const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0] || "127.0.0.1";
 
         if (action === "block_ips") {
             const result = await blockCitrixAbusiveIps({

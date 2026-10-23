@@ -7,6 +7,7 @@ import https from 'https';
 import { Client } from 'ldapts';
 import dotenv from 'dotenv';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+import { runCitrixLoginAutoShunCycle } from '../../src/lib/netscaler-login-triage';
 
 async function isAdUserValid(username: any) {
     const url = process.env.AD_URL!;
@@ -383,7 +384,7 @@ async function runAutoUnshun() {
         const agent = new https.Agent({ rejectUnauthorized: false });
         const streamsToQuery = streamIds.length > 0 ? streamIds : [null];
 
-        let shunnedIps = new Set();
+        let shunnedIps = new Set<string>();
         let ipFirewalls = {};
 
         for (const streamId of streamsToQuery) {
@@ -813,6 +814,18 @@ async function runAutoUnshun() {
     }
 
     console.log("[GUARDIAN] Scan complete.");
+
+    // 4b. Citrix NetScaler Login & Abuse Auto-Guardian Cycle
+    try {
+        const citrixCycle = await runCitrixLoginAutoShunCycle();
+        if (citrixCycle.executed) {
+            console.log(`[GUARDIAN][CITRIX-AUTO-SHUN] ${citrixCycle.summary}`);
+        } else {
+            console.log("[GUARDIAN][CITRIX-AUTO-SHUN] Paused via UI configuration.");
+        }
+    } catch (citrixErr: any) {
+        console.error("[GUARDIAN][CITRIX-AUTO-SHUN] Cycle error:", citrixErr.message);
+    }
     
     // 5. Update Heartbeat for Dashboard
     try {

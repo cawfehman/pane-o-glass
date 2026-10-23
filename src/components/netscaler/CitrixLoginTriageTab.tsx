@@ -59,6 +59,9 @@ export default function CitrixLoginTriageTab({
     } | null>(null);
 
     const [blacklistLoadingIp, setBlacklistLoadingIp] = useState<string | null>(null);
+    const [autoShunToggling, setAutoShunToggling] = useState<boolean>(false);
+    const [autoShunRunningCycle, setAutoShunRunningCycle] = useState<boolean>(false);
+    const [cycleFeedback, setCycleFeedback] = useState<string | null>(null);
 
     const fetchTriage = useCallback(async () => {
         setLoading(true);
@@ -108,6 +111,58 @@ export default function CitrixLoginTriageTab({
             console.error("Failed to toggle Guardian blacklist:", e);
         } finally {
             setBlacklistLoadingIp(null);
+        }
+    };
+
+    const handleToggleAutoShun = async () => {
+        const currentEnabled = Boolean(data?.autoShunConfig?.enabled);
+        setAutoShunToggling(true);
+        setCycleFeedback(null);
+        try {
+            const res = await fetch("/api/netscaler/login-triage", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "update_auto_shun_config",
+                    enabled: !currentEnabled,
+                }),
+            });
+            const json = await res.json();
+            if (res.ok && json.autoShunConfig) {
+                setData((prev) => (prev ? { ...prev, autoShunConfig: json.autoShunConfig } : prev));
+                setCycleFeedback(
+                    json.autoShunConfig.enabled
+                        ? "Automated Citrix Login Shunning ENABLED."
+                        : "Automated Citrix Login Shunning PAUSED."
+                );
+            }
+        } catch (e) {
+            console.error("Failed to toggle Citrix Auto-Shun:", e);
+        } finally {
+            setAutoShunToggling(false);
+        }
+    };
+
+    const handleRunAutoShunCycle = async () => {
+        setAutoShunRunningCycle(true);
+        setCycleFeedback(null);
+        try {
+            const res = await fetch("/api/netscaler/login-triage", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "run_auto_shun_cycle",
+                }),
+            });
+            const json = await res.json();
+            if (res.ok && json.cycleResult) {
+                setCycleFeedback(json.cycleResult.summary);
+                await fetchTriage();
+            }
+        } catch (e) {
+            console.error("Failed to run ad-hoc Citrix Auto-Shun cycle:", e);
+        } finally {
+            setAutoShunRunningCycle(false);
         }
     };
 
@@ -324,6 +379,102 @@ export default function CitrixLoginTriageTab({
                     >
                         <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-400" : ""}`} />
                         Refresh
+                    </button>
+                </div>
+            </div>
+
+            {/* Automated Citrix Login Guardian Control Bar */}
+            <div
+                className={`rounded-xl border p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 transition-all ${
+                    data?.autoShunConfig?.enabled
+                        ? "bg-emerald-950/20 border-emerald-500/35"
+                        : "bg-slate-900/60 border-amber-500/25"
+                }`}
+            >
+                <div className="flex items-start gap-3">
+                    <div
+                        className={`p-2 rounded-lg border mt-0.5 ${
+                            data?.autoShunConfig?.enabled
+                                ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
+                                : "bg-amber-500/15 border-amber-500/30 text-amber-400"
+                        }`}
+                    >
+                        <Shield className="w-4 h-4" />
+                    </div>
+                    <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold uppercase tracking-wider text-slate-200">
+                                Automated Citrix Login Guardian
+                            </span>
+                            {data?.autoShunConfig?.enabled ? (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                    ACTIVE — AUTO-SHUNNING
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                    PAUSED (MANUAL MODE)
+                                </span>
+                            )}
+                            {data?.autoShunConfig?.lastRunAt && (
+                                <span className="text-[11px] text-slate-400">
+                                    • Last scan: {new Date(data.autoShunConfig.lastRunAt).toLocaleTimeString()}
+                                    {data.autoShunConfig.lastRunSummary ? ` (${data.autoShunConfig.lastRunSummary})` : ""}
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                            Rule:{" "}
+                            <span className="text-slate-200 font-medium">
+                                ≥{data?.autoShunConfig?.minAuthFailuresIn10m ?? 3} failed auth attempts within{" "}
+                                {Math.round((data?.autoShunConfig?.windowSeconds ?? 600) / 60)} minutes
+                            </span>{" "}
+                            OR{" "}
+                            <span className="text-slate-200 font-medium">
+                                ≥1 failed attempt from a Blacklisted ASN
+                            </span>{" "}
+                            → Shuns across all perimeter firewalls + adds to Guardian Blacklist (protects verified AD users on US ISPs & Imprivata MFA push timeouts).
+                        </p>
+                        {cycleFeedback && (
+                            <p className="text-xs text-indigo-300 font-medium mt-1">
+                                ↳ {cycleFeedback}
+                            </p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <button
+                        onClick={handleRunAutoShunCycle}
+                        disabled={autoShunRunningCycle}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 disabled:opacity-50"
+                        title="Execute an immediate 10-minute Citrix Login Guardian scan & auto-shun cycle"
+                    >
+                        <RefreshCw className={`w-3.5 h-3.5 ${autoShunRunningCycle ? "animate-spin text-indigo-400" : "text-indigo-400"}`} />
+                        {autoShunRunningCycle ? "Scanning 10m Window..." : "Run 10m Scan Now"}
+                    </button>
+
+                    <button
+                        onClick={handleToggleAutoShun}
+                        disabled={autoShunToggling}
+                        className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-all disabled:opacity-50 ${
+                            data?.autoShunConfig?.enabled
+                                ? "bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/40"
+                                : "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-600/20"
+                        }`}
+                    >
+                        {data?.autoShunConfig?.enabled ? (
+                            <>
+                                <Lock className="w-3.5 h-3.5" />
+                                Pause Auto-Shun
+                            </>
+                        ) : (
+                            <>
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                                Enable Auto-Shun
+                            </>
+                        )}
                     </button>
                 </div>
             </div>

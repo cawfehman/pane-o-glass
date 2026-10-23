@@ -57,6 +57,7 @@ export interface CitrixGuardianRuleFlag {
         | "NON_EXISTENT_AD_USER"
         | "NON_CORPORATE_USERNAME"
         | "PASSWORD_SPRAY"
+        | "AUTH_BURST_10M"
         | "HIGH_FAILURE_VOLUME"
         | "FOREIGN_ORIGIN"
         | "HOSTING_DATACENTER_ASN"
@@ -83,6 +84,8 @@ export interface CitrixIpEvaluation {
     policyFailedCount: number;
     staFailedCount: number;
     cookieFailedCount: number;
+    maxAuthFailuresIn10m: number;
+    isOnAsnBlacklist: boolean;
     imprivataBadPasswordCount: number;
     imprivataMfaTimeoutCount: number;
     imprivataInvalidUserCount: number;
@@ -111,6 +114,32 @@ export interface CitrixIpEvaluation {
     isOnWatchlist: boolean;
     sampleMessages: string[];
 }
+
+export interface CitrixAutoShunConfig {
+    enabled: boolean;
+    windowSeconds: number;
+    minAuthFailuresIn10m: number;
+    shunSingleFailureOnBlacklistedAsn: boolean;
+    targetHost: string;
+    lastRunAt?: string | null;
+    lastRunNewShuns?: number;
+    lastRunEvaluatedIps?: number;
+    lastRunSummary?: string | null;
+    modifiedBy?: string | null;
+}
+
+export const DEFAULT_CITRIX_AUTO_SHUN_CONFIG: CitrixAutoShunConfig = {
+    enabled: false, // Paused by default until explicitly enabled in the UI
+    windowSeconds: 600, // 10-minute rolling window
+    minAuthFailuresIn10m: 3, // 3 failed authentication attempts within 10 minutes
+    shunSingleFailureOnBlacklistedAsn: true, // OR >= 1 failed attempt when ASN is in GuardianAsnBlacklist
+    targetHost: "all",
+    lastRunAt: null,
+    lastRunNewShuns: 0,
+    lastRunEvaluatedIps: 0,
+    lastRunSummary: null,
+    modifiedBy: null,
+};
 
 export interface CitrixUserIssueSummary {
     username: string;
@@ -153,6 +182,7 @@ export const DEFAULT_CITRIX_TRIAGE_CONFIG: CitrixTriageConfig = {
 export interface CitrixLoginTriageResponse {
     rangeSeconds: number;
     config: CitrixTriageConfig;
+    autoShunConfig: CitrixAutoShunConfig;
     summary: {
         totalFailureEvents: number;
         totalSuccessLogins: number;
@@ -774,6 +804,25 @@ export async function analyzeCitrixLoginTriage(
         const hasVpnSuccessHistory = vpnSuccessSet.has(ip);
         const totalFailures = ipEvents.length;
 
+        // Calculate maximum authentication/policy failures within any rolling 10-minute (600s) burst window
+        const authFailureEpochs = ipEvents
+            .filter((ev) => ev.category === "AAA_LOGIN_FAILED" || ev.category === "AAA_POLICY_FAILED")
+            .map((ev) => new Date(ev.timestamp).getTime())
+            .filter((t) => !isNaN(t))
+            .sort((a, b) => a - b);
+
+        let maxAuthFailuresIn10m = 0;
+        let windowStartIdx = 0;
+        for (let i = 0; i < authFailureEpochs.length; i++) {
+            while (authFailureEpochs[i] - authFailureEpochs[windowStartIdx] > 600_000) {
+                windowStartIdx++;
+            }
+            const countIn10m = i - windowStartIdx + 1;
+            if (countIn10m > maxAuthFailuresIn10m) {
+                maxAuthFailuresIn10m = countIn10m;
+            }
+        }
+
         // Evaluate Smart Guardian Rules
         const triggeredRules: CitrixGuardianRuleFlag[] = [];
         let riskScore = 0;
@@ -842,8 +891,17 @@ export async function analyzeCitrixLoginTriage(
             }
         }
 
-        // 4. High Failure Volume without Success
-        if (totalFailures >= config.minFailuresForBlock && citrixSucc === 0 && !hasVpnSuccessHistory) {
+        // 4. 10-Minute Authentication Failure Burst (>= minFailuresForBlock within 10 minutes) OR High Failure Volume
+        if (maxAuthFailuresIn10m >= config.minFailuresForBlock) {
+            triggeredRules.push({
+                code: "AUTH_BURST_10M",
+                label: `${maxAuthFailuresIn10m} Auth Failures in ≤10m`,
+                severity: "CRITICAL",
+                points: 55,
+                detail: `IP triggered ${maxAuthFailuresIn10m} failed authentication attempts within a 10-minute window (threshold: ${config.minFailuresForBlock}).`,
+            });
+            riskScore += 55;
+        } else if (totalFailures >= config.minFailuresForBlock && citrixSucc === 0 && !hasVpnSuccessHistory) {
             triggeredRules.push({
                 code: "HIGH_FAILURE_VOLUME",
                 label: `Repeated Failures (${totalFailures}x, 0 Success)`,
@@ -856,16 +914,17 @@ export async function analyzeCitrixLoginTriage(
 
         // 5. Hosting / Datacenter / Blacklisted ASN
         const cleanAsnNum = String(meta.asn).toUpperCase().replace(/^AS/, "");
+        const isOnAsnBlacklist = blacklistedAsnSet.has(cleanAsnNum);
         const isEnterpriseProxy = /zscaler|netskope|palo alto|cloudflare|akamai|cisco umbrella/i.test(meta.companyName);
-        if (blacklistedAsnSet.has(cleanAsnNum)) {
+        if (isOnAsnBlacklist) {
             triggeredRules.push({
                 code: "BLACKLISTED_ASN",
                 label: `Blacklisted ASN (${meta.asn})`,
                 severity: "CRITICAL",
-                points: 60,
-                detail: `Origin belongs to Guardian blacklisted ASN ${meta.asn} (${meta.companyName}).`,
+                points: 65,
+                detail: `Origin belongs to Guardian blacklisted ASN ${meta.asn} (${meta.companyName}) — single failed attempt triggers immediate block.`,
             });
-            riskScore += 60;
+            riskScore += 65;
         } else if (meta.companyType === "hosting" && !isEnterpriseProxy) {
             triggeredRules.push({
                 code: "HOSTING_DATACENTER_ASN",
@@ -910,6 +969,10 @@ export async function analyzeCitrixLoginTriage(
             riskScore = Math.min(riskScore, 10);
             verdictReason = "Protected Watchlist Asset IP";
             protectionNote = "IP is registered on the Guardian Monitored Watchlist.";
+        } else if (isOnAsnBlacklist) {
+            verdict = "ABUSIVE_BLOCK";
+            riskScore = Math.max(riskScore, 85);
+            verdictReason = `Blacklisted ASN ${meta.asn} (${meta.companyName}) with ${totalFailures} failed attempt(s) — zero-tolerance ASN block.`;
         } else if (
             config.protectIspWithValidAdUser &&
             countryCode === "US" &&
@@ -918,7 +981,7 @@ export async function analyzeCitrixLoginTriage(
             (citrixSucc > 0 ||
                 hasVpnSuccessHistory ||
                 (ipImpMfaTimeoutCount > 0 && ipImpBadPwdCount === 0) ||
-                (meta.isResidentialIsp && totalFailures < config.minFailuresForBlock * 2))
+                (meta.isResidentialIsp && maxAuthFailuresIn10m < config.minFailuresForBlock))
         ) {
             verdict = "LEGIT_USER_ISSUE";
             riskScore = Math.min(riskScore, 15);
@@ -991,6 +1054,8 @@ export async function analyzeCitrixLoginTriage(
             policyFailedCount,
             staFailedCount,
             cookieFailedCount,
+            maxAuthFailuresIn10m,
+            isOnAsnBlacklist,
             imprivataBadPasswordCount: ipImpBadPwdCount,
             imprivataMfaTimeoutCount: ipImpMfaTimeoutCount,
             imprivataInvalidUserCount: ipImpInvalidUserCount,
@@ -1121,9 +1186,12 @@ export async function analyzeCitrixLoginTriage(
     ).length;
     const imprivataInvalidUserCount = events.filter((e) => e.imprivataVerdict === "INVALID_USER").length;
 
+    const autoShunConfig = await getCitrixAutoShunConfig().catch(() => DEFAULT_CITRIX_AUTO_SHUN_CONFIG);
+
     return {
         rangeSeconds,
         config,
+        autoShunConfig,
         summary: {
             totalFailureEvents: events.length,
             totalSuccessLogins: rawSuccesses.length,
@@ -1286,5 +1354,254 @@ export async function blockCitrixAbusiveIps(params: {
         skippedIps,
         firewallResults,
         blacklistedCount,
+    };
+}
+
+const CITRIX_AUTO_SHUN_SETTING_KEY = "CITRIX_LOGIN_AUTO_SHUN_CONFIG";
+
+export async function getCitrixAutoShunConfig(): Promise<CitrixAutoShunConfig> {
+    try {
+        const record = await prisma.netscalerCveSetting.findUnique({
+            where: { key: CITRIX_AUTO_SHUN_SETTING_KEY },
+        });
+        if (!record || !record.value) {
+            return { ...DEFAULT_CITRIX_AUTO_SHUN_CONFIG };
+        }
+        const parsed = JSON.parse(record.value);
+        return {
+            ...DEFAULT_CITRIX_AUTO_SHUN_CONFIG,
+            ...parsed,
+        };
+    } catch {
+        return { ...DEFAULT_CITRIX_AUTO_SHUN_CONFIG };
+    }
+}
+
+export async function updateCitrixAutoShunConfig(
+    updates: Partial<CitrixAutoShunConfig>,
+    modifiedBy = "Administrator"
+): Promise<CitrixAutoShunConfig> {
+    const current = await getCitrixAutoShunConfig();
+    const merged: CitrixAutoShunConfig = {
+        ...current,
+        ...updates,
+        modifiedBy,
+    };
+
+    await prisma.netscalerCveSetting.upsert({
+        where: { key: CITRIX_AUTO_SHUN_SETTING_KEY },
+        update: { value: JSON.stringify(merged) },
+        create: { key: CITRIX_AUTO_SHUN_SETTING_KEY, value: JSON.stringify(merged) },
+    });
+
+    if (typeof updates.enabled === "boolean" && updates.enabled !== current.enabled) {
+        await logAudit(
+            "CITRIX_AUTO_SHUN_TOGGLE",
+            `Citrix Login Auto-Shun Guardian was ${merged.enabled ? "ENABLED" : "PAUSED"} by ${modifiedBy} (Rule: >=${merged.minAuthFailuresIn10m} auth failures in ${Math.round(merged.windowSeconds / 60)}m OR >=1 failure from Blacklisted ASN).`
+        ).catch(() => {});
+    }
+
+    return merged;
+}
+
+/**
+ * Probes OG Graylog /api/system/journal to detect if there is an active indexing lag.
+ * Returns lag in seconds (0 if healthy or unreachable).
+ */
+async function getOgGraylogJournalLagSeconds(): Promise<number> {
+    try {
+        const rawUrl = (process.env.OG_GRAYLOG_URL || "https://graylog.cooperhealth.edu:9000").replace(/^"|"$/g, "").replace(/\/+$/, "");
+        const rawToken = (process.env.OG_GRAYLOG_API_TOKEN || "").replace(/^"|"$/g, "");
+        if (!rawUrl || !rawToken) return 0;
+
+        const authHeader = rawToken.includes(":")
+            ? `Basic ${Buffer.from(rawToken).toString("base64")}`
+            : `Basic ${Buffer.from(`${rawToken}:token`).toString("base64")}`;
+
+        const res = await axios.get(`${rawUrl}/api/system/journal`, {
+            headers: { Authorization: authHeader, Accept: "application/json" },
+            httpsAgent,
+            timeout: 5000,
+        });
+
+        const uncommitted = Number(res.data?.uncommitted_journal_entries || 0);
+        const oldestSegment = res.data?.oldest_segment;
+        if (uncommitted > 25000 && oldestSegment) {
+            const lagSec = Math.max(0, Math.round((Date.now() - new Date(oldestSegment).getTime()) / 1000));
+            return lagSec > 120 ? lagSec : 0;
+        }
+        return 0;
+    } catch {
+        return 0;
+    }
+}
+
+export interface CitrixAutoShunCycleResult {
+    executed: boolean;
+    enabled: boolean;
+    windowSeconds: number;
+    effectiveRangeSeconds: number;
+    graylogLagSeconds: number;
+    evaluatedIps: number;
+    newlyShunned: {
+        ip: string;
+        asn: string;
+        companyName: string;
+        countryCode: string;
+        authFailures: number;
+        maxAuthFailuresIn10m: number;
+        isOnAsnBlacklist: boolean;
+        reason: string;
+    }[];
+    alreadyShunnedCount: number;
+    protectedCount: number;
+    summary: string;
+}
+
+/**
+ * Runs a single automated Citrix Login & Abuse Guardian evaluation cycle.
+ * Enforces the rule:
+ *  - >= 3 failed authentication attempts within 10 minutes (600s), OR
+ *  - >= 1 failed authentication attempt when the IP's ASN is in GuardianAsnBlacklist
+ *  while respecting Watchlist and Guardian Legitimate User protections.
+ */
+export async function runCitrixLoginAutoShunCycle(options?: {
+    forceRun?: boolean;
+    triggeredBy?: string;
+}): Promise<CitrixAutoShunCycleResult> {
+    const cfg = await getCitrixAutoShunConfig();
+    const forceRun = Boolean(options?.forceRun);
+
+    if (!cfg.enabled && !forceRun) {
+        return {
+            executed: false,
+            enabled: false,
+            windowSeconds: cfg.windowSeconds,
+            effectiveRangeSeconds: cfg.windowSeconds,
+            graylogLagSeconds: 0,
+            evaluatedIps: 0,
+            newlyShunned: [],
+            alreadyShunnedCount: 0,
+            protectedCount: 0,
+            summary: "Paused",
+        };
+    }
+
+    // Automatically compensate if OG Graylog has a journal backlog so the 10-minute window scans the latest indexed logs
+    const graylogLagSeconds = await getOgGraylogJournalLagSeconds();
+    const effectiveRangeSeconds = graylogLagSeconds > 0
+        ? cfg.windowSeconds + graylogLagSeconds + 120
+        : cfg.windowSeconds;
+
+    const triage = await analyzeCitrixLoginTriage(effectiveRangeSeconds, {
+        minFailuresForBlock: cfg.minAuthFailuresIn10m,
+        minSprayUsers: 2,
+        flagForeignIps: true,
+        flagNonExistentAdUsers: true,
+        protectIspWithValidAdUser: true,
+    });
+
+    const newlyShunned: CitrixAutoShunCycleResult["newlyShunned"] = [];
+    let alreadyShunnedCount = 0;
+    let protectedCount = 0;
+
+    // Ensure Guardian system user exists for audit/history records
+    let guardianUser = await prisma.user.findUnique({ where: { username: "Guardian" } }).catch(() => null);
+    if (!guardianUser) {
+        guardianUser = await prisma.user.create({
+            data: { username: "Guardian", role: "SYSTEM", isExternal: false },
+        }).catch(() => null);
+    }
+    const actorUserId = options?.triggeredBy || guardianUser?.id || "Guardian";
+
+    for (const ipEval of triage.ipEvaluations) {
+        if (ipEval.isCurrentlyShunned) {
+            alreadyShunnedCount++;
+            continue;
+        }
+        if (ipEval.isOnWatchlist || ipEval.verdict === "LEGIT_USER_ISSUE") {
+            protectedCount++;
+            continue;
+        }
+
+        const authFailures = ipEval.loginFailedCount + ipEval.policyFailedCount;
+        const matchesBlacklistedAsnRule =
+            cfg.shunSingleFailureOnBlacklistedAsn &&
+            ipEval.isOnAsnBlacklist &&
+            (authFailures >= 1 || ipEval.totalFailures >= 1);
+
+        const matches10mAuthBurstRule =
+            ipEval.maxAuthFailuresIn10m >= cfg.minAuthFailuresIn10m;
+
+        if (!matchesBlacklistedAsnRule && !matches10mAuthBurstRule) {
+            continue;
+        }
+
+        const triggerReason = matchesBlacklistedAsnRule
+            ? `Blacklisted ASN ${ipEval.asn} (${ipEval.companyName}) with ${ipEval.totalFailures} failed Citrix attempt(s)`
+            : `${ipEval.maxAuthFailuresIn10m} failed Citrix authentication attempts within 10m (${ipEval.verdictReason})`;
+
+        const blockRes = await blockCitrixAbusiveIps({
+            ips: [ipEval.ip],
+            reason: `[Auto-Shun] ${triggerReason}`,
+            targetHost: cfg.targetHost || "all",
+            addToGuardianBlacklist: true,
+            userId: actorUserId,
+            clientIp: "citrix-auto-guardian",
+        });
+
+        if (blockRes.blockedIps.includes(ipEval.ip)) {
+            newlyShunned.push({
+                ip: ipEval.ip,
+                asn: ipEval.asn,
+                companyName: ipEval.companyName,
+                countryCode: ipEval.countryCode,
+                authFailures,
+                maxAuthFailuresIn10m: ipEval.maxAuthFailuresIn10m,
+                isOnAsnBlacklist: ipEval.isOnAsnBlacklist,
+                reason: triggerReason,
+            });
+
+            await prisma.guardianEvent.create({
+                data: {
+                    ip: ipEval.ip,
+                    firewall: "ALL",
+                    action: "SHUNNED",
+                    reason: matchesBlacklistedAsnRule ? "BLACK_LISTED_ASN" : "CITRIX_AUTH_BURST",
+                    companyName: ipEval.companyName,
+                    companyType: ipEval.companyType,
+                    cidr: ipEval.cidr,
+                    asn: ipEval.asn,
+                    details: `[Citrix Auto-Guardian] Shunned & blacklisted ${ipEval.ip}: ${triggerReason}`,
+                },
+            }).catch(() => {});
+        }
+    }
+
+    const summary = newlyShunned.length > 0
+        ? `Shunned ${newlyShunned.length} IP(s): ${newlyShunned.map((n) => n.ip).join(", ")}`
+        : `Scanned ${triage.ipEvaluations.length} IP(s) (${Math.round(cfg.windowSeconds / 60)}m window${graylogLagSeconds > 0 ? ` + ${Math.round(graylogLagSeconds / 60)}m backlog offset` : ""}) — 0 new shuns`;
+
+    await updateCitrixAutoShunConfig(
+        {
+            lastRunAt: new Date().toISOString(),
+            lastRunNewShuns: newlyShunned.length,
+            lastRunEvaluatedIps: triage.ipEvaluations.length,
+            lastRunSummary: summary,
+        },
+        cfg.modifiedBy || "Guardian"
+    ).catch(() => {});
+
+    return {
+        executed: true,
+        enabled: cfg.enabled,
+        windowSeconds: cfg.windowSeconds,
+        effectiveRangeSeconds,
+        graylogLagSeconds,
+        evaluatedIps: triage.ipEvaluations.length,
+        newlyShunned,
+        alreadyShunnedCount,
+        protectedCount,
+        summary,
     };
 }
