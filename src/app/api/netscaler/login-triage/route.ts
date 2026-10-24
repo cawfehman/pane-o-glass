@@ -122,6 +122,58 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: true, ...result });
         }
 
+        if (action === "blacklist_asn") {
+            const rawAsn = String(body.asn || "").trim();
+            if (!rawAsn) return NextResponse.json({ error: "Missing ASN" }, { status: 400 });
+            const cleanAsnNum = rawAsn.toUpperCase().replace(/^AS/, "");
+            const asnKey = `AS${cleanAsnNum}`;
+            const asnReason = body.reason || `Blacklisted via Citrix Abuse Triage: zero-tolerance 1-failure autoshun rule`;
+            const asnName = body.asnName || body.companyName || null;
+
+            const entry = await prisma.guardianAsnBlacklist.upsert({
+                where: { asn: asnKey },
+                update: {
+                    reason: asnReason,
+                    asnName,
+                    createdBy: username
+                },
+                create: {
+                    asn: asnKey,
+                    asnName,
+                    reason: asnReason,
+                    createdBy: username
+                }
+            });
+
+            await logAudit(
+                "GUARDIAN_ASN_BLACKLIST_ADD",
+                `Blacklisted ASN ${asnKey} (${asnName || 'Unknown'}) via Citrix Abuse Triage (1-failure autoshun rule) - Reason: "${asnReason}"`,
+                userId,
+                clientIp
+            ).catch(() => {});
+
+            return NextResponse.json({ success: true, entry });
+        }
+
+        if (action === "remove_asn_blacklist") {
+            const rawAsn = String(body.asn || "").trim();
+            if (!rawAsn) return NextResponse.json({ error: "Missing ASN" }, { status: 400 });
+            const cleanAsnNum = rawAsn.toUpperCase().replace(/^AS/, "");
+            const asnKey = `AS${cleanAsnNum}`;
+
+            await prisma.guardianAsnBlacklist.delete({ where: { asn: asnKey } }).catch(() => {});
+            await prisma.guardianAsnBlacklist.delete({ where: { asn: cleanAsnNum } }).catch(() => {});
+
+            await logAudit(
+                "GUARDIAN_ASN_BLACKLIST_CLEAR",
+                `Removed ASN ${asnKey} from Guardian blacklist via Citrix Abuse Triage`,
+                userId,
+                clientIp
+            ).catch(() => {});
+
+            return NextResponse.json({ success: true, removedAsn: asnKey });
+        }
+
         const targetIps: string[] = Array.isArray(ips) && ips.length > 0 ? ips : ip ? [ip] : [];
         if (targetIps.length === 0) {
             return NextResponse.json({ error: "No target IP addresses provided" }, { status: 400 });

@@ -165,6 +165,29 @@ export interface CitrixUserIssueSummary {
     diagnosis: string;
 }
 
+export interface CitrixAsnMetric {
+    asn: string; // e.g. "AS16509"
+    asnNumber: string; // e.g. "16509"
+    asnName: string; // e.g. "Amazon.com, Inc."
+    companyType?: string; // e.g. "hosting", "isp", "business"
+    countryCode?: string;
+    totalFailures: number;
+    loginFailedCount: number;
+    policyFailedCount: number;
+    staFailedCount: number;
+    uniqueIpCount: number;
+    ips: string[];
+    uniqueUserCount: number;
+    targetedUsers: string[];
+    abusiveIpCount: number;
+    alreadyShunnedIpCount: number;
+    maxRiskScore: number;
+    isBlacklisted: boolean;
+    blacklistReason?: string;
+    firstSeen: string;
+    lastSeen: string;
+}
+
 export interface CitrixTriageConfig {
     minFailuresForBlock: number;
     minSprayUsers: number;
@@ -201,8 +224,11 @@ export interface CitrixLoginTriageResponse {
         legitProtectedIpCount: number;
         alreadyShunnedIpCount: number;
         uniqueUsersImpacted: number;
+        uniqueAsnsCount: number;
+        blacklistedAsnsCount: number;
     };
     ipEvaluations: CitrixIpEvaluation[];
+    asnMetrics: CitrixAsnMetric[];
     userSummaries: CitrixUserIssueSummary[];
     events: CitrixLoginFailureEvent[];
 }
@@ -1188,6 +1214,106 @@ export async function analyzeCitrixLoginTriage(
 
     userSummaries.sort((a, b) => b.failureCount - a.failureCount);
 
+    // Aggregate ASN Metrics across evaluated IPs and failure events
+    const asnMap = new Map<string, {
+        asn: string;
+        asnNumber: string;
+        asnName: string;
+        companyType?: string;
+        countryCode?: string;
+        totalFailures: number;
+        loginFailedCount: number;
+        policyFailedCount: number;
+        staFailedCount: number;
+        ips: Set<string>;
+        targetedUsers: Set<string>;
+        abusiveIpCount: number;
+        alreadyShunnedIpCount: number;
+        maxRiskScore: number;
+        isBlacklisted: boolean;
+        blacklistReason?: string;
+        firstSeen: string;
+        lastSeen: string;
+    }>();
+
+    for (const ipEval of ipEvaluations) {
+        const rawAsn = (ipEval.asn || "Unknown").trim();
+        const cleanAsnNum = rawAsn.toUpperCase().replace(/^AS/, "");
+        const asnKey = cleanAsnNum ? `AS${cleanAsnNum}` : "Unknown";
+
+        const existing = asnMap.get(asnKey) || {
+            asn: asnKey,
+            asnNumber: cleanAsnNum,
+            asnName: ipEval.companyName || "Unknown Organization",
+            companyType: ipEval.companyType,
+            countryCode: ipEval.countryCode,
+            totalFailures: 0,
+            loginFailedCount: 0,
+            policyFailedCount: 0,
+            staFailedCount: 0,
+            ips: new Set<string>(),
+            targetedUsers: new Set<string>(),
+            abusiveIpCount: 0,
+            alreadyShunnedIpCount: 0,
+            maxRiskScore: 0,
+            isBlacklisted: ipEval.isOnAsnBlacklist,
+            blacklistReason: undefined,
+            firstSeen: ipEval.firstSeen,
+            lastSeen: ipEval.lastSeen,
+        };
+
+        existing.totalFailures += ipEval.totalFailures;
+        existing.loginFailedCount += ipEval.loginFailedCount;
+        existing.policyFailedCount += ipEval.policyFailedCount;
+        existing.staFailedCount += ipEval.staFailedCount;
+        existing.ips.add(ipEval.ip);
+        ipEval.targetedUsers.forEach((u) => existing.targetedUsers.add(u.username));
+        if (ipEval.verdict === "ABUSIVE_BLOCK") existing.abusiveIpCount++;
+        if (ipEval.isCurrentlyShunned) existing.alreadyShunnedIpCount++;
+        if (ipEval.riskScore > existing.maxRiskScore) existing.maxRiskScore = ipEval.riskScore;
+        if (ipEval.isOnAsnBlacklist) existing.isBlacklisted = true;
+        if (new Date(ipEval.firstSeen).getTime() < new Date(existing.firstSeen).getTime()) {
+            existing.firstSeen = ipEval.firstSeen;
+        }
+        if (new Date(ipEval.lastSeen).getTime() > new Date(existing.lastSeen).getTime()) {
+            existing.lastSeen = ipEval.lastSeen;
+        }
+
+        asnMap.set(asnKey, existing);
+    }
+
+    // Attach blacklist reasons from asnBlacklistEntries
+    const asnBlacklistMap = new Map<string, string>();
+    for (const b of asnBlacklistEntries) {
+        const cleanKey = `AS${String(b.asn).toUpperCase().replace(/^AS/, "")}`;
+        asnBlacklistMap.set(cleanKey, b.reason || "Blacklisted ASN");
+    }
+
+    const asnMetrics: CitrixAsnMetric[] = Array.from(asnMap.values()).map((a) => ({
+        asn: a.asn,
+        asnNumber: a.asnNumber,
+        asnName: a.asnName,
+        companyType: a.companyType,
+        countryCode: a.countryCode,
+        totalFailures: a.totalFailures,
+        loginFailedCount: a.loginFailedCount,
+        policyFailedCount: a.policyFailedCount,
+        staFailedCount: a.staFailedCount,
+        uniqueIpCount: a.ips.size,
+        ips: Array.from(a.ips),
+        uniqueUserCount: a.targetedUsers.size,
+        targetedUsers: Array.from(a.targetedUsers),
+        abusiveIpCount: a.abusiveIpCount,
+        alreadyShunnedIpCount: a.alreadyShunnedIpCount,
+        maxRiskScore: a.maxRiskScore,
+        isBlacklisted: a.isBlacklisted || asnBlacklistMap.has(a.asn),
+        blacklistReason: asnBlacklistMap.get(a.asn),
+        firstSeen: a.firstSeen,
+        lastSeen: a.lastSeen,
+    }));
+
+    asnMetrics.sort((a, b) => b.totalFailures - a.totalFailures);
+
     const aaaLoginFailedCount = events.filter((e) => e.category === "AAA_LOGIN_FAILED").length;
     const policyFailedCount = events.filter((e) => e.category === "AAA_POLICY_FAILED").length;
     const staTicketFailedCount = events.filter((e) => e.category === "STA_TICKET_FAILED").length;
@@ -1220,8 +1346,11 @@ export async function analyzeCitrixLoginTriage(
             legitProtectedIpCount: ipEvaluations.filter((i) => i.verdict === "LEGIT_USER_ISSUE").length,
             alreadyShunnedIpCount: ipEvaluations.filter((i) => i.isCurrentlyShunned).length,
             uniqueUsersImpacted: userSummaries.length,
+            uniqueAsnsCount: asnMetrics.length,
+            blacklistedAsnsCount: asnMetrics.filter((a) => a.isBlacklisted).length,
         },
         ipEvaluations,
+        asnMetrics,
         userSummaries,
         events,
     };

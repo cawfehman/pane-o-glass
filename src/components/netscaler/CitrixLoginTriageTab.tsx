@@ -11,6 +11,7 @@ import Link from "next/link";
 import { ShunDatabaseTab } from "@/components/firewall/ShunDatabaseTab";
 import type {
     CitrixLoginTriageResponse,
+    CitrixAsnMetric,
     CitrixIpEvaluation,
     CitrixUserIssueSummary,
     CitrixLoginFailureEvent,
@@ -35,7 +36,7 @@ export default function CitrixLoginTriageTab({
     const [error, setError] = useState<string | null>(null);
 
     // Sub-navigation inside the tab
-    const [subView, setSubView] = useState<"ips" | "users" | "events">("ips");
+    const [subView, setSubView] = useState<"ips" | "asns" | "users" | "events">("ips");
 
     // Filters
     const [verdictFilter, setVerdictFilter] = useState<"ALL" | GuardianAbuseVerdict>("ALL");
@@ -76,6 +77,85 @@ export default function CitrixLoginTriageTab({
     // Perimeter Shun Database Modal
     const [showShunDbModal, setShowShunDbModal] = useState<boolean>(false);
     const [shunDbInitialSearch, setShunDbInitialSearch] = useState<string>("");
+
+    // Origin ASN Intelligence & Blacklist Modal State
+    const [asnFilterType, setAsnFilterType] = useState<"ALL" | "BLACKLISTED" | "HOSTING" | "ABUSIVE">("ALL");
+    const [asnBlacklistModal, setAsnBlacklistModal] = useState<{
+        asn: string;
+        asnName: string;
+        reason: string;
+        isCurrentlyBlacklisted: boolean;
+        loading: boolean;
+        error: string | null;
+        success: boolean;
+    } | null>(null);
+    const [asnActionLoadingKey, setAsnActionLoadingKey] = useState<string | null>(null);
+
+    const handleToggleAsnBlacklist = async (
+        asn: string,
+        asnName: string,
+        currentlyBlacklisted: boolean,
+        customReason?: string
+    ) => {
+        setAsnActionLoadingKey(asn);
+        try {
+            const res = await fetch("/api/netscaler/login-triage", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: currentlyBlacklisted ? "remove_asn_blacklist" : "blacklist_asn",
+                    asn,
+                    asnName,
+                    reason:
+                        customReason ||
+                        (currentlyBlacklisted
+                            ? undefined
+                            : "Blacklisted via Citrix Abuse Triage: zero-tolerance 1-failure autoshun rule"),
+                }),
+            });
+            const j = await res.json();
+            if (res.ok) {
+                await fetchTriage();
+                if (asnBlacklistModal) {
+                    setAsnBlacklistModal(null);
+                }
+            } else {
+                if (asnBlacklistModal) {
+                    setAsnBlacklistModal((prev) =>
+                        prev ? { ...prev, error: j.error || "Failed to update ASN blacklist status", loading: false } : null
+                    );
+                }
+            }
+        } catch (e: any) {
+            console.error("Failed to toggle ASN blacklist:", e);
+            if (asnBlacklistModal) {
+                setAsnBlacklistModal((prev) => (prev ? { ...prev, error: e.message, loading: false } : null));
+            }
+        } finally {
+            setAsnActionLoadingKey(null);
+        }
+    };
+
+    const openBlacklistAsnModal = (
+        asn: string,
+        asnName: string,
+        isCurrentlyBlacklisted: boolean = false,
+        defaultReason?: string
+    ) => {
+        setAsnBlacklistModal({
+            asn,
+            asnName: asnName || "Unknown Organization",
+            reason:
+                defaultReason ||
+                (isCurrentlyBlacklisted
+                    ? ""
+                    : "Blacklisted via Citrix Abuse Triage: zero-tolerance 1-failure autoshun rule"),
+            isCurrentlyBlacklisted,
+            loading: false,
+            error: null,
+            success: false,
+        });
+    };
 
     const fetchShunLogs = useCallback(async () => {
         setShunLogsLoading(true);
@@ -352,6 +432,61 @@ export default function CitrixLoginTriageTab({
             item.cityName.toLowerCase().includes(q) ||
             item.verdictReason.toLowerCase().includes(q) ||
             item.targetedUsers.some((u) => u.username.toLowerCase().includes(q) || (u.adDisplayName || "").toLowerCase().includes(q))
+        );
+    });
+
+    const exportAsnCsv = () => {
+        if (!data?.asnMetrics?.length) return;
+        const headers =
+            "ASN,Organization,Type,Country,TotalFailures,LoginFailed,PolicyFailed,STA_Failed,UniqueIPs,TargetedUsers,AbusiveIPs,AlreadyShunnedIPs,MaxRiskScore,IsBlacklisted,BlacklistReason,FirstSeen,LastSeen\n";
+        const rows = data.asnMetrics
+            .map((a) =>
+                [
+                    `"${a.asn}"`,
+                    `"${(a.asnName || "").replace(/"/g, '""')}"`,
+                    `"${a.companyType || ""}"`,
+                    `"${a.countryCode || ""}"`,
+                    a.totalFailures,
+                    a.loginFailedCount,
+                    a.policyFailedCount,
+                    a.staFailedCount,
+                    a.uniqueIpCount,
+                    a.uniqueUserCount,
+                    a.abusiveIpCount,
+                    a.alreadyShunnedIpCount,
+                    a.maxRiskScore,
+                    a.isBlacklisted ? "YES" : "NO",
+                    `"${(a.blacklistReason || "").replace(/"/g, '""')}"`,
+                    `"${a.firstSeen}"`,
+                    `"${a.lastSeen}"`,
+                ].join(",")
+            )
+            .join("\n");
+
+        const blob = new Blob([headers + rows], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `citrix-origin-asn-metrics-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const filteredAsns: CitrixAsnMetric[] = (data?.asnMetrics || []).filter((item) => {
+        if (asnFilterType === "BLACKLISTED" && !item.isBlacklisted) return false;
+        if (asnFilterType === "HOSTING" && item.companyType?.toLowerCase() !== "hosting") return false;
+        if (asnFilterType === "ABUSIVE" && item.abusiveIpCount === 0) return false;
+
+        if (!searchTerm.trim()) return true;
+        const q = searchTerm.toLowerCase();
+        return (
+            item.asn.toLowerCase().includes(q) ||
+            item.asnName.toLowerCase().includes(q) ||
+            (item.companyType || "").toLowerCase().includes(q) ||
+            (item.countryCode || "").toLowerCase().includes(q) ||
+            item.ips.some((ip) => ip.includes(q)) ||
+            item.targetedUsers.some((u) => u.toLowerCase().includes(q)) ||
+            (item.blacklistReason || "").toLowerCase().includes(q)
         );
     });
 
@@ -714,7 +849,7 @@ export default function CitrixLoginTriageTab({
             )}
 
             {/* KPI Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
                     <div className="flex items-center justify-between text-xs text-slate-400">
                         <span>Citrix Auth & Session Failures</span>
