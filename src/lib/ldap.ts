@@ -266,14 +266,22 @@ export async function getBulkUserAdStatus(rawUsernames: string[]): Promise<Recor
         return results;
     }
 
-    const cleanUserMap = new Map<string, string>(); // cleanName -> originalInput
+    // Map every normalized variation back to all raw inputs that requested it
+    const cleanUserMap = new Map<string, Set<string>>(); // searchToken -> Set<rawInput>
+
+    const registerMapping = (token: string, raw: string) => {
+        if (!token) return;
+        const lower = token.trim().toLowerCase();
+        if (!lower) return;
+        if (!cleanUserMap.has(lower)) {
+            cleanUserMap.set(lower, new Set());
+        }
+        cleanUserMap.get(lower)!.add(raw);
+    };
+
     for (const raw of rawUsernames) {
         if (!raw) continue;
-        let clean = raw.trim().toLowerCase();
-        if (clean.endsWith("@cooperhealth.edu")) {
-            clean = clean.slice(0, -17);
-        }
-        cleanUserMap.set(clean, raw);
+        const trimmed = raw.trim();
         // Default entry to NOT_FOUND
         results[raw] = {
             adStatus: "NOT_FOUND",
@@ -282,10 +290,30 @@ export async function getBulkUserAdStatus(rawUsernames: string[]): Promise<Recor
             title: "",
             adLastCheckedAt: nowIso
         };
+
+        // 1. Direct raw lowercase
+        registerMapping(trimmed, raw);
+
+        // 2. Strip domain prefix (e.g. COOPER\user, CUH\\user, CUH/user)
+        const noDomainPrefix = trimmed.replace(/^[a-zA-Z0-9_\-\.]+[\\\/]+/, "");
+        registerMapping(noDomainPrefix, raw);
+
+        // 3. Strip NetScaler domain suffix (e.g. user:cooper, user:CUH)
+        const noDomainSuffix = noDomainPrefix.replace(/:[a-zA-Z0-9_\-\.]+$/, "");
+        registerMapping(noDomainSuffix, raw);
+
+        // 4. Strip UPN / Email domain suffix (e.g. user@cooperhealth.edu)
+        if (noDomainSuffix.includes("@")) {
+            const upnPrefix = noDomainSuffix.split("@")[0];
+            registerMapping(upnPrefix, raw);
+        } else {
+            // Also register with standard corporate UPN domain
+            registerMapping(`${noDomainSuffix}@cooperhealth.edu`, raw);
+        }
     }
 
-    const cleanList = Array.from(cleanUserMap.keys());
-    if (cleanList.length === 0) return results;
+    const searchTokens = Array.from(cleanUserMap.keys());
+    if (searchTokens.length === 0) return results;
 
     const client = new Client({
         url,
@@ -295,31 +323,53 @@ export async function getBulkUserAdStatus(rawUsernames: string[]): Promise<Recor
     try {
         await client.bind(bindDN, bindPassword);
 
-        for (let i = 0; i < cleanList.length; i += 50) {
-            const batch = cleanList.slice(i, i + 50).map(escapeLDAPSearchFilter);
-            const filter = `(|${batch.map(u => `(sAMAccountName=${u})`).join("")})`;
+        // Batch search Active Directory in chunks of 30
+        for (let i = 0; i < searchTokens.length; i += 30) {
+            const batch = searchTokens.slice(i, i + 30).map(escapeLDAPSearchFilter);
+            
+            // Search across sAMAccountName, userPrincipalName, and mail
+            const subFilters = batch.map(u => 
+                `(|(sAMAccountName=${u})(userPrincipalName=${u})(userPrincipalName=${u}@cooperhealth.edu)(mail=${u})(mail=${u}@cooperhealth.edu))`
+            );
+            const filter = `(|${subFilters.join("")})`;
 
             const { searchEntries } = await client.search(baseDN, {
                 filter,
                 scope: "sub",
-                attributes: ["sAMAccountName", "displayName", "department", "title", "userAccountControl"],
+                attributes: ["sAMAccountName", "userPrincipalName", "mail", "displayName", "department", "title", "userAccountControl"],
             });
 
             searchEntries.forEach(entry => {
                 const sName = String(entry.sAMAccountName || "").toLowerCase();
-                const originalRaw = cleanUserMap.get(sName);
-                if (!originalRaw) return;
+                const upn = String(entry.userPrincipalName || "").toLowerCase();
+                const upnPrefix = upn.split("@")[0];
+                const mail = String(entry.mail || "").toLowerCase();
+                const mailPrefix = mail.split("@")[0];
+
+                // Gather all matching original raw input usernames
+                const matchedRawUsernames = new Set<string>();
+                [sName, upn, upnPrefix, mail, mailPrefix].forEach(key => {
+                    if (key && cleanUserMap.has(key)) {
+                        cleanUserMap.get(key)!.forEach(raw => matchedRawUsernames.add(raw));
+                    }
+                });
+
+                if (matchedRawUsernames.size === 0) return;
 
                 const uac = Number(entry.userAccountControl || 0);
                 const isEnabled = !(uac & 2);
 
-                results[originalRaw] = {
-                    adStatus: isEnabled ? "ACTIVE" : "DISABLED",
-                    displayName: String(entry.displayName || ""),
+                const adInfo = {
+                    adStatus: isEnabled ? ("ACTIVE" as const) : ("DISABLED" as const),
+                    displayName: String(entry.displayName || entry.sAMAccountName || ""),
                     department: String(entry.department || ""),
                     title: String(entry.title || ""),
                     adLastCheckedAt: nowIso
                 };
+
+                for (const raw of matchedRawUsernames) {
+                    results[raw] = adInfo;
+                }
             });
         }
     } catch (err: any) {

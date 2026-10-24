@@ -262,29 +262,42 @@ export class NetscalerGraylogClient {
 
     public static extractUsername(msg: any): string {
         const raw = msg?.message || "";
+        let candidate = "";
         const candidates = [msg?.username, msg?.user, msg?.ns_username];
         for (const c of candidates) {
             if (c && typeof c === "string" && c.trim().length > 0) {
-                return c.trim();
+                candidate = c.trim();
+                break;
             }
         }
-        const patterns = [
-            /username:domainname\s+([a-zA-Z0-9_\-\.@]+):/i,
-            /Failed policy for user\s+([a-zA-Z0-9_\-\.@]+)/i,
-            /\bUser\s+([a-zA-Z0-9_\-\.@]+)\s+-\s+(?:Client_ip|Remote_ip|ADM_User)/i,
-            /\[Username\s*=\s*([^\]]+)\]/i,
-            /Username\s*=\s*([a-zA-Z0-9_\-\.@]+)/i,
-            /\buser\s+([a-zA-Z0-9_\-\.@]+)\s+clientip/i,
-            /Context\s+([a-zA-Z0-9_\-\.]+)(?:@|:)/i,
-            /\buser\s+([a-zA-Z0-9_\-\.@]+)/i,
-        ];
-        for (const rx of patterns) {
-            const m = raw.match(rx);
-            if (m && m[1]) {
-                return m[1].trim();
+        if (!candidate) {
+            const patterns = [
+                /username:domainname\s+([a-zA-Z0-9_\-\.@\\]+):/i,
+                /Failed policy for user\s+([a-zA-Z0-9_\-\.@\\]+)/i,
+                /\bUser\s+([a-zA-Z0-9_\-\.@\\]+)\s+-\s+(?:Client_ip|Remote_ip|ADM_User)/i,
+                /\[Username\s*=\s*([^\]]+)\]/i,
+                /Username\s*=\s*([a-zA-Z0-9_\-\.@\\]+)/i,
+                /\buser\s+([a-zA-Z0-9_\-\.@\\]+)\s+clientip/i,
+                /Context\s+([a-zA-Z0-9_\-\.]+)(?:@|:)/i,
+                /\buser\s+([a-zA-Z0-9_\-\.@\\]+)/i,
+            ];
+            for (const rx of patterns) {
+                const m = raw.match(rx);
+                if (m && m[1]) {
+                    candidate = m[1].trim();
+                    break;
+                }
             }
         }
-        return "";
+
+        if (!candidate) return "";
+
+        // Strip leading domain prefix (e.g. COOPER\ or CUH\\ or domain/)
+        let clean = candidate.replace(/^[a-zA-Z0-9_\-\.]+[\\\/]+/, "");
+        // Strip trailing domain suffix (e.g. :cooper or :CUH)
+        clean = clean.replace(/:[a-zA-Z0-9_\-\.]+$/, "");
+
+        return clean.trim();
     }
 
     public static isAuthFailureMessage(msg: any): boolean {

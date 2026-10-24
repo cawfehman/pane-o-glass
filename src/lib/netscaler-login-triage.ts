@@ -591,8 +591,14 @@ export async function analyzeCitrixLoginTriage(
         }
 
         const classified = classifyFailureMessage(msg);
-        const adInfo = adStatusMap[usernameClean] || adStatusMap[usernameRaw];
-        const isCorp = isCorporateUsernameFormat(usernameClean);
+        const uNoDomain = usernameClean.replace(/^[a-zA-Z0-9_\-\.]+[\\\/]/, "");
+        const uNoEmail = uNoDomain.split("@")[0];
+        const adInfo =
+            adStatusMap[usernameClean] ||
+            adStatusMap[usernameRaw] ||
+            adStatusMap[uNoDomain] ||
+            adStatusMap[uNoEmail];
+        const isCorp = isCorporateUsernameFormat(usernameClean) || isCorporateUsernameFormat(uNoEmail);
 
         // Correlate with Imprivata RADIUS session if available
         let imprivataVerdict: string | undefined;
@@ -1105,7 +1111,9 @@ export async function analyzeCitrixLoginTriage(
     const userSummaries: CitrixUserIssueSummary[] = [];
     for (const [uKey, uEvents] of userGroups.entries()) {
         const firstEv = uEvents[0];
-        const adInfo = adStatusMap[uKey];
+        const uNoDomain = uKey.replace(/^[a-zA-Z0-9_\-\.]+[\\\/]/, "");
+        const uNoEmail = uNoDomain.split("@")[0];
+        const adInfo = adStatusMap[uKey] || adStatusMap[uNoDomain] || adStatusMap[uNoEmail];
         const succInfo = citrixSuccessByUser.get(uKey);
         const categories = Array.from(new Set(uEvents.map((e) => e.category)));
         const sourceIps = Array.from(new Set(uEvents.map((e) => e.clientIp).filter((ip) => ip && ip !== "Internal / Unattributed")));
