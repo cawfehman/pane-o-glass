@@ -22,12 +22,14 @@ import type {
 
 interface CitrixLoginTriageTabProps {
     timeframe: number;
+    onTimeframeChange?: (seconds: number) => void;
     firewallHosts: { id: string; name: string }[];
     onInvestigateTarget: (term: string) => void;
 }
 
 export default function CitrixLoginTriageTab({
     timeframe,
+    onTimeframeChange,
     firewallHosts,
     onInvestigateTarget,
 }: CitrixLoginTriageTabProps) {

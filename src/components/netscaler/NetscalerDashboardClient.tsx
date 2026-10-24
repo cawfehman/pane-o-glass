@@ -432,11 +432,12 @@ export default function NetscalerDashboardClient() {
     };
 
     // Load initial stats or respond to URL query params
+    // Read URL search parameters once on initial mount
     useEffect(() => {
         const queryParam = searchParams.get("query");
         const tabParam = searchParams.get("tab");
 
-        if (tabParam === "foreign" || tabParam === "investigate" || tabParam === "iocs") {
+        if (tabParam && ["overview", "login-triage", "foreign", "investigate", "iocs", "cve-shuns"].includes(tabParam)) {
             setActiveTab(tabParam as any);
         }
 
@@ -445,8 +446,17 @@ export default function NetscalerDashboardClient() {
             setActiveTab("investigate");
             runInvestigation(queryParam, timeframe);
         }
+    }, []);
 
+    // Fetch stats and active tab data when timeframe changes
+    useEffect(() => {
         fetchStats(timeframe);
+        if (activeTab === "investigate" && searchQuery) {
+            runInvestigation(searchQuery, timeframe);
+        }
+        if (activeTab === "iocs") {
+            runIocScan(iocRules, timeframe);
+        }
     }, [timeframe]);
 
     const fetchStats = async (range: number) => {
@@ -1531,7 +1541,7 @@ export default function NetscalerDashboardClient() {
                         }}
                         onReset={() => {
                             setSearchQuery("");
-                            setInvestigateResults(null);
+                            setTimeline([]);
                         }}
                         placeholder="Enter username (e.g. honeywell-samantha) or IP address (e.g. 108.2.64.160)..."
                         buttonLabel="Trace User / IP"
@@ -2039,10 +2049,10 @@ export default function NetscalerDashboardClient() {
                                                     {item.countryCode || "N/A"} {item.cityName && item.cityName !== "N/A" ? `• ${item.cityName}` : ""}
                                                 </td>
                                                 <td className="py-1.5 px-3 text-slate-400">
-                                                    {formatFullTime(item.firstSeen)}
+                                                    {formatFullTime(item.firstSeen || "")}
                                                 </td>
                                                 <td className="py-1.5 px-3 text-slate-400">
-                                                    {formatFullTime(item.lastSeen)}
+                                                    {formatFullTime(item.lastSeen || "")}
                                                 </td>
                                                 <td className="py-1.5 px-3 text-right font-sans">
                                                     <div className="flex items-center justify-end gap-1.5">
@@ -2334,7 +2344,7 @@ export default function NetscalerDashboardClient() {
                                                                         {m.countryCode || "N/A"} {m.cityName && m.cityName !== "N/A" ? `• ${m.cityName}` : ""}
                                                                     </td>
                                                                     <td className="py-1.5 px-3 text-slate-400">
-                                                                        {formatFullTime(m.lastSeen)}
+                                                                        {formatFullTime(m.lastSeen || "")}
                                                                     </td>
                                                                     <td className="py-1.5 px-3 text-right font-sans">
                                                                         <div className="flex items-center justify-end gap-1.5">
@@ -2945,6 +2955,7 @@ export default function NetscalerDashboardClient() {
             {activeTab === "login-triage" && (
                 <CitrixLoginTriageTab
                     timeframe={timeframe}
+                    onTimeframeChange={setTimeframe}
                     firewallHosts={firewallHosts}
                     onInvestigateTarget={(term) => {
                         setSearchQuery(term);

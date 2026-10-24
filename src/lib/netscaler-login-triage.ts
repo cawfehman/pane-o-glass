@@ -210,7 +210,9 @@ export interface CitrixLoginTriageResponse {
     autoShunConfig: CitrixAutoShunConfig;
     summary: {
         totalFailureEvents: number;
+        evaluatedFailureEventsCount?: number;
         totalSuccessLogins: number;
+        evaluatedSuccessLoginsCount?: number;
         aaaLoginFailedCount: number;
         policyFailedCount: number;
         staTicketFailedCount: number;
@@ -458,13 +460,14 @@ export async function analyzeCitrixLoginTriage(
     ].join(",");
 
     const adaptive = await getAdaptiveSearchWindow("OG_GRAYLOG", rangeSeconds);
+    const queryLimit = rangeSeconds <= 3600 ? 3000 : rangeSeconds <= 86400 ? 5000 : 8000;
 
     const [failRes, successRes] = await Promise.all([
         axios.get(`${baseUrl}/api/search/universal/relative`, {
             params: {
                 query: failQuery,
                 range: adaptive.effectiveRangeSeconds,
-                limit: 500,
+                limit: queryLimit,
                 fields,
                 sort: "timestamp:desc",
             },
@@ -474,13 +477,13 @@ export async function analyzeCitrixLoginTriage(
                 Accept: "application/json",
                 "X-Requested-By": "pane-o-glass",
             },
-            timeout: 20000,
+            timeout: 25000,
         }).catch(() => ({ data: { messages: [], total_results: 0 } })),
         axios.get(`${baseUrl}/api/search/universal/relative`, {
             params: {
                 query: successQuery,
                 range: adaptive.effectiveRangeSeconds,
-                limit: 500,
+                limit: queryLimit,
                 fields,
                 sort: "timestamp:desc",
             },
@@ -490,7 +493,7 @@ export async function analyzeCitrixLoginTriage(
                 Accept: "application/json",
                 "X-Requested-By": "pane-o-glass",
             },
-            timeout: 20000,
+            timeout: 25000,
         }).catch(() => ({ data: { messages: [], total_results: 0 } })),
     ]);
 
@@ -1331,8 +1334,10 @@ export async function analyzeCitrixLoginTriage(
         config,
         autoShunConfig,
         summary: {
-            totalFailureEvents: events.length,
-            totalSuccessLogins: rawSuccesses.length,
+            totalFailureEvents: failRes.data?.total_results ? Number(failRes.data.total_results) : events.length,
+            evaluatedFailureEventsCount: events.length,
+            totalSuccessLogins: successRes.data?.total_results ? Number(successRes.data.total_results) : rawSuccesses.length,
+            evaluatedSuccessLoginsCount: rawSuccesses.length,
             aaaLoginFailedCount,
             policyFailedCount,
             staTicketFailedCount,
