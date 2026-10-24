@@ -150,6 +150,31 @@ export default function CitrixLoginTriageTab({
         }
     };
 
+    const [unshunLoadingIp, setUnshunLoadingIp] = useState<string | null>(null);
+
+    const handleUnshunIp = async (ip: string) => {
+        if (!confirm(`Remove perimeter firewall shun for IP ${ip} across all firewalls?`)) return;
+        setUnshunLoadingIp(ip);
+        try {
+            const res = await fetch("/api/firewall/shun", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    ipAddress: ip,
+                    action: "remove",
+                    targetHost: "all",
+                }),
+            });
+            if (res.ok) {
+                await fetchTriage();
+            }
+        } catch (e) {
+            console.error("Failed to remove shun:", e);
+        } finally {
+            setUnshunLoadingIp(null);
+        }
+    };
+
     const handleToggleAutoShun = async () => {
         const currentEnabled = Boolean(data?.autoShunConfig?.enabled);
         setAutoShunToggling(true);
@@ -988,32 +1013,49 @@ export default function CitrixLoginTriageTab({
                                             {/* Actions */}
                                             <td className="py-3.5 px-4 text-right">
                                                 <div className="flex flex-col items-end gap-1.5">
-                                                    <button
-                                                        onClick={() =>
-                                                            setBlockModal({
-                                                                ips: [item.ip],
-                                                                reason: item.verdictReason || "Citrix Login Abuse Triage",
-                                                                targetHost: "all",
-                                                                addToGuardianBlacklist: true,
-                                                                loading: false,
-                                                                result: null,
-                                                                error: null,
-                                                            })
-                                                        }
-                                                        title={
-                                                            item.isCurrentlyShunned
-                                                                ? "Pushes 'shun <ip>' again to all 4 perimeter firewalls and ensures IP is locked in the Guardian Do-Not-Unshun Blacklist."
-                                                                : "Immediately executes 'shun <ip>' on all 4 perimeter firewalls AND adds the IP to Guardian Do-Not-Unshun Blacklist (prevents auto-unshun)."
-                                                        }
-                                                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                                                            item.verdict === "LEGIT_USER_ISSUE"
-                                                                ? "bg-slate-800 hover:bg-red-950/60 text-slate-300 hover:text-red-300 border border-slate-700"
-                                                                : "bg-red-600 hover:bg-red-500 text-white shadow-sm"
-                                                        }`}
-                                                    >
-                                                        <Flame className="w-3.5 h-3.5" />
-                                                        {item.isCurrentlyShunned ? "Re-Shun IP" : "Shun & Blacklist"}
-                                                    </button>
+                                                    {item.isCurrentlyShunned ? (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span
+                                                                className="px-2.5 py-1 rounded bg-red-950/70 border border-red-500/40 text-red-300 font-semibold text-[11px] flex items-center gap-1 shadow-sm"
+                                                                title={`Confirmed shunned across perimeter firewall fleet: ${item.shunnedFirewalls?.join(", ") || "All firewalls"}`}
+                                                            >
+                                                                <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
+                                                                Shunned
+                                                            </span>
+                                                            <button
+                                                                onClick={() => handleUnshunIp(item.ip)}
+                                                                disabled={unshunLoadingIp === item.ip}
+                                                                title="Removes the shun from all 4 perimeter firewalls (executes 'no shun <ip>')"
+                                                                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-[11px] font-medium flex items-center gap-1 transition-all"
+                                                            >
+                                                                <Unlock className="w-3 h-3 text-emerald-400" />
+                                                                {unshunLoadingIp === item.ip ? "Unshunning..." : "Unshun"}
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() =>
+                                                                setBlockModal({
+                                                                    ips: [item.ip],
+                                                                    reason: item.verdictReason || "Citrix Login Abuse Triage",
+                                                                    targetHost: "all",
+                                                                    addToGuardianBlacklist: true,
+                                                                    loading: false,
+                                                                    result: null,
+                                                                    error: null,
+                                                                })
+                                                            }
+                                                            title="Immediately executes 'shun <ip>' on all 4 perimeter firewalls AND adds the IP to Guardian Do-Not-Unshun Blacklist."
+                                                            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                                                                item.verdict === "LEGIT_USER_ISSUE"
+                                                                    ? "bg-slate-800 hover:bg-red-950/60 text-slate-300 hover:text-red-300 border border-slate-700"
+                                                                    : "bg-red-600 hover:bg-red-500 text-white shadow-sm"
+                                                            }`}
+                                                        >
+                                                            <Flame className="w-3.5 h-3.5" />
+                                                            Shun & Blacklist
+                                                        </button>
+                                                    )}
 
                                                     <button
                                                         onClick={() =>
@@ -1026,17 +1068,26 @@ export default function CitrixLoginTriageTab({
                                                         disabled={blacklistLoadingIp === item.ip}
                                                         title={
                                                             item.isOnGuardianBlacklist
-                                                                ? "Currently in Guardian Blacklist. Click to REMOVE from Do-Not-Unshun list (allows Guardian auto-unshun logic if legitimate)."
-                                                                : "Adds IP to Guardian Do-Not-Unshun Blacklist in the database WITHOUT executing a firewall shun right now (protects against future auto-unshun)."
+                                                                ? "Currently locked on the Do-Not-Unshun list. Click to REMOVE from the list (allows automated unshunning if legitimate)."
+                                                                : "Adds this IP to the Guardian Do-Not-Unshun Blacklist in the database (protects against future automated unshun cleanup)."
                                                         }
-                                                        className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-all flex items-center gap-1 ${
+                                                        className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-all flex items-center gap-1.5 ${
                                                             item.isOnGuardianBlacklist
-                                                                ? "bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25"
+                                                                ? "bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-red-950/40 hover:border-red-500/40 hover:text-red-300"
                                                                 : "bg-slate-900 border-slate-700 text-slate-300 hover:text-white"
                                                         }`}
                                                     >
-                                                        <Ban className="w-3 h-3" />
-                                                        {item.isOnGuardianBlacklist ? "On Do-Not-Unshun" : "Add Do-Not-Unshun"}
+                                                        {item.isOnGuardianBlacklist ? (
+                                                            <>
+                                                                <X className="w-3 h-3 text-amber-400" />
+                                                                <span>Remove Do-Not-Unshun</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Ban className="w-3 h-3 text-slate-400" />
+                                                                <span>+ Add Do-Not-Unshun</span>
+                                                            </>
+                                                        )}
                                                     </button>
 
                                                     <button
