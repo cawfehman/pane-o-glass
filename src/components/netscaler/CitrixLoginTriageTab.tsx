@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { PaginationControls } from "@/components/common/PaginationControls";
 import {
     ShieldAlert, ShieldCheck, AlertTriangle, Lock, Unlock, UserCheck, UserX,
     Globe, Server, RefreshCw, Search, CheckCircle2, Flame, Eye, ExternalLink,
@@ -65,6 +66,19 @@ export default function CitrixLoginTriageTab({
     } | null>(null);
 
     const [blacklistLoadingIp, setBlacklistLoadingIp] = useState<string | null>(null);
+
+    // Subview pagination states
+    const [ipPage, setIpPage] = useState<number>(1);
+    const [ipLimit, setIpLimit] = useState<number>(25);
+
+    const [asnPage, setAsnPage] = useState<number>(1);
+    const [asnLimit, setAsnLimit] = useState<number>(25);
+
+    const [userPage, setUserPage] = useState<number>(1);
+    const [userLimit, setUserLimit] = useState<number>(25);
+
+    const [eventPage, setEventPage] = useState<number>(1);
+    const [eventLimit, setEventLimit] = useState<number>(50);
     const [autoShunToggling, setAutoShunToggling] = useState<boolean>(false);
     const [autoShunRunningCycle, setAutoShunRunningCycle] = useState<boolean>(false);
     const [cycleFeedback, setCycleFeedback] = useState<string | null>(null);
@@ -515,6 +529,26 @@ export default function CitrixLoginTriageTab({
             ev.rawMessage.toLowerCase().includes(q)
         );
     });
+
+    const paginatedIps = useMemo(() => {
+        const start = (ipPage - 1) * ipLimit;
+        return filteredIps.slice(start, start + ipLimit);
+    }, [filteredIps, ipPage, ipLimit]);
+
+    const paginatedUsers = useMemo(() => {
+        const start = (userPage - 1) * userLimit;
+        return filteredUsers.slice(start, start + userLimit);
+    }, [filteredUsers, userPage, userLimit]);
+
+    const paginatedAsns = useMemo(() => {
+        const start = (asnPage - 1) * asnLimit;
+        return filteredAsns.slice(start, start + asnLimit);
+    }, [filteredAsns, asnPage, asnLimit]);
+
+    const paginatedEvents = useMemo(() => {
+        const start = (eventPage - 1) * eventLimit;
+        return filteredEvents.slice(start, start + eventLimit);
+    }, [filteredEvents, eventPage, eventLimit]);
 
     const unshunnedAbusiveIps = (data?.ipEvaluations || [])
         .filter((i) => i.verdict === "ABUSIVE_BLOCK" && !i.isCurrentlyShunned)
@@ -1075,7 +1109,7 @@ export default function CitrixLoginTriageTab({
 
             {/* VIEW 1: EXTERNAL IP VERDICT MATRIX */}
             {subView === "ips" && (
-                <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm max-h-[640px]">
                     {loading ? (
                         <div className="p-12 text-center text-sm text-slate-400">
                             Evaluating Citrix authentication telemetry, Active Directory accounts, and ISP/ASN intelligence...
@@ -1085,10 +1119,10 @@ export default function CitrixLoginTriageTab({
                             No external client IPs matched the current filter criteria in this timeframe.
                         </div>
                     ) : (
-                        <div className="overflow-x-auto">
+                        <div className="flex-1 min-h-0 overflow-auto custom-scrollbar relative">
                             <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="border-b border-slate-800 bg-slate-950/60 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                                <thead className="sticky top-0 z-10 bg-slate-950/95 backdrop-blur-sm border-b border-slate-800 shadow-xs">
+                                    <tr className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                                         <th className="py-3 px-4">Client IP & Geo</th>
                                         <th className="py-3 px-4">ISP / Network (ASN)</th>
                                         <th className="py-3 px-4">Guardian Verdict & Rules</th>
@@ -1098,7 +1132,7 @@ export default function CitrixLoginTriageTab({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-800/70 text-xs">
-                                    {filteredIps.map((item) => (
+                                    {paginatedIps.map((item) => (
                                         <tr key={item.ip} className="hover:bg-slate-800/30 transition-colors align-top">
                                             {/* IP & Geo */}
                                             <td className="py-3.5 px-4">
@@ -1358,21 +1392,34 @@ export default function CitrixLoginTriageTab({
                             </table>
                         </div>
                     )}
+                    {filteredIps.length > 0 && (
+                        <div className="shrink-0 p-3 bg-slate-950/90 border-t border-slate-800 flex justify-between items-center text-xs">
+                            <PaginationControls
+                                totalRecords={filteredIps.length}
+                                page={ipPage}
+                                limit={ipLimit}
+                                onPageChange={setIpPage}
+                                onLimitChange={(l) => { setIpLimit(l); setIpPage(1); }}
+                                limitOptions={[25, 50, 100, 200]}
+                                showLimitSelector={true}
+                            />
+                        </div>
+                    )}
                 </div>
             )}
 
             {/* VIEW 2: IMPACTED CITRIX USERS & AD DIAGNOSIS */}
             {subView === "users" && (
-                <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm max-h-[640px]">
                     {filteredUsers.length === 0 ? (
                         <div className="p-12 text-center text-sm text-slate-400">
                             No named Citrix user login failures recorded in this timeframe.
                         </div>
                     ) : (
-                        <div className="overflow-x-auto">
+                        <div className="flex-1 min-h-0 overflow-auto custom-scrollbar relative">
                             <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="border-b border-slate-800 bg-slate-950/60 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                                <thead className="sticky top-0 z-10 bg-slate-950/95 backdrop-blur-sm border-b border-slate-800 shadow-xs">
+                                    <tr className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                                         <th className="py-3 px-4">Username & AD Identity</th>
                                         <th className="py-3 px-4">AD Status</th>
                                         <th className="py-3 px-4">Failures vs Citrix Logins</th>
@@ -1382,7 +1429,7 @@ export default function CitrixLoginTriageTab({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-800/70 text-xs">
-                                    {filteredUsers.map((u) => (
+                                    {paginatedUsers.map((u) => (
                                         <tr key={u.username} className="hover:bg-slate-800/30 transition-colors">
                                             <td className="py-3.5 px-4">
                                                 <div className="font-mono font-bold text-white text-sm">{u.username}</div>
@@ -1468,21 +1515,34 @@ export default function CitrixLoginTriageTab({
                             </table>
                         </div>
                     )}
+                    {filteredUsers.length > 0 && (
+                        <div className="shrink-0 p-3 bg-slate-950/90 border-t border-slate-800 flex justify-between items-center text-xs">
+                            <PaginationControls
+                                totalRecords={filteredUsers.length}
+                                page={userPage}
+                                limit={userLimit}
+                                onPageChange={setUserPage}
+                                onLimitChange={(l) => { setUserLimit(l); setUserPage(1); }}
+                                limitOptions={[25, 50, 100, 200]}
+                                showLimitSelector={true}
+                            />
+                        </div>
+                    )}
                 </div>
             )}
 
             {/* VIEW 4: ORIGIN ASN INTELLIGENCE & ZERO-TOLERANCE BLACKLISTING */}
             {subView === "asns" && (
-                <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm max-h-[640px]">
                     {filteredAsns.length === 0 ? (
                         <div className="p-12 text-center text-sm text-slate-400">
                             No origin Autonomous System Numbers (ASNs) match the current filters.
                         </div>
                     ) : (
-                        <div className="overflow-x-auto">
+                        <div className="flex-1 min-h-0 overflow-auto custom-scrollbar relative">
                             <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="border-b border-slate-800 bg-slate-950/60 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                                <thead className="sticky top-0 z-10 bg-slate-950/95 backdrop-blur-sm border-b border-slate-800 shadow-xs">
+                                    <tr className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                                         <th className="py-3 px-4">Autonomous System (ASN)</th>
                                         <th className="py-3 px-4">Organization & Type</th>
                                         <th className="py-3 px-4">Country</th>
@@ -1494,7 +1554,7 @@ export default function CitrixLoginTriageTab({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-800/70 text-xs">
-                                    {filteredAsns.map((a) => (
+                                    {paginatedAsns.map((a) => (
                                         <tr key={a.asn} className="hover:bg-slate-800/30 transition-colors">
                                             <td className="py-3.5 px-4">
                                                 <div className="font-mono font-bold text-white text-sm flex items-center gap-2">
@@ -1572,21 +1632,26 @@ export default function CitrixLoginTriageTab({
                             </table>
                         </div>
                     )}
+                    {filteredAsns.length > 0 && (
+                        <div className="shrink-0 p-3 bg-slate-950/90 border-t border-slate-800 flex justify-between items-center text-xs">
+                            <PaginationControls totalRecords={filteredAsns.length} page={asnPage} limit={asnLimit} onPageChange={setAsnPage} onLimitChange={(l) => { setAsnLimit(l); setAsnPage(1); }} limitOptions={[25, 50, 100, 200]} showLimitSelector={true} />
+                        </div>
+                    )}
                 </div>
             )}
 
             {/* VIEW 3: RAW CITRIX FAILURE & POLICY EVENTS */}
             {subView === "events" && (
-                <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden flex flex-col shadow-sm max-h-[640px]">
                     {filteredEvents.length === 0 ? (
                         <div className="p-12 text-center text-sm text-slate-400">
                             No raw Citrix failure events matched the selected filters.
                         </div>
                     ) : (
-                        <div className="overflow-x-auto">
+                        <div className="flex-1 min-h-0 overflow-auto custom-scrollbar relative">
                             <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="border-b border-slate-800 bg-slate-950/60 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                                <thead className="sticky top-0 z-10 bg-slate-950/95 backdrop-blur-sm border-b border-slate-800 shadow-xs">
+                                    <tr className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                                         <th className="py-3 px-4">Timestamp</th>
                                         <th className="py-3 px-4">Category</th>
                                         <th className="py-3 px-4">User & AD Status</th>
@@ -1595,7 +1660,7 @@ export default function CitrixLoginTriageTab({
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-800/70 text-xs">
-                                    {filteredEvents.map((ev) => (
+                                    {paginatedEvents.map((ev) => (
                                         <tr key={ev.id} className="hover:bg-slate-800/30 transition-colors align-top">
                                             <td className="py-3 px-4 whitespace-nowrap text-slate-300 font-mono text-[11px]">
                                                 {new Date(ev.timestamp).toLocaleString()}
@@ -1652,6 +1717,19 @@ export default function CitrixLoginTriageTab({
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+                    {filteredEvents.length > 0 && (
+                        <div className="shrink-0 p-3 bg-slate-950/90 border-t border-slate-800 flex justify-between items-center text-xs">
+                            <PaginationControls
+                                totalRecords={filteredEvents.length}
+                                page={eventPage}
+                                limit={eventLimit}
+                                onPageChange={setEventPage}
+                                onLimitChange={(l) => { setEventLimit(l); setEventPage(1); }}
+                                limitOptions={[25, 50, 100, 200]}
+                                showLimitSelector={true}
+                            />
                         </div>
                     )}
                 </div>

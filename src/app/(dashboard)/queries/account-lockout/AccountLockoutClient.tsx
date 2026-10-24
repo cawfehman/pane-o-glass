@@ -790,46 +790,296 @@ export default function AccountLockoutClient() {
                 </div>
             )}
 
-            {/* Pre-search Empty Slate */}
+            {/* Live Account Lockouts Stream (All Users) */}
             {!loading && !data && !error && (
-                <div className="p-12 text-center rounded-xl border border-border-color bg-[var(--bg-surface)]/30 space-y-4">
-                    <div className="w-12 h-12 rounded-full bg-accent-primary/10 border border-accent-primary/20 flex items-center justify-center mx-auto text-accent-primary">
-                        <Search size={22} />
-                    </div>
-                    <div>
-                        <h3 className="text-sm font-bold text-text-primary">
-                            Ready to Triage Account Lockouts
-                        </h3>
-                        <p className="text-xs text-text-secondary mt-1 max-w-lg mx-auto leading-relaxed">
-                            Search for any username above to isolate the exact device, workstation, or wireless access point causing Active Directory account lockouts.
-                        </p>
+                <div className="flex flex-col gap-4">
+                    {/* Header bar with Range Selector & CSV Export */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl border border-border-color bg-[var(--bg-surface)] shadow-sm">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400">
+                                <Lock size={18} />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
+                                    <span>Recent Active Directory Account Lockouts (Event 4740)</span>
+                                    {recentLockoutsLoading ? (
+                                        <RefreshCw size={13} className="animate-spin text-accent-primary" />
+                                    ) : (
+                                        <span className="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono text-[11px] font-bold">
+                                            {filteredRecentLockouts.length.toLocaleString()} Lockouts
+                                        </span>
+                                    )}
+                                </h3>
+                                <p className="text-xs text-text-muted mt-0.5">
+                                    Chronological stream across all domain controllers in descending order. Click any row to isolate culprit workstation or ISE PSN wireless telemetry.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2.5">
+                            {/* Timeframe Presets */}
+                            <div className="flex items-center bg-[var(--bg-background)] p-1 rounded-lg border border-border-color text-xs font-semibold">
+                                {[
+                                    { label: "1h", hours: 1 },
+                                    { label: "6h", hours: 6 },
+                                    { label: "12h", hours: 12 },
+                                    { label: "24h", hours: 24 },
+                                    { label: "3d", hours: 72 },
+                                    { label: "7d", hours: 168 },
+                                ].map((t) => (
+                                    <button
+                                        key={t.hours}
+                                        onClick={() => {
+                                            setRangeHours(t.hours);
+                                            fetchRecentLockouts(t.hours);
+                                        }}
+                                        className={`px-2.5 py-1 rounded-md transition-colors ${
+                                            rangeHours === t.hours
+                                                ? "bg-accent-primary text-white font-bold"
+                                                : "text-text-secondary hover:text-text-primary"
+                                        }`}
+                                    >
+                                        {t.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button
+                                onClick={() => fetchRecentLockouts(rangeHours)}
+                                disabled={recentLockoutsLoading}
+                                className="p-2 rounded-lg bg-[var(--bg-background)] hover:bg-[var(--bg-surface-hover)] border border-border-color text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+                                title="Refresh Recent Lockouts"
+                            >
+                                <RefreshCw size={14} className={recentLockoutsLoading ? "animate-spin text-accent-primary" : ""} />
+                            </button>
+
+                            <button
+                                onClick={exportRecentLockoutsCsv}
+                                disabled={filteredRecentLockouts.length === 0}
+                                className="px-3 py-1.5 rounded-lg bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-400 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-40"
+                            >
+                                <Download size={13} />
+                                <span>Export CSV</span>
+                            </button>
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 max-w-2xl mx-auto pt-4 text-left">
-                        <div className="p-3 rounded-xl border border-border-color bg-[var(--bg-background)]/50 space-y-1">
-                            <span className="text-[10px] uppercase font-bold text-indigo-400 flex items-center gap-1">
-                                <HardDrive size={12} /> Step 1: AD Lockout (4740)
-                            </span>
-                            <p className="text-[11px] text-text-secondary leading-snug">
-                                Extracts authoritative lockout timestamps and the originating caller computer name.
-                            </p>
+                    {/* Filter Pills & Table Search Bar */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[var(--bg-surface)] p-3 rounded-xl border border-border-color">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                                onClick={() => { setRecentFilterType("ALL"); setRecentPage(1); }}
+                                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                                    recentFilterType === "ALL"
+                                        ? "bg-accent-primary text-white"
+                                        : "bg-[var(--bg-background)] text-text-secondary hover:text-text-primary border border-border-color"
+                                }`}
+                            >
+                                All Lockouts ({recentLockoutsData?.lockouts?.length || 0})
+                            </button>
+                            <button
+                                onClick={() => { setRecentFilterType("WIRELESS"); setRecentPage(1); }}
+                                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                                    recentFilterType === "WIRELESS"
+                                        ? "bg-cyan-600 text-white"
+                                        : "bg-[var(--bg-background)] text-text-secondary hover:text-text-primary border border-border-color"
+                                }`}
+                            >
+                                <Wifi size={12} className="text-cyan-400" />
+                                <span>ISE PSN Wireless ({recentLockoutsData?.lockouts?.filter(x => x.isIsePsn).length || 0})</span>
+                            </button>
+                            <button
+                                onClick={() => { setRecentFilterType("WORKSTATION"); setRecentPage(1); }}
+                                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                                    recentFilterType === "WORKSTATION"
+                                        ? "bg-indigo-600 text-white"
+                                        : "bg-[var(--bg-background)] text-text-secondary hover:text-text-primary border border-border-color"
+                                }`}
+                            >
+                                <Laptop size={12} className="text-indigo-400" />
+                                <span>Workstations & Hosts ({recentLockoutsData?.lockouts?.filter(x => !x.isIsePsn).length || 0})</span>
+                            </button>
+                            <button
+                                onClick={() => { setRecentFilterType("REPEAT"); setRecentPage(1); }}
+                                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                                    recentFilterType === "REPEAT"
+                                        ? "bg-rose-600 text-white"
+                                        : "bg-[var(--bg-background)] text-text-secondary hover:text-text-primary border border-border-color"
+                                }`}
+                            >
+                                <AlertTriangle size={12} className="text-rose-400" />
+                                <span>Repeat Offenders ({recentLockoutsData?.lockouts?.filter(x => x.userLockoutCountInWindow >= 2).length || 0})</span>
+                            </button>
                         </div>
-                        <div className="p-3 rounded-xl border border-border-color bg-[var(--bg-background)]/50 space-y-1">
-                            <span className="text-[10px] uppercase font-bold text-cyan-400 flex items-center gap-1">
-                                <Wifi size={12} /> Step 2: ISE PSN Pivot
-                            </span>
-                            <p className="text-[11px] text-text-secondary leading-snug">
-                                Identifies wireless 802.1X EAP spam from mobile devices across ise-psn01 through 04.
-                            </p>
+
+                        <div className="relative">
+                            <Search size={13} className="text-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                                type="text"
+                                value={recentTableSearch}
+                                onChange={(e) => { setRecentTableSearch(e.target.value); setRecentPage(1); }}
+                                placeholder="Filter username, device, DC..."
+                                className="pl-8 pr-3 py-1.5 bg-[var(--bg-background)] border border-border-color rounded-lg text-xs text-text-primary placeholder:text-text-muted w-full sm:w-64 outline-none focus:border-accent-primary"
+                            />
                         </div>
-                        <div className="p-3 rounded-xl border border-border-color bg-[var(--bg-background)]/50 space-y-1">
-                            <span className="text-[10px] uppercase font-bold text-emerald-400 flex items-center gap-1">
-                                <Laptop size={12} /> Step 3: Workstation Isolation
-                            </span>
-                            <p className="text-[11px] text-text-secondary leading-snug">
-                                Pinpoints RDP sessions (Logon Type 10), mapped shares (Type 3), or scheduled tasks.
-                            </p>
+                    </div>
+
+                    {/* Table Container with Internal Scroll and Pinned Pagination */}
+                    <div className="border border-border-color rounded-xl overflow-hidden text-xs bg-[var(--bg-surface)] flex flex-col shadow-sm max-h-[620px]">
+                        {/* Top Pagination Toolbar */}
+                        {filteredRecentLockouts.length > 0 && (
+                            <div className="p-3 border-b border-border-color bg-[var(--bg-surface-hover)] shrink-0">
+                                <PaginationControls
+                                    totalRecords={filteredRecentLockouts.length}
+                                    page={recentPage}
+                                    limit={recentLimit}
+                                    onPageChange={setRecentPage}
+                                    onLimitChange={(newLimit) => {
+                                        setRecentLimit(newLimit);
+                                        setRecentPage(1);
+                                    }}
+                                    limitOptions={[25, 50, 100, 200]}
+                                    showLimitSelector={true}
+                                />
+                            </div>
+                        )}
+
+                        {/* Internal Scrollable Table Body */}
+                        <div className="flex-1 min-h-0 overflow-auto custom-scrollbar relative">
+                            {recentLockoutsLoading ? (
+                                <div className="p-12 text-center text-text-muted">
+                                    <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-accent-primary" />
+                                    <span>Scanning Active Directory Event 4740 logs across all DCs...</span>
+                                </div>
+                            ) : filteredRecentLockouts.length === 0 ? (
+                                <div className="p-12 text-center text-text-muted">
+                                    No Active Directory account lockout events recorded in the last {rangeHours} hours.
+                                </div>
+                            ) : (
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="bg-[var(--bg-surface-hover)] border-b border-border-color text-text-secondary text-[11px] uppercase tracking-wider sticky top-0 z-10 shadow-xs">
+                                        <tr>
+                                            <th onClick={() => handleRecentSort("timestamp")} className="p-3 cursor-pointer hover:text-text-primary transition-colors whitespace-nowrap">
+                                                Timestamp
+                                            </th>
+                                            <th onClick={() => handleRecentSort("username")} className="p-3 cursor-pointer hover:text-text-primary transition-colors whitespace-nowrap">
+                                                Locked User Account
+                                            </th>
+                                            <th onClick={() => handleRecentSort("callerDevice")} className="p-3 cursor-pointer hover:text-text-primary transition-colors whitespace-nowrap">
+                                                Caller Machine / Host
+                                            </th>
+                                            <th className="p-3 whitespace-nowrap">
+                                                Classification
+                                            </th>
+                                            <th onClick={() => handleRecentSort("domainController")} className="p-3 cursor-pointer hover:text-text-primary transition-colors whitespace-nowrap">
+                                                Domain Controller
+                                            </th>
+                                            <th className="p-3 text-center whitespace-nowrap">
+                                                Frequency
+                                            </th>
+                                            <th className="p-3 text-right whitespace-nowrap">
+                                                Action
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border-color">
+                                        {paginatedRecentLockouts.map((item, idx) => (
+                                            <tr
+                                                key={`${item.timestamp}-${item.username}-${idx}`}
+                                                className="hover:bg-[var(--bg-surface-hover)] transition-colors cursor-pointer group"
+                                                onClick={() => {
+                                                    setUsernameInput(item.username);
+                                                    handleSearch(undefined, rangeHours, item.username);
+                                                }}
+                                            >
+                                                <td className="p-3 font-mono text-[11px] text-text-secondary whitespace-nowrap">
+                                                    {new Date(item.timestamp).toLocaleString([], {
+                                                        month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit"
+                                                    })}
+                                                </td>
+                                                <td className="p-3">
+                                                    <div className="font-mono font-bold text-text-primary text-xs flex items-center gap-1.5">
+                                                        <span>{item.username}</span>
+                                                        {item.userLockoutCountInWindow >= 2 && (
+                                                            <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-mono text-[9px] font-bold">
+                                                                {item.userLockoutCountInWindow}x
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="p-3">
+                                                    <div className="font-mono font-semibold text-xs flex items-center gap-1.5">
+                                                        {item.isIsePsn ? (
+                                                            <Wifi size={13} className="text-cyan-400 shrink-0" />
+                                                        ) : (
+                                                            <Laptop size={13} className="text-indigo-400 shrink-0" />
+                                                        )}
+                                                        <span className={item.isIsePsn ? "text-cyan-300" : "text-text-primary"}>
+                                                            {item.callerDevice || "--"}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-3">
+                                                    {item.isIsePsn ? (
+                                                        <span className="px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-semibold text-[10px]">
+                                                            Wireless EAP (ISE)
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 font-semibold text-[10px]">
+                                                            Workstation / Host
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="p-3 font-mono text-[11px] text-text-secondary">
+                                                    {item.domainController || "--"}
+                                                </td>
+                                                <td className="p-3 text-center">
+                                                    <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-bold ${
+                                                        item.userLockoutCountInWindow > 1
+                                                            ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                                                            : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+                                                    }`}>
+                                                        {item.userLockoutCountInWindow} in {rangeHours}h
+                                                    </span>
+                                                </td>
+                                                <td className="p-3 text-right">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setUsernameInput(item.username);
+                                                            handleSearch(undefined, rangeHours, item.username);
+                                                        }}
+                                                        className="px-2.5 py-1 rounded bg-accent-primary/10 hover:bg-accent-primary text-accent-primary hover:text-white border border-accent-primary/30 font-semibold text-xs transition-all flex items-center gap-1 ml-auto"
+                                                    >
+                                                        <span>Trace Culprit</span>
+                                                        <ChevronRight size={12} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
                         </div>
+
+                        {/* Bottom Pinned Pagination Footer */}
+                        {filteredRecentLockouts.length > 0 && (
+                            <div className="p-3 border-t border-border-color bg-[var(--bg-surface-hover)] shrink-0">
+                                <PaginationControls
+                                    totalRecords={filteredRecentLockouts.length}
+                                    page={recentPage}
+                                    limit={recentLimit}
+                                    onPageChange={setRecentPage}
+                                    onLimitChange={(newLimit) => {
+                                        setRecentLimit(newLimit);
+                                        setRecentPage(1);
+                                    }}
+                                    limitOptions={[25, 50, 100, 200]}
+                                    showLimitSelector={false}
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
@@ -1771,8 +2021,8 @@ export default function AccountLockoutClient() {
                         )}
 
                         {/* Table */}
-                        <div className="border border-border-color rounded-xl overflow-hidden text-xs bg-[var(--bg-background)]">
-                            <div className="overflow-x-auto">
+                        <div className="border border-border-color rounded-xl overflow-hidden text-xs bg-[var(--bg-background)] flex flex-col max-h-[620px] shadow-sm">
+                            <div className="flex-1 min-h-0 overflow-auto custom-scrollbar relative">
                                 <table className="w-full text-left border-collapse">
                                     <thead className="bg-[var(--bg-surface-hover)] border-b border-border-color text-text-secondary text-[11px] uppercase tracking-wider sticky top-0 z-10 select-none">
                                         <tr>

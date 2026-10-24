@@ -803,10 +803,10 @@ export default function VpnReportingClient() {
                 {renderPaginationBar("top")}
 
                 {/* Zebra-Striped Table */}
-                <div className="overflow-x-auto custom-scrollbar">
+                <div className="overflow-auto max-h-[640px] custom-scrollbar relative">
                     <table className="w-full text-left text-xs sm:text-sm border-collapse">
-                        <thead>
-                            <tr className="bg-[var(--bg-default)] border-b border-[var(--border-color)] text-[var(--text-secondary)] font-mono text-xs uppercase tracking-wider">
+                        <thead className="sticky top-0 z-10 bg-[var(--bg-default)] shadow-xs">
+                            <tr className="border-b border-[var(--border-color)] text-[var(--text-secondary)] font-mono text-xs uppercase tracking-wider">
                                 <th className="p-3 w-12 text-center">#</th>
                                 <th className="p-3">Timestamp</th>
                                 <th className="p-3">Username & AD Status</th>

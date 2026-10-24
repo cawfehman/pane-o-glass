@@ -700,8 +700,8 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
             </div>
             
             {/* Table Area: 1 row per unique IP */}
-            <div className="flex-1 overflow-auto bg-[var(--bg-default)] relative">
-                <div className="min-w-max h-full">
+            <div className="flex-1 min-h-0 overflow-auto bg-[var(--bg-default)] relative custom-scrollbar">
+                <div className="min-w-max">
                     <table className="w-full text-sm text-left border-collapse">
                         <thead className="bg-[var(--bg-surface)] text-[var(--text-secondary)] text-xs uppercase sticky top-0 z-10 shadow-sm border-b border-[var(--border-color)]">
                             <tr>
@@ -1048,15 +1048,50 @@ export function ShunDatabaseTab({ initialSearch = "", onClose, isModal = false }
                     </div>
                 )}
 
-                {/* Bottom Pagination */}
-                <div className="sticky bottom-0 bg-[var(--bg-surface)] p-3 border-t border-[var(--border-color)] flex justify-between items-center text-sm shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-                    <span className="text-[var(--text-secondary)] text-xs">
-                        Showing {totalRecords > 0 ? (page - 1) * limit + 1 : 0} to {Math.min(page * limit, totalRecords)} of {totalRecords.toLocaleString()} unique IPs
-                    </span>
-                    <div className="flex items-center gap-2">
-                        <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1.5 rounded border border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-50 transition-colors bg-[var(--bg-default)] text-[var(--text-primary)] text-xs">Previous</button>
-                        <span className="px-3 font-medium text-[var(--accent-primary)] text-xs">Page {page} of {totalPages || 1}</span>
-                        <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages || totalPages === 0} className="px-3 py-1.5 rounded border border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-50 transition-colors bg-[var(--bg-default)] text-[var(--text-primary)] text-xs">Next</button>
+            </div>
+
+            {/* Pinned Bottom Pagination */}
+            <div className="shrink-0 bg-[var(--bg-surface)] px-4 py-3 border-t border-[var(--border-color)] flex flex-wrap justify-between items-center gap-3 text-sm shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-10">
+                <span className="text-[var(--text-secondary)] text-xs font-mono">
+                    Showing <strong className="text-[var(--text-primary)]">{totalRecords > 0 ? (page - 1) * limit + 1 : 0}</strong> to <strong className="text-[var(--text-primary)]">{Math.min(page * limit, totalRecords)}</strong> of <strong className="text-[var(--text-primary)]">{totalRecords.toLocaleString()}</strong> unique IPs
+                </span>
+                <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)]">
+                        <span>Per page:</span>
+                        <select
+                            value={limit}
+                            onChange={(e) => {
+                                setLimit(Number(e.target.value));
+                                setPage(1);
+                            }}
+                            className="bg-[var(--bg-default)] border border-[var(--border-color)] rounded-md px-2 py-1 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-primary)] cursor-pointer"
+                        >
+                            <option value={25}>25</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                            <option value={200}>200</option>
+                        </select>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page === 1}
+                            className="px-3 py-1.5 rounded-lg border border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--bg-default)] text-[var(--text-primary)] text-xs font-semibold"
+                        >
+                            Previous
+                        </button>
+                        <span className="px-3 font-semibold text-[var(--accent-primary)] text-xs font-mono">
+                            Page {page} of {totalPages || 1}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page === totalPages || totalPages === 0}
+                            className="px-3 py-1.5 rounded-lg border border-[var(--border-color)] hover:bg-[var(--bg-surface-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors bg-[var(--bg-default)] text-[var(--text-primary)] text-xs font-semibold"
+                        >
+                            Next
+                        </button>
                     </div>
                 </div>
             </div>
