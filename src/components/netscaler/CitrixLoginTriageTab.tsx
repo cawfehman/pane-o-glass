@@ -344,6 +344,7 @@ export default function CitrixLoginTriageTab({
                                     error: null,
                                 })
                             }
+                            title={`Multiplexes a single SSH session per firewall to issue 'shun <ip>' for all ${unshunnedAbusiveIps.length} un-shunned Abusive IPs at once, and adds them to Guardian Blacklist.`}
                             className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/20 transition-all"
                         >
                             <Flame className="w-4 h-4" />
@@ -353,6 +354,7 @@ export default function CitrixLoginTriageTab({
 
                     <button
                         onClick={() => setShowRulesPanel(!showRulesPanel)}
+                        title="Toggle the Smart Guardian scoring panel to adjust thresholds for foreign IPs, password sprays, and AD protection."
                         className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-all ${
                             showRulesPanel
                                 ? "bg-indigo-600/20 border-indigo-500/40 text-indigo-300"
@@ -366,6 +368,7 @@ export default function CitrixLoginTriageTab({
                     <button
                         onClick={exportEvaluationsCsv}
                         disabled={!data?.ipEvaluations.length}
+                        title="Download a CSV report containing all IP verdicts, risk scores, geolocation, ISP, failure counts, and triggered rules."
                         className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 disabled:opacity-40"
                     >
                         <FileSpreadsheet className="w-3.5 h-3.5" />
@@ -375,6 +378,7 @@ export default function CitrixLoginTriageTab({
                     <button
                         onClick={fetchTriage}
                         disabled={loading}
+                        title="Re-query Graylog and recalculate Citrix login triage telemetry."
                         className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700"
                     >
                         <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-indigo-400" : ""}`} />
@@ -951,6 +955,11 @@ export default function CitrixLoginTriageTab({
                                                                 error: null,
                                                             })
                                                         }
+                                                        title={
+                                                            item.isCurrentlyShunned
+                                                                ? "Pushes 'shun <ip>' again to all 4 perimeter firewalls and ensures IP is locked in the Guardian Do-Not-Unshun Blacklist."
+                                                                : "Immediately executes 'shun <ip>' on all 4 perimeter firewalls AND adds the IP to Guardian Do-Not-Unshun Blacklist (prevents auto-unshun)."
+                                                        }
                                                         className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
                                                             item.verdict === "LEGIT_USER_ISSUE"
                                                                 ? "bg-slate-800 hover:bg-red-950/60 text-slate-300 hover:text-red-300 border border-slate-700"
@@ -970,6 +979,11 @@ export default function CitrixLoginTriageTab({
                                                             )
                                                         }
                                                         disabled={blacklistLoadingIp === item.ip}
+                                                        title={
+                                                            item.isOnGuardianBlacklist
+                                                                ? "Currently in Guardian Blacklist. Click to REMOVE from Do-Not-Unshun list (allows Guardian auto-unshun logic if legitimate)."
+                                                                : "Adds IP to Guardian Do-Not-Unshun Blacklist in the database WITHOUT executing a firewall shun right now (protects against future auto-unshun)."
+                                                        }
                                                         className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-all flex items-center gap-1 ${
                                                             item.isOnGuardianBlacklist
                                                                 ? "bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25"
@@ -982,6 +996,7 @@ export default function CitrixLoginTriageTab({
 
                                                     <button
                                                         onClick={() => onInvestigateTarget(item.ip)}
+                                                        title="Opens NetScaler Deep Investigator tab filtered to this IP to view all raw HTTP/AAA/ICA requests, session IDs, and timestamps."
                                                         className="px-2.5 py-1 rounded text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
                                                     >
                                                         <Search className="w-3 h-3" />
@@ -1085,12 +1100,14 @@ export default function CitrixLoginTriageTab({
                                                 <div className="flex flex-col items-end gap-1.5">
                                                     <button
                                                         onClick={() => onInvestigateTarget(u.username)}
+                                                        title="Opens NetScaler Deep Investigator tab filtered to this username to inspect chronological authentication & session activity."
                                                         className="px-2.5 py-1 rounded bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 text-[11px] font-medium"
                                                     >
                                                         Citrix Timeline
                                                     </button>
                                                     <Link
                                                         href={`/queries/account-lockout?username=${encodeURIComponent(u.username)}`}
+                                                        title="Opens Account Lockout Investigator to correlate Active Directory 4740/4625 events, Imprivata RADIUS logs, and calling workstation/IP."
                                                         className="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-[11px] flex items-center gap-1"
                                                     >
                                                         AD Lockout Triage <ExternalLink className="w-3 h-3" />
