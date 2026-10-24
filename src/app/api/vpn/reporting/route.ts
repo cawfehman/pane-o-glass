@@ -74,8 +74,8 @@ export async function GET(req: Request) {
             }
         }
 
-        // 4. Query PostgreSQL database & calculate exact timeframe event count
-        const [events, earliestRecord, dbTotalCount, totalTimeframeEvents] = await Promise.all([
+        // 4. Query PostgreSQL database, Guardian Blacklists & calculate exact timeframe event count
+        const [events, earliestRecord, dbTotalCount, totalTimeframeEvents, blIps, blAsns] = await Promise.all([
             prisma.vpnEvent.findMany({
                 where: whereConditions,
                 orderBy: { createdAt: 'desc' },
@@ -86,8 +86,22 @@ export async function GET(req: Request) {
                 orderBy: { createdAt: 'asc' }
             }),
             prisma.vpnEvent.count(),
-            prisma.vpnEvent.count({ where: whereConditions })
+            prisma.vpnEvent.count({ where: whereConditions }),
+            prisma.guardianBlacklist.findMany({ select: { ip: true, reason: true } }).catch(() => []),
+            prisma.guardianAsnBlacklist.findMany({ select: { asn: true, asnName: true, reason: true } }).catch(() => [])
         ]);
+
+        const blacklistedIpMap = new Map<string, string>();
+        for (const b of blIps) {
+            blacklistedIpMap.set(b.ip, b.reason);
+        }
+
+        const blacklistedAsnMap = new Map<string, { asn: string; asnName: string | null; reason: string }>();
+        for (const a of blAsns) {
+            const raw = String(a.asn).toUpperCase().replace(/^AS/, "");
+            blacklistedAsnMap.set(raw, a);
+            blacklistedAsnMap.set(`AS${raw}`, a);
+        }
 
         // 5. Extract unique usernames & metrics
         const uniqueUserSet = new Set<string>();
@@ -246,6 +260,24 @@ export async function GET(req: Request) {
                 }
             }
 
+            // Cross-reference IP and ASN against unified Guardian Blacklists
+            const ipBlacklistReason = evt.sourceIp ? blacklistedIpMap.get(evt.sourceIp) || null : null;
+            const isIpBlacklisted = Boolean(ipBlacklistReason);
+
+            let isAsnBlacklisted = false;
+            let asnBlacklistReason: string | null = null;
+            let asnMatchedKey: string | null = null;
+
+            if (ipAsn) {
+                const cleanAsnNum = String(ipAsn).toUpperCase().replace(/^AS/, "");
+                const asnMatch = blacklistedAsnMap.get(cleanAsnNum) || blacklistedAsnMap.get(`AS${cleanAsnNum}`);
+                if (asnMatch) {
+                    isAsnBlacklisted = true;
+                    asnBlacklistReason = asnMatch.reason;
+                    asnMatchedKey = asnMatch.asn;
+                }
+            }
+
             return {
                 ...evt,
                 failureReason: enrichedFailureReason,
@@ -263,9 +295,17 @@ export async function GET(req: Request) {
                 adDisplayName,
                 adDepartment,
                 adTitle,
-                adLastCheckedAt: adEnrichedAt
+                adLastCheckedAt: adEnrichedAt,
+                isIpBlacklisted,
+                ipBlacklistReason,
+                isAsnBlacklisted,
+                asnBlacklistReason,
+                asnMatchedKey
             };
         });
+
+        const blacklistedAsnEventsCount = enrichedEvents.filter(e => e.isAsnBlacklisted).length;
+        const blacklistedIpEventsCount = enrichedEvents.filter(e => e.isIpBlacklisted).length;
 
         // Log audit event for reporting query
         try {
@@ -300,6 +340,10 @@ export async function GET(req: Request) {
             imprivataMfaTimeoutCount,
             imprivataInvalidUserCount,
             totalBytesTransferred: totalBytes,
+            blacklistedAsnsCount: blAsns.length,
+            blacklistedIpsCount: blIps.length,
+            blacklistedAsnEventsCount,
+            blacklistedIpEventsCount,
             events: enrichedEvents
         }, {
             headers: {

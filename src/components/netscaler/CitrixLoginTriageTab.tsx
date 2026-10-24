@@ -967,6 +967,21 @@ export default function CitrixLoginTriageTab({
                         External IP Verdict Matrix ({data?.ipEvaluations.length ?? 0})
                     </button>
                     <button
+                        onClick={() => setSubView("asns")}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                            subView === "asns"
+                                ? "bg-indigo-600 text-white"
+                                : "text-slate-400 hover:text-white hover:bg-slate-800"
+                        }`}
+                    >
+                        <span>Origin ASNs ({data?.asnMetrics?.length ?? 0})</span>
+                        {(data?.summary?.blacklistedAsnsCount ?? 0) > 0 && (
+                            <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-mono text-[10px] font-bold">
+                                {data?.summary?.blacklistedAsnsCount} Blacklisted
+                            </span>
+                        )}
+                    </button>
+                    <button
                         onClick={() => setSubView("users")}
                         className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                             subView === "users"
@@ -1000,6 +1015,29 @@ export default function CitrixLoginTriageTab({
                             <option value="SUSPICIOUS_WATCH">Suspicious — Watch Only</option>
                             <option value="LEGIT_USER_ISSUE">Guardian Protected Only</option>
                         </select>
+                    )}
+
+                    {subView === "asns" && (
+                        <div className="flex items-center gap-2">
+                            <select
+                                value={asnFilterType}
+                                onChange={(e) => setAsnFilterType(e.target.value as any)}
+                                className="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+                            >
+                                <option value="ALL">All Origin ASNs</option>
+                                <option value="BLACKLISTED">Blacklisted Only (Zero-Tolerance)</option>
+                                <option value="HOSTING">Hosting / Cloud Providers</option>
+                                <option value="ABUSIVE">Originating Abusive IPs</option>
+                            </select>
+                            <button
+                                onClick={exportAsnCsv}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1 border border-slate-700"
+                                title="Export ASN intelligence metrics to CSV"
+                            >
+                                <Download className="w-3.5 h-3.5" />
+                                Export CSV
+                            </button>
+                        </div>
                     )}
 
                     {subView === "events" && (
@@ -1422,6 +1460,110 @@ export default function CitrixLoginTriageTab({
                                                     >
                                                         AD Lockout Triage <ExternalLink className="w-3 h-3" />
                                                     </Link>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* VIEW 4: ORIGIN ASN INTELLIGENCE & ZERO-TOLERANCE BLACKLISTING */}
+            {subView === "asns" && (
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden">
+                    {filteredAsns.length === 0 ? (
+                        <div className="p-12 text-center text-sm text-slate-400">
+                            No origin Autonomous System Numbers (ASNs) match the current filters.
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-slate-800 bg-slate-950/60 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                                        <th className="py-3 px-4">Autonomous System (ASN)</th>
+                                        <th className="py-3 px-4">Organization & Type</th>
+                                        <th className="py-3 px-4">Country</th>
+                                        <th className="py-3 px-4">Failures</th>
+                                        <th className="py-3 px-4">Client IPs</th>
+                                        <th className="py-3 px-4">Targeted Users</th>
+                                        <th className="py-3 px-4">Blacklist Policy</th>
+                                        <th className="py-3 px-4 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800/70 text-xs">
+                                    {filteredAsns.map((a) => (
+                                        <tr key={a.asn} className="hover:bg-slate-800/30 transition-colors">
+                                            <td className="py-3.5 px-4">
+                                                <div className="font-mono font-bold text-white text-sm flex items-center gap-2">
+                                                    <span>{a.asn}</span>
+                                                    {a.isBlacklisted && (
+                                                        <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-mono text-[9px] font-bold">
+                                                            ZERO-TOLERANCE
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="py-3.5 px-4">
+                                                <div className="font-medium text-slate-200">{a.asnName || "Unknown Org"}</div>
+                                                <div className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                                    <span className="capitalize">{a.companyType || "unknown"}</span>
+                                                </div>
+                                            </td>
+                                            <td className="py-3.5 px-4 font-mono text-slate-300">
+                                                {a.countryCode || "--"}
+                                            </td>
+                                            <td className="py-3.5 px-4">
+                                                <div className="font-bold text-rose-400 font-mono text-sm">{a.totalFailures}</div>
+                                                <div className="text-[10px] text-slate-500 font-mono">
+                                                    {a.loginFailedCount} AAA | {a.policyFailedCount} Pol
+                                                </div>
+                                            </td>
+                                            <td className="py-3.5 px-4 font-mono">
+                                                <span className="text-white font-semibold">{a.uniqueIpCount}</span>
+                                                {a.abusiveIpCount > 0 && (
+                                                    <span className="ml-1 text-[11px] text-rose-400">({a.abusiveIpCount} abusive)</span>
+                                                )}
+                                            </td>
+                                            <td className="py-3.5 px-4 font-mono text-slate-300">
+                                                {a.uniqueUserCount} user{a.uniqueUserCount === 1 ? "" : "s"}
+                                            </td>
+                                            <td className="py-3.5 px-4">
+                                                {a.isBlacklisted ? (
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded w-fit">
+                                                            🚫 Blacklisted ASN
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 truncate max-w-xs" title={a.blacklistReason || "Zero-tolerance autoshun rule"}>
+                                                            {a.blacklistReason || "Zero-tolerance autoshun rule"}
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs">Standard Thresholds (3+ fails)</span>
+                                                )}
+                                            </td>
+                                            <td className="py-3.5 px-4 text-right">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    {a.isBlacklisted ? (
+                                                        <button
+                                                            onClick={() => openBlacklistAsnModal(a.asn, a.asnName, true, a.blacklistReason || "")}
+                                                            disabled={asnActionLoadingKey === a.asn}
+                                                            className="px-2.5 py-1 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                                                        >
+                                                            Manage / Remove
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => openBlacklistAsnModal(a.asn, a.asnName, false)}
+                                                            disabled={asnActionLoadingKey === a.asn}
+                                                            className="px-2.5 py-1 rounded text-xs font-semibold bg-purple-600 hover:bg-purple-500 text-white shadow-xs transition-colors flex items-center gap-1"
+                                                        >
+                                                            <Ban className="w-3 h-3" />
+                                                            + Blacklist ASN
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -2313,6 +2455,102 @@ export default function CitrixLoginTriageTab({
                                 >
                                     Close
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* UNIFIED GUARDIAN ASN BLACKLIST MODAL */}
+            {asnBlacklistModal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-lg bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                                    <Ban className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-white">
+                                        {asnBlacklistModal.isCurrentlyBlacklisted ? "Manage Blacklisted ASN" : "Blacklist Autonomous System (ASN)"}
+                                    </h3>
+                                    <p className="text-xs text-slate-400">
+                                        Single Source of Truth: Fleet-wide Rule (Citrix, VPN & Firewalls)
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setAsnBlacklistModal(null)}
+                                className="text-slate-400 hover:text-white p-1"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-3 text-xs">
+                            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                                <div>
+                                    <div className="font-mono text-base font-bold text-white">{asnBlacklistModal.asn}</div>
+                                    <div className="text-slate-400 font-medium">{asnBlacklistModal.asnName}</div>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                                    asnBlacklistModal.isCurrentlyBlacklisted
+                                        ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                                        : "bg-slate-800 text-slate-400 border border-slate-700"
+                                }`}>
+                                    {asnBlacklistModal.isCurrentlyBlacklisted ? "BLACKLISTED" : "NOT BLACKLISTED"}
+                                </span>
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                                    Reason for Blacklisting
+                                </label>
+                                <textarea
+                                    value={asnBlacklistModal.reason}
+                                    onChange={(e) => setAsnBlacklistModal(prev => prev ? { ...prev, reason: e.target.value } : null)}
+                                    rows={3}
+                                    placeholder="Enter reason for fleet-wide ASN blacklisting..."
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500"
+                                />
+                            </div>
+
+                            <div className="p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[11px] leading-relaxed">
+                                💡 <strong>Universal Rule:</strong> When an ASN is in the Guardian Blacklist, <strong>any failure (Citrix or VPN)</strong> originating from this ASN triggers zero-tolerance automatic perimeter shunning across all 4 Cisco ASA/FTD firewalls, and Guardian will never un-shun it.
+                            </div>
+
+                            {asnBlacklistModal.error && (
+                                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-xs">
+                                    {asnBlacklistModal.error}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+                            <button
+                                onClick={() => setAsnBlacklistModal(null)}
+                                className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs"
+                            >
+                                Cancel
+                            </button>
+                            <div className="flex items-center gap-2">
+                                {asnBlacklistModal.isCurrentlyBlacklisted ? (
+                                    <button
+                                        onClick={() => handleToggleAsnBlacklist(asnBlacklistModal.asn, asnBlacklistModal.asnName, true)}
+                                        disabled={asnActionLoadingKey === asnBlacklistModal.asn}
+                                        className="px-4 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 font-semibold text-xs transition-colors"
+                                    >
+                                        {asnActionLoadingKey === asnBlacklistModal.asn ? "Removing..." : "Remove from Blacklist"}
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => handleToggleAsnBlacklist(asnBlacklistModal.asn, asnBlacklistModal.asnName, false, asnBlacklistModal.reason)}
+                                        disabled={asnActionLoadingKey === asnBlacklistModal.asn}
+                                        className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-xs transition-colors"
+                                    >
+                                        {asnActionLoadingKey === asnBlacklistModal.asn ? "Blacklisting..." : "Confirm & Blacklist ASN"}
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>

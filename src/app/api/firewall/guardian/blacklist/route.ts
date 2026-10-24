@@ -3,16 +3,28 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { hasPermission } from "@/app/actions/permissions";
 import { logAudit } from "@/lib/audit";
+import { blockCitrixAbusiveIps } from "@/lib/netscaler-login-triage";
 
 export const dynamic = "force-dynamic";
+
+async function isAuthorizedForBlacklist(session: any): Promise<boolean> {
+    if (!session?.user) return false;
+    const role = (session.user as any)?.role;
+    if (role === "ADMIN") return true;
+    const [hasFw, hasVpn, hasNetscaler] = await Promise.all([
+        hasPermission(role, "firewall"),
+        hasPermission(role, "vpn-reporting"),
+        hasPermission(role, "netscaler")
+    ]);
+    return Boolean(hasFw || hasVpn || hasNetscaler);
+}
 
 // GET: Retrieves both IP and ASN blacklists
 export async function GET(req: NextRequest) {
     try {
         const session = await auth();
-        const role = (session?.user as any)?.role;
 
-        if (!session?.user || !(await hasPermission(role, 'firewall'))) {
+        if (!session?.user || !(await isAuthorizedForBlacklist(session))) {
             return NextResponse.json({ error: "Forbidden: Access to this tool is restricted." }, { status: 403 });
         }
 
@@ -31,14 +43,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     try {
         const session = await auth();
-        const role = (session?.user as any)?.role;
 
-        if (!session?.user || !(await hasPermission(role, 'firewall'))) {
+        if (!session?.user || !(await isAuthorizedForBlacklist(session))) {
             return NextResponse.json({ error: "Forbidden: Access to this tool is restricted." }, { status: 403 });
         }
 
         const body = await req.json().catch(() => ({}));
-        const { type, target, reason, asnName } = body;
+        const { type, target, reason, asnName, shunOnFirewalls = false, targetHost = "all" } = body;
 
         if (!target || !reason) {
             return NextResponse.json({ error: "Target (IP or ASN) and reason are required." }, { status: 400 });
@@ -48,12 +59,12 @@ export async function POST(req: NextRequest) {
         const cleanReason = String(reason).trim();
         const forwardedFor = req.headers.get("x-forwarded-for");
         const clientIp = forwardedFor ? forwardedFor.split(',')[0] : 'internal';
+        const authorName = (session.user as any).username || session.user.name || session.user.email || session.user.id || "Admin";
 
         if (type === "ASN" || cleanTarget.toUpperCase().startsWith("AS") || /^\d+$/.test(cleanTarget)) {
             // Clean ASN string: e.g. "16509" or "AS16509" -> store as "AS16509"
             const rawAsnNumber = cleanTarget.toUpperCase().replace(/^AS/, "");
             const asnKey = `AS${rawAsnNumber}`;
-            const authorName = (session.user as any).username || session.user.name || session.user.email || session.user.id || "Admin";
 
             const entry = await prisma.guardianAsnBlacklist.upsert({
                 where: { asn: asnKey },
@@ -92,6 +103,20 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: true, type: "ASN", entry });
         } else {
             // Treat as IP address
+            if (shunOnFirewalls) {
+                const blockResult = await blockCitrixAbusiveIps({
+                    ips: [cleanTarget],
+                    reason: cleanReason,
+                    targetHost,
+                    addToGuardianBlacklist: true,
+                    userId: session.user.id,
+                    clientIp,
+                    initiatorEmail: session.user.email || authorName
+                });
+
+                return NextResponse.json({ success: true, type: "IP", shunned: true, blockResult });
+            }
+
             const entry = await prisma.guardianBlacklist.upsert({
                 where: { ip: cleanTarget },
                 update: { reason: cleanReason },
@@ -127,9 +152,8 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
     try {
         const session = await auth();
-        const role = (session?.user as any)?.role;
 
-        if (!session?.user || !(await hasPermission(role, 'firewall'))) {
+        if (!session?.user || !(await isAuthorizedForBlacklist(session))) {
             return NextResponse.json({ error: "Forbidden: Access to this tool is restricted." }, { status: 403 });
         }
 

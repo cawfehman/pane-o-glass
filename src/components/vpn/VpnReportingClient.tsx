@@ -1,30 +1,33 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { 
-    FileText, 
-    Search, 
-    Download, 
-    RefreshCw, 
-    Calendar, 
-    CheckCircle2, 
-    XCircle, 
-    AlertCircle, 
-    Network, 
-    Users, 
+import {
+    FileText,
+    Search,
+    Download,
+    RefreshCw,
+    Calendar,
+    CheckCircle2,
+    XCircle,
+    AlertCircle,
+    Network,
+    Users,
     UserCheck,
     UserX,
     UserMinus,
-    Globe, 
-    ArrowDownUp, 
-    Activity, 
-    Shield, 
-    Clock, 
+    Globe,
+    ArrowDownUp,
+    Activity,
+    Shield,
+    Clock,
     Filter,
     ChevronLeft,
     ChevronRight,
     Info,
-    ExternalLink
+    ExternalLink,
+    Ban,
+    Flame,
+    X
 } from "lucide-react";
 import { ToolHelp } from "../ToolHelp";
 import { SmartSearchBar } from "@/components/common/SmartSearchBar";
@@ -62,6 +65,13 @@ export interface VpnReportEvent {
     adDisplayName?: string;
     adDepartment?: string;
     adTitle?: string;
+
+    // Blacklist & Threat Intelligence
+    isIpBlacklisted?: boolean;
+    ipBlacklistReason?: string | null;
+    isAsnBlacklisted?: boolean;
+    asnBlacklistReason?: string | null;
+    asnMatchedKey?: string | null;
 }
 
 export default function VpnReportingClient() {
@@ -120,6 +130,30 @@ export default function VpnReportingClient() {
     const [imprivataInvalidUserCount, setImprivataInvalidUserCount] = useState<number>(0);
     const [totalBytes, setTotalBytes] = useState<number>(0);
     const [dbSpeedMs, setDbSpeedMs] = useState<number | null>(null);
+
+    // Unified Blacklist Intelligence State
+    const [blacklistedAsnsCount, setBlacklistedAsnsCount] = useState<number>(0);
+    const [blacklistedIpsCount, setBlacklistedIpsCount] = useState<number>(0);
+    const [blacklistedAsnEventsCount, setBlacklistedAsnEventsCount] = useState<number>(0);
+    const [blacklistedIpEventsCount, setBlacklistedIpEventsCount] = useState<number>(0);
+
+    const [asnBlacklistModal, setAsnBlacklistModal] = useState<{
+        asn: string;
+        asnName: string;
+        reason: string;
+        isCurrentlyBlacklisted: boolean;
+        loading: boolean;
+        error: string | null;
+    } | null>(null);
+
+    const [ipBlacklistModal, setIpBlacklistModal] = useState<{
+        ip: string;
+        reason: string;
+        isCurrentlyBlacklisted: boolean;
+        shunOnFirewalls: boolean;
+        loading: boolean;
+        error: string | null;
+    } | null>(null);
 
     const fetchReportData = useCallback(async (queryOverride?: string) => {
         setLoading(true);
@@ -220,6 +254,74 @@ export default function VpnReportingClient() {
     };
 
     // Export to CSV Function
+        const handleToggleAsnBlacklist = async (asn: string, asnName: string, currentlyBlacklisted: boolean, customReason?: string) => {
+        if (!asnBlacklistModal) return;
+        setAsnBlacklistModal(prev => prev ? { ...prev, loading: true, error: null } : null);
+        try {
+            const rawAsnNumber = asn.toUpperCase().replace(/^AS/, "");
+            const asnKey = `AS${rawAsnNumber}`;
+            if (currentlyBlacklisted) {
+                const res = await fetch(`/api/firewall/guardian/blacklist?asn=${encodeURIComponent(asnKey)}`, { method: "DELETE" });
+                if (!res.ok) {
+                    const j = await res.json().catch(() => ({}));
+                    throw new Error(j.error || "Failed to remove ASN from blacklist");
+                }
+            } else {
+                const res = await fetch("/api/firewall/guardian/blacklist", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        type: "ASN",
+                        target: asnKey,
+                        reason: customReason || "Blacklisted via VPN Reporting: zero-tolerance autoshun rule",
+                        asnName
+                    })
+                });
+                if (!res.ok) {
+                    const j = await res.json().catch(() => ({}));
+                    throw new Error(j.error || "Failed to blacklist ASN");
+                }
+            }
+            setAsnBlacklistModal(null);
+            fetchReportData();
+        } catch (e: any) {
+            setAsnBlacklistModal(prev => prev ? { ...prev, loading: false, error: e.message } : null);
+        }
+    };
+
+    const handleToggleIpBlacklist = async (ip: string, currentlyBlacklisted: boolean, customReason?: string, shunOnFirewalls: boolean = true) => {
+        if (!ipBlacklistModal) return;
+        setIpBlacklistModal(prev => prev ? { ...prev, loading: true, error: null } : null);
+        try {
+            if (currentlyBlacklisted) {
+                const res = await fetch(`/api/firewall/guardian/blacklist?ip=${encodeURIComponent(ip)}`, { method: "DELETE" });
+                if (!res.ok) {
+                    const j = await res.json().catch(() => ({}));
+                    throw new Error(j.error || "Failed to clear IP from blacklist");
+                }
+            } else {
+                const res = await fetch("/api/firewall/guardian/blacklist", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        type: "IP",
+                        target: ip,
+                        reason: customReason || "Blacklisted via VPN Reporting: abusive activity",
+                        shunOnFirewalls
+                    })
+                });
+                if (!res.ok) {
+                    const j = await res.json().catch(() => ({}));
+                    throw new Error(j.error || "Failed to blacklist IP");
+                }
+            }
+            setIpBlacklistModal(null);
+            fetchReportData();
+        } catch (e: any) {
+            setIpBlacklistModal(prev => prev ? { ...prev, loading: false, error: e.message } : null);
+        }
+    };
+
     const handleExportCsv = () => {
         if (events.length === 0) return;
 
@@ -515,7 +617,7 @@ export default function VpnReportingClient() {
 
                     {/* Refresh & CSV Export Buttons */}
                     <button
-                        onClick={fetchReportData}
+                        onClick={() => fetchReportData()}
                         disabled={loading}
                         className="p-2 rounded-lg bg-[var(--bg-default)] hover:bg-[var(--border-color)]/40 border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
                         title="Refresh Report Data"
@@ -556,7 +658,7 @@ export default function VpnReportingClient() {
                         />
                     </div>
                     <button
-                        onClick={fetchReportData}
+                        onClick={() => fetchReportData()}
                         className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-bold text-xs shadow-xs hover:bg-indigo-500 transition-colors"
                     >
                         Apply Date Range
@@ -836,16 +938,54 @@ export default function VpnReportingClient() {
                                             {/* Source IP */}
                                             <td className="p-3 font-mono">
                                                 {evt.sourceIp ? (
-                                                    <a
-                                                        href={`https://ipinfo.io/${evt.sourceIp}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-indigo-400 hover:text-indigo-300 font-semibold hover:underline inline-flex items-center gap-1 group whitespace-nowrap"
-                                                        title={`Location: ${evt.ipCity ? `${evt.ipCity}, ` : ''}${evt.ipCountry || 'Unknown'}${evt.ipCountryCode ? ` (${evt.ipCountryCode})` : ''}\nNetwork: ${evt.ipAsn || ''}${evt.ipAsName ? ` - ${evt.ipAsName}` : ''}${evt.ipAsDomain ? ` (${evt.ipAsDomain})` : ''}`}
-                                                    >
-                                                        <span>{evt.sourceIp}</span>
-                                                        <ExternalLink className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-opacity" />
-                                                    </a>
+                                                    <div className="flex flex-col gap-1">
+                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                            <a
+                                                                href={`https://ipinfo.io/${evt.sourceIp}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="text-indigo-400 hover:text-indigo-300 font-semibold hover:underline inline-flex items-center gap-1 group whitespace-nowrap"
+                                                                title={`Location: ${evt.ipCity ? `${evt.ipCity}, ` : ''}${evt.ipCountry || 'Unknown'}${evt.ipCountryCode ? ` (${evt.ipCountryCode})` : ''}\nNetwork: ${evt.ipAsn || ''}${evt.ipAsName ? ` - ${evt.ipAsName}` : ''}${evt.ipAsDomain ? ` (${evt.ipAsDomain})` : ''}`}
+                                                            >
+                                                                <span>{evt.sourceIp}</span>
+                                                                <ExternalLink className="w-3 h-3 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                                            </a>
+
+                                                            {evt.isIpBlacklisted ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setIpBlacklistModal({
+                                                                        ip: evt.sourceIp,
+                                                                        reason: evt.ipBlacklistReason || "Guardian Do-Not-Unshun Blacklist",
+                                                                        isCurrentlyBlacklisted: true,
+                                                                        shunOnFirewalls: false,
+                                                                        loading: false,
+                                                                        error: null
+                                                                    })}
+                                                                    className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 font-mono text-[9px] font-bold uppercase tracking-wider inline-flex items-center gap-1 hover:bg-rose-500/30 transition-colors"
+                                                                    title={`Guardian Do-Not-Unshun: ${evt.ipBlacklistReason || 'Abusive attacker blocked from auto-unshun'}. Click to manage.`}
+                                                                >
+                                                                    🛡️ Blacklisted IP
+                                                                </button>
+                                                            ) : (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setIpBlacklistModal({
+                                                                        ip: evt.sourceIp,
+                                                                        reason: `Blacklisted via VPN Reporting: detected abusive VPN attempt (${evt.username || 'unknown'})`,
+                                                                        isCurrentlyBlacklisted: false,
+                                                                        shunOnFirewalls: true,
+                                                                        loading: false,
+                                                                        error: null
+                                                                    })}
+                                                                    className="opacity-0 group-hover:opacity-100 focus:opacity-100 px-1 py-0.5 rounded text-[9px] text-rose-400 hover:text-rose-200 border border-rose-500/30 hover:bg-rose-500/20 font-mono font-medium transition-all"
+                                                                    title={`Shun & Blacklist IP ${evt.sourceIp} across all perimeter firewalls`}
+                                                                >
+                                                                    +Blacklist IP
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 ) : (
                                                     <span className="text-[var(--text-muted)]">--</span>
                                                 )}
@@ -895,13 +1035,53 @@ export default function VpnReportingClient() {
                                                     {evt.vpnStream || "AnyConnect Cluster"}
                                                 </div>
                                                 {(evt.ipAsName || evt.ipCountry) && (
-                                                    <div className="text-[11px] text-[var(--text-secondary)] truncate flex items-center gap-1" title={`${evt.ipAsn ? `${evt.ipAsn} - ` : ''}${evt.ipAsName || ''}${evt.ipCountry ? ` (${evt.ipCountry})` : ''}`}>
+                                                    <div className="text-[11px] text-[var(--text-secondary)] truncate flex items-center gap-1 mt-0.5" title={`${evt.ipAsn ? `${evt.ipAsn} - ` : ''}${evt.ipAsName || ''}${evt.ipCountry ? ` (${evt.ipCountry})` : ''}`}>
                                                         {evt.ipCountryCode && (
                                                             <span className="font-mono text-[10px] font-bold text-indigo-400 uppercase">
                                                                 [{evt.ipCountryCode}]
                                                             </span>
                                                         )}
                                                         <span className="truncate">{evt.ipAsName || evt.ipCountry}</span>
+                                                    </div>
+                                                )}
+                                                {evt.ipAsn && (
+                                                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                        <span className="font-mono text-[10px] text-slate-400">
+                                                            {evt.ipAsn}
+                                                        </span>
+                                                        {evt.isAsnBlacklisted ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setAsnBlacklistModal({
+                                                                    asn: evt.asnMatchedKey || evt.ipAsn!,
+                                                                    asnName: evt.ipAsName || "Unknown Org",
+                                                                    reason: evt.asnBlacklistReason || "Blacklisted via Guardian: zero-tolerance autoshun rule",
+                                                                    isCurrentlyBlacklisted: true,
+                                                                    loading: false,
+                                                                    error: null
+                                                                })}
+                                                                className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 font-mono text-[9px] font-bold inline-flex items-center gap-0.5 hover:bg-purple-500/30 transition-colors"
+                                                                title={`Blacklisted ASN (${evt.asnMatchedKey || evt.ipAsn}): ${evt.asnBlacklistReason || 'Zero-tolerance autoshun rule'}. Click to manage.`}
+                                                            >
+                                                                🚫 Blacklisted ASN
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setAsnBlacklistModal({
+                                                                    asn: evt.ipAsn!,
+                                                                    asnName: evt.ipAsName || "",
+                                                                    reason: `Blacklisted via VPN Reporting: zero-tolerance autoshun rule for ${evt.ipAsName || evt.ipAsn}`,
+                                                                    isCurrentlyBlacklisted: false,
+                                                                    loading: false,
+                                                                    error: null
+                                                                })}
+                                                                className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[10px] text-purple-400 hover:text-purple-300 underline font-mono transition-opacity ml-1"
+                                                                title={`Blacklist ASN ${evt.ipAsn} (${evt.ipAsName || 'Unknown Org'}) fleet-wide`}
+                                                            >
+                                                                +Blacklist ASN
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 )}
                                             </td>
@@ -973,6 +1153,213 @@ export default function VpnReportingClient() {
                 {/* BOTTOM PAGINATION BAR */}
                 {renderPaginationBar("bottom")}
             </div>
+                    {/* UNIFIED GUARDIAN ASN BLACKLIST MODAL */}
+            {asnBlacklistModal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-lg bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                                    <Ban className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-white">
+                                        {asnBlacklistModal.isCurrentlyBlacklisted ? "Manage Blacklisted ASN" : "Blacklist Autonomous System (ASN)"}
+                                    </h3>
+                                    <p className="text-xs text-slate-400">
+                                        Single Source of Truth: Fleet-wide Rule (Citrix, VPN & Firewalls)
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setAsnBlacklistModal(null)}
+                                className="text-slate-400 hover:text-white p-1"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-3 text-xs">
+                            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                                <div>
+                                    <div className="font-mono text-base font-bold text-white">{asnBlacklistModal.asn}</div>
+                                    <div className="text-slate-400 font-medium">{asnBlacklistModal.asnName || "Unknown Org"}</div>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                                    asnBlacklistModal.isCurrentlyBlacklisted
+                                        ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                                        : "bg-slate-800 text-slate-400 border border-slate-700"
+                                }`}>
+                                    {asnBlacklistModal.isCurrentlyBlacklisted ? "BLACKLISTED" : "NOT BLACKLISTED"}
+                                </span>
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                                    Reason for Blacklisting
+                                </label>
+                                <textarea
+                                    value={asnBlacklistModal.reason}
+                                    onChange={(e) => setAsnBlacklistModal(prev => prev ? { ...prev, reason: e.target.value } : null)}
+                                    rows={3}
+                                    placeholder="Enter reason for fleet-wide ASN blacklisting..."
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500"
+                                />
+                            </div>
+
+                            <div className="p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[11px] leading-relaxed">
+                                💡 <strong>Universal Rule:</strong> When an ASN is in the Guardian Blacklist, <strong>any failure (Citrix or VPN)</strong> originating from this ASN triggers zero-tolerance automatic perimeter shunning across all 4 Cisco ASA/FTD firewalls, and Guardian will never un-shun it.
+                            </div>
+
+                            {asnBlacklistModal.error && (
+                                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-xs">
+                                    {asnBlacklistModal.error}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+                            <button
+                                onClick={() => setAsnBlacklistModal(null)}
+                                className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs"
+                            >
+                                Cancel
+                            </button>
+                            <div className="flex items-center gap-2">
+                                {asnBlacklistModal.isCurrentlyBlacklisted ? (
+                                    <button
+                                        onClick={() => handleToggleAsnBlacklist(asnBlacklistModal.asn, asnBlacklistModal.asnName, true)}
+                                        disabled={asnBlacklistModal.loading}
+                                        className="px-4 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 font-semibold text-xs transition-colors"
+                                    >
+                                        {asnBlacklistModal.loading ? "Removing..." : "Remove from Blacklist"}
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => handleToggleAsnBlacklist(asnBlacklistModal.asn, asnBlacklistModal.asnName, false, asnBlacklistModal.reason)}
+                                        disabled={asnBlacklistModal.loading}
+                                        className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs shadow-xs transition-colors"
+                                    >
+                                        {asnBlacklistModal.loading ? "Blacklisting..." : "Confirm & Blacklist ASN"}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* UNIFIED GUARDIAN IP BLACKLIST MODAL */}
+            {ipBlacklistModal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2 rounded-lg bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                                    <Shield className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h3 className="text-base font-bold text-white">
+                                        {ipBlacklistModal.isCurrentlyBlacklisted ? "Manage Blacklisted IP" : "Blacklist & Shun IP Address"}
+                                    </h3>
+                                    <p className="text-xs text-slate-400">
+                                        Single Source of Truth: Guardian Do-Not-Unshun Blacklist
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setIpBlacklistModal(null)}
+                                className="text-slate-400 hover:text-white p-1"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-3 text-xs">
+                            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+                                <div>
+                                    <div className="font-mono text-base font-bold text-white">{ipBlacklistModal.ip}</div>
+                                    <div className="text-slate-400 font-medium">Perimeter Firewall Target</div>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                                    ipBlacklistModal.isCurrentlyBlacklisted
+                                        ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                                        : "bg-slate-800 text-slate-400 border border-slate-700"
+                                }`}>
+                                    {ipBlacklistModal.isCurrentlyBlacklisted ? "BLACKLISTED" : "UNLISTED"}
+                                </span>
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                                    Reason for Blacklisting
+                                </label>
+                                <textarea
+                                    value={ipBlacklistModal.reason}
+                                    onChange={(e) => setIpBlacklistModal(prev => prev ? { ...prev, reason: e.target.value } : null)}
+                                    rows={3}
+                                    placeholder="Enter reason for IP blacklisting..."
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white placeholder-slate-500 outline-none focus:border-indigo-500"
+                                />
+                            </div>
+
+                            {!ipBlacklistModal.isCurrentlyBlacklisted && (
+                                <label className="flex items-center gap-2 p-2.5 rounded-lg bg-slate-950 border border-slate-800 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={ipBlacklistModal.shunOnFirewalls}
+                                        onChange={(e) => setIpBlacklistModal(prev => prev ? { ...prev, shunOnFirewalls: e.target.checked } : null)}
+                                        className="accent-rose-500 w-4 h-4 rounded"
+                                    />
+                                    <div>
+                                        <div className="font-semibold text-white">Immediately Shun on All 4 Firewalls</div>
+                                        <div className="text-[10px] text-slate-400">Execute shun command across ASA/FTD perimeter firewalls right now</div>
+                                    </div>
+                                </label>
+                            )}
+
+                            <div className="p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[11px] leading-relaxed">
+                                🛡️ <strong>Guardian Protection:</strong> IPs added to the Guardian Blacklist are permanently barred from automated un-shunning across all 4 Cisco ASA/FTD firewalls.
+                            </div>
+
+                            {ipBlacklistModal.error && (
+                                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300 text-xs">
+                                    {ipBlacklistModal.error}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex items-center justify-between pt-3 border-t border-slate-800">
+                            <button
+                                onClick={() => setIpBlacklistModal(null)}
+                                className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs"
+                            >
+                                Cancel
+                            </button>
+                            <div className="flex items-center gap-2">
+                                {ipBlacklistModal.isCurrentlyBlacklisted ? (
+                                    <button
+                                        onClick={() => handleToggleIpBlacklist(ipBlacklistModal.ip, true)}
+                                        disabled={ipBlacklistModal.loading}
+                                        className="px-4 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 font-semibold text-xs transition-colors"
+                                    >
+                                        {ipBlacklistModal.loading ? "Removing..." : "Remove from Blacklist"}
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => handleToggleIpBlacklist(ipBlacklistModal.ip, false, ipBlacklistModal.reason, ipBlacklistModal.shunOnFirewalls)}
+                                        disabled={ipBlacklistModal.loading}
+                                        className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold text-xs shadow-xs transition-colors flex items-center gap-1.5"
+                                    >
+                                        <Flame className="w-3.5 h-3.5" />
+                                        {ipBlacklistModal.loading ? "Applying..." : "Confirm & Blacklist"}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
